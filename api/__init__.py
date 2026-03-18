@@ -7,7 +7,7 @@
 - Маршруты API для управления записью
 """
 
-from .server import APIServer
 from .routes import register_routes
+from .server import APIServer
 
 __all__ = ['APIServer', 'register_routes']

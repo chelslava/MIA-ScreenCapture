@@ -7,12 +7,10 @@
 """
 
 import json
-import os
-from pathlib import Path
-from typing import Any, Dict, Optional, List
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-import platform
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from logger_config import get_module_logger
 
@@ -33,7 +31,7 @@ class VideoSettings:
     bitrate: str = "2M"
     format: str = "mp4"
     compression: bool = True
-    
+
 
 @dataclass
 class AudioSettings:
@@ -59,7 +57,7 @@ class OutputSettings:
     """Настройки выходного файла."""
     default_path: str = ""
     filename_template: str = "recording_{datetime}"
-    
+
 
 @dataclass
 class APISettings:
@@ -67,7 +65,7 @@ class APISettings:
     enabled: bool = True
     host: str = "127.0.0.1"
     port: int = 5000
-    
+
 
 @dataclass
 class SchedulerSettings:
@@ -89,7 +87,7 @@ class AppSettings:
     minimize_to_tray: bool = True
     show_notifications: bool = True
     language: str = "en"
-    
+
     # Недавние записи (путь, дата, размер)
     recent_recordings: List[Dict[str, Any]] = field(default_factory=list)
     max_recent_recordings: int = 20
@@ -102,7 +100,7 @@ class ConfigManager:
     Обеспечивает потокобезопасный доступ к конфигурации приложения
     с автоматическим сохранением в JSON файл.
     """
-    
+
     def __init__(self, config_path: Optional[Path] = None):
         """
         Инициализация менеджера конфигурации.
@@ -113,12 +111,12 @@ class ConfigManager:
         self.config_path = config_path or CONFIG_FILE
         self._settings: Optional[AppSettings] = None
         self._load()
-        
+
     def _load(self) -> None:
         """Загрузка конфигурации из файла или создание значений по умолчанию."""
         if self.config_path.exists():
             try:
-                with open(self.config_path, 'r', encoding='utf-8') as f:
+                with open(self.config_path, encoding='utf-8') as f:
                     data = json.load(f)
                 self._settings = self._dict_to_settings(data)
                 logger.info(f"Конфигурация загружена из {self.config_path}")
@@ -128,7 +126,7 @@ class ConfigManager:
         else:
             self._settings = AppSettings()
             logger.info("Создана конфигурация по умолчанию")
-            
+
     def _dict_to_settings(self, data: Dict[str, Any]) -> AppSettings:
         """
         Преобразование словаря в dataclass AppSettings.
@@ -146,7 +144,7 @@ class ConfigManager:
             output = OutputSettings(**data.get('output', {}))
             api = APISettings(**data.get('api', {}))
             scheduler = SchedulerSettings(**data.get('scheduler', {}))
-            
+
             return AppSettings(
                 video=video,
                 audio=audio,
@@ -163,7 +161,7 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"Ошибка разбора конфигурации: {e}")
             return AppSettings()
-            
+
     def save(self) -> bool:
         """
         Сохранение текущей конфигурации в файл.
@@ -180,12 +178,12 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"Ошибка сохранения конфигурации: {e}")
             return False
-            
+
     @property
     def settings(self) -> AppSettings:
         """Получение текущих настроек."""
         return self._settings
-        
+
     def update(self, **kwargs) -> None:
         """
         Обновление настроек новыми значениями.
@@ -197,7 +195,7 @@ class ConfigManager:
             if hasattr(self._settings, key):
                 setattr(self._settings, key, value)
         self.save()
-        
+
     def add_recent_recording(self, path: str, size: int) -> None:
         """
         Добавление записи в список недавних записей.
@@ -211,23 +209,23 @@ class ConfigManager:
             "date": datetime.now().isoformat(),
             "size": size
         }
-        
+
         # Удаление дубликатов
         self._settings.recent_recordings = [
-            r for r in self._settings.recent_recordings 
+            r for r in self._settings.recent_recordings
             if r.get('path') != path
         ]
-        
+
         # Добавление в начало
         self._settings.recent_recordings.insert(0, recording)
-        
+
         # Ограничение размера
         if len(self._settings.recent_recordings) > self._settings.max_recent_recordings:
             self._settings.recent_recordings = \
                 self._settings.recent_recordings[:self._settings.max_recent_recordings]
-            
+
         self.save()
-        
+
     def get_output_path(self, filename: Optional[str] = None) -> Path:
         """
         Получение пути вывода для записи.
@@ -239,22 +237,22 @@ class ConfigManager:
             Полный путь к выходному файлу
         """
         base_path = Path(self._settings.output.default_path)
-        
+
         if not base_path.exists():
             base_path = Path.home() / "Videos" / "Recordings"
             base_path.mkdir(parents=True, exist_ok=True)
-            
+
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             template = self._settings.output.filename_template
             filename = template.replace("{datetime}", timestamp)
-            
+
         extension = f".{self._settings.video.format}"
         if not filename.endswith(extension):
             filename += extension
-            
+
         return base_path / filename
-        
+
     def reset(self) -> None:
         """Сброс конфигурации к значениям по умолчанию."""
         self._settings = AppSettings()

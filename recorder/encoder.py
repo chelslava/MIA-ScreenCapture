@@ -7,14 +7,12 @@
 в итоговый выходной файл с соответствующими настройками кодирования.
 """
 
-import subprocess
-import os
 import shutil
-from pathlib import Path
-from typing import Optional, List, Tuple, Dict, Any
-from dataclasses import dataclass
+import subprocess
 import tempfile
-import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
 from logger_config import get_module_logger
 from recorder.utils import check_ffmpeg, get_ffmpeg_path
@@ -44,7 +42,7 @@ class Encoder:
     - Извлечения аудио из видео
     - Конвертации между форматами
     """
-    
+
     def __init__(self, settings: Optional[EncodingSettings] = None):
         """
         Инициализация кодировщика.
@@ -55,10 +53,10 @@ class Encoder:
         self.settings = settings or EncodingSettings()
         self._ffmpeg_path = get_ffmpeg_path()
         self._ffprobe_path = self._get_ffprobe_path()
-        
+
         # Проверка доступности FFmpeg
         self._check_ffmpeg()
-        
+
     def _check_ffmpeg(self) -> bool:
         """
         Проверка доступности FFmpeg.
@@ -73,16 +71,16 @@ class Encoder:
                 "Скачать: https://ffmpeg.org/download.html"
             )
         return available
-    
+
     def _get_ffprobe_path(self) -> Optional[str]:
         """Получение пути к исполняемому файлу ffprobe."""
         return shutil.which('ffprobe')
-    
+
     @property
     def is_available(self) -> bool:
         """Проверка доступности FFmpeg."""
         return self._ffmpeg_path is not None
-    
+
     def merge_video_audio(
         self,
         video_path: Path,
@@ -106,20 +104,20 @@ class Encoder:
         """
         if not self.is_available:
             return False, "FFmpeg недоступен"
-            
+
         video_path = Path(video_path)
         audio_path = Path(audio_path)
         output_path = Path(output_path)
-        
+
         # Проверка входных данных
         if not video_path.exists():
             return False, f"Видеофайл не найден: {video_path}"
         if not audio_path.exists():
             return False, f"Аудиофайл не найден: {audio_path}"
-            
+
         # Убедиться, что директория вывода существует
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         try:
             # Формирование команды FFmpeg
             cmd = [
@@ -137,9 +135,9 @@ class Encoder:
                 '-shortest',  # Завершить когда заканчивается короткий поток
                 str(output_path)
             ]
-            
+
             logger.info(f"Запуск FFmpeg: {' '.join(cmd)}")
-            
+
             # Запуск FFmpeg
             result = subprocess.run(
                 cmd,
@@ -147,16 +145,16 @@ class Encoder:
                 text=True,
                 timeout=3600  # Таймаут 1 час
             )
-            
+
             if result.returncode != 0:
                 error_msg = result.stderr or "Неизвестная ошибка FFmpeg"
                 logger.error(f"Ошибка FFmpeg: {error_msg}")
                 return False, error_msg
-                
+
             # Проверка вывода
             if not output_path.exists():
                 return False, "Выходной файл не был создан"
-                
+
             # Удаление оригиналов если запрошено
             if not keep_originals:
                 try:
@@ -165,16 +163,16 @@ class Encoder:
                     logger.info("Оригинальные файлы удалены")
                 except Exception as e:
                     logger.warning(f"Не удалось удалить оригинальные файлы: {e}")
-                    
+
             logger.info(f"Успешно объединено в: {output_path}")
             return True, None
-            
+
         except subprocess.TimeoutExpired:
             return False, "Таймаут процесса FFmpeg"
         except Exception as e:
             logger.error(f"Ошибка при объединении: {e}")
             return False, str(e)
-    
+
     def encode_video(
         self,
         input_path: Path,
@@ -196,16 +194,16 @@ class Encoder:
         """
         if not self.is_available:
             return False, "FFmpeg недоступен"
-            
+
         settings = settings or self.settings
         input_path = Path(input_path)
         output_path = Path(output_path)
-        
+
         if not input_path.exists():
             return False, f"Входной файл не найден: {input_path}"
-            
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         try:
             cmd = [
                 'ffmpeg',
@@ -218,24 +216,24 @@ class Encoder:
                 '-b:a', settings.audio_bitrate,
                 str(output_path)
             ]
-            
+
             logger.info(f"Кодирование видео: {' '.join(cmd)}")
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=3600
             )
-            
+
             if result.returncode != 0:
                 return False, result.stderr or "Неизвестная ошибка FFmpeg"
-                
+
             return True, None
-            
+
         except Exception as e:
             return False, str(e)
-    
+
     def get_video_info(self, video_path: Path) -> Optional[Dict[str, Any]]:
         """
         Получение информации о видеофайле с использованием ffprobe.
@@ -248,7 +246,7 @@ class Encoder:
         """
         if not self._ffprobe_path:
             return None
-            
+
         try:
             cmd = [
                 'ffprobe',
@@ -258,7 +256,7 @@ class Encoder:
                 '-show_streams',
                 str(video_path)
             ]
-            
+
             import json
             result = subprocess.run(
                 cmd,
@@ -266,15 +264,15 @@ class Encoder:
                 text=True,
                 timeout=30
             )
-            
+
             if result.returncode == 0:
                 return json.loads(result.stdout)
-                
+
         except Exception as e:
             logger.error(f"Ошибка получения информации о видео: {e}")
-            
+
         return None
-    
+
     def get_duration(self, video_path: Path) -> Optional[float]:
         """
         Получение длительности видео в секундах.
@@ -289,7 +287,7 @@ class Encoder:
         if info and 'format' in info:
             return float(info['format'].get('duration', 0))
         return None
-    
+
     def extract_audio(
         self,
         video_path: Path,
@@ -309,7 +307,7 @@ class Encoder:
         """
         if not self.is_available:
             return False, "FFmpeg недоступен"
-            
+
         try:
             cmd = [
                 'ffmpeg',
@@ -319,22 +317,22 @@ class Encoder:
                 '-acodec', audio_codec,
                 str(audio_path)
             ]
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=600
             )
-            
+
             if result.returncode != 0:
                 return False, result.stderr
-                
+
             return True, None
-            
+
         except Exception as e:
             return False, str(e)
-    
+
     def create_thumbnail(
         self,
         video_path: Path,
@@ -354,7 +352,7 @@ class Encoder:
         """
         if not self.is_available:
             return False, "FFmpeg недоступен"
-            
+
         try:
             cmd = [
                 'ffmpeg',
@@ -364,19 +362,19 @@ class Encoder:
                 '-vframes', '1',
                 str(output_path)
             ]
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=30
             )
-            
+
             if result.returncode != 0:
                 return False, result.stderr
-                
+
             return True, None
-            
+
         except Exception as e:
             return False, str(e)
 
@@ -390,7 +388,7 @@ class RecordingEncoder:
     2. Запись аудио во временный файл
     3. Объединение и кодирование в итоговый вывод
     """
-    
+
     def __init__(
         self,
         output_path: Path,
@@ -406,12 +404,12 @@ class RecordingEncoder:
         self.output_path = Path(output_path)
         self.settings = settings or EncodingSettings()
         self.encoder = Encoder(settings)
-        
+
         # Временные файлы
         self._temp_dir: Optional[Path] = None
         self._temp_video: Optional[Path] = None
         self._temp_audio: Optional[Path] = None
-        
+
     def setup(self) -> Tuple[Path, Path]:
         """
         Настройка временных файлов для записи.
@@ -421,14 +419,14 @@ class RecordingEncoder:
         """
         # Создание временной директории
         self._temp_dir = Path(tempfile.mkdtemp(prefix="recorder_"))
-        
+
         # Создание путей временных файлов
         self._temp_video = self._temp_dir / "video_temp.mp4"
         self._temp_audio = self._temp_dir / "audio_temp.wav"
-        
+
         logger.info(f"Временные файлы созданы в: {self._temp_dir}")
         return self._temp_video, self._temp_audio
-    
+
     def finalize(
         self,
         has_audio: bool = True,
@@ -446,7 +444,7 @@ class RecordingEncoder:
         """
         if not self._temp_video or not self._temp_video.exists():
             return False, "Нет видеофайла для обработки"
-            
+
         try:
             if has_audio and self._temp_audio and self._temp_audio.exists():
                 # Объединение видео и аудио
@@ -464,16 +462,16 @@ class RecordingEncoder:
                     self.output_path,
                     progress_callback=progress_callback
                 )
-                
+
             if success:
                 logger.info(f"Запись завершена: {self.output_path}")
-                
+
             return success, error
-            
+
         finally:
             # Очистка временных файлов
             self._cleanup()
-    
+
     def _cleanup(self) -> None:
         """Очистка временных файлов."""
         try:
@@ -482,11 +480,11 @@ class RecordingEncoder:
                 logger.info(f"Временная директория очищена: {self._temp_dir}")
         except Exception as e:
             logger.warning(f"Не удалось очистить временную директорию: {e}")
-            
+
         self._temp_dir = None
         self._temp_video = None
         self._temp_audio = None
-    
+
     def cancel(self) -> None:
         """Отмена записи и очистка."""
         self._cleanup()

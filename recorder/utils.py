@@ -7,12 +7,11 @@
 """
 
 import os
-import sys
 import platform
-import subprocess
 import shutil
-from typing import List, Dict, Optional, Tuple, Any
+import subprocess
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from logger_config import get_module_logger
 
@@ -62,7 +61,7 @@ def check_ffmpeg() -> Tuple[bool, Optional[str]]:
         logger.error("Таймаут проверки версии FFmpeg")
     except Exception as e:
         logger.error(f"Ошибка проверки FFmpeg: {e}")
-    
+
     return False, None
 
 
@@ -86,7 +85,7 @@ def get_available_windows() -> List[Dict[str, Any]]:
     """
     windows = []
     current_platform = get_platform()
-    
+
     try:
         if current_platform == 'windows':
             windows = _get_windows_windows()
@@ -96,7 +95,7 @@ def get_available_windows() -> List[Dict[str, Any]]:
             windows = _get_macos_windows()
     except Exception as e:
         logger.error(f"Ошибка получения списка окон: {e}")
-        
+
     return windows
 
 
@@ -108,11 +107,11 @@ def _get_windows_windows() -> List[Dict[str, Any]]:
         Список словарей с информацией об окнах
     """
     windows = []
-    
+
     try:
-        import win32gui
         import win32con
-        
+        import win32gui
+
         def enum_windows_callback(hwnd, _):
             if win32gui.IsWindowVisible(hwnd):
                 title = win32gui.GetWindowText(hwnd)
@@ -127,9 +126,9 @@ def _get_windows_windows() -> List[Dict[str, Any]]:
                         'height': rect[3] - rect[1]
                     })
             return True
-            
+
         win32gui.EnumWindows(enum_windows_callback, None)
-        
+
     except ImportError:
         logger.warning("win32gui недоступен, пробуем pygetwindow")
         try:
@@ -145,7 +144,7 @@ def _get_windows_windows() -> List[Dict[str, Any]]:
                     })
         except ImportError:
             logger.error("pygetwindow также недоступен")
-            
+
     return windows
 
 
@@ -157,7 +156,7 @@ def _get_linux_windows() -> List[Dict[str, Any]]:
         Список словарей с информацией об окнах
     """
     windows = []
-    
+
     try:
         # Попытка использования команды wmctrl
         result = subprocess.run(
@@ -166,7 +165,7 @@ def _get_linux_windows() -> List[Dict[str, Any]]:
             text=True,
             timeout=5
         )
-        
+
         if result.returncode == 0:
             for line in result.stdout.strip().split('\n'):
                 parts = line.split(None, 7)
@@ -180,7 +179,7 @@ def _get_linux_windows() -> List[Dict[str, Any]]:
                     })
     except (FileNotFoundError, subprocess.TimeoutExpired):
         logger.warning("wmctrl недоступен")
-        
+
     return windows
 
 
@@ -192,7 +191,7 @@ def _get_macos_windows() -> List[Dict[str, Any]]:
         Список словарей с информацией об окнах
     """
     windows = []
-    
+
     try:
         import pygetwindow as gw
         for win in gw.getAllWindows():
@@ -206,7 +205,7 @@ def _get_macos_windows() -> List[Dict[str, Any]]:
                 })
     except ImportError:
         logger.warning("pygetwindow недоступен на macOS")
-        
+
     return windows
 
 
@@ -218,10 +217,10 @@ def get_audio_devices() -> Dict[str, List[Dict[str, Any]]]:
         Словарь со списками 'input' и 'output' информации об устройствах
     """
     devices = {'input': [], 'output': []}
-    
+
     try:
         import sounddevice as sd
-        
+
         for i, device in enumerate(sd.query_devices()):
             device_info = {
                 'id': i,
@@ -229,20 +228,20 @@ def get_audio_devices() -> Dict[str, List[Dict[str, Any]]]:
                 'channels': device['max_input_channels'] if device['max_input_channels'] > 0 else device['max_output_channels'],
                 'sample_rate': device['default_samplerate']
             }
-            
+
             if device['max_input_channels'] > 0:
                 devices['input'].append(device_info)
             if device['max_output_channels'] > 0:
                 devices['output'].append(device_info)
-                
+
     except ImportError:
         logger.warning("sounddevice недоступен")
-        
+
         # Возврат к pyaudio
         try:
             import pyaudio
             p = pyaudio.PyAudio()
-            
+
             for i in range(p.get_device_count()):
                 device = p.get_device_info_by_index(i)
                 device_info = {
@@ -251,17 +250,17 @@ def get_audio_devices() -> Dict[str, List[Dict[str, Any]]]:
                     'channels': device['maxInputChannels'] if device['maxInputChannels'] > 0 else device['maxOutputChannels'],
                     'sample_rate': int(device['defaultSampleRate'])
                 }
-                
+
                 if device['maxInputChannels'] > 0:
                     devices['input'].append(device_info)
                 if device['maxOutputChannels'] > 0:
                     devices['output'].append(device_info)
-                    
+
             p.terminate()
-            
+
         except ImportError:
             logger.error("Ни sounddevice, ни pyaudio недоступны")
-            
+
     return devices
 
 
@@ -290,7 +289,7 @@ def get_all_monitors() -> List[Dict[str, int]]:
         Список словарей с информацией о мониторах
     """
     monitors = []
-    
+
     try:
         import mss
         with mss.mss() as sct:
@@ -304,7 +303,7 @@ def get_all_monitors() -> List[Dict[str, int]]:
                 })
     except Exception as e:
         logger.error(f"Ошибка получения мониторов: {e}")
-        
+
     return monitors
 
 
@@ -323,13 +322,13 @@ def validate_rect_coords(x1: int, y1: int, x2: int, y2: int) -> Tuple[int, int, 
     top = min(y1, y2)
     right = max(x1, x2)
     bottom = max(y1, y2)
-    
+
     # Обеспечение минимального размера
     if right - left < 10:
         right = left + 10
     if bottom - top < 10:
         bottom = top + 10
-        
+
     return left, top, right, bottom
 
 
@@ -346,7 +345,7 @@ def format_time(seconds: float) -> str:
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
-    
+
     if hours > 0:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
@@ -400,16 +399,16 @@ def is_valid_output_path(path: str) -> bool:
     try:
         p = Path(path)
         parent = p.parent
-        
+
         # Проверка существования родительской директории или возможности создания
         if not parent.exists():
             parent.mkdir(parents=True, exist_ok=True)
-            
+
         # Проверка возможности записи в расположение
         if p.exists():
             return os.access(path, os.W_OK)
         return os.access(parent, os.W_OK)
-        
+
     except Exception:
         return False
 
@@ -426,18 +425,18 @@ def get_unique_filename(base_path: Path, filename: str) -> Path:
         Уникальный путь к файлу
     """
     full_path = base_path / filename
-    
+
     if not full_path.exists():
         return full_path
-        
+
     name, ext = os.path.splitext(filename)
     counter = 1
-    
+
     while full_path.exists():
         new_filename = f"{name}_{counter}{ext}"
         full_path = base_path / new_filename
         counter += 1
-        
+
     return full_path
 
 
@@ -446,7 +445,7 @@ class Singleton(type):
     Метакласс Singleton для обеспечения существования только одного экземпляра класса.
     """
     _instances = {}
-    
+
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
             cls._instances[cls] = super().__call__(*args, **kwargs)

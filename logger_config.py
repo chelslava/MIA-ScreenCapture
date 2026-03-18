@@ -10,9 +10,6 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from datetime import datetime
-from typing import Optional
-
 
 # Директория для логов по умолчанию
 LOG_DIR = Path(__file__).parent / "logs"
@@ -50,13 +47,13 @@ def setup_logger(
     """
     logger = logging.getLogger(name)
     logger.setLevel(level)
-    
+
     # Очистка существующих обработчиков
     logger.handlers.clear()
-    
+
     # Создание форматтера
     formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
-    
+
     # Файловый обработчик с ротацией
     if log_to_file:
         try:
@@ -71,14 +68,14 @@ def setup_logger(
             logger.addHandler(file_handler)
         except Exception as e:
             print(f"Предупреждение: Не удалось создать файл логов: {e}", file=sys.stderr)
-    
+
     # Консольный обработчик
     if log_to_console:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
-    
+
     return logger
 
 
@@ -103,7 +100,7 @@ class LoggerAdapter(logging.LoggerAdapter):
     """
     Пользовательский адаптер логгера для добавления контекстной информации.
     """
-    
+
     def process(self, msg: str, kwargs: dict) -> tuple:
         """
         Обработка вызова логирования для добавления контекста.

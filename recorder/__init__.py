@@ -9,14 +9,14 @@
 - Utils: Вспомогательные функции и утилиты
 """
 
-from .video_recorder import VideoRecorder
 from .audio_recorder import AudioRecorder
 from .encoder import Encoder
-from .utils import get_available_windows, get_audio_devices, check_ffmpeg
+from .utils import check_ffmpeg, get_audio_devices, get_available_windows
+from .video_recorder import VideoRecorder
 
 __all__ = [
     'VideoRecorder',
-    'AudioRecorder', 
+    'AudioRecorder',
     'Encoder',
     'get_available_windows',
     'get_audio_devices',

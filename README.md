@@ -4,7 +4,7 @@
 
 ## Возможности
 
-- **Графический интерфейс (GUI)** на базе PyQt5
+- **Графический интерфейс (GUI)** на базе PyQt6
   - Выбор области захвата: весь экран, окно, прямоугольная область
   - Настройки звука: микрофон, системный звук, без звука
   - Параметры видео: FPS, кодек, битрейт
@@ -31,43 +31,136 @@
 
 - Python 3.8+
 - FFmpeg (должен быть в PATH)
+- [UV](https://docs.astral.sh/uv/) — быстрый менеджер пакетов (рекомендуется)
 
 ## Установка
+
+### Способ 1: Через UV (рекомендуется)
 
 1. Клонируйте репозиторий:
 ```bash
 git clone <repository-url>
-cd Video_Recorder
+cd MIA-ScreenCapture
+```
+
+2. Установите UV (если не установлен):
+```bash
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Linux/macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+3. Создайте виртуальное окружение и установите зависимости:
+```bash
+# Создать venv и установить все зависимости
+uv sync
+
+# Или только production зависимости
+uv sync --no-dev
+```
+
+4. Активируйте виртуальное окружение:
+
+Windows:
+```bash
+.venv\Scripts\activate
+```
+
+Linux/macOS:
+```bash
+source .venv/bin/activate
+```
+
+### Способ 2: Через pip (классический)
+
+1. Клонируйте репозиторий:
+```bash
+git clone <repository-url>
+cd MIA-ScreenCapture
 ```
 
 2. Создайте виртуальное окружение:
 ```bash
-python -m venv venv
+python -m venv .venv
 ```
 
 3. Активируйте виртуальное окружение:
 
 Windows:
 ```bash
-venv\Scripts\activate
+.venv\Scripts\activate
 ```
 
 Linux/macOS:
 ```bash
-source venv/bin/activate
+source .venv/bin/activate
 ```
 
 4. Установите зависимости:
 ```bash
+# Production зависимости
 pip install -r requirements.txt
+
+# Или все зависимости включая dev
+pip install -r requirements-dev.txt
 ```
 
-5. Убедитесь, что FFmpeg установлен:
+### Проверка FFmpeg
+
+Убедитесь, что FFmpeg установлен:
 ```bash
 ffmpeg -version
 ```
 
-Если FFmpeg не установлен, скачайте его с https://ffmpeg.org/download.html и добавьте в PATH.
+Если FFmpeg не установлен:
+- Официальный сайт: https://ffmpeg.org/download.html
+- GitHub репозиторий: https://github.com/FFmpeg/FFmpeg
+
+После установки добавьте FFmpeg в PATH.
+
+## Разработка
+
+### Установка dev-зависимостей
+
+```bash
+# Через UV
+uv sync
+
+# Через pip
+pip install -r requirements-dev.txt
+```
+
+### Запуск тестов
+
+```bash
+# Через UV (рекомендуется)
+uv run pytest
+
+# С покрытием кода
+uv run pytest --cov=. --cov-report=html
+
+# Только unit-тесты
+uv run pytest tests/unit/
+
+# Или через активированный venv
+pytest
+```
+
+### Линтинг и форматирование
+
+```bash
+# Через UV (рекомендуется)
+uv run ruff check .
+uv run ruff format .
+uv run mypy .
+
+# Или через активированный venv
+ruff check .
+ruff format .
+mypy .
+```
 
 ## Использование
 
@@ -75,6 +168,10 @@ ffmpeg -version
 
 Запуск с GUI (по умолчанию):
 ```bash
+# Через UV (рекомендуется)
+uv run python main.py
+
+# Или через активированный venv
 python main.py
 ```
 
@@ -82,38 +179,38 @@ python main.py
 
 Запуск записи с параметрами по умолчанию:
 ```bash
-python main.py --start
+uv run python main.py --start
 ```
 
 Запуск записи с указанием области:
 ```bash
-python main.py --start --area rect --rect 100 100 800 600
+uv run python main.py --start --area rect --rect 100 100 800 600
 ```
 
 Запись с микрофоном:
 ```bash
-python main.py --start --audio mic --duration 60
+uv run python main.py --start --audio mic --duration 60
 ```
 
 Остановка записи:
 ```bash
-python main.py --stop
+uv run python main.py --stop
 ```
 
 Получение статуса:
 ```bash
-python main.py --status
+uv run python main.py --status
 ```
 
 Список запланированных задач:
 ```bash
-python main.py --schedule-list
+uv run python main.py --schedule-list
 ```
 
 ### Headless режим (только API)
 
 ```bash
-python main.py --headless
+uv run python main.py --headless
 ```
 
 ### Параметры командной строки
@@ -263,11 +360,13 @@ curl -X POST http://localhost:5000/api/schedule \
 ## Архитектура
 
 ```
-Video_Recorder/
+MIA-ScreenCapture/
 ├── main.py                 # Точка входа
 ├── config.py               # Управление настройками
 ├── logger_config.py        # Конфигурация логирования
-├── requirements.txt        # Зависимости
+├── pyproject.toml          # Конфигурация проекта (UV/pip)
+├── requirements.txt        # Production зависимости
+├── requirements-dev.txt    # Dev зависимости
 ├── recorder/
 │   ├── __init__.py
 │   ├── video_recorder.py   # Захват видео
@@ -282,13 +381,17 @@ Video_Recorder/
 ├── api/
 │   ├── __init__.py
 │   ├── server.py           # Flask сервер
-│   └── routes.py           # API эндпоинты
+│   ├── routes.py           # API эндпоинты
+│   └── schemas.py          # Pydantic схемы валидации
 ├── scheduler/
 │   ├── __init__.py
 │   └── task_scheduler.py   # Планировщик задач
-└── cli/
-    ├── __init__.py
-    └── parser.py           # Парсер аргументов
+├── cli/
+│   ├── __init__.py
+│   └── parser.py           # Парсер аргументов
+└── tests/                  # Тесты
+    ├── unit/
+    └── integration/
 ```
 
 ### Компоненты
@@ -296,7 +399,7 @@ Video_Recorder/
 1. **VideoRecorder** - захват экрана с помощью MSS и запись через OpenCV
 2. **AudioRecorder** - захват звука через sounddevice/pyaudio
 3. **Encoder** - объединение видео и аудио через FFmpeg
-4. **MainWindow** - главное окно приложения на PyQt5
+4. **MainWindow** - главное окно приложения на PyQt6
 5. **TrayIcon** - иконка в системном трее
 6. **APIServer** - REST API сервер на Flask
 7. **TaskScheduler** - планировщик задач на APScheduler

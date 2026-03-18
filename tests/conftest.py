@@ -5,12 +5,11 @@
 Содержит общие fixtures для использования в тестах.
 """
 
-import os
-import sys
 import json
+import sys
 import tempfile
 from pathlib import Path
-from typing import Generator, Dict, Any
+from typing import Any, Dict, Generator
 
 import pytest
 
@@ -82,11 +81,11 @@ def temp_config_file(temp_dir: Path) -> Path:
         "recent_recordings": [],
         "max_recent_recordings": 20
     }
-    
+
     config_path = temp_dir / "config.json"
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config_data, f, indent=2)
-    
+
     return config_path
 
 
@@ -195,17 +194,17 @@ def mock_logger():
         Mock логгер
     """
     import logging
-    
+
     logger = logging.getLogger("test_logger")
     logger.setLevel(logging.DEBUG)
-    
+
     # Добавление handler для вывода в консоль
     handler = logging.StreamHandler()
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(levelname)s: %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-    
+
     return logger
 
 

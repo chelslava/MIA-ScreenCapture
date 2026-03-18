@@ -16,18 +16,25 @@ MIA-ScreenCapture - Главная точка входа
 """
 
 import sys
-import os
-import signal
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent))
 
-from logger_config import setup_logger, get_module_logger
-from config import init_config, get_config
-from cli.parser import parse_args, validate_recording_params, print_status, print_schedule_list
-from recorder.utils import check_ffmpeg, get_audio_devices, get_available_windows
+from cli.parser import (
+    parse_args,
+    print_schedule_list,
+    print_status,
+    validate_recording_params,
+)
+from config import get_config, init_config
+from logger_config import get_module_logger, setup_logger
+from recorder.utils import (
+    check_ffmpeg,
+    get_audio_devices,
+    get_available_windows,
+)
 
 logger = get_module_logger(__name__)
 
@@ -42,7 +49,7 @@ class VideoRecorderApp:
     - Планировщик задач
     - Менеджер записи
     """
-    
+
     def __init__(self, config: Dict[str, Any]):
         """
         Инициализация приложения.
@@ -52,17 +59,17 @@ class VideoRecorderApp:
         """
         self._config = config
         self._mode = config.get('mode', 'gui')
-        
+
         # Компоненты
         self._app = None
         self._main_window = None
         self._tray_icon = None
         self._api_server = None
         self._scheduler = None
-        
+
         # Состояние
         self._running = False
-        
+
     def run(self) -> int:
         """
         Запуск приложения.
@@ -78,7 +85,7 @@ class VideoRecorderApp:
                     "FFmpeg не найден. Кодирование видео может работать некорректно. "
                     "Пожалуйста, установите FFmpeg с https://ffmpeg.org/download.html"
                 )
-            
+
             # Запуск в зависимости от режима
             if self._mode == 'gui':
                 return self._run_gui()
@@ -95,7 +102,7 @@ class VideoRecorderApp:
             else:
                 logger.error(f"Неизвестный режим: {self._mode}")
                 return 1
-                
+
         except KeyboardInterrupt:
             logger.info("Прервано пользователем")
             return 0
@@ -104,37 +111,35 @@ class VideoRecorderApp:
             return 1
         finally:
             self._cleanup()
-    
+
     def _run_gui(self) -> int:
         """Запуск с GUI."""
-        from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtCore import Qt
-        
+        from PyQt6.QtWidgets import QApplication
+
         # Создание Qt приложения
         self._app = QApplication(sys.argv)
         self._app.setApplicationName("MIA-ScreenCapture")
         self._app.setApplicationVersion("1.0.0")
-        
-        # Настройка поддержки высокого DPI
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-        
+
+        # Примечание: В PyQt6 High DPI поддержка включена по умолчанию
+        # Атрибуты AA_EnableHighDpiScaling и AA_UseHighDpiPixmaps удалены в Qt 6
+
         # Создание главного окна
         from gui.main_window import MainWindow
         self._main_window = MainWindow()
-        
+
         # Создание иконки в трее
         from gui.tray_icon import TrayIcon
         self._tray_icon = TrayIcon(self._main_window)
         self._tray_icon.show()
-        
+
         # Подключение сигналов трея
         self._tray_icon.start_requested.connect(self._main_window._start_recording)
         self._tray_icon.stop_requested.connect(self._main_window._stop_recording)
         self._tray_icon.pause_requested.connect(self._main_window._toggle_pause)
         self._tray_icon.show_window_requested.connect(self._show_window)
         self._tray_icon.exit_requested.connect(self._quit_app)
-        
+
         # Подключение сигналов окна к трею
         self._main_window.recording_started.connect(
             lambda p: self._tray_icon.on_recording_started(p)
@@ -151,36 +156,36 @@ class VideoRecorderApp:
         self._main_window.error_occurred.connect(
             self._tray_icon.on_error
         )
-        
+
         # Обработка закрытия окна
         self._main_window.closeEvent = self._handle_close_event
-        
+
         # Запуск API сервера
         self._start_api_server()
-        
+
         # Запуск планировщика
         self._start_scheduler()
-        
+
         # Показ окна
         self._main_window.show()
-        
+
         self._running = True
-        
+
         # Запуск цикла событий
-        return self._app.exec_()
-    
+        return self._app.exec()
+
     def _run_headless(self) -> int:
         """Запуск в режиме без интерфейса (только API)."""
         logger.info("Запуск в режиме без интерфейса")
-        
+
         # Запуск API сервера
         self._start_api_server()
-        
+
         # Запуск планировщика
         self._start_scheduler()
-        
+
         self._running = True
-        
+
         # Поддержание работы до прерывания
         try:
             import time
@@ -188,25 +193,25 @@ class VideoRecorderApp:
                 time.sleep(1)
         except KeyboardInterrupt:
             self._running = False
-        
+
         return 0
-    
+
     def _run_start(self) -> int:
         """Запуск записи через CLI."""
         params = self._config.get('recording', {})
-        
+
         # Валидация параметров
         is_valid, error = validate_recording_params(params)
         if not is_valid:
             print(f"Ошибка: {error}", file=sys.stderr)
             return 1
-        
+
         # Попытка подключения к запущенному экземпляру через API
         api_url = f"http://{self._config['api']['host']}:{self._config['api']['port']}"
-        
+
         try:
             import requests
-            
+
             # Проверка запущен ли API
             try:
                 response = requests.get(f"{api_url}/health", timeout=2)
@@ -227,7 +232,7 @@ class VideoRecorderApp:
                         },
                         timeout=10
                     )
-                    
+
                     if response.json().get('success'):
                         print("Запись начата")
                         return 0
@@ -238,46 +243,46 @@ class VideoRecorderApp:
                 pass  # API не запущен, запуск нового экземпляра
         except ImportError:
             pass  # requests недоступен
-        
+
         # Запуск нового экземпляра в режиме без интерфейса
         logger.info("Запуск нового экземпляра записи")
-        
+
         # Пока просто запускаем режим без интерфейса
         # В полной реализации здесь был бы fork фонового процесса
         return self._run_headless()
-    
+
     def _run_stop(self) -> int:
         """Остановка записи через CLI."""
         api_url = f"http://{self._config['api']['host']}:{self._config['api']['port']}"
-        
+
         try:
             import requests
-            
+
             response = requests.post(f"{api_url}/api/stop", timeout=10)
-            
+
             if response.json().get('success'):
                 print("Запись остановлена")
                 return 0
             else:
                 print(f"Ошибка: {response.json().get('error', 'Неизвестная ошибка')}", file=sys.stderr)
                 return 1
-                
+
         except requests.exceptions.ConnectionError:
             print("Ошибка: Запущенный экземпляр не найден", file=sys.stderr)
             return 1
         except ImportError:
             print("Ошибка: библиотека requests недоступна", file=sys.stderr)
             return 1
-    
+
     def _run_status(self) -> int:
         """Показ статуса записи через CLI."""
         api_url = f"http://{self._config['api']['host']}:{self._config['api']['port']}"
-        
+
         try:
             import requests
-            
+
             response = requests.get(f"{api_url}/api/status", timeout=10)
-            
+
             if response.json().get('success'):
                 status = response.json().get('data', {})
                 print_status(status)
@@ -285,23 +290,23 @@ class VideoRecorderApp:
             else:
                 print("Ошибка: Не удалось получить статус", file=sys.stderr)
                 return 1
-                
+
         except requests.exceptions.ConnectionError:
             print("Статус: Не запущен (API сервер не найден)")
             return 0
         except ImportError:
             print("Ошибка: библиотека requests недоступна", file=sys.stderr)
             return 1
-    
+
     def _run_schedule_list(self) -> int:
         """Список запланированных задач через CLI."""
         api_url = f"http://{self._config['api']['host']}:{self._config['api']['port']}"
-        
+
         try:
             import requests
-            
+
             response = requests.get(f"{api_url}/api/schedule", timeout=10)
-            
+
             if response.json().get('success'):
                 tasks = response.json().get('data', [])
                 print_schedule_list(tasks)
@@ -309,98 +314,98 @@ class VideoRecorderApp:
             else:
                 print("Ошибка: Не удалось получить расписание", file=sys.stderr)
                 return 1
-                
+
         except requests.exceptions.ConnectionError:
             print("Ошибка: Запущенный экземпляр не найден", file=sys.stderr)
             return 1
         except ImportError:
             print("Ошибка: библиотека requests недоступна", file=sys.stderr)
             return 1
-    
+
     def _start_api_server(self) -> None:
         """Запуск API сервера."""
         api_config = self._config.get('api', {})
-        
+
         if not api_config.get('enabled', True):
             return
-        
-        from api.server import APIServer
+
         from api.routes import register_routes
-        
+        from api.server import APIServer
+
         self._api_server = APIServer(
             host=api_config.get('host', '127.0.0.1'),
             port=api_config.get('port', 5000)
         )
-        
+
         # Регистрация маршрутов
         register_routes(self._api_server.app, self._api_server)
-        
+
         # Настройка обратных вызовов
         self._setup_api_callbacks()
-        
+
         # Запуск сервера
         self._api_server.start()
         logger.info(f"API сервер запущен на {self._api_server.get_url()}")
-    
+
     def _setup_api_callbacks(self) -> None:
         """Настройка обратных вызовов API."""
         if not self._api_server:
             return
-        
+
         # Обратный вызов статуса
         self._api_server.set_callback('status', self._get_status)
-        
+
         # Обратные вызовы записи
         self._api_server.set_callback('start', self._start_recording)
         self._api_server.set_callback('stop', self._stop_recording)
         self._api_server.set_callback('pause', self._toggle_pause)
         self._api_server.set_callback('recordings', self._get_recordings)
-        
+
         # Обратные вызовы планировщика
         self._api_server.set_callback('get_schedule', self._get_schedule)
         self._api_server.set_callback('create_schedule', self._create_schedule)
         self._api_server.set_callback('delete_schedule', self._delete_schedule)
         self._api_server.set_callback('update_schedule', self._update_schedule)
         self._api_server.set_callback('toggle_schedule', self._toggle_schedule)
-        
+
         # Обратные вызовы устройств
         self._api_server.set_callback('devices', self._get_devices)
         self._api_server.set_callback('windows', self._get_windows)
-        
+
         # Обратные вызовы конфигурации
         self._api_server.set_callback('get_config', self._get_config)
         self._api_server.set_callback('update_config', self._update_config)
-    
+
     def _start_scheduler(self) -> None:
         """Запуск планировщика задач."""
         from scheduler.task_scheduler import TaskScheduler
-        
+
         # Получение пути сохранения
         config = get_config()
         persist_path = Path(config.config_path).parent / "tasks.json"
-        
+
         self._scheduler = TaskScheduler(persist_path=persist_path)
-        
+
         # Установка обратного вызова выполнения задачи
         self._scheduler.set_task_callback(self._execute_scheduled_task)
-        
+
         # Запуск планировщика
         self._scheduler.start()
-        
+
         # Обновление GUI если доступно
         if self._main_window:
             self._main_window.scheduler_tab.set_tasks(self._scheduler.get_all_tasks())
-            
+
             # Подключение сигналов вкладки планировщика
             self._main_window.scheduler_tab.task_created.connect(self._create_schedule)
             self._main_window.scheduler_tab.task_updated.connect(self._update_schedule)
             self._main_window.scheduler_tab.task_deleted.connect(self._delete_schedule)
             self._main_window.scheduler_tab.task_toggled.connect(self._toggle_schedule)
-    
+
     def _execute_scheduled_task(self, params) -> None:
         """Выполнение запланированной задачи записи."""
         from scheduler.task_scheduler import RecordingParams
-        
+
         if isinstance(params, RecordingParams):
             param_dict = {
                 'area_type': params.area_type,
@@ -415,15 +420,15 @@ class VideoRecorderApp:
             }
         else:
             param_dict = params
-        
+
         logger.info(f"Выполнение запланированной задачи: {param_dict}")
-        
+
         # Запуск записи
         if self._main_window:
             self._main_window.start_recording_with_params(param_dict)
-    
+
     # Реализации обратных вызовов API
-    
+
     def _get_status(self) -> Dict[str, Any]:
         """Получение статуса записи."""
         if self._main_window:
@@ -434,130 +439,130 @@ class VideoRecorderApp:
             'elapsed_time': 0,
             'current_file': None
         }
-    
+
     def _start_recording(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Запуск записи."""
         if self._main_window:
             return self._main_window.start_recording_with_params(params)
         return {'success': False, 'error': 'GUI недоступен'}
-    
+
     def _stop_recording(self) -> Dict[str, Any]:
         """Остановка записи."""
         if self._main_window:
             return self._main_window.stop_recording()
         return {'success': False, 'error': 'GUI недоступен'}
-    
+
     def _toggle_pause(self) -> Dict[str, Any]:
         """Переключение состояния паузы."""
         if self._main_window:
             return self._main_window.toggle_pause()
         return {'success': False, 'error': 'GUI недоступен'}
-    
+
     def _get_recordings(self) -> list:
         """Получение недавних записей."""
         if self._main_window:
             return self._main_window.get_recordings()
         return []
-    
+
     def _get_schedule(self) -> list:
         """Получение запланированных задач."""
         if self._scheduler:
             return [task.to_dict() for task in self._scheduler.get_all_tasks()]
         return []
-    
+
     def _create_schedule(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Создание запланированной задачи."""
         if not self._scheduler:
             return {'success': False, 'error': 'Планировщик недоступен'}
-        
+
         try:
             task = self._scheduler.create_task_from_dict(data)
             success = self._scheduler.add_task(task)
-            
+
             if success and self._main_window:
                 self._main_window.scheduler_tab.set_tasks(self._scheduler.get_all_tasks())
-            
+
             return {
                 'success': success,
                 'task_id': task.id if success else None
             }
         except Exception as e:
             return {'success': False, 'error': str(e)}
-    
+
     def _delete_schedule(self, task_id: str) -> Dict[str, Any]:
         """Удаление запланированной задачи."""
         if not self._scheduler:
             return {'success': False, 'error': 'Планировщик недоступен'}
-        
+
         success = self._scheduler.remove_task(task_id)
-        
+
         if success and self._main_window:
             self._main_window.scheduler_tab.set_tasks(self._scheduler.get_all_tasks())
-        
+
         return {'success': success}
-    
+
     def _update_schedule(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Обновление запланированной задачи."""
         if not self._scheduler:
             return {'success': False, 'error': 'Планировщик недоступен'}
-        
+
         try:
             task = self._scheduler.create_task_from_dict(data)
             task.id = data.get('id', task.id)
             success = self._scheduler.update_task(task)
-            
+
             if success and self._main_window:
                 self._main_window.scheduler_tab.set_tasks(self._scheduler.get_all_tasks())
-            
+
             return {'success': success}
         except Exception as e:
             return {'success': False, 'error': str(e)}
-    
+
     def _toggle_schedule(self, task_id: str, enabled: bool) -> Dict[str, Any]:
         """Переключение запланированной задачи."""
         if not self._scheduler:
             return {'success': False, 'error': 'Планировщик недоступен'}
-        
+
         success = self._scheduler.enable_task(task_id, enabled)
-        
+
         if success and self._main_window:
             self._main_window.scheduler_tab.set_tasks(self._scheduler.get_all_tasks())
-        
+
         return {'success': success, 'enabled': enabled}
-    
+
     def _get_devices(self) -> Dict[str, list]:
         """Получение аудиоустройств."""
         return get_audio_devices()
-    
+
     def _get_windows(self) -> list:
         """Получение доступных окон."""
         return get_available_windows()
-    
+
     def _get_config(self) -> Dict[str, Any]:
         """Получение текущей конфигурации."""
         config = get_config()
         from dataclasses import asdict
         return asdict(config.settings)
-    
+
     def _update_config(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Обновление конфигурации."""
         config = get_config()
         # Здесь было бы обновление
         config.save()
         return {'success': True}
-    
+
     # Вспомогательные методы GUI
-    
+
     def _show_window(self) -> None:
         """Показ главного окна."""
         if self._main_window:
             self._main_window.show()
             self._main_window.activateWindow()
-    
+
     def _handle_close_event(self, event) -> None:
         """Обработка события закрытия окна."""
         config = get_config()
-        
+
         if config.settings.minimize_to_tray and self._tray_icon:
             event.ignore()
             self._main_window.hide()
@@ -567,30 +572,30 @@ class VideoRecorderApp:
             )
         else:
             self._quit_app()
-    
+
     def _quit_app(self) -> None:
         """Выход из приложения."""
         self._running = False
-        
+
         if self._main_window:
             self._main_window.close()
-        
+
         if self._app:
             self._app.quit()
-    
+
     def _cleanup(self) -> None:
         """Очистка ресурсов."""
         logger.info("Очистка...")
-        
+
         if self._scheduler:
             self._scheduler.stop()
-        
+
         if self._api_server:
             self._api_server.stop()
-        
+
         if self._tray_icon:
             self._tray_icon.cleanup()
-        
+
         logger.info("Очистка завершена")
 
 
@@ -603,20 +608,20 @@ def main() -> int:
     """
     # Разбор аргументов командной строки
     config = parse_args()
-    
+
     # Настройка логирования
     log_level = 20  # INFO
     if config.get('verbose', 0) >= 2:
         log_level = 10  # DEBUG
     elif config.get('quiet', False):
         log_level = 30  # WARNING
-    
+
     setup_logger(level=log_level)
-    
+
     # Инициализация конфигурации
     config_path = Path(config.get('config_path')) if config.get('config_path') else None
     init_config(config_path)
-    
+
     # Создание и запуск приложения
     app = VideoRecorderApp(config)
     return app.run()

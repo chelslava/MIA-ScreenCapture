@@ -5,19 +5,19 @@
 Определяет REST API эндпоинты для видеозаписи с валидацией через Pydantic.
 """
 
-from typing import Dict, Any, Optional
 from datetime import datetime
-from flask import request, jsonify
+
+from flask import jsonify, request
 from pydantic import ValidationError
 
-from logger_config import get_module_logger
 from api.schemas import (
-    StartRecordingRequest,
     CreateScheduleRequest,
-    UpdateScheduleRequest,
+    StartRecordingRequest,
     ToggleScheduleRequest,
-    UpdateConfigRequest
+    UpdateConfigRequest,
+    UpdateScheduleRequest,
 )
+from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
 
@@ -40,7 +40,7 @@ def handle_validation_error(error: ValidationError) -> tuple:
             'message': err['msg'],
             'type': err['type']
         })
-    
+
     return jsonify({
         'success': False,
         'error': 'Ошибка валидации данных',
@@ -56,7 +56,7 @@ def register_routes(app, server) -> None:
         app: Экземпляр Flask приложения
         server: Экземпляр APIServer для обратных вызовов
     """
-    
+
     @app.route('/api/status', methods=['GET'])
     def get_status():
         """
@@ -80,7 +80,7 @@ def register_routes(app, server) -> None:
         except Exception as e:
             logger.error(f"Ошибка получения статуса: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/start', methods=['POST'])
     def start_recording():
         """
@@ -102,16 +102,16 @@ def register_routes(app, server) -> None:
         """
         try:
             data = request.get_json() or {}
-            
+
             # Валидация входных данных
             try:
                 validated = StartRecordingRequest(**data)
             except ValidationError as e:
                 return handle_validation_error(e)
-            
+
             # Преобразование в словарь для обратного вызова
             callback_data = validated.model_dump(exclude_none=True)
-            
+
             callback = server.get_callback('start')
             if callback:
                 result = callback(callback_data)
@@ -124,16 +124,16 @@ def register_routes(app, server) -> None:
                     'success': False,
                     'error': result.get('error', 'Не удалось начать запись')
                 }), 400
-                
+
             return jsonify({
                 'success': False,
                 'error': 'Обратный вызов запуска не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка начала записи: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/stop', methods=['POST'])
     def stop_recording():
         """
@@ -154,11 +154,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов остановки не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка остановки записи: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/pause', methods=['POST'])
     def pause_recording():
         """
@@ -179,11 +179,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов паузы не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка паузы записи: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/recordings', methods=['GET'])
     def get_recordings():
         """
@@ -204,11 +204,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов записей не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка получения записей: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/schedule', methods=['GET'])
     def get_schedule():
         """
@@ -229,11 +229,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов расписания не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка получения расписания: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/schedule', methods=['POST'])
     def create_schedule():
         """
@@ -254,20 +254,20 @@ def register_routes(app, server) -> None:
         """
         try:
             data = request.get_json() or {}
-            
+
             # Валидация входных данных
             try:
                 validated = CreateScheduleRequest(**data)
             except ValidationError as e:
                 return handle_validation_error(e)
-            
+
             # Преобразование в словарь для обратного вызова
             callback_data = validated.model_dump(exclude_none=True)
-            
+
             # Преобразование params если есть
             if validated.params:
                 callback_data['params'] = validated.params.model_dump(exclude_none=True)
-            
+
             callback = server.get_callback('create_schedule')
             if callback:
                 result = callback(callback_data)
@@ -280,16 +280,16 @@ def register_routes(app, server) -> None:
                     'success': False,
                     'error': result.get('error', 'Не удалось создать задачу')
                 }), 400
-                
+
             return jsonify({
                 'success': False,
                 'error': 'Обратный вызов создания расписания не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка создания расписания: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/schedule/<task_id>', methods=['DELETE'])
     def delete_schedule(task_id: str):
         """
@@ -313,11 +313,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов удаления расписания не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка удаления расписания: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/schedule/<task_id>', methods=['PUT'])
     def update_schedule(task_id: str):
         """
@@ -335,15 +335,15 @@ def register_routes(app, server) -> None:
         try:
             data = request.get_json() or {}
             data['id'] = task_id
-            
+
             # Валидация входных данных
             try:
                 validated = UpdateScheduleRequest(**data)
             except ValidationError as e:
                 return handle_validation_error(e)
-            
+
             callback_data = validated.model_dump(exclude_none=True)
-            
+
             callback = server.get_callback('update_schedule')
             if callback:
                 result = callback(callback_data)
@@ -355,11 +355,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов обновления расписания не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка обновления расписания: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/schedule/<task_id>/toggle', methods=['POST'])
     def toggle_schedule(task_id: str):
         """
@@ -376,13 +376,13 @@ def register_routes(app, server) -> None:
         """
         try:
             data = request.get_json() or {}
-            
+
             # Валидация входных данных
             try:
                 validated = ToggleScheduleRequest(**data)
             except ValidationError as e:
                 return handle_validation_error(e)
-            
+
             callback = server.get_callback('toggle_schedule')
             if callback:
                 result = callback(task_id, validated.enabled)
@@ -394,11 +394,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов переключения расписания не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка переключения расписания: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/devices', methods=['GET'])
     def get_devices():
         """
@@ -419,11 +419,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов устройств не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка получения устройств: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/windows', methods=['GET'])
     def get_windows():
         """
@@ -444,11 +444,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов окон не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка получения окон: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/config', methods=['GET'])
     def get_config():
         """
@@ -469,11 +469,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов конфигурации не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка получения конфигурации: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/api/config', methods=['PUT'])
     def update_config():
         """
@@ -487,15 +487,15 @@ def register_routes(app, server) -> None:
         """
         try:
             data = request.get_json() or {}
-            
+
             # Валидация входных данных
             try:
                 validated = UpdateConfigRequest(**data)
             except ValidationError as e:
                 return handle_validation_error(e)
-            
+
             callback_data = validated.model_dump(exclude_none=True)
-            
+
             callback = server.get_callback('update_config')
             if callback:
                 result = callback(callback_data)
@@ -507,11 +507,11 @@ def register_routes(app, server) -> None:
                 'success': False,
                 'error': 'Обратный вызов обновления конфигурации не установлен'
             }), 500
-            
+
         except Exception as e:
             logger.error(f"Ошибка обновления конфигурации: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
-    
+
     @app.route('/health', methods=['GET'])
     def health_check():
         """Эндпоинт проверки здоровья."""
@@ -519,5 +519,5 @@ def register_routes(app, server) -> None:
             'status': 'ok',
             'timestamp': datetime.now().isoformat()
         })
-    
+
     logger.info("Маршруты API зарегистрированы")
