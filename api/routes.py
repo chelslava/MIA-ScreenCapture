@@ -2,16 +2,50 @@
 Модуль маршрутов API
 ====================
 
-Определяет REST API эндпоинты для видеозаписи.
+Определяет REST API эндпоинты для видеозаписи с валидацией через Pydantic.
 """
 
 from typing import Dict, Any, Optional
 from datetime import datetime
 from flask import request, jsonify
+from pydantic import ValidationError
 
 from logger_config import get_module_logger
+from api.schemas import (
+    StartRecordingRequest,
+    CreateScheduleRequest,
+    UpdateScheduleRequest,
+    ToggleScheduleRequest,
+    UpdateConfigRequest
+)
 
 logger = get_module_logger(__name__)
+
+
+def handle_validation_error(error: ValidationError) -> tuple:
+    """
+    Обработка ошибки валидации Pydantic.
+    
+    Args:
+        error: Ошибка валидации Pydantic
+        
+    Returns:
+        Кортеж (JSON ответ, HTTP код)
+    """
+    errors = []
+    for err in error.errors():
+        field = '.'.join(str(loc) for loc in err['loc'])
+        errors.append({
+            'field': field,
+            'message': err['msg'],
+            'type': err['type']
+        })
+    
+    return jsonify({
+        'success': False,
+        'error': 'Ошибка валидации данных',
+        'validation_errors': errors
+    }), 400
 
 
 def register_routes(app, server) -> None:
@@ -58,9 +92,9 @@ def register_routes(app, server) -> None:
             - rect: [x1, y1, x2, y2] (опционально, для режима прямоугольника)
             - audio: "mic" | "system" | "none" | "both"
             - output_path: str (опционально)
-            - fps: int (опционально)
+            - fps: int (опционально, 1-120)
             - codec: str (опционально)
-            - bitrate: str (опционально)
+            - bitrate: str (опционально, формат: 2M, 5000K)
             - duration: int (опционально, секунды)
             
         Returns:
@@ -69,9 +103,18 @@ def register_routes(app, server) -> None:
         try:
             data = request.get_json() or {}
             
+            # Валидация входных данных
+            try:
+                validated = StartRecordingRequest(**data)
+            except ValidationError as e:
+                return handle_validation_error(e)
+            
+            # Преобразование в словарь для обратного вызова
+            callback_data = validated.model_dump(exclude_none=True)
+            
             callback = server.get_callback('start')
             if callback:
-                result = callback(data)
+                result = callback(callback_data)
                 if result.get('success'):
                     return jsonify({
                         'success': True,
@@ -197,6 +240,7 @@ def register_routes(app, server) -> None:
         Создание новой запланированной задачи.
         
         Тело запроса (JSON):
+            - name: str (название задачи)
             - trigger: "once" | "daily" | "weekly" | "interval"
             - datetime: str (формат ISO, для once)
             - time: str "HH:MM" (для daily/weekly)
@@ -211,9 +255,22 @@ def register_routes(app, server) -> None:
         try:
             data = request.get_json() or {}
             
+            # Валидация входных данных
+            try:
+                validated = CreateScheduleRequest(**data)
+            except ValidationError as e:
+                return handle_validation_error(e)
+            
+            # Преобразование в словарь для обратного вызова
+            callback_data = validated.model_dump(exclude_none=True)
+            
+            # Преобразование params если есть
+            if validated.params:
+                callback_data['params'] = validated.params.model_dump(exclude_none=True)
+            
             callback = server.get_callback('create_schedule')
             if callback:
-                result = callback(data)
+                result = callback(callback_data)
                 if result.get('success'):
                     return jsonify({
                         'success': True,
@@ -279,9 +336,17 @@ def register_routes(app, server) -> None:
             data = request.get_json() or {}
             data['id'] = task_id
             
+            # Валидация входных данных
+            try:
+                validated = UpdateScheduleRequest(**data)
+            except ValidationError as e:
+                return handle_validation_error(e)
+            
+            callback_data = validated.model_dump(exclude_none=True)
+            
             callback = server.get_callback('update_schedule')
             if callback:
-                result = callback(data)
+                result = callback(callback_data)
                 return jsonify({
                     'success': result.get('success', True),
                     'data': result
@@ -303,16 +368,24 @@ def register_routes(app, server) -> None:
         Args:
             task_id: ID задачи для переключения
             
+        Тело запроса (JSON):
+            - enabled: bool
+            
         Returns:
             JSON с новым состоянием включения
         """
         try:
             data = request.get_json() or {}
-            enabled = data.get('enabled', True)
+            
+            # Валидация входных данных
+            try:
+                validated = ToggleScheduleRequest(**data)
+            except ValidationError as e:
+                return handle_validation_error(e)
             
             callback = server.get_callback('toggle_schedule')
             if callback:
-                result = callback(task_id, enabled)
+                result = callback(task_id, validated.enabled)
                 return jsonify({
                     'success': True,
                     'data': result
@@ -415,9 +488,17 @@ def register_routes(app, server) -> None:
         try:
             data = request.get_json() or {}
             
+            # Валидация входных данных
+            try:
+                validated = UpdateConfigRequest(**data)
+            except ValidationError as e:
+                return handle_validation_error(e)
+            
+            callback_data = validated.model_dump(exclude_none=True)
+            
             callback = server.get_callback('update_config')
             if callback:
-                result = callback(data)
+                result = callback(callback_data)
                 return jsonify({
                     'success': True,
                     'data': result

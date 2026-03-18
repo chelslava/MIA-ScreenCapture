@@ -46,3 +46,6 @@ pycaw>=20230407; sys_platform == 'win32'
 
 # Type hints support
 typing-extensions>=4.7.0
+
+# Data Validation
+pydantic>=2.0.0
