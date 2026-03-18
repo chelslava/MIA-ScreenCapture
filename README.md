@@ -368,4 +368,4 @@ MIT License
 
 ## Автор
 
-Video Recorder Team
+Chelischev Vyacheslav
