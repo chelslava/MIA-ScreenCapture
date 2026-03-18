@@ -368,4 +368,4 @@ MIT License
 
 ## Автор
 
-Chelischev Vyacheslav
+Chelischev Vyacheslav [@ChelSlava](https://github.com/chelslava)
