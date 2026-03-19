@@ -12,10 +12,13 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 import cv2
 import numpy as np
+
+if TYPE_CHECKING:
+    import mss
 
 from logger_config import get_module_logger
 from recorder.utils import (
@@ -141,7 +144,7 @@ class VideoRecorder:
         self._output_path: Optional[Path] = None
         self._video_writer: Optional[cv2.VideoWriter] = None
         self._capture_area: Optional[CaptureArea] = None
-        self._mss_instance = None
+        self._mss_instance: Optional[mss.base.MSSBase] = None
 
         # Статистика
         self._start_time: float = 0
@@ -240,7 +243,7 @@ class VideoRecorder:
 
                 # Инициализация видеозаписи
                 fourcc_code = self.CODEC_MAP.get(self.codec.lower(), "mp4v")
-                fourcc = cv2.VideoWriter_fourcc(*fourcc_code)
+                fourcc = cv2.VideoWriter_fourcc(*fourcc_code)  # type: ignore[attr-defined]
 
                 self._video_writer = cv2.VideoWriter(
                     str(self._output_path),
@@ -335,9 +338,9 @@ class VideoRecorder:
         """Основной цикл захвата в отдельном потоке."""
         import mss
 
-        monitor = self._capture_area.to_mss_dict()
-        frame_interval = 1.0 / self.fps
-        last_frame_time = 0
+        monitor = self._capture_area.to_mss_dict()  # type: ignore[union-attr]
+        frame_interval: float = 1.0 / self.fps
+        last_frame_time: float = 0
 
         # Создаём MSS внутри потока захвата, т.к. он использует thread-local GDI объекты
         self._mss_instance = mss.mss()
@@ -357,11 +360,11 @@ class VideoRecorder:
                 if elapsed < frame_interval:
                     time.sleep(frame_interval - elapsed)
 
-                last_frame_time = time.time()
+                last_frame_time = float(time.time())
 
                 # Захват кадра
                 try:
-                    screenshot = self._mss_instance.grab(monitor)
+                    screenshot = self._mss_instance.grab(monitor)  # type: ignore[union-attr,unused-ignore]
                     frame = np.array(screenshot)
 
                     # Преобразование BGRA в BGR для OpenCV
@@ -433,7 +436,7 @@ class VideoRecorder:
 
                 screenshot = sct.grab(monitor)
                 frame = np.array(screenshot)
-                return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Ошибка получения кадра предпросмотра: {e}")

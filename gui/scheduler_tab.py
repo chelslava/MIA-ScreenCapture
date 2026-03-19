@@ -309,13 +309,14 @@ class TaskDialog(QDialog):
         audio_types = ["none", "mic", "system", "both"]
 
         # Вычисление длительности с учётом единиц измерения
-        duration_value = self.duration_spin.value()
-        if duration_value > 0:
+        duration_spin_value = self.duration_spin.value()
+        duration_value: Optional[int] = None
+        if duration_spin_value > 0:
             # Если выбраны минуты (индекс 1), конвертируем в секунды
             if self.duration_unit_combo.currentIndex() == 1:
-                duration_value *= 60
-        else:
-            duration_value = None
+                duration_value = duration_spin_value * 60
+            else:
+                duration_value = duration_spin_value
 
         data = {
             "name": self.name_edit.text() or "Безымянная задача",
@@ -423,9 +424,9 @@ class SchedulerTab(QWidget):
                 "Запуски",
             ]
         )
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )

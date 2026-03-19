@@ -262,6 +262,7 @@ class MainWindow(QMainWindow):
     recording_paused = pyqtSignal()
     recording_resumed = pyqtSignal()
     error_occurred = pyqtSignal(str)
+    close_requested = pyqtSignal(object)  # Сигнал для обработки закрытия окна
 
     def __init__(self, headless: bool = False):
         """
@@ -302,7 +303,11 @@ class MainWindow(QMainWindow):
         # Центрирование на экране
         from PyQt6.QtGui import QGuiApplication
 
-        screen = QGuiApplication.primaryScreen().geometry()
+        primary_screen = QGuiApplication.primaryScreen()
+        if primary_screen:
+            screen = primary_screen.geometry()
+        else:
+            screen = self._get_default_geometry()
         size = self.geometry()
         self.move(
             (screen.width() - size.width()) // 2,
@@ -682,11 +687,10 @@ class MainWindow(QMainWindow):
         format_ext = self.format_combo.currentText()
         filename = f"recording_{timestamp}.{format_ext}"
 
-        return (
-            config.output.default_path / filename
-            if config.output.default_path
-            else Path(filename)
-        )
+        default_path = config.output.default_path
+        if default_path:
+            return Path(default_path) / filename
+        return Path(filename)
 
     def _start_recording(self) -> None:
         """Запуск записи."""
@@ -916,6 +920,14 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         """Обработка события закрытия окна."""
+        # Сначала эмитируем сигнал для внешней обработки
+        self.close_requested.emit(event)
+
+        # Если событие было проигнорировано внешним обработчиком, выходим
+        if not event.isAccepted():
+            return
+
+        # Стандартная обработка закрытия
         if self._recording_manager.is_recording:
             reply = QMessageBox.question(
                 self,
@@ -936,3 +948,8 @@ class MainWindow(QMainWindow):
         self._save_settings()
         self._update_timer.stop()
         event.accept()
+
+    def _get_default_geometry(self):
+        """Возвращает геометрию по умолчанию при отсутствии экрана."""
+        from PyQt6.QtCore import QRect
+        return QRect(0, 0, 1920, 1080)

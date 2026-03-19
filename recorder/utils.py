@@ -224,7 +224,7 @@ def get_audio_devices() -> Dict[str, List[Dict[str, Any]]]:
     Returns:
         Словарь со списками 'input' и 'output' информации об устройствах
     """
-    devices = {"input": [], "output": []}
+    devices: Dict[str, List[Dict[str, Any]]] = {"input": [], "output": []}
 
     try:
         import sounddevice as sd
@@ -380,11 +380,12 @@ def format_filesize(size_bytes: int) -> str:
     Returns:
         Отформатированная строка размера (например, "1.5 MB")
     """
+    size: float = float(size_bytes)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if size_bytes < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} PB"
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} PB"
 
 
 def ensure_directory(path: Path) -> bool:
@@ -464,7 +465,7 @@ class Singleton(type):
     Метакласс Singleton для обеспечения существования только одного экземпляра класса.
     """
 
-    _instances = {}
+    _instances: Dict[type, Any] = {}
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:

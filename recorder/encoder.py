@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from logger_config import get_module_logger
 from recorder.utils import check_ffmpeg, get_ffmpeg_path
@@ -88,7 +88,7 @@ class Encoder:
         audio_path: Path,
         output_path: Path,
         keep_originals: bool = True,
-        progress_callback: Optional[callable] = None,
+        progress_callback: Optional[Callable[[float], None]] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Объединение видеофайла и аудиофайла в один выходной файл.
@@ -190,7 +190,7 @@ class Encoder:
         input_path: Path,
         output_path: Path,
         settings: Optional[EncodingSettings] = None,
-        progress_callback: Optional[callable] = None,
+        progress_callback: Optional[Callable[[float], None]] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Перекодирование видео с указанными настройками.
@@ -281,7 +281,7 @@ class Encoder:
             )
 
             if result.returncode == 0:
-                return json.loads(result.stdout)
+                return json.loads(result.stdout)  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Ошибка получения информации о видео: {e}")
@@ -439,7 +439,7 @@ class RecordingEncoder:
     def finalize(
         self,
         has_audio: bool = True,
-        progress_callback: Optional[callable] = None,
+        progress_callback: Optional[Callable[[float], None]] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Завершение записи объединением видео и аудио.

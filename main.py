@@ -18,7 +18,13 @@ MIA-ScreenCapture - Главная точка входа
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from api.server import APIServer
+    from gui.main_window import MainWindow
+    from gui.tray_icon import TrayIcon
+    from scheduler.task_scheduler import TaskScheduler
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent))
@@ -63,11 +69,11 @@ class VideoRecorderApp:
         self._mode = config.get("mode", "gui")
 
         # Компоненты
-        self._app = None
-        self._main_window = None
-        self._tray_icon = None
-        self._api_server = None
-        self._scheduler = None
+        self._app: Optional[Any] = None  # QApplication
+        self._main_window: Optional["MainWindow"] = None
+        self._tray_icon: Optional["TrayIcon"] = None
+        self._api_server: Optional["APIServer"] = None
+        self._scheduler: Optional["TaskScheduler"] = None
 
         # Состояние
         self._running = False
@@ -146,6 +152,7 @@ class VideoRecorderApp:
 
         # Создание Qt приложения
         self._app = QApplication(sys.argv)
+        assert self._app is not None
         self._app.setApplicationName("MIA-ScreenCapture")
         self._app.setApplicationVersion("1.0.0")
 
@@ -156,11 +163,13 @@ class VideoRecorderApp:
         from gui.main_window import MainWindow
 
         self._main_window = MainWindow()
+        assert self._main_window is not None
 
         # Создание иконки в трее
         from gui.tray_icon import TrayIcon
 
         self._tray_icon = TrayIcon(self._main_window)
+        assert self._tray_icon is not None
         self._tray_icon.show()
 
         # Подключение сигналов трея
@@ -178,10 +187,10 @@ class VideoRecorderApp:
 
         # Подключение сигналов окна к трею
         self._main_window.recording_started.connect(
-            lambda p: self._tray_icon.on_recording_started(p)
+            lambda p: self._tray_icon.on_recording_started(p)  # type: ignore[union-attr]
         )
         self._main_window.recording_stopped.connect(
-            lambda p: self._tray_icon.on_recording_stopped(p)
+            lambda p: self._tray_icon.on_recording_stopped(p)  # type: ignore[union-attr]
         )
         self._main_window.recording_paused.connect(
             self._tray_icon.on_recording_paused
@@ -191,8 +200,8 @@ class VideoRecorderApp:
         )
         self._main_window.error_occurred.connect(self._tray_icon.on_error)
 
-        # Обработка закрытия окна
-        self._main_window.closeEvent = self._handle_close_event
+        # Обработка закрытия окна через сигнал
+        self._main_window.close_requested.connect(self._handle_close_requested)
 
         # Запуск API сервера
         self._start_api_server()
@@ -402,6 +411,7 @@ class VideoRecorderApp:
             host=api_config.get("host", "127.0.0.1"),
             port=api_config.get("port", 5000),
         )
+        assert self._api_server is not None
 
         # Регистрация маршрутов
         register_routes(self._api_server.app, self._api_server)
@@ -451,6 +461,7 @@ class VideoRecorderApp:
         persist_path = Path(config.config_path).parent / "tasks.json"
 
         self._scheduler = TaskScheduler(persist_path=persist_path)
+        assert self._scheduler is not None
 
         # Установка обратного вызова выполнения задачи
         self._scheduler.set_task_callback(self._execute_scheduled_task)
@@ -501,14 +512,14 @@ class VideoRecorderApp:
 
         # Запуск записи
         if self._main_window:
-            self._main_window.start_recording_with_params(param_dict)
+            self._main_window.start_recording_with_params(param_dict)  # type: ignore[attr-defined]
 
     # Реализации обратных вызовов API
 
     def _get_status(self) -> Dict[str, Any]:
         """Получение статуса записи."""
         if self._main_window:
-            return self._main_window.get_status()
+            return self._main_window.get_status()  # type: ignore[attr-defined,no-any-return]
         return {
             "is_recording": False,
             "is_paused": False,
@@ -519,25 +530,25 @@ class VideoRecorderApp:
     def _start_recording(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Запуск записи."""
         if self._main_window:
-            return self._main_window.start_recording_with_params(params)
+            return self._main_window.start_recording_with_params(params)  # type: ignore[attr-defined,no-any-return]
         return {"success": False, "error": "GUI недоступен"}
 
     def _stop_recording(self) -> Dict[str, Any]:
         """Остановка записи."""
         if self._main_window:
-            return self._main_window.stop_recording()
+            return self._main_window.stop_recording()  # type: ignore[attr-defined,no-any-return]
         return {"success": False, "error": "GUI недоступен"}
 
     def _toggle_pause(self) -> Dict[str, Any]:
         """Переключение состояния паузы."""
         if self._main_window:
-            return self._main_window.toggle_pause()
+            return self._main_window.toggle_pause()  # type: ignore[attr-defined,no-any-return]
         return {"success": False, "error": "GUI недоступен"}
 
     def _get_recordings(self) -> list:
         """Получение недавних записей."""
         if self._main_window:
-            return self._main_window.get_recordings()
+            return self._main_window.get_recordings()  # type: ignore[attr-defined,no-any-return]
         return []
 
     def _get_schedule(self) -> list:
@@ -644,17 +655,19 @@ class VideoRecorderApp:
             self._main_window.show()
             self._main_window.activateWindow()
 
-    def _handle_close_event(self, event) -> None:
-        """Обработка события закрытия окна."""
+    def _handle_close_requested(self, event) -> None:
+        """Обработка запроса закрытия окна через сигнал."""
         config = get_config()
 
         if config.settings.minimize_to_tray and self._tray_icon:
             event.ignore()
-            self._main_window.hide()
+            if self._main_window:
+                self._main_window.hide()
             self._tray_icon.show_notification(
                 "MIA-ScreenCapture", "Свернуто в трей"
             )
         else:
+            # Если minimize_to_tray=False, завершаем приложение
             self._quit_app()
 
     def _quit_app(self) -> None:
@@ -703,9 +716,8 @@ def main() -> int:
     setup_logger(level=log_level)
 
     # Инициализация конфигурации
-    config_path = (
-        Path(config.get("config_path")) if config.get("config_path") else None
-    )
+    config_path_arg = config.get("config_path")
+    config_path = Path(config_path_arg) if config_path_arg else None
     init_config(config_path)
 
     # Создание и запуск приложения

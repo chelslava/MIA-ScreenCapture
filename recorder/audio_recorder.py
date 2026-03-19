@@ -234,7 +234,7 @@ class AudioRecorder:
             self._audio_interface = pyaudio.PyAudio()
 
             # Открытие потока
-            self._audio_stream = self._audio_interface.open(
+            self._audio_stream = self._audio_interface.open(  # type: ignore[attr-defined]
                 format=pyaudio.paInt16,
                 channels=self.config.channels,
                 rate=self.config.sample_rate,

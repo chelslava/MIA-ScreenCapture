@@ -8,8 +8,10 @@
 
 import logging
 import sys
+from collections.abc import MutableMapping
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Any
 
 # Директория для логов по умолчанию
 LOG_DIR = Path(__file__).parent / "logs"
@@ -104,7 +106,9 @@ class LoggerAdapter(logging.LoggerAdapter):
     Пользовательский адаптер логгера для добавления контекстной информации.
     """
 
-    def process(self, msg: str, kwargs: dict) -> tuple:
+    def process(
+        self, msg: str, kwargs: MutableMapping[str, Any]
+    ) -> tuple[str, MutableMapping[str, Any]]:
         """
         Обработка вызова логирования для добавления контекста.
 

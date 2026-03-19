@@ -116,7 +116,7 @@ class ConfigManager:
             config_path: Путь к файлу конфигурации (по умолчанию: CONFIG_FILE)
         """
         self.config_path = config_path or CONFIG_FILE
-        self._settings: Optional[AppSettings] = None
+        self._settings: AppSettings = AppSettings()
         self._load()
 
     def _load(self) -> None:
