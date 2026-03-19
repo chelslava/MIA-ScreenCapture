@@ -23,6 +23,7 @@ logger = get_module_logger(__name__)
 
 class AudioState(Enum):
     """Перечисление состояний аудиозаписи."""
+
     IDLE = "idle"
     RECORDING = "recording"
     PAUSED = "paused"
@@ -32,6 +33,7 @@ class AudioState(Enum):
 @dataclass
 class AudioConfig:
     """Конфигурация аудиозаписи."""
+
     sample_rate: int = 44100
     channels: int = 2
     chunk_size: int = 1024
@@ -41,7 +43,7 @@ class AudioConfig:
 class AudioRecorder:
     """
     Класс аудиозаписи для захвата аудио с микрофона.
-    
+
     Поддерживает запись с микрофонного входа. Захват системного аудио
     зависит от платформы и может потребовать дополнительной настройки.
     """
@@ -50,20 +52,18 @@ class AudioRecorder:
         self,
         sample_rate: int = 44100,
         channels: int = 2,
-        chunk_size: int = 1024
+        chunk_size: int = 1024,
     ):
         """
         Инициализация аудиозаписи.
-        
+
         Args:
             sample_rate: Частота дискретизации аудио в Гц
             channels: Количество аудиоканалов (1=моно, 2=стерео)
             chunk_size: Размер чанка аудио для буферизации
         """
         self.config = AudioConfig(
-            sample_rate=sample_rate,
-            channels=channels,
-            chunk_size=chunk_size
+            sample_rate=sample_rate, channels=channels, chunk_size=chunk_size
         )
 
         # Состояние
@@ -112,7 +112,7 @@ class AudioRecorder:
             return 0
         elapsed = time.time() - self._start_time - self._total_paused
         if self._state == AudioState.PAUSED:
-            elapsed -= (time.time() - self._paused_time)
+            elapsed -= time.time() - self._paused_time
         return max(0, elapsed)
 
     @property
@@ -123,7 +123,7 @@ class AudioRecorder:
     def set_callbacks(self, on_error: Optional[Callable] = None) -> None:
         """
         Установка функций обратного вызова.
-        
+
         Args:
             on_error: Вызывается при ошибке (получает сообщение об ошибке)
         """
@@ -133,33 +133,35 @@ class AudioRecorder:
     def get_available_devices() -> List[dict]:
         """
         Получение списка доступных устройств ввода аудио.
-        
+
         Returns:
             Список словарей с информацией об устройствах
         """
         devices = get_audio_devices()
-        return devices.get('input', [])
+        return devices.get("input", [])
 
     def start(
         self,
         output_path: Path,
         device_index: Optional[int] = None,
-        duration: Optional[float] = None
+        duration: Optional[float] = None,
     ) -> bool:
         """
         Начало аудиозаписи.
-        
+
         Args:
             output_path: Путь для сохранения аудиофайла (формат WAV)
             device_index: Опциональный индекс аудиоустройства
             duration: Опциональная длительность записи в секундах
-            
+
         Returns:
             True если запись успешно началась
         """
         with self._lock:
             if self._state != AudioState.IDLE:
-                logger.warning(f"Невозможно начать: текущее состояние {self._state}")
+                logger.warning(
+                    f"Невозможно начать: текущее состояние {self._state}"
+                )
                 return False
 
             try:
@@ -174,7 +176,7 @@ class AudioRecorder:
                 self._init_audio()
 
                 # Создание WAV файла
-                self._wave_file = wave.open(str(self._output_path), 'wb')
+                self._wave_file = wave.open(str(self._output_path), "wb")
                 self._wave_file.setnchannels(self.config.channels)
                 self._wave_file.setsampwidth(2)  # 16-бит
                 self._wave_file.setframerate(self.config.sample_rate)
@@ -188,8 +190,7 @@ class AudioRecorder:
                 # Запуск потока записи
                 self._state = AudioState.RECORDING
                 self._record_thread = threading.Thread(
-                    target=self._record_loop,
-                    daemon=True
+                    target=self._record_loop, daemon=True
                 )
                 self._record_thread.start()
 
@@ -212,12 +213,12 @@ class AudioRecorder:
             if self.config.device_index is not None:
                 device_info = sd.query_devices(self.config.device_index)
             else:
-                device_info = sd.query_devices(kind='input')
+                device_info = sd.query_devices(kind="input")
 
             logger.info(f"Используется аудиоустройство: {device_info['name']}")
 
             # Корректировка каналов при необходимости
-            max_channels = device_info.get('max_input_channels', 2)
+            max_channels = device_info.get("max_input_channels", 2)
             if self.config.channels > max_channels:
                 self.config.channels = max_channels
 
@@ -239,7 +240,7 @@ class AudioRecorder:
                 rate=self.config.sample_rate,
                 input=True,
                 input_device_index=self.config.device_index,
-                frames_per_buffer=self.config.chunk_size
+                frames_per_buffer=self.config.chunk_size,
             )
 
         except ImportError:
@@ -248,7 +249,7 @@ class AudioRecorder:
     def pause(self) -> bool:
         """
         Пауза записи.
-        
+
         Returns:
             True если пауза успешно установлена
         """
@@ -264,7 +265,7 @@ class AudioRecorder:
     def resume(self) -> bool:
         """
         Возобновление приостановленной записи.
-        
+
         Returns:
             True если запись успешно возобновлена
         """
@@ -280,7 +281,7 @@ class AudioRecorder:
     def stop(self) -> bool:
         """
         Остановка записи и сохранение файла.
-        
+
         Returns:
             True если запись успешно остановлена
         """
@@ -316,12 +317,15 @@ class AudioRecorder:
             with sd.InputStream(
                 samplerate=self.config.sample_rate,
                 channels=self.config.channels,
-                dtype='int16',
+                dtype="int16",
                 device=self.config.device_index,
                 blocksize=self.config.chunk_size,
-                callback=audio_callback
+                callback=audio_callback,
             ):
-                while self._state not in (AudioState.IDLE, AudioState.STOPPING):
+                while self._state not in (
+                    AudioState.IDLE,
+                    AudioState.STOPPING,
+                ):
                     if self._state == AudioState.PAUSED:
                         time.sleep(0.1)
                         continue
@@ -350,8 +354,7 @@ class AudioRecorder:
 
                 try:
                     data = self._audio_stream.read(
-                        self.config.chunk_size,
-                        exception_on_overflow=False
+                        self.config.chunk_size, exception_on_overflow=False
                     )
                     if self._wave_file:
                         self._wave_file.writeframes(data)
@@ -396,7 +399,7 @@ class AudioRecorder:
 class SystemAudioRecorder(AudioRecorder):
     """
     Класс записи системного аудио для захвата общесистемного вывода аудио.
-    
+
     Примечание: Зависит от платформы и может потребовать дополнительной настройки:
     - Windows: Использует WASAPI loopback (требует pycaw)
     - Linux: Требует устройство мониторинга PulseAudio
@@ -409,14 +412,16 @@ class SystemAudioRecorder(AudioRecorder):
 
     def _init_audio(self) -> None:
         """Инициализация захвата системного аудио."""
-        if self._platform == 'windows':
+        if self._platform == "windows":
             self._init_windows_system_audio()
-        elif self._platform == 'linux':
+        elif self._platform == "linux":
             self._init_linux_system_audio()
-        elif self._platform == 'darwin':
+        elif self._platform == "darwin":
             self._init_macos_system_audio()
         else:
-            raise RuntimeError(f"Системное аудио не поддерживается на {self._platform}")
+            raise RuntimeError(
+                f"Системное аудио не поддерживается на {self._platform}"
+            )
 
     def _init_windows_system_audio(self) -> None:
         """Инициализация захвата системного аудио Windows с использованием WASAPI loopback."""
@@ -429,21 +434,30 @@ class SystemAudioRecorder(AudioRecorder):
 
             for i, dev in enumerate(devices):
                 # Поиск устройства loopback или стерео микшера
-                if 'loopback' in dev['name'].lower() or 'stereo mix' in dev['name'].lower():
-                    if dev['max_input_channels'] > 0:
+                if (
+                    "loopback" in dev["name"].lower()
+                    or "stereo mix" in dev["name"].lower()
+                ):
+                    if dev["max_input_channels"] > 0:
                         loopback_device = i
                         break
 
             if loopback_device is None:
-                logger.warning("Устройство loopback для системного аудио не найдено, используется вход по умолчанию")
+                logger.warning(
+                    "Устройство loopback для системного аудио не найдено, используется вход по умолчанию"
+                )
                 super()._init_audio()
                 return
 
             self.config.device_index = loopback_device
-            logger.info(f"Используется устройство системного аудио: {devices[loopback_device]['name']}")
+            logger.info(
+                f"Используется устройство системного аудио: {devices[loopback_device]['name']}"
+            )
 
         except Exception as e:
-            logger.error(f"Не удалось инициализировать системное аудио Windows: {e}")
+            logger.error(
+                f"Не удалось инициализировать системное аудио Windows: {e}"
+            )
             raise
 
     def _init_linux_system_audio(self) -> None:
@@ -456,7 +470,7 @@ class SystemAudioRecorder(AudioRecorder):
             monitor_device = None
 
             for i, dev in enumerate(devices):
-                if 'monitor' in dev['name'].lower():
+                if "monitor" in dev["name"].lower():
                     monitor_device = i
                     break
 
@@ -465,10 +479,14 @@ class SystemAudioRecorder(AudioRecorder):
                 raise RuntimeError("Монитор системного аудио недоступен")
 
             self.config.device_index = monitor_device
-            logger.info(f"Используется устройство системного аудио: {devices[monitor_device]['name']}")
+            logger.info(
+                f"Используется устройство системного аудио: {devices[monitor_device]['name']}"
+            )
 
         except Exception as e:
-            logger.error(f"Не удалось инициализировать системное аудио Linux: {e}")
+            logger.error(
+                f"Не удалось инициализировать системное аудио Linux: {e}"
+            )
             raise
 
     def _init_macos_system_audio(self) -> None:
@@ -487,8 +505,8 @@ class SystemAudioRecorder(AudioRecorder):
             virtual_device = None
 
             for i, dev in enumerate(devices):
-                name_lower = dev['name'].lower()
-                if 'blackhole' in name_lower or 'soundflower' in name_lower:
+                name_lower = dev["name"].lower()
+                if "blackhole" in name_lower or "soundflower" in name_lower:
                     virtual_device = i
                     break
 
@@ -499,8 +517,12 @@ class SystemAudioRecorder(AudioRecorder):
                 )
 
             self.config.device_index = virtual_device
-            logger.info(f"Используется устройство системного аудио: {devices[virtual_device]['name']}")
+            logger.info(
+                f"Используется устройство системного аудио: {devices[virtual_device]['name']}"
+            )
 
         except Exception as e:
-            logger.error(f"Не удалось инициализировать системное аудио macOS: {e}")
+            logger.error(
+                f"Не удалось инициализировать системное аудио macOS: {e}"
+            )
             raise

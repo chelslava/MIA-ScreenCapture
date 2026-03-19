@@ -38,11 +38,7 @@ class TestVideoSettings:
     def test_custom_values(self):
         """Проверка пользовательских значений."""
         settings = VideoSettings(
-            fps=60,
-            codec="h264",
-            bitrate="5M",
-            format="mkv",
-            compression=False
+            fps=60, codec="h264", bitrate="5M", format="mkv", compression=False
         )
 
         assert settings.fps == 60
@@ -73,7 +69,7 @@ class TestAudioSettings:
             record_system=True,
             mic_device="device_1",
             sample_rate=48000,
-            channels=1
+            channels=1,
         )
 
         assert settings.record_mic is False
@@ -97,8 +93,7 @@ class TestCaptureSettings:
     def test_custom_values(self):
         """Проверка пользовательских значений."""
         settings = CaptureSettings(
-            area_type="rect",
-            rect_coords=[100, 100, 800, 600]
+            area_type="rect", rect_coords=[100, 100, 800, 600]
         )
 
         assert settings.area_type == "rect"
@@ -119,7 +114,7 @@ class TestOutputSettings:
         """Проверка пользовательских значений."""
         settings = OutputSettings(
             default_path="/home/user/videos",
-            filename_template="screen_{datetime}_test"
+            filename_template="screen_{datetime}_test",
         )
 
         assert settings.default_path == "/home/user/videos"
@@ -139,11 +134,7 @@ class TestAPISettings:
 
     def test_custom_values(self):
         """Проверка пользовательских значений."""
-        settings = APISettings(
-            enabled=False,
-            host="0.0.0.0",
-            port=8080
-        )
+        settings = APISettings(enabled=False, host="0.0.0.0", port=8080)
 
         assert settings.enabled is False
         assert settings.host == "0.0.0.0"
@@ -184,8 +175,7 @@ class TestAppSettings:
     def test_nested_settings(self):
         """Проверка вложенных настроек."""
         settings = AppSettings(
-            video=VideoSettings(fps=60),
-            audio=AudioSettings(sample_rate=48000)
+            video=VideoSettings(fps=60), audio=AudioSettings(sample_rate=48000)
         )
 
         assert settings.video.fps == 60
@@ -274,11 +264,16 @@ class TestConfigManager:
         manager.add_recent_recording("/path/to/video.mp4", 1024000)
 
         assert len(manager.settings.recent_recordings) == 1
-        assert manager.settings.recent_recordings[0]["path"] == "/path/to/video.mp4"
+        assert (
+            manager.settings.recent_recordings[0]["path"]
+            == "/path/to/video.mp4"
+        )
         assert manager.settings.recent_recordings[0]["size"] == 1024000
         assert "date" in manager.settings.recent_recordings[0]
 
-    def test_add_recent_recording_removes_duplicate(self, temp_config_file: Path):
+    def test_add_recent_recording_removes_duplicate(
+        self, temp_config_file: Path
+    ):
         """Проверка удаления дубликатов при добавлении недавней записи."""
         manager = ConfigManager(temp_config_file)
 
@@ -300,9 +295,14 @@ class TestConfigManager:
 
         assert len(manager.settings.recent_recordings) == 5
         # Первая должна быть последняя добавленная
-        assert manager.settings.recent_recordings[0]["path"] == "/path/video_9.mp4"
+        assert (
+            manager.settings.recent_recordings[0]["path"]
+            == "/path/video_9.mp4"
+        )
 
-    def test_get_output_path_default(self, temp_config_file: Path, temp_dir: Path, monkeypatch):
+    def test_get_output_path_default(
+        self, temp_config_file: Path, temp_dir: Path, monkeypatch
+    ):
         """Проверка получения пути вывода по умолчанию."""
         manager = ConfigManager(temp_config_file)
         manager.settings.output.default_path = str(temp_dir / "recordings")
@@ -313,7 +313,9 @@ class TestConfigManager:
         assert output_path.suffix == ".mp4"
         assert "recording_" in output_path.name
 
-    def test_get_output_path_custom_filename(self, temp_config_file: Path, temp_dir: Path):
+    def test_get_output_path_custom_filename(
+        self, temp_config_file: Path, temp_dir: Path
+    ):
         """Проверка получения пути вывода с пользовательским именем."""
         manager = ConfigManager(temp_config_file)
         manager.settings.output.default_path = str(temp_dir / "recordings")
@@ -322,7 +324,9 @@ class TestConfigManager:
 
         assert output_path.name == "my_video.mp4"
 
-    def test_get_output_path_creates_directory(self, temp_config_file: Path, temp_dir: Path):
+    def test_get_output_path_creates_directory(
+        self, temp_config_file: Path, temp_dir: Path
+    ):
         """Проверка создания директории вывода."""
         manager = ConfigManager(temp_config_file)
         manager.settings.output.default_path = str(temp_dir / "new_recordings")
@@ -385,7 +389,9 @@ class TestGlobalFunctions:
 
         assert manager1 is manager2
 
-    def test_init_config_then_get_config(self, temp_config_file: Path, monkeypatch):
+    def test_init_config_then_get_config(
+        self, temp_config_file: Path, monkeypatch
+    ):
         """Проверка что init_config и get_config работают вместе."""
         # Сброс глобального экземпляра
         monkeypatch.setattr("config._config", None)
@@ -417,10 +423,7 @@ class TestConfigManagerInvalidData:
     def test_load_partial_config(self, temp_dir: Path):
         """Проверка загрузки частичной конфигурации."""
         config_path = temp_dir / "partial_config.json"
-        partial_data = {
-            "video": {"fps": 60},
-            "api": {"port": 9000}
-        }
+        partial_data = {"video": {"fps": 60}, "api": {"port": 9000}}
         config_path.write_text(json.dumps(partial_data))
 
         manager = ConfigManager(config_path)
@@ -438,7 +441,7 @@ class TestConfigManagerInvalidData:
         extra_data = {
             "video": {"fps": 30},
             "extra_field": "should be ignored",
-            "another_extra": 123
+            "another_extra": 123,
         }
         config_path.write_text(json.dumps(extra_data))
 

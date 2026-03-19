@@ -34,31 +34,21 @@ class TestStartRecordingRequest:
 
     def test_valid_full_area(self):
         """Проверка валидного запроса с полным экраном."""
-        request = StartRecordingRequest(
-            area="full",
-            fps=60,
-            codec="h264"
-        )
+        request = StartRecordingRequest(area="full", fps=60, codec="h264")
 
         assert request.area == "full"
         assert request.fps == 60
 
     def test_valid_window_area(self):
         """Проверка валидного запроса с захватом окна."""
-        request = StartRecordingRequest(
-            area="window",
-            window_title="Browser"
-        )
+        request = StartRecordingRequest(area="window", window_title="Browser")
 
         assert request.area == "window"
         assert request.window_title == "Browser"
 
     def test_valid_rect_area(self):
         """Проверка валидного запроса с прямоугольником."""
-        request = StartRecordingRequest(
-            area="rect",
-            rect=[100, 100, 800, 600]
-        )
+        request = StartRecordingRequest(area="rect", rect=[100, 100, 800, 600])
 
         assert request.area == "rect"
         assert request.rect == [100, 100, 800, 600]
@@ -146,9 +136,7 @@ class TestCreateScheduleRequest:
         future_time = (datetime.now() + timedelta(hours=1)).isoformat()
 
         request = CreateScheduleRequest(
-            name="Test Task",
-            trigger="once",
-            datetime=future_time
+            name="Test Task", trigger="once", datetime=future_time
         )
 
         assert request.name == "Test Task"
@@ -158,9 +146,7 @@ class TestCreateScheduleRequest:
     def test_valid_daily_schedule(self):
         """Проверка валидной ежедневной задачи."""
         request = CreateScheduleRequest(
-            name="Daily Task",
-            trigger="daily",
-            time="09:00"
+            name="Daily Task", trigger="daily", time="09:00"
         )
 
         assert request.trigger == "daily"
@@ -172,7 +158,7 @@ class TestCreateScheduleRequest:
             name="Weekly Task",
             trigger="weekly",
             time="10:00",
-            day_of_week="0,2,4"
+            day_of_week="0,2,4",
         )
 
         assert request.trigger == "weekly"
@@ -181,10 +167,7 @@ class TestCreateScheduleRequest:
     def test_valid_interval_schedule(self):
         """Проверка валидной интервальной задачи."""
         request = CreateScheduleRequest(
-            name="Interval Task",
-            trigger="interval",
-            hours=2,
-            minutes=30
+            name="Interval Task", trigger="interval", hours=2, minutes=30
         )
 
         assert request.trigger == "interval"
@@ -194,52 +177,38 @@ class TestCreateScheduleRequest:
     def test_once_without_datetime(self):
         """Проверка разовой задачи без datetime."""
         with pytest.raises(ValidationError) as exc_info:
-            CreateScheduleRequest(
-                name="Test",
-                trigger="once"
-            )
+            CreateScheduleRequest(name="Test", trigger="once")
 
         assert "datetime" in str(exc_info.value)
 
     def test_daily_without_time(self):
         """Проверка ежедневной задачи без времени."""
         with pytest.raises(ValidationError) as exc_info:
-            CreateScheduleRequest(
-                name="Test",
-                trigger="daily"
-            )
+            CreateScheduleRequest(name="Test", trigger="daily")
 
         assert "time" in str(exc_info.value)
 
     def test_weekly_without_day_of_week(self):
         """Проверка еженедельной задачи без дней недели."""
         with pytest.raises(ValidationError) as exc_info:
-            CreateScheduleRequest(
-                name="Test",
-                trigger="weekly",
-                time="10:00"
-            )
+            CreateScheduleRequest(name="Test", trigger="weekly", time="10:00")
 
         assert "day_of_week" in str(exc_info.value)
 
     def test_interval_without_hours_and_minutes(self):
         """Проверка интервальной задачи без интервала."""
         with pytest.raises(ValidationError) as exc_info:
-            CreateScheduleRequest(
-                name="Test",
-                trigger="interval"
-            )
+            CreateScheduleRequest(name="Test", trigger="interval")
 
-        assert "hours" in str(exc_info.value) or "minutes" in str(exc_info.value)
+        assert "hours" in str(exc_info.value) or "minutes" in str(
+            exc_info.value
+        )
 
     def test_interval_zero(self):
         """Проверка нулевого интервала."""
         with pytest.raises(ValidationError):
             CreateScheduleRequest(
-                name="Test",
-                trigger="interval",
-                hours=0,
-                minutes=0
+                name="Test", trigger="interval", hours=0, minutes=0
             )
 
     def test_invalid_time_format(self):
@@ -248,14 +217,14 @@ class TestCreateScheduleRequest:
             CreateScheduleRequest(
                 name="Test",
                 trigger="daily",
-                time="25:00"  # Несуществующий час
+                time="25:00",  # Несуществующий час
             )
 
         with pytest.raises(ValidationError):
             CreateScheduleRequest(
                 name="Test",
                 trigger="daily",
-                time="99:00"  # Несуществующий час
+                time="99:00",  # Несуществующий час
             )
 
     def test_invalid_day_of_week(self):
@@ -265,7 +234,7 @@ class TestCreateScheduleRequest:
                 name="Test",
                 trigger="weekly",
                 time="10:00",
-                day_of_week="7"  # День 7 не существует
+                day_of_week="7",  # День 7 не существует
             )
 
     def test_past_datetime(self):
@@ -274,27 +243,18 @@ class TestCreateScheduleRequest:
 
         with pytest.raises(ValidationError):
             CreateScheduleRequest(
-                name="Test",
-                trigger="once",
-                datetime=past_time
+                name="Test", trigger="once", datetime=past_time
             )
 
     def test_empty_name(self):
         """Проверка пустого названия."""
         with pytest.raises(ValidationError):
-            CreateScheduleRequest(
-                name="",
-                trigger="daily",
-                time="10:00"
-            )
+            CreateScheduleRequest(name="", trigger="daily", time="10:00")
 
     def test_invalid_trigger(self):
         """Проверка невалидного типа расписания."""
         with pytest.raises(ValidationError):
-            CreateScheduleRequest(
-                name="Test",
-                trigger="invalid"
-            )
+            CreateScheduleRequest(name="Test", trigger="invalid")
 
     def test_with_recording_params(self):
         """Проверка с параметрами записи."""
@@ -305,10 +265,8 @@ class TestCreateScheduleRequest:
             trigger="once",
             datetime=future_time,
             params=StartRecordingRequest(
-                area="window",
-                window_title="Browser",
-                fps=60
-            )
+                area="window", window_title="Browser", fps=60
+            ),
         )
 
         assert request.params is not None
@@ -318,9 +276,7 @@ class TestCreateScheduleRequest:
     def test_valid_cron_schedule(self):
         """Проверка валидной cron-задачи."""
         request = CreateScheduleRequest(
-            name="Cron Task",
-            trigger="cron",
-            cron_expression="0 9 * * 1-5"
+            name="Cron Task", trigger="cron", cron_expression="0 9 * * 1-5"
         )
 
         assert request.trigger == "cron"
@@ -329,10 +285,7 @@ class TestCreateScheduleRequest:
     def test_cron_without_expression(self):
         """Проверка cron-задачи без выражения."""
         with pytest.raises(ValidationError) as exc_info:
-            CreateScheduleRequest(
-                name="Test",
-                trigger="cron"
-            )
+            CreateScheduleRequest(name="Test", trigger="cron")
 
         assert "cron_expression" in str(exc_info.value)
 
@@ -341,42 +294,32 @@ class TestCreateScheduleRequest:
         # Слишком мало полей
         with pytest.raises(ValidationError):
             CreateScheduleRequest(
-                name="Test",
-                trigger="cron",
-                cron_expression="0 9 * *"
+                name="Test", trigger="cron", cron_expression="0 9 * *"
             )
 
         # Слишком много полей
         with pytest.raises(ValidationError):
             CreateScheduleRequest(
-                name="Test",
-                trigger="cron",
-                cron_expression="0 9 * * * *"
+                name="Test", trigger="cron", cron_expression="0 9 * * * *"
             )
 
     def test_cron_expression_with_special_chars(self):
         """Проверка cron-выражения со специальными символами."""
         # С диапазоном
         request1 = CreateScheduleRequest(
-            name="Test",
-            trigger="cron",
-            cron_expression="0 9 * * 1-5"
+            name="Test", trigger="cron", cron_expression="0 9 * * 1-5"
         )
         assert request1.cron_expression == "0 9 * * 1-5"
 
         # С шагом
         request2 = CreateScheduleRequest(
-            name="Test",
-            trigger="cron",
-            cron_expression="*/15 * * * *"
+            name="Test", trigger="cron", cron_expression="*/15 * * * *"
         )
         assert request2.cron_expression == "*/15 * * * *"
 
         # С звёздочками
         request3 = CreateScheduleRequest(
-            name="Test",
-            trigger="cron",
-            cron_expression="0 0 * * *"
+            name="Test", trigger="cron", cron_expression="0 0 * * *"
         )
         assert request3.cron_expression == "0 0 * * *"
 
@@ -387,9 +330,7 @@ class TestUpdateScheduleRequest:
     def test_valid_update(self):
         """Проверка валидного обновления."""
         request = UpdateScheduleRequest(
-            id="task-001",
-            name="Updated Task",
-            enabled=False
+            id="task-001", name="Updated Task", enabled=False
         )
 
         assert request.id == "task-001"
@@ -407,10 +348,7 @@ class TestUpdateScheduleRequest:
     def test_invalid_time_format(self):
         """Проверка невалидного формата времени."""
         with pytest.raises(ValidationError):
-            UpdateScheduleRequest(
-                id="task-001",
-                time="invalid"
-            )
+            UpdateScheduleRequest(id="task-001", time="invalid")
 
 
 class TestToggleScheduleRequest:
@@ -461,7 +399,7 @@ class TestUpdateConfigRequest:
             codec="h264",
             bitrate="5M",
             minimize_to_tray=False,
-            language="ru"
+            language="ru",
         )
 
         assert request.fps == 60
@@ -485,9 +423,7 @@ class TestModelDump:
     def test_exclude_none(self):
         """Проверка исключения None значений."""
         request = StartRecordingRequest(
-            area="window",
-            window_title="Test",
-            fps=60
+            area="window", window_title="Test", fps=60
         )
 
         data = request.model_dump(exclude_none=True)

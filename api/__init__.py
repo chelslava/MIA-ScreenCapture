@@ -10,4 +10,4 @@
 from .routes import register_routes
 from .server import APIServer
 
-__all__ = ['APIServer', 'register_routes']
+__all__ = ["APIServer", "register_routes"]

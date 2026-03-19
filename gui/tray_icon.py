@@ -21,7 +21,7 @@ logger = get_module_logger(__name__)
 class TrayIcon(QSystemTrayIcon):
     """
     Иконка системного трея для видеозаписи.
-    
+
     Возможности:
     - Визуальный индикатор статуса (запись, пауза, ожидание)
     - Контекстное меню с быстрыми действиями
@@ -38,7 +38,7 @@ class TrayIcon(QSystemTrayIcon):
     def __init__(self, parent=None, icon_path: Optional[Path] = None):
         """
         Инициализация иконки трея.
-        
+
         Args:
             parent: Родительский QObject
             icon_path: Путь к пользовательской иконке (опционально)
@@ -51,13 +51,13 @@ class TrayIcon(QSystemTrayIcon):
 
         # Создание иконок для разных состояний
         self._icons = {
-            'idle': self._create_icon(QColor(100, 100, 100)),
-            'recording': self._create_icon(QColor(255, 0, 0)),
-            'paused': self._create_icon(QColor(255, 165, 0))
+            "idle": self._create_icon(QColor(100, 100, 100)),
+            "recording": self._create_icon(QColor(255, 0, 0)),
+            "paused": self._create_icon(QColor(255, 165, 0)),
         }
 
         # Установка начальной иконки
-        self.setIcon(self._icons['idle'])
+        self.setIcon(self._icons["idle"])
         self.setToolTip("MIA-ScreenCapture - Ожидание")
 
         # Создание контекстного меню
@@ -73,10 +73,10 @@ class TrayIcon(QSystemTrayIcon):
     def _create_icon(self, color: QColor) -> QIcon:
         """
         Создание цветной иконки для трея.
-        
+
         Args:
             color: Цвет иконки
-            
+
         Returns:
             Экземпляр QIcon
         """
@@ -146,10 +146,10 @@ class TrayIcon(QSystemTrayIcon):
         """Обработка действия выхода."""
         reply = QMessageBox.question(
             None,
-            'Выход из MIA-ScreenCapture',
-            'Вы уверены, что хотите выйти?',
+            "Выход из MIA-ScreenCapture",
+            "Вы уверены, что хотите выйти?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
@@ -160,21 +160,19 @@ class TrayIcon(QSystemTrayIcon):
         self._animation_frame = (self._animation_frame + 1) % 2
 
         if self._is_paused:
-            self.setIcon(self._icons['paused'])
+            self.setIcon(self._icons["paused"])
         elif self._animation_frame == 0:
-            self.setIcon(self._icons['recording'])
+            self.setIcon(self._icons["recording"])
         else:
             # Немного более тёмный красный для анимации
             self.setIcon(self._create_icon(QColor(200, 0, 0)))
 
     def set_recording_state(
-        self,
-        is_recording: bool,
-        is_paused: bool = False
+        self, is_recording: bool, is_paused: bool = False
     ) -> None:
         """
         Обновление индикатора состояния записи.
-        
+
         Args:
             is_recording: Активна ли запись
             is_paused: На паузе ли запись
@@ -195,14 +193,14 @@ class TrayIcon(QSystemTrayIcon):
         # Обновление иконки и подсказки
         if is_recording:
             if is_paused:
-                self.setIcon(self._icons['paused'])
+                self.setIcon(self._icons["paused"])
                 self.setToolTip("MIA-ScreenCapture - Пауза")
                 self._animation_timer.stop()
             else:
                 self.setToolTip("MIA-ScreenCapture - Запись")
                 self._animation_timer.start(500)  # Мигание каждые 500мс
         else:
-            self.setIcon(self._icons['idle'])
+            self.setIcon(self._icons["idle"])
             self.setToolTip("MIA-ScreenCapture - Ожидание")
             self._animation_timer.stop()
 
@@ -210,11 +208,11 @@ class TrayIcon(QSystemTrayIcon):
         self,
         title: str,
         message: str,
-        icon: QSystemTrayIcon.MessageIcon = QSystemTrayIcon.MessageIcon.Information
+        icon: QSystemTrayIcon.MessageIcon = QSystemTrayIcon.MessageIcon.Information,
     ) -> None:
         """
         Показ уведомления из иконки трея.
-        
+
         Args:
             title: Заголовок уведомления
             message: Сообщение уведомления
@@ -228,17 +226,13 @@ class TrayIcon(QSystemTrayIcon):
     def on_recording_started(self, output_path: str) -> None:
         """Обработка события начала записи."""
         self.set_recording_state(True, False)
-        self.show_notification(
-            "Запись начата",
-            f"Запись в: {output_path}"
-        )
+        self.show_notification("Запись начата", f"Запись в: {output_path}")
 
     def on_recording_stopped(self, output_path: str) -> None:
         """Обработка события остановки записи."""
         self.set_recording_state(False, False)
         self.show_notification(
-            "Запись остановлена",
-            f"Сохранено в: {output_path}"
+            "Запись остановлена", f"Сохранено в: {output_path}"
         )
 
     def on_recording_paused(self) -> None:
@@ -254,9 +248,7 @@ class TrayIcon(QSystemTrayIcon):
     def on_error(self, error_message: str) -> None:
         """Обработка события ошибки."""
         self.show_notification(
-            "Ошибка",
-            error_message,
-            QSystemTrayIcon.MessageIcon.Critical
+            "Ошибка", error_message, QSystemTrayIcon.MessageIcon.Critical
         )
 
     def cleanup(self) -> None:

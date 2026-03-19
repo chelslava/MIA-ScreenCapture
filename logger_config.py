@@ -29,11 +29,11 @@ def setup_logger(
     log_to_file: bool = True,
     log_to_console: bool = True,
     max_bytes: int = 5 * 1024 * 1024,  # 5 МБ
-    backup_count: int = 5
+    backup_count: int = 5,
 ) -> logging.Logger:
     """
     Настройка логгера с обработчиками файла и консоли.
-    
+
     Args:
         name: Имя логгера
         level: Уровень логирования (по умолчанию: DEBUG)
@@ -41,7 +41,7 @@ def setup_logger(
         log_to_console: Включить логирование в консоль
         max_bytes: Максимальный размер файла логов до ротации
         backup_count: Количество резервных файлов для хранения
-        
+
     Returns:
         Настроенный экземпляр логгера
     """
@@ -61,13 +61,16 @@ def setup_logger(
                 LOG_FILE,
                 maxBytes=max_bytes,
                 backupCount=backup_count,
-                encoding='utf-8'
+                encoding="utf-8",
             )
             file_handler.setLevel(logging.DEBUG)
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
         except Exception as e:
-            print(f"Предупреждение: Не удалось создать файл логов: {e}", file=sys.stderr)
+            print(
+                f"Предупреждение: Не удалось создать файл логов: {e}",
+                file=sys.stderr,
+            )
 
     # Консольный обработчик
     if log_to_console:
@@ -82,10 +85,10 @@ def setup_logger(
 def get_logger(name: str) -> logging.Logger:
     """
     Получение существующего логгера или создание нового.
-    
+
     Args:
         name: Имя логгера
-        
+
     Returns:
         Экземпляр логгера
     """
@@ -104,27 +107,27 @@ class LoggerAdapter(logging.LoggerAdapter):
     def process(self, msg: str, kwargs: dict) -> tuple:
         """
         Обработка вызова логирования для добавления контекста.
-        
+
         Args:
             msg: Сообщение лога
             kwargs: Дополнительные именованные аргументы
-            
+
         Returns:
             Кортеж (сообщение, kwargs)
         """
-        extra = kwargs.get('extra', {})
+        extra = kwargs.get("extra", {})
         extra.update(self.extra or {})
-        kwargs['extra'] = extra
+        kwargs["extra"] = extra
         return msg, kwargs
 
 
 def create_module_logger(module_name: str) -> logging.Logger:
     """
     Создание логгера для конкретного модуля.
-    
+
     Args:
         module_name: Имя модуля
-        
+
     Returns:
         Логгер для модуля
     """
@@ -135,11 +138,11 @@ def create_module_logger(module_name: str) -> logging.Logger:
 def get_module_logger(module_name: str) -> logging.Logger:
     """
     Получение логгера для модуля.
-    
+
     Args:
         module_name: Имя модуля (обычно __name__)
-        
+
     Returns:
         Экземпляр логгера для модуля
     """
-    return create_module_logger(module_name.split('.')[-1])
+    return create_module_logger(module_name.split(".")[-1])

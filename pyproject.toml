@@ -156,10 +156,40 @@ known-first-party = ["api", "cli", "gui", "recorder", "scheduler"]
 python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
 check_untyped_defs = true
 ignore_missing_imports = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+show_column_numbers = true
+
+# Модули с полными type hints
+[[tool.mypy.overrides]]
+module = [
+    "exceptions",
+    "api.auth",
+    "api.schemas",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+# Модули с частичными type hints (требуют доработки)
+[[tool.mypy.overrides]]
+module = [
+    "api.routes",
+    "api.server",
+    "recorder.*",
+    "scheduler.*",
+    "gui.*",
+    "cli.*",
+    "config",
+    "main",
+]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
 
 # ====================
 # Pytest Configuration

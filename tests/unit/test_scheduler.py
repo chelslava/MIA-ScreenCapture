@@ -43,7 +43,7 @@ class TestRecordingParams:
             fps=60,
             codec="h264",
             bitrate="5M",
-            duration=300
+            duration=300,
         )
 
         assert params.area_type == "rect"
@@ -57,9 +57,7 @@ class TestRecordingParams:
     def test_to_dict(self):
         """Проверка преобразования в словарь."""
         params = RecordingParams(
-            area_type="window",
-            window_title="Test Window",
-            fps=60
+            area_type="window", window_title="Test Window", fps=60
         )
 
         data = params.to_dict()
@@ -75,7 +73,7 @@ class TestRecordingParams:
             "area_type": "rect",
             "rect_coords": [0, 0, 1920, 1080],
             "fps": 60,
-            "extra_field": "ignored"
+            "extra_field": "ignored",
         }
 
         params = RecordingParams.from_dict(data)
@@ -121,7 +119,7 @@ class TestScheduleTask:
             id="test-001",
             name="Test Task",
             schedule_type=ScheduleType.ONCE,
-            params=RecordingParams()
+            params=RecordingParams(),
         )
 
         assert task.id == "test-001"
@@ -146,7 +144,7 @@ class TestScheduleTask:
             schedule_type=ScheduleType.ONCE,
             params=RecordingParams(fps=60),
             start_time=start_time,
-            run_count=5
+            run_count=5,
         )
 
         data = task.to_dict()
@@ -171,7 +169,7 @@ class TestScheduleTask:
             params=RecordingParams(),
             time_of_day="10:00",
             last_run=last_run,
-            next_run=next_run
+            next_run=next_run,
         )
 
         data = task.to_dict()
@@ -186,14 +184,11 @@ class TestScheduleTask:
             "id": "test-002",
             "name": "Restored Task",
             "schedule_type": "weekly",
-            "params": {
-                "area_type": "window",
-                "fps": 30
-            },
+            "params": {"area_type": "window", "fps": 30},
             "enabled": False,
             "time_of_day": "14:30",
             "days_of_week": [0, 2, 4],
-            "run_count": 10
+            "run_count": 10,
         }
 
         task = ScheduleTask.from_dict(data)
@@ -218,7 +213,7 @@ class TestScheduleTask:
             "schedule_type": "once",
             "params": {},
             "start_time": start_time,
-            "last_run": last_run
+            "last_run": last_run,
         }
 
         task = ScheduleTask.from_dict(data)
@@ -284,10 +279,7 @@ class TestTaskScheduler:
             "name": "One-time recording",
             "trigger": "once",
             "datetime": "2026-03-18T15:00:00",
-            "params": {
-                "area_type": "full",
-                "fps": 30
-            }
+            "params": {"area_type": "full", "fps": 30},
         }
 
         task = scheduler.create_task_from_dict(data)
@@ -305,10 +297,7 @@ class TestTaskScheduler:
             "name": "Daily recording",
             "trigger": "daily",
             "time": "09:00",
-            "params": {
-                "area_type": "window",
-                "window_title": "Browser"
-            }
+            "params": {"area_type": "window", "window_title": "Browser"},
         }
 
         task = scheduler.create_task_from_dict(data)
@@ -326,7 +315,7 @@ class TestTaskScheduler:
             "trigger": "weekly",
             "time": "10:00",
             "day_of_week": "0,2,4",
-            "params": {}
+            "params": {},
         }
 
         task = scheduler.create_task_from_dict(data)
@@ -345,7 +334,7 @@ class TestTaskScheduler:
             "trigger": "interval",
             "hours": 2,
             "minutes": 30,
-            "params": {}
+            "params": {},
         }
 
         task = scheduler.create_task_from_dict(data)
@@ -363,7 +352,7 @@ class TestTaskScheduler:
             id="test-add",
             name="Test Add",
             schedule_type=ScheduleType.ONCE,
-            params=RecordingParams()
+            params=RecordingParams(),
         )
 
         result = scheduler.add_task(task)
@@ -380,14 +369,14 @@ class TestTaskScheduler:
             id="duplicate",
             name="Task 1",
             schedule_type=ScheduleType.ONCE,
-            params=RecordingParams()
+            params=RecordingParams(),
         )
 
         task2 = ScheduleTask(
             id="duplicate",
             name="Task 2",
             schedule_type=ScheduleType.DAILY,
-            params=RecordingParams()
+            params=RecordingParams(),
         )
 
         scheduler.add_task(task1)
@@ -405,7 +394,7 @@ class TestTaskScheduler:
             id="to-remove",
             name="To Remove",
             schedule_type=ScheduleType.ONCE,
-            params=RecordingParams()
+            params=RecordingParams(),
         )
 
         scheduler.add_task(task)
@@ -430,7 +419,7 @@ class TestTaskScheduler:
             id="to-update",
             name="Original Name",
             schedule_type=ScheduleType.ONCE,
-            params=RecordingParams(fps=30)
+            params=RecordingParams(fps=30),
         )
 
         scheduler.add_task(task)
@@ -440,7 +429,7 @@ class TestTaskScheduler:
             id="to-update",
             name="Updated Name",
             schedule_type=ScheduleType.DAILY,
-            params=RecordingParams(fps=60)
+            params=RecordingParams(fps=60),
         )
 
         result = scheduler.update_task(updated_task)
@@ -458,7 +447,7 @@ class TestTaskScheduler:
             name="Toggle Test",
             schedule_type=ScheduleType.ONCE,
             params=RecordingParams(),
-            enabled=True
+            enabled=True,
         )
 
         scheduler.add_task(task)
@@ -483,14 +472,14 @@ class TestTaskScheduler:
             id="task-1",
             name="Task 1",
             schedule_type=ScheduleType.ONCE,
-            params=RecordingParams()
+            params=RecordingParams(),
         )
 
         task2 = ScheduleTask(
             id="task-2",
             name="Task 2",
             schedule_type=ScheduleType.DAILY,
-            params=RecordingParams()
+            params=RecordingParams(),
         )
 
         scheduler.add_task(task1)
@@ -510,7 +499,7 @@ class TestTaskScheduler:
             id="specific-task",
             name="Specific Task",
             schedule_type=ScheduleType.ONCE,
-            params=RecordingParams()
+            params=RecordingParams(),
         )
 
         scheduler.add_task(task)
@@ -536,21 +525,21 @@ class TestTaskScheduler:
             id="persist-test",
             name="Persist Test",
             schedule_type=ScheduleType.ONCE,
-            params=RecordingParams(fps=60)
+            params=RecordingParams(fps=60),
         )
 
         scheduler.add_task(task)
         scheduler._save_tasks()
 
         # Проверка файла
-        with open(tasks_file, encoding='utf-8') as f:
+        with open(tasks_file, encoding="utf-8") as f:
             data = json.load(f)
 
         # Данные сохраняются в формате {'tasks': [...], 'last_updated': ...}
-        assert 'tasks' in data
-        assert len(data['tasks']) == 1
-        assert data['tasks'][0]["id"] == "persist-test"
-        assert data['tasks'][0]["params"]["fps"] == 60
+        assert "tasks" in data
+        assert len(data["tasks"]) == 1
+        assert data["tasks"][0]["id"] == "persist-test"
+        assert data["tasks"][0]["params"]["fps"] == 60
 
     def test_load_tasks_on_init(self, tasks_file: Path):
         """Проверка загрузки задач при инициализации."""
@@ -563,12 +552,12 @@ class TestTaskScheduler:
                     "schedule_type": "daily",
                     "params": {"fps": 30},
                     "enabled": True,
-                    "time_of_day": "08:00"
+                    "time_of_day": "08:00",
                 }
             ]
         }
 
-        with open(tasks_file, 'w', encoding='utf-8') as f:
+        with open(tasks_file, "w", encoding="utf-8") as f:
             json.dump(tasks_data, f)
 
         # Инициализация планировщика
@@ -592,7 +581,7 @@ class TestTaskSchedulerIntegration:
                 "name": "Lifecycle Test",
                 "trigger": "once",
                 "datetime": (datetime.now() + timedelta(hours=1)).isoformat(),
-                "params": {"area_type": "full"}
+                "params": {"area_type": "full"},
             }
 
             task = scheduler.create_task_from_dict(data)
@@ -630,7 +619,7 @@ class TestTaskSchedulerIntegration:
                 name=f"Multi Task {i}",
                 schedule_type=ScheduleType.DAILY,
                 params=RecordingParams(),
-                time_of_day=f"{10 + i}:00"
+                time_of_day=f"{10 + i}:00",
             )
             scheduler.add_task(task)
 
@@ -656,7 +645,7 @@ class TestCronSchedule:
             name="Cron Task",
             schedule_type=ScheduleType.CRON,
             params=RecordingParams(),
-            cron_expression="0 9 * * 1-5"
+            cron_expression="0 9 * * 1-5",
         )
 
         assert task.cron_expression == "0 9 * * 1-5"
@@ -669,7 +658,7 @@ class TestCronSchedule:
             name="Cron Task",
             schedule_type=ScheduleType.CRON,
             params=RecordingParams(fps=60),
-            cron_expression="30 14 * * *"
+            cron_expression="30 14 * * *",
         )
 
         data = task.to_dict()
@@ -685,7 +674,7 @@ class TestCronSchedule:
             "schedule_type": "cron",
             "params": {"fps": 30},
             "enabled": True,
-            "cron_expression": "0 18 * * 5"
+            "cron_expression": "0 18 * * 5",
         }
 
         task = ScheduleTask.from_dict(data)
@@ -701,7 +690,7 @@ class TestCronSchedule:
             "name": "Weekly report recording",
             "trigger": "cron",
             "cron_expression": "0 9 * * 1",
-            "params": {"area_type": "full"}
+            "params": {"area_type": "full"},
         }
 
         task = scheduler.create_task_from_dict(data)
@@ -719,7 +708,7 @@ class TestCronSchedule:
             name="Cron Trigger Test",
             schedule_type=ScheduleType.CRON,
             params=RecordingParams(),
-            cron_expression="0 12 * * *"
+            cron_expression="0 12 * * *",
         )
 
         trigger = scheduler._create_trigger(task)
@@ -727,6 +716,7 @@ class TestCronSchedule:
         assert trigger is not None
         # Проверяем, что триггер является CronTrigger
         from apscheduler.triggers.cron import CronTrigger
+
         assert isinstance(trigger, CronTrigger)
 
     def test_cron_task_without_expression(self, tasks_file: Path):
@@ -737,7 +727,7 @@ class TestCronSchedule:
             id="cron-no-expr",
             name="Cron No Expression",
             schedule_type=ScheduleType.CRON,
-            params=RecordingParams()
+            params=RecordingParams(),
         )
 
         trigger = scheduler._create_trigger(task)
@@ -754,7 +744,7 @@ class TestCronSchedule:
             name="Persist Cron Task",
             schedule_type=ScheduleType.CRON,
             params=RecordingParams(fps=60),
-            cron_expression="15 10 * * 1-5"
+            cron_expression="15 10 * * 1-5",
         )
 
         scheduler1.add_task(task)

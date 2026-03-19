@@ -23,6 +23,7 @@ logger = get_module_logger(__name__)
 @dataclass
 class EncodingSettings:
     """Настройки кодирования видео."""
+
     codec: str = "libx264"
     bitrate: str = "2M"
     preset: str = "medium"  # ultrafast, fast, medium, slow
@@ -35,7 +36,7 @@ class EncodingSettings:
 class Encoder:
     """
     Кодировщик на базе FFmpeg для объединения и кодирования видео/аудио.
-    
+
     Предоставляет методы для:
     - Объединения видеофайлов и аудиофайлов
     - Перекодирования видео с определёнными настройками
@@ -46,7 +47,7 @@ class Encoder:
     def __init__(self, settings: Optional[EncodingSettings] = None):
         """
         Инициализация кодировщика.
-        
+
         Args:
             settings: Настройки кодирования (используются по умолчанию если не указаны)
         """
@@ -60,7 +61,7 @@ class Encoder:
     def _check_ffmpeg(self) -> bool:
         """
         Проверка доступности FFmpeg.
-        
+
         Returns:
             True если FFmpeg доступен
         """
@@ -74,7 +75,7 @@ class Encoder:
 
     def _get_ffprobe_path(self) -> Optional[str]:
         """Получение пути к исполняемому файлу ffprobe."""
-        return shutil.which('ffprobe')
+        return shutil.which("ffprobe")
 
     @property
     def is_available(self) -> bool:
@@ -87,18 +88,18 @@ class Encoder:
         audio_path: Path,
         output_path: Path,
         keep_originals: bool = True,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Объединение видеофайла и аудиофайла в один выходной файл.
-        
+
         Args:
             video_path: Путь к видеофайлу (без аудио)
             audio_path: Путь к аудиофайлу (WAV)
             output_path: Путь для выходного файла
             keep_originals: Сохранять ли оригинальные файлы после объединения
             progress_callback: Опциональный обратный вызов для обновления прогресса
-            
+
         Returns:
             Кортеж (успех, сообщение_об_ошибке)
         """
@@ -121,19 +122,28 @@ class Encoder:
         try:
             # Формирование команды FFmpeg
             cmd = [
-                'ffmpeg',
-                '-y',  # Перезапись вывода
-                '-i', str(video_path),  # Видеовход
-                '-i', str(audio_path),  # Аудиовход
-                '-c:v', self.settings.codec,  # Видеокодек
-                '-preset', self.settings.preset,
-                '-b:v', self.settings.bitrate,
-                '-c:a', self.settings.audio_codec,  # Аудиокодек
-                '-b:a', self.settings.audio_bitrate,
-                '-map', '0:v:0',  # Использовать видео из первого входа
-                '-map', '1:a:0',  # Использовать аудио из второго входа
-                '-shortest',  # Завершить когда заканчивается короткий поток
-                str(output_path)
+                "ffmpeg",
+                "-y",  # Перезапись вывода
+                "-i",
+                str(video_path),  # Видеовход
+                "-i",
+                str(audio_path),  # Аудиовход
+                "-c:v",
+                self.settings.codec,  # Видеокодек
+                "-preset",
+                self.settings.preset,
+                "-b:v",
+                self.settings.bitrate,
+                "-c:a",
+                self.settings.audio_codec,  # Аудиокодек
+                "-b:a",
+                self.settings.audio_bitrate,
+                "-map",
+                "0:v:0",  # Использовать видео из первого входа
+                "-map",
+                "1:a:0",  # Использовать аудио из второго входа
+                "-shortest",  # Завершить когда заканчивается короткий поток
+                str(output_path),
             ]
 
             logger.info(f"Запуск FFmpeg: {' '.join(cmd)}")
@@ -143,7 +153,7 @@ class Encoder:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=3600  # Таймаут 1 час
+                timeout=3600,  # Таймаут 1 час
             )
 
             if result.returncode != 0:
@@ -162,7 +172,9 @@ class Encoder:
                     audio_path.unlink()
                     logger.info("Оригинальные файлы удалены")
                 except Exception as e:
-                    logger.warning(f"Не удалось удалить оригинальные файлы: {e}")
+                    logger.warning(
+                        f"Не удалось удалить оригинальные файлы: {e}"
+                    )
 
             logger.info(f"Успешно объединено в: {output_path}")
             return True, None
@@ -178,17 +190,17 @@ class Encoder:
         input_path: Path,
         output_path: Path,
         settings: Optional[EncodingSettings] = None,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Перекодирование видео с указанными настройками.
-        
+
         Args:
             input_path: Путь к входному видеофайлу
             output_path: Путь для выходного файла
             settings: Настройки кодирования (используются по умолчанию если не указаны)
             progress_callback: Опциональный обратный вызов для обновления прогресса
-            
+
         Returns:
             Кортеж (успех, сообщение_об_ошибке)
         """
@@ -206,24 +218,27 @@ class Encoder:
 
         try:
             cmd = [
-                'ffmpeg',
-                '-y',
-                '-i', str(input_path),
-                '-c:v', settings.codec,
-                '-preset', settings.preset,
-                '-b:v', settings.bitrate,
-                '-c:a', settings.audio_codec,
-                '-b:a', settings.audio_bitrate,
-                str(output_path)
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(input_path),
+                "-c:v",
+                settings.codec,
+                "-preset",
+                settings.preset,
+                "-b:v",
+                settings.bitrate,
+                "-c:a",
+                settings.audio_codec,
+                "-b:a",
+                settings.audio_bitrate,
+                str(output_path),
             ]
 
             logger.info(f"Кодирование видео: {' '.join(cmd)}")
 
             result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=3600
+                cmd, capture_output=True, text=True, timeout=3600
             )
 
             if result.returncode != 0:
@@ -237,10 +252,10 @@ class Encoder:
     def get_video_info(self, video_path: Path) -> Optional[Dict[str, Any]]:
         """
         Получение информации о видеофайле с использованием ffprobe.
-        
+
         Args:
             video_path: Путь к видеофайлу
-            
+
         Returns:
             Словарь с информацией о видео или None при ошибке
         """
@@ -249,20 +264,20 @@ class Encoder:
 
         try:
             cmd = [
-                'ffprobe',
-                '-v', 'quiet',
-                '-print_format', 'json',
-                '-show_format',
-                '-show_streams',
-                str(video_path)
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_format",
+                "-show_streams",
+                str(video_path),
             ]
 
             import json
+
             result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
+                cmd, capture_output=True, text=True, timeout=30
             )
 
             if result.returncode == 0:
@@ -276,32 +291,32 @@ class Encoder:
     def get_duration(self, video_path: Path) -> Optional[float]:
         """
         Получение длительности видео в секундах.
-        
+
         Args:
             video_path: Путь к видеофайлу
-            
+
         Returns:
             Длительность в секундах или None при ошибке
         """
         info = self.get_video_info(video_path)
-        if info and 'format' in info:
-            return float(info['format'].get('duration', 0))
+        if info and "format" in info:
+            return float(info["format"].get("duration", 0))
         return None
 
     def extract_audio(
         self,
         video_path: Path,
         audio_path: Path,
-        audio_codec: str = "pcm_s16le"
+        audio_codec: str = "pcm_s16le",
     ) -> Tuple[bool, Optional[str]]:
         """
         Извлечение аудио из видеофайла.
-        
+
         Args:
             video_path: Путь к видеофайлу
             audio_path: Путь для выходного аудиофайла
             audio_codec: Аудиокодек для извлечения
-            
+
         Returns:
             Кортеж (успех, сообщение_об_ошибке)
         """
@@ -310,19 +325,18 @@ class Encoder:
 
         try:
             cmd = [
-                'ffmpeg',
-                '-y',
-                '-i', str(video_path),
-                '-vn',  # Без видео
-                '-acodec', audio_codec,
-                str(audio_path)
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(video_path),
+                "-vn",  # Без видео
+                "-acodec",
+                audio_codec,
+                str(audio_path),
             ]
 
             result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600
+                cmd, capture_output=True, text=True, timeout=600
             )
 
             if result.returncode != 0:
@@ -334,19 +348,16 @@ class Encoder:
             return False, str(e)
 
     def create_thumbnail(
-        self,
-        video_path: Path,
-        output_path: Path,
-        timestamp: float = 0
+        self, video_path: Path, output_path: Path, timestamp: float = 0
     ) -> Tuple[bool, Optional[str]]:
         """
         Создание миниатюры из видео в указанной временной метке.
-        
+
         Args:
             video_path: Путь к видеофайлу
             output_path: Путь для изображения миниатюры
             timestamp: Временная метка в секундах
-            
+
         Returns:
             Кортеж (успех, сообщение_об_ошибке)
         """
@@ -355,19 +366,19 @@ class Encoder:
 
         try:
             cmd = [
-                'ffmpeg',
-                '-y',
-                '-ss', str(timestamp),
-                '-i', str(video_path),
-                '-vframes', '1',
-                str(output_path)
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(timestamp),
+                "-i",
+                str(video_path),
+                "-vframes",
+                "1",
+                str(output_path),
             ]
 
             result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
+                cmd, capture_output=True, text=True, timeout=30
             )
 
             if result.returncode != 0:
@@ -382,7 +393,7 @@ class Encoder:
 class RecordingEncoder:
     """
     Высокоуровневый кодировщик для обработки полного рабочего процесса записи.
-    
+
     Управляет процессом:
     1. Запись видео во временный файл
     2. Запись аудио во временный файл
@@ -390,13 +401,11 @@ class RecordingEncoder:
     """
 
     def __init__(
-        self,
-        output_path: Path,
-        settings: Optional[EncodingSettings] = None
+        self, output_path: Path, settings: Optional[EncodingSettings] = None
     ):
         """
         Инициализация кодировщика записи.
-        
+
         Args:
             output_path: Итоговый путь вывода
             settings: Настройки кодирования
@@ -413,7 +422,7 @@ class RecordingEncoder:
     def setup(self) -> Tuple[Path, Path]:
         """
         Настройка временных файлов для записи.
-        
+
         Returns:
             Кортеж (путь_временного_видео, путь_временного_аудио)
         """
@@ -430,15 +439,15 @@ class RecordingEncoder:
     def finalize(
         self,
         has_audio: bool = True,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         Завершение записи объединением видео и аудио.
-        
+
         Args:
             has_audio: Было ли записано аудио
             progress_callback: Опциональный обратный вызов прогресса
-            
+
         Returns:
             Кортеж (успех, сообщение_об_ошибке)
         """
@@ -453,14 +462,14 @@ class RecordingEncoder:
                     self._temp_audio,
                     self.output_path,
                     keep_originals=False,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
                 )
             else:
                 # Просто копирование видео в вывод
                 success, error = self.encoder.encode_video(
                     self._temp_video,
                     self.output_path,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
                 )
 
             if success:

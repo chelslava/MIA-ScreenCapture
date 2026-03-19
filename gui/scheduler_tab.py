@@ -54,7 +54,9 @@ class TaskDialog(QDialog):
         """
         super().__init__(parent)
         self.task = task
-        self.setWindowTitle("Редактирование задачи" if task else "Новая задача")
+        self.setWindowTitle(
+            "Редактирование задачи" if task else "Новая задача"
+        )
         self.setMinimumWidth(500)
 
         self._setup_ui()
@@ -75,13 +77,9 @@ class TaskDialog(QDialog):
 
         # Тип расписания
         self.type_combo = QComboBox()
-        self.type_combo.addItems([
-            "Разовая",
-            "Ежедневная",
-            "Еженедельная",
-            "Интервал",
-            "Cron"
-        ])
+        self.type_combo.addItems(
+            ["Разовая", "Ежедневная", "Еженедельная", "Интервал", "Cron"]
+        )
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         form_layout.addRow("Тип расписания:", self.type_combo)
 
@@ -139,7 +137,9 @@ class TaskDialog(QDialog):
         cron_layout.setContentsMargins(0, 0, 0, 0)
 
         self.cron_edit = QLineEdit()
-        self.cron_edit.setPlaceholderText("Например: 0 9 * * 1-5 (каждый будний день в 9:00)")
+        self.cron_edit.setPlaceholderText(
+            "Например: 0 9 * * 1-5 (каждый будний день в 9:00)"
+        )
         cron_layout.addWidget(self.cron_edit)
 
         schedule_layout.addRow("Cron:", self.cron_widget)
@@ -157,12 +157,16 @@ class TaskDialog(QDialog):
 
         # Заголовок окна
         self.window_edit = QLineEdit()
-        self.window_edit.setPlaceholderText("Заголовок окна (частичное совпадение)")
+        self.window_edit.setPlaceholderText(
+            "Заголовок окна (частичное совпадение)"
+        )
         params_layout.addRow("Окно:", self.window_edit)
 
         # Аудио
         self.audio_combo = QComboBox()
-        self.audio_combo.addItems(["Нет", "Микрофон", "Системное аудио", "Оба"])
+        self.audio_combo.addItems(
+            ["Нет", "Микрофон", "Системное аудио", "Оба"]
+        )
         params_layout.addRow("Аудио:", self.audio_combo)
 
         # Длительность
@@ -171,7 +175,9 @@ class TaskDialog(QDialog):
         duration_layout.setContentsMargins(0, 0, 0, 0)
 
         self.duration_spin = QSpinBox()
-        self.duration_spin.setRange(0, 1440)  # Максимум 24 часа в минутах или секундах
+        self.duration_spin.setRange(
+            0, 1440
+        )  # Максимум 24 часа в минутах или секундах
         self.duration_spin.setValue(0)
         self.duration_spin.setSpecialValueText("Без ограничения")
         duration_layout.addWidget(self.duration_spin)
@@ -193,7 +199,8 @@ class TaskDialog(QDialog):
 
         # Кнопки
         button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
         )
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
@@ -229,24 +236,25 @@ class TaskDialog(QDialog):
             ScheduleType.DAILY: 1,
             ScheduleType.WEEKLY: 2,
             ScheduleType.INTERVAL: 3,
-            ScheduleType.CRON: 4
+            ScheduleType.CRON: 4,
         }
         self.type_combo.setCurrentIndex(type_map.get(task.schedule_type, 0))
 
         # Загрузка данных специфичных для расписания
         if task.start_time:
-            self.date_edit.setDate(QDate(
-                task.start_time.year,
-                task.start_time.month,
-                task.start_time.day
-            ))
-            self.time_edit.setTime(QTime(
-                task.start_time.hour,
-                task.start_time.minute
-            ))
+            self.date_edit.setDate(
+                QDate(
+                    task.start_time.year,
+                    task.start_time.month,
+                    task.start_time.day,
+                )
+            )
+            self.time_edit.setTime(
+                QTime(task.start_time.hour, task.start_time.minute)
+            )
 
         if task.time_of_day:
-            parts = task.time_of_day.split(':')
+            parts = task.time_of_day.split(":")
             if len(parts) >= 2:
                 self.time_edit.setTime(QTime(int(parts[0]), int(parts[1])))
 
@@ -272,7 +280,9 @@ class TaskDialog(QDialog):
             self.window_edit.setText(task.params.window_title)
 
         audio_map = {"none": 0, "mic": 1, "system": 2, "both": 3}
-        self.audio_combo.setCurrentIndex(audio_map.get(task.params.audio_type, 0))
+        self.audio_combo.setCurrentIndex(
+            audio_map.get(task.params.audio_type, 0)
+        )
 
         if task.params.duration:
             # Если длительность кратна 60 секундам, показываем в минутах
@@ -292,7 +302,7 @@ class TaskDialog(QDialog):
             ScheduleType.DAILY,
             ScheduleType.WEEKLY,
             ScheduleType.INTERVAL,
-            ScheduleType.CRON
+            ScheduleType.CRON,
         ]
 
         area_types = ["full", "window", "rect"]
@@ -308,38 +318,47 @@ class TaskDialog(QDialog):
             duration_value = None
 
         data = {
-            'name': self.name_edit.text() or "Безымянная задача",
-            'schedule_type': schedule_types[self.type_combo.currentIndex()],
-            'area_type': area_types[self.area_combo.currentIndex()],
-            'audio_type': audio_types[self.audio_combo.currentIndex()],
-            'fps': self.fps_spin.value(),
-            'duration': duration_value
+            "name": self.name_edit.text() or "Безымянная задача",
+            "schedule_type": schedule_types[self.type_combo.currentIndex()],
+            "area_type": area_types[self.area_combo.currentIndex()],
+            "audio_type": audio_types[self.audio_combo.currentIndex()],
+            "fps": self.fps_spin.value(),
+            "duration": duration_value,
         }
 
         # Данные специфичные для расписания
         if self.type_combo.currentIndex() == 0:  # Разовая
-            data['start_time'] = datetime(
+            data["start_time"] = datetime(
                 self.date_edit.date().year(),
                 self.date_edit.date().month(),
                 self.date_edit.date().day(),
                 self.time_edit.time().hour(),
-                self.time_edit.time().minute()
+                self.time_edit.time().minute(),
             )
-        elif self.type_combo.currentIndex() in (1, 2):  # Ежедневная или Еженедельная
-            data['time_of_day'] = f"{self.time_edit.time().hour():02d}:{self.time_edit.time().minute():02d}"
+        elif self.type_combo.currentIndex() in (
+            1,
+            2,
+        ):  # Ежедневная или Еженедельная
+            data["time_of_day"] = (
+                f"{self.time_edit.time().hour():02d}:{self.time_edit.time().minute():02d}"
+            )
 
             if self.type_combo.currentIndex() == 2:  # Еженедельная
-                days = [i for i, check in enumerate(self.day_checks) if check.isChecked()]
-                data['days_of_week'] = days
+                days = [
+                    i
+                    for i, check in enumerate(self.day_checks)
+                    if check.isChecked()
+                ]
+                data["days_of_week"] = days
         elif self.type_combo.currentIndex() == 3:  # Интервал
-            data['interval_hours'] = self.interval_hours.value()
-            data['interval_minutes'] = self.interval_minutes.value()
+            data["interval_hours"] = self.interval_hours.value()
+            data["interval_minutes"] = self.interval_minutes.value()
         elif self.type_combo.currentIndex() == 4:  # Cron
-            data['cron_expression'] = self.cron_edit.text().strip()
+            data["cron_expression"] = self.cron_edit.text().strip()
 
         # Заголовок окна
         if self.area_combo.currentIndex() == 1:  # Окно
-            data['window_title'] = self.window_edit.text()
+            data["window_title"] = self.window_edit.text()
 
         return data
 
@@ -394,12 +413,25 @@ class SchedulerTab(QWidget):
         # Таблица задач
         self.table = QTableWidget()
         self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels([
-            "Имя", "Тип", "Расписание", "Следующий запуск", "Статус", "Запуски"
-        ])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setHorizontalHeaderLabels(
+            [
+                "Имя",
+                "Тип",
+                "Расписание",
+                "Следующий запуск",
+                "Статус",
+                "Запуски",
+            ]
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.doubleClicked.connect(self._edit_task)
 
@@ -434,7 +466,7 @@ class SchedulerTab(QWidget):
         dialog = TaskDialog(self, task)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             data = dialog.get_task_data()
-            data['id'] = task.id
+            data["id"] = task.id
             self.task_updated.emit(data)
 
     def _delete_task(self) -> None:
@@ -450,7 +482,7 @@ class SchedulerTab(QWidget):
             "Удаление задачи",
             f"Вы уверены, что хотите удалить '{task.name}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
@@ -489,16 +521,26 @@ class SchedulerTab(QWidget):
                 ScheduleType.DAILY: "Ежедневная",
                 ScheduleType.WEEKLY: "Еженедельная",
                 ScheduleType.INTERVAL: "Интервал",
-                ScheduleType.CRON: "Cron"
+                ScheduleType.CRON: "Cron",
             }
-            self.table.setItem(row, 1, QTableWidgetItem(type_names.get(task.schedule_type, "Неизвестно")))
+            self.table.setItem(
+                row,
+                1,
+                QTableWidgetItem(
+                    type_names.get(task.schedule_type, "Неизвестно")
+                ),
+            )
 
             # Расписание
             schedule_text = self._format_schedule(task)
             self.table.setItem(row, 2, QTableWidgetItem(schedule_text))
 
             # Следующий запуск
-            next_run = task.next_run.strftime("%Y-%m-%d %H:%M") if task.next_run else "-"
+            next_run = (
+                task.next_run.strftime("%Y-%m-%d %H:%M")
+                if task.next_run
+                else "-"
+            )
             self.table.setItem(row, 3, QTableWidgetItem(next_run))
 
             # Статус

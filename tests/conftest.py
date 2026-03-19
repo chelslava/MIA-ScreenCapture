@@ -8,8 +8,9 @@
 import json
 import sys
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Dict, Generator
+from typing import Any, Dict
 
 import pytest
 
@@ -21,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 def temp_dir() -> Generator[Path, None, None]:
     """
     Создание временной директории для тестов.
-    
+
     Yields:
         Путь к временной директории
     """
@@ -33,10 +34,10 @@ def temp_dir() -> Generator[Path, None, None]:
 def temp_config_file(temp_dir: Path) -> Path:
     """
     Создание временного файла конфигурации.
-    
+
     Args:
         temp_dir: Временная директория
-        
+
     Returns:
         Путь к файлу конфигурации
     """
@@ -46,7 +47,7 @@ def temp_config_file(temp_dir: Path) -> Path:
             "codec": "libx264",
             "bitrate": "2M",
             "format": "mp4",
-            "compression": True
+            "compression": True,
         },
         "audio": {
             "record_mic": True,
@@ -54,36 +55,32 @@ def temp_config_file(temp_dir: Path) -> Path:
             "mic_device": None,
             "system_device": None,
             "sample_rate": 44100,
-            "channels": 2
+            "channels": 2,
         },
         "capture": {
             "area_type": "full",
             "window_title": None,
-            "rect_coords": None
+            "rect_coords": None,
         },
         "output": {
             "default_path": str(temp_dir / "recordings"),
-            "filename_template": "recording_{datetime}"
+            "filename_template": "recording_{datetime}",
         },
-        "api": {
-            "enabled": True,
-            "host": "127.0.0.1",
-            "port": 5000
-        },
+        "api": {"enabled": True, "host": "127.0.0.1", "port": 5000},
         "scheduler": {
             "enabled": True,
             "persist_tasks": True,
-            "max_concurrent_tasks": 1
+            "max_concurrent_tasks": 1,
         },
         "minimize_to_tray": True,
         "show_notifications": True,
         "language": "en",
         "recent_recordings": [],
-        "max_recent_recordings": 20
+        "max_recent_recordings": 20,
     }
 
     config_path = temp_dir / "config.json"
-    with open(config_path, 'w', encoding='utf-8') as f:
+    with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config_data, f, indent=2)
 
     return config_path
@@ -93,7 +90,7 @@ def temp_config_file(temp_dir: Path) -> Path:
 def sample_recording_params() -> Dict[str, Any]:
     """
     Пример параметров записи для тестов.
-    
+
     Returns:
         Словарь с параметрами записи
     """
@@ -106,7 +103,7 @@ def sample_recording_params() -> Dict[str, Any]:
         "fps": 30,
         "codec": "libx264",
         "bitrate": "2M",
-        "duration": None
+        "duration": None,
     }
 
 
@@ -114,7 +111,7 @@ def sample_recording_params() -> Dict[str, Any]:
 def sample_schedule_task() -> Dict[str, Any]:
     """
     Пример задачи планировщика для тестов.
-    
+
     Returns:
         Словарь с данными задачи
     """
@@ -127,14 +124,14 @@ def sample_schedule_task() -> Dict[str, Any]:
             "audio_type": "none",
             "fps": 30,
             "codec": "libx264",
-            "bitrate": "2M"
+            "bitrate": "2M",
         },
         "enabled": True,
         "start_time": "2026-03-18T12:00:00",
         "time_of_day": None,
         "days_of_week": None,
         "interval_minutes": None,
-        "interval_hours": None
+        "interval_hours": None,
     }
 
 
@@ -142,10 +139,10 @@ def sample_schedule_task() -> Dict[str, Any]:
 def temp_video_file(temp_dir: Path) -> Path:
     """
     Создание временного видеофайла (пустой файл с расширением .mp4).
-    
+
     Args:
         temp_dir: Временная директория
-        
+
     Returns:
         Путь к видеофайлу
     """
@@ -158,10 +155,10 @@ def temp_video_file(temp_dir: Path) -> Path:
 def temp_audio_file(temp_dir: Path) -> Path:
     """
     Создание временного аудиофайла (пустой файл с расширением .wav).
-    
+
     Args:
         temp_dir: Временная директория
-        
+
     Returns:
         Путь к аудиофайлу
     """
@@ -174,14 +171,15 @@ def temp_audio_file(temp_dir: Path) -> Path:
 def mock_config_manager(temp_config_file: Path):
     """
     Создание mock ConfigManager для тестов.
-    
+
     Args:
         temp_config_file: Путь к временному файлу конфигурации
-        
+
     Returns:
         Экземпляр ConfigManager
     """
     from config import ConfigManager
+
     return ConfigManager(temp_config_file)
 
 
@@ -189,7 +187,7 @@ def mock_config_manager(temp_config_file: Path):
 def mock_logger():
     """
     Создание mock логгера для тестов.
-    
+
     Returns:
         Mock логгер
     """
@@ -201,7 +199,7 @@ def mock_logger():
     # Добавление handler для вывода в консоль
     handler = logging.StreamHandler()
     handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(levelname)s: %(message)s')
+    formatter = logging.Formatter("%(levelname)s: %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
@@ -212,10 +210,10 @@ def mock_logger():
 def tasks_file(temp_dir: Path) -> Path:
     """
     Создание временного файла задач планировщика.
-    
+
     Args:
         temp_dir: Временная директория
-        
+
     Returns:
         Путь к файлу задач
     """

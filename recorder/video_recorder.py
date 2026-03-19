@@ -29,6 +29,7 @@ logger = get_module_logger(__name__)
 
 class RecordingState(Enum):
     """Перечисление состояний записи."""
+
     IDLE = "idle"
     RECORDING = "recording"
     PAUSED = "paused"
@@ -38,6 +39,7 @@ class RecordingState(Enum):
 @dataclass
 class CaptureArea:
     """Определение области захвата экрана."""
+
     type: str  # "full", "window", "rect"
     x: int = 0
     y: int = 0
@@ -46,48 +48,46 @@ class CaptureArea:
     window_title: Optional[str] = None
 
     @classmethod
-    def full_screen(cls, monitor_index: int = 1) -> 'CaptureArea':
+    def full_screen(cls, monitor_index: int = 1) -> "CaptureArea":
         """Создание области захвата полного экрана."""
         width, height = get_screen_size()
         return cls(type="full", width=width, height=height)
 
     @classmethod
-    def from_rect(cls, x1: int, y1: int, x2: int, y2: int) -> 'CaptureArea':
+    def from_rect(cls, x1: int, y1: int, x2: int, y2: int) -> "CaptureArea":
         """Создание прямоугольной области захвата из координат."""
         left, top, right, bottom = validate_rect_coords(x1, y1, x2, y2)
         return cls(
-            type="rect",
-            x=left,
-            y=top,
-            width=right - left,
-            height=bottom - top
+            type="rect", x=left, y=top, width=right - left, height=bottom - top
         )
 
     @classmethod
-    def from_window(cls, window_title: str) -> 'CaptureArea':
+    def from_window(cls, window_title: str) -> "CaptureArea":
         """Создание области захвата из заголовка окна."""
         windows = get_available_windows()
         for win in windows:
-            if window_title.lower() in win['title'].lower():
+            if window_title.lower() in win["title"].lower():
                 return cls(
                     type="window",
-                    x=win['x'],
-                    y=win['y'],
-                    width=win['width'],
-                    height=win['height'],
-                    window_title=win['title']
+                    x=win["x"],
+                    y=win["y"],
+                    width=win["width"],
+                    height=win["height"],
+                    window_title=win["title"],
                 )
         # Возврат к полному экрану, если окно не найдено
-        logger.warning(f"Окно '{window_title}' не найдено, используется полный экран")
+        logger.warning(
+            f"Окно '{window_title}' не найдено, используется полный экран"
+        )
         return cls.full_screen()
 
     def to_mss_dict(self) -> Dict[str, int]:
         """Преобразование в формат словаря MSS для монитора."""
         return {
-            'left': self.x,
-            'top': self.y,
-            'width': self.width,
-            'height': self.height
+            "left": self.x,
+            "top": self.y,
+            "width": self.width,
+            "height": self.height,
         }
 
 
@@ -101,20 +101,20 @@ class VideoRecorder:
 
     # Соответствие кодеков OpenCV
     CODEC_MAP = {
-        'libx264': 'mp4v',  # Возврат к mp4v для OpenCV
-        'h264': 'mp4v',
-        'mp4v': 'mp4v',
-        'xvid': 'XVID',
-        'avc1': 'H264',
-        'vp09': 'VP09',
+        "libx264": "mp4v",  # Возврат к mp4v для OpenCV
+        "h264": "mp4v",
+        "mp4v": "mp4v",
+        "xvid": "XVID",
+        "avc1": "H264",
+        "vp09": "VP09",
     }
 
     def __init__(
         self,
         fps: int = 30,
-        codec: str = 'libx264',
-        bitrate: str = '2M',
-        output_format: str = 'mp4'
+        codec: str = "libx264",
+        bitrate: str = "2M",
+        output_format: str = "mp4",
     ):
         """
         Инициализация видеозаписи.
@@ -175,7 +175,7 @@ class VideoRecorder:
             return 0
         elapsed = time.time() - self._start_time - self._total_paused
         if self._state == RecordingState.PAUSED:
-            elapsed -= (time.time() - self._paused_time)
+            elapsed -= time.time() - self._paused_time
         return max(0, elapsed)
 
     @property
@@ -191,7 +191,7 @@ class VideoRecorder:
     def set_callbacks(
         self,
         on_frame_captured: Optional[Callable] = None,
-        on_error: Optional[Callable] = None
+        on_error: Optional[Callable] = None,
     ) -> None:
         """
         Установка функций обратного вызова.
@@ -207,7 +207,7 @@ class VideoRecorder:
         self,
         output_path: Path,
         capture_area: CaptureArea,
-        duration: Optional[float] = None
+        duration: Optional[float] = None,
     ) -> bool:
         """
         Начало записи.
@@ -222,7 +222,9 @@ class VideoRecorder:
         """
         with self._lock:
             if self._state != RecordingState.IDLE:
-                logger.warning(f"Невозможно начать: текущее состояние {self._state}")
+                logger.warning(
+                    f"Невозможно начать: текущее состояние {self._state}"
+                )
                 return False
 
             try:
@@ -237,14 +239,14 @@ class VideoRecorder:
                 self._mss_instance = None
 
                 # Инициализация видеозаписи
-                fourcc_code = self.CODEC_MAP.get(self.codec.lower(), 'mp4v')
+                fourcc_code = self.CODEC_MAP.get(self.codec.lower(), "mp4v")
                 fourcc = cv2.VideoWriter_fourcc(*fourcc_code)
 
                 self._video_writer = cv2.VideoWriter(
                     str(self._output_path),
                     fourcc,
                     self.fps,
-                    (capture_area.width, capture_area.height)
+                    (capture_area.width, capture_area.height),
                 )
 
                 if not self._video_writer.isOpened():
@@ -259,8 +261,7 @@ class VideoRecorder:
                 # Запуск потока захвата
                 self._state = RecordingState.RECORDING
                 self._capture_thread = threading.Thread(
-                    target=self._capture_loop,
-                    daemon=True
+                    target=self._capture_loop, daemon=True
                 )
                 self._capture_thread.start()
 
@@ -325,22 +326,27 @@ class VideoRecorder:
 
         self._cleanup()
 
-        logger.info(f"Запись остановлена: {self._output_path}, кадров: {self._frame_count}")
+        logger.info(
+            f"Запись остановлена: {self._output_path}, кадров: {self._frame_count}"
+        )
         return True
 
     def _capture_loop(self) -> None:
         """Основной цикл захвата в отдельном потоке."""
         import mss
-        
+
         monitor = self._capture_area.to_mss_dict()
         frame_interval = 1.0 / self.fps
         last_frame_time = 0
-        
+
         # Создаём MSS внутри потока захвата, т.к. он использует thread-local GDI объекты
         self._mss_instance = mss.mss()
 
         try:
-            while self._state not in (RecordingState.IDLE, RecordingState.STOPPING):
+            while self._state not in (
+                RecordingState.IDLE,
+                RecordingState.STOPPING,
+            ):
                 if self._state == RecordingState.PAUSED:
                     time.sleep(0.1)
                     continue
@@ -411,12 +417,13 @@ class VideoRecorder:
     def get_preview_frame(self) -> Optional[np.ndarray]:
         """
         Получение кадра предпросмотра без записи.
-        
+
         Returns:
             Кадр предпросмотра или None при ошибке захвата
         """
         try:
             import mss
+
             with mss.mss() as sct:
                 if self._capture_area:
                     monitor = self._capture_area.to_mss_dict()
@@ -431,4 +438,3 @@ class VideoRecorder:
         except Exception as e:
             logger.error(f"Ошибка получения кадра предпросмотра: {e}")
             return None
-

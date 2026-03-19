@@ -15,12 +15,12 @@ from .utils import check_ffmpeg, get_audio_devices, get_available_windows
 from .video_recorder import VideoRecorder
 
 __all__ = [
-    'VideoRecorder',
-    'AudioRecorder',
-    'Encoder',
-    'get_available_windows',
-    'get_audio_devices',
-    'check_ffmpeg'
+    "VideoRecorder",
+    "AudioRecorder",
+    "Encoder",
+    "get_available_windows",
+    "get_audio_devices",
+    "check_ffmpeg",
 ]
 
-__version__ = '1.0.0'
+__version__ = "1.0.0"

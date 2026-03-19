@@ -95,11 +95,11 @@ class RecordingManager:
         codec: str = "libx264",
         bitrate: str = "2M",
         duration: Optional[int] = None,
-        mic_device: Optional[int] = None
+        mic_device: Optional[int] = None,
     ) -> bool:
         """
         Запуск записи.
-        
+
         Args:
             output_path: Путь к выходному файлу
             capture_area: Область захвата экрана
@@ -109,7 +109,7 @@ class RecordingManager:
             bitrate: Битрейт видео
             duration: Длительность записи в секундах
             mic_device: Индекс устройства микрофона
-            
+
         Returns:
             True если запись успешно запущена
         """
@@ -117,25 +117,18 @@ class RecordingManager:
             self._current_output = Path(output_path)
 
             # Настройка кодировщика
-            settings = EncodingSettings(
-                codec=codec,
-                bitrate=bitrate
-            )
+            settings = EncodingSettings(codec=codec, bitrate=bitrate)
             self.encoder = RecordingEncoder(self._current_output, settings)
             self._temp_video, self._temp_audio = self.encoder.setup()
 
             # Инициализация видеозаписи
             self.video_recorder = VideoRecorder(
-                fps=fps,
-                codec=codec,
-                bitrate=bitrate
+                fps=fps, codec=codec, bitrate=bitrate
             )
 
             # Запуск видеозаписи
             if not self.video_recorder.start(
-                self._temp_video,
-                capture_area,
-                duration
+                self._temp_video, capture_area, duration
             ):
                 self.encoder.cancel()
                 return False
@@ -146,14 +139,13 @@ class RecordingManager:
                 self.audio_recorder.start(
                     self._temp_audio,
                     device_index=mic_device,
-                    duration=duration
+                    duration=duration,
                 )
             elif audio_type == "system":
                 try:
                     self.audio_recorder = SystemAudioRecorder()
                     self.audio_recorder.start(
-                        self._temp_audio,
-                        duration=duration
+                        self._temp_audio, duration=duration
                     )
                 except Exception as e:
                     logger.warning(f"Системное аудио недоступно: {e}")
@@ -197,7 +189,7 @@ class RecordingManager:
     def stop(self) -> Optional[Path]:
         """
         Остановка записи и финализация.
-        
+
         Returns:
             Путь к выходному файлу или None при ошибке
         """
@@ -253,7 +245,7 @@ class RecordingManager:
 class MainWindow(QMainWindow):
     """
     Главное окно приложения.
-    
+
     Содержит:
     - Элементы управления записью
     - Выбор области захвата
@@ -274,7 +266,7 @@ class MainWindow(QMainWindow):
     def __init__(self, headless: bool = False):
         """
         Инициализация главного окна.
-        
+
         Args:
             headless: Если True, окно будет скрыто
         """
@@ -309,11 +301,12 @@ class MainWindow(QMainWindow):
 
         # Центрирование на экране
         from PyQt6.QtGui import QGuiApplication
+
         screen = QGuiApplication.primaryScreen().geometry()
         size = self.geometry()
         self.move(
             (screen.width() - size.width()) // 2,
-            (screen.height() - size.height()) // 2
+            (screen.height() - size.height()) // 2,
         )
 
     def _setup_ui(self) -> None:
@@ -333,6 +326,7 @@ class MainWindow(QMainWindow):
 
         # Вкладка планировщика
         from gui.scheduler_tab import SchedulerTab
+
         self.scheduler_tab = SchedulerTab()
         self.tabs.addTab(self.scheduler_tab, "Планировщик")
 
@@ -591,15 +585,15 @@ class MainWindow(QMainWindow):
         windows = get_available_windows()
 
         for win in windows:
-            self.window_combo.addItem(win['title'])
+            self.window_combo.addItem(win["title"])
 
     def _refresh_audio_devices(self) -> None:
         """Обновление списка аудиоустройств."""
         self.mic_combo.clear()
         devices = get_audio_devices()
 
-        for dev in devices.get('input', []):
-            self.mic_combo.addItem(dev['name'], dev['id'])
+        for dev in devices.get("input", []):
+            self.mic_combo.addItem(dev["name"], dev["id"])
 
     def _on_area_changed(self, button: QRadioButton) -> None:
         """Обработка изменения типа области захвата."""
@@ -622,7 +616,7 @@ class MainWindow(QMainWindow):
             "Выбор области",
             "Введите координаты (x1, y1, x2, y2):",
             QLineEdit.EchoMode.Normal,
-            f"0, 0, {screen_width}, {screen_height}"
+            f"0, 0, {screen_width}, {screen_height}",
         )
 
         if ok:
@@ -631,13 +625,19 @@ class MainWindow(QMainWindow):
 
     def _browse_output(self) -> None:
         """Выбор места сохранения выходного файла."""
-        default_name = f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        default_name = (
+            f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        )
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Сохранить запись",
-            str(Path(self.output_edit.text()) / default_name if self.output_edit.text() else default_name),
-            "MP4 файлы (*.mp4);;AVI файлы (*.avi);;Все файлы (*)"
+            str(
+                Path(self.output_edit.text()) / default_name
+                if self.output_edit.text()
+                else default_name
+            ),
+            "MP4 файлы (*.mp4);;AVI файлы (*.avi);;Все файлы (*)",
         )
 
         if file_path:
@@ -653,7 +653,7 @@ class MainWindow(QMainWindow):
         elif self.rect_radio.isChecked():
             coords_text = self.rect_edit.text()
             try:
-                coords = [int(x.strip()) for x in coords_text.split(',')]
+                coords = [int(x.strip()) for x in coords_text.split(",")]
                 if len(coords) == 4:
                     return CaptureArea.from_rect(*coords)
             except ValueError:
@@ -678,11 +678,15 @@ class MainWindow(QMainWindow):
 
         # Генерация пути по умолчанию
         config = self._config.settings
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         format_ext = self.format_combo.currentText()
         filename = f"recording_{timestamp}.{format_ext}"
 
-        return config.output.default_path / filename if config.output.default_path else Path(filename)
+        return (
+            config.output.default_path / filename
+            if config.output.default_path
+            else Path(filename)
+        )
 
     def _start_recording(self) -> None:
         """Запуск записи."""
@@ -706,7 +710,7 @@ class MainWindow(QMainWindow):
             fps=self.fps_spin.value(),
             codec=self.codec_combo.currentText(),
             bitrate=self.bitrate_combo.currentText(),
-            mic_device=mic_device
+            mic_device=mic_device,
         )
 
         if success:
@@ -831,12 +835,12 @@ class MainWindow(QMainWindow):
         import subprocess
 
         system = platform.system()
-        if system == 'Windows':
+        if system == "Windows":
             os.startfile(path)
-        elif system == 'Darwin':
-            subprocess.run(['open', path])
+        elif system == "Darwin":
+            subprocess.run(["open", path])
         else:
-            subprocess.run(['xdg-open', path])
+            subprocess.run(["xdg-open", path])
 
     def _open_folder(self, path: str) -> None:
         """Открытие папки в файловом менеджере."""
@@ -844,12 +848,12 @@ class MainWindow(QMainWindow):
         import subprocess
 
         system = platform.system()
-        if system == 'Windows':
-            subprocess.run(['explorer', path])
-        elif system == 'Darwin':
-            subprocess.run(['open', path])
+        if system == "Windows":
+            subprocess.run(["explorer", path])
+        elif system == "Darwin":
+            subprocess.run(["open", path])
         else:
-            subprocess.run(['xdg-open', path])
+            subprocess.run(["xdg-open", path])
 
     def _show_error(self, message: str) -> None:
         """Показ сообщения об ошибке."""
@@ -865,7 +869,7 @@ class MainWindow(QMainWindow):
                 "FFmpeg не найден",
                 "FFmpeg не установлен или не найден в PATH.\n\n"
                 "Пожалуйста, установите FFmpeg для кодирования видео.\n"
-                "Скачать: https://ffmpeg.org/download.html"
+                "Скачать: https://ffmpeg.org/download.html",
             )
 
     def _load_settings(self) -> None:
@@ -884,10 +888,10 @@ class MainWindow(QMainWindow):
 
         # Загрузка последних записей
         for rec in settings.recent_recordings:
-            path = Path(rec['path'])
+            path = Path(rec["path"])
             if path.exists():
-                size = rec.get('size', path.stat().st_size)
-                date = rec.get('date', '')
+                size = rec.get("size", path.stat().st_size)
+                date = rec.get("date", "")
                 item_text = f"{path.name} - {format_filesize(size)} - {date}"
                 item = QListWidgetItem(item_text)
                 item.setData(Qt.ItemDataRole.UserRole, str(path))
@@ -917,8 +921,10 @@ class MainWindow(QMainWindow):
                 self,
                 "Запись в процессе",
                 "Запись в процессе. Остановить и сохранить?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
             )
 
             if reply == QMessageBox.StandardButton.Yes:

@@ -29,6 +29,7 @@ logger = get_module_logger(__name__)
 
 class ScheduleType(Enum):
     """Перечисление типов расписания."""
+
     ONCE = "once"  # Разовая задача
     DAILY = "daily"  # Каждый день в определённое время
     WEEKLY = "weekly"  # Определённые дни недели
@@ -39,6 +40,7 @@ class ScheduleType(Enum):
 @dataclass
 class RecordingParams:
     """Параметры записи для запланированных задач."""
+
     area_type: str = "full"  # "full", "window", "rect"
     window_title: Optional[str] = None
     rect_coords: Optional[List[int]] = None  # [x1, y1, x2, y2]
@@ -54,14 +56,17 @@ class RecordingParams:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'RecordingParams':
+    def from_dict(cls, data: Dict[str, Any]) -> "RecordingParams":
         """Создание из словаря."""
-        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+        return cls(
+            **{k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+        )
 
 
 @dataclass
 class ScheduleTask:
     """Определение запланированной задачи."""
+
     id: str
     name: str
     schedule_type: ScheduleType
@@ -71,10 +76,14 @@ class ScheduleTask:
     # Поля специфичные для расписания
     start_time: Optional[datetime] = None  # Для разовых задач
     time_of_day: Optional[str] = None  # Для daily/weekly: "HH:MM"
-    days_of_week: Optional[List[int]] = None  # Для weekly: 0=Понедельник, 6=Воскресенье
+    days_of_week: Optional[List[int]] = (
+        None  # Для weekly: 0=Понедельник, 6=Воскресенье
+    )
     interval_minutes: Optional[int] = None  # Для интервальных задач
     interval_hours: Optional[int] = None
-    cron_expression: Optional[str] = None  # Для cron: стандартное cron-выражение
+    cron_expression: Optional[str] = (
+        None  # Для cron: стандартное cron-выражение
+    )
 
     # Отслеживание выполнения
     last_run: Optional[datetime] = None
@@ -84,60 +93,60 @@ class ScheduleTask:
     def to_dict(self) -> Dict[str, Any]:
         """Преобразование в словарь для сериализации."""
         data = {
-            'id': self.id,
-            'name': self.name,
-            'schedule_type': self.schedule_type.value,
-            'params': self.params.to_dict(),
-            'enabled': self.enabled,
-            'time_of_day': self.time_of_day,
-            'days_of_week': self.days_of_week,
-            'interval_minutes': self.interval_minutes,
-            'interval_hours': self.interval_hours,
-            'cron_expression': self.cron_expression,
-            'run_count': self.run_count
+            "id": self.id,
+            "name": self.name,
+            "schedule_type": self.schedule_type.value,
+            "params": self.params.to_dict(),
+            "enabled": self.enabled,
+            "time_of_day": self.time_of_day,
+            "days_of_week": self.days_of_week,
+            "interval_minutes": self.interval_minutes,
+            "interval_hours": self.interval_hours,
+            "cron_expression": self.cron_expression,
+            "run_count": self.run_count,
         }
 
         if self.start_time:
-            data['start_time'] = self.start_time.isoformat()
+            data["start_time"] = self.start_time.isoformat()
         if self.last_run:
-            data['last_run'] = self.last_run.isoformat()
+            data["last_run"] = self.last_run.isoformat()
         if self.next_run:
-            data['next_run'] = self.next_run.isoformat()
+            data["next_run"] = self.next_run.isoformat()
 
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ScheduleTask':
+    def from_dict(cls, data: Dict[str, Any]) -> "ScheduleTask":
         """Создание из словаря."""
-        params = RecordingParams.from_dict(data.get('params', {}))
+        params = RecordingParams.from_dict(data.get("params", {}))
 
         start_time = None
-        if data.get('start_time'):
-            start_time = datetime.fromisoformat(data['start_time'])
+        if data.get("start_time"):
+            start_time = datetime.fromisoformat(data["start_time"])
 
         last_run = None
-        if data.get('last_run'):
-            last_run = datetime.fromisoformat(data['last_run'])
+        if data.get("last_run"):
+            last_run = datetime.fromisoformat(data["last_run"])
 
         next_run = None
-        if data.get('next_run'):
-            next_run = datetime.fromisoformat(data['next_run'])
+        if data.get("next_run"):
+            next_run = datetime.fromisoformat(data["next_run"])
 
         return cls(
-            id=data['id'],
-            name=data['name'],
-            schedule_type=ScheduleType(data['schedule_type']),
+            id=data["id"],
+            name=data["name"],
+            schedule_type=ScheduleType(data["schedule_type"]),
             params=params,
-            enabled=data.get('enabled', True),
+            enabled=data.get("enabled", True),
             start_time=start_time,
-            time_of_day=data.get('time_of_day'),
-            days_of_week=data.get('days_of_week'),
-            interval_minutes=data.get('interval_minutes'),
-            interval_hours=data.get('interval_hours'),
-            cron_expression=data.get('cron_expression'),
+            time_of_day=data.get("time_of_day"),
+            days_of_week=data.get("days_of_week"),
+            interval_minutes=data.get("interval_minutes"),
+            interval_hours=data.get("interval_hours"),
+            cron_expression=data.get("cron_expression"),
             last_run=last_run,
             next_run=next_run,
-            run_count=data.get('run_count', 0)
+            run_count=data.get("run_count", 0),
         )
 
 
@@ -165,13 +174,9 @@ class TaskScheduler:
 
         # Инициализация APScheduler
         self._scheduler = BackgroundScheduler(
-            jobstores={
-                'default': MemoryJobStore()
-            },
-            executors={
-                'default': ThreadPoolExecutor(max_workers=3)
-            },
-            timezone=tzlocal.get_localzone()
+            jobstores={"default": MemoryJobStore()},
+            executors={"default": ThreadPoolExecutor(max_workers=3)},
+            timezone=tzlocal.get_localzone(),
         )
 
         # Загрузка сохранённых задач
@@ -232,10 +237,10 @@ class TaskScheduler:
     def update_task(self, task: ScheduleTask) -> bool:
         """
         Обновление существующей задачи.
-        
+
         Args:
             task: Обновлённые данные задачи
-            
+
         Returns:
             True если задача успешно обновлена
         """
@@ -261,10 +266,10 @@ class TaskScheduler:
     def remove_task(self, task_id: str) -> bool:
         """
         Удаление запланированной задачи.
-        
+
         Args:
             task_id: ID задачи для удаления
-            
+
         Returns:
             True если задача успешно удалена
         """
@@ -282,11 +287,11 @@ class TaskScheduler:
     def enable_task(self, task_id: str, enabled: bool = True) -> bool:
         """
         Включение или отключение задачи.
-        
+
         Args:
             task_id: ID задачи
             enabled: Состояние включения
-            
+
         Returns:
             True если успешно
         """
@@ -308,7 +313,7 @@ class TaskScheduler:
     def get_task(self, task_id: str) -> Optional[ScheduleTask]:
         """
         Получение задачи по ID.
-        
+
         Args:
             task_id: ID задачи
 
@@ -345,7 +350,7 @@ class TaskScheduler:
                     trigger=trigger,
                     id=task.id,
                     args=[task.id],
-                    replace_existing=True
+                    replace_existing=True,
                 )
 
                 # Обновление next_run
@@ -353,7 +358,9 @@ class TaskScheduler:
                 if job:
                     task.next_run = job.next_run_time
 
-                logger.debug(f"Задача запланирована: {task.id}, следующий запуск: {task.next_run}")
+                logger.debug(
+                    f"Задача запланирована: {task.id}, следующий запуск: {task.next_run}"
+                )
 
         except Exception as e:
             logger.error(f"Ошибка планирования задачи {task.id}: {e}")
@@ -373,10 +380,10 @@ class TaskScheduler:
     def _create_trigger(self, task: ScheduleTask):
         """
         Создание триггера APScheduler для задачи.
-        
+
         Args:
             task: Задача для создания триггера
-            
+
         Returns:
             Триггер APScheduler
         """
@@ -386,16 +393,16 @@ class TaskScheduler:
 
         elif task.schedule_type == ScheduleType.DAILY:
             if task.time_of_day:
-                hour, minute = map(int, task.time_of_day.split(':'))
+                hour, minute = map(int, task.time_of_day.split(":"))
                 return CronTrigger(hour=hour, minute=minute)
 
         elif task.schedule_type == ScheduleType.WEEKLY:
             if task.time_of_day and task.days_of_week:
-                hour, minute = map(int, task.time_of_day.split(':'))
+                hour, minute = map(int, task.time_of_day.split(":"))
                 return CronTrigger(
                     hour=hour,
                     minute=minute,
-                    day_of_week=','.join(str(d) for d in task.days_of_week)
+                    day_of_week=",".join(str(d) for d in task.days_of_week),
                 )
 
         elif task.schedule_type == ScheduleType.INTERVAL:
@@ -403,7 +410,7 @@ class TaskScheduler:
                 weeks=0,
                 days=0,
                 hours=task.interval_hours or 0,
-                minutes=task.interval_minutes or 0
+                minutes=task.interval_minutes or 0,
             )
 
         elif task.schedule_type == ScheduleType.CRON:
@@ -415,7 +422,7 @@ class TaskScheduler:
     def _execute_task(self, task_id: str) -> None:
         """
         Выполнение запланированной задачи.
-        
+
         Args:
             task_id: ID задачи для выполнения
         """
@@ -426,7 +433,9 @@ class TaskScheduler:
                 logger.warning(f"Задача {task_id} не найдена для выполнения")
                 return
 
-            logger.info(f"Выполнение запланированной задачи: {task_id} ({task.name})")
+            logger.info(
+                f"Выполнение запланированной задачи: {task_id} ({task.name})"
+            )
 
             # Обновление отслеживания выполнения
             task.last_run = datetime.now()
@@ -452,17 +461,19 @@ class TaskScheduler:
             return
 
         try:
-            with open(self.persist_path, encoding='utf-8') as f:
+            with open(self.persist_path, encoding="utf-8") as f:
                 data = json.load(f)
 
-            for task_data in data.get('tasks', []):
+            for task_data in data.get("tasks", []):
                 try:
                     task = ScheduleTask.from_dict(task_data)
                     self._tasks[task.id] = task
                 except Exception as e:
                     logger.error(f"Ошибка загрузки задачи: {e}")
 
-            logger.info(f"Загружено {len(self._tasks)} задач из {self.persist_path}")
+            logger.info(
+                f"Загружено {len(self._tasks)} задач из {self.persist_path}"
+            )
 
         except Exception as e:
             logger.error(f"Ошибка загрузки задач: {e}")
@@ -476,11 +487,11 @@ class TaskScheduler:
             self.persist_path.parent.mkdir(parents=True, exist_ok=True)
 
             data = {
-                'tasks': [task.to_dict() for task in self._tasks.values()],
-                'last_updated': datetime.now().isoformat()
+                "tasks": [task.to_dict() for task in self._tasks.values()],
+                "last_updated": datetime.now().isoformat(),
             }
 
-            with open(self.persist_path, 'w', encoding='utf-8') as f:
+            with open(self.persist_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
         except Exception as e:
@@ -489,24 +500,24 @@ class TaskScheduler:
     def create_task_from_dict(self, data: Dict[str, Any]) -> ScheduleTask:
         """
         Создание задачи из данных API запроса.
-        
+
         Args:
             data: Словарь конфигурации задачи
-            
+
         Returns:
             Созданная ScheduleTask
         """
         import uuid
 
-        task_id = data.get('id', str(uuid.uuid4())[:8])
-        name = data.get('name', f"Задача {task_id}")
+        task_id = data.get("id", str(uuid.uuid4())[:8])
+        name = data.get("name", f"Задача {task_id}")
 
         # Разбор типа расписания
-        trigger_type = data.get('trigger', 'once')
+        trigger_type = data.get("trigger", "once")
         schedule_type = ScheduleType(trigger_type)
 
         # Разбор параметров записи
-        params_data = data.get('params', {})
+        params_data = data.get("params", {})
         params = RecordingParams.from_dict(params_data)
 
         # Создание задачи
@@ -515,25 +526,25 @@ class TaskScheduler:
             name=name,
             schedule_type=schedule_type,
             params=params,
-            enabled=data.get('enabled', True)
+            enabled=data.get("enabled", True),
         )
 
         # Установка полей специфичных для расписания
         if schedule_type == ScheduleType.ONCE:
-            if data.get('datetime'):
-                task.start_time = datetime.fromisoformat(data['datetime'])
+            if data.get("datetime"):
+                task.start_time = datetime.fromisoformat(data["datetime"])
 
         elif schedule_type in (ScheduleType.DAILY, ScheduleType.WEEKLY):
-            task.time_of_day = data.get('time', '12:00')
+            task.time_of_day = data.get("time", "12:00")
             if schedule_type == ScheduleType.WEEKLY:
-                days = data.get('day_of_week', '0,1,2,3,4')
-                task.days_of_week = [int(d.strip()) for d in days.split(',')]
+                days = data.get("day_of_week", "0,1,2,3,4")
+                task.days_of_week = [int(d.strip()) for d in days.split(",")]
 
         elif schedule_type == ScheduleType.INTERVAL:
-            task.interval_hours = data.get('hours', 0)
-            task.interval_minutes = data.get('minutes', 0)
+            task.interval_hours = data.get("hours", 0)
+            task.interval_minutes = data.get("minutes", 0)
 
         elif schedule_type == ScheduleType.CRON:
-            task.cron_expression = data.get('cron_expression')
+            task.cron_expression = data.get("cron_expression")
 
         return task
