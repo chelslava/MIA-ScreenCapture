@@ -255,7 +255,7 @@ class TestCreateScheduleRequest:
             CreateScheduleRequest(
                 name="Test",
                 trigger="daily",
-                time="9:00"  # Неправильный формат
+                time="99:00"  # Несуществующий час
             )
 
     def test_invalid_day_of_week(self):

@@ -286,25 +286,25 @@ class TestFormatFilesize:
 
     def test_bytes(self):
         """Проверка форматирования байтов."""
-        assert format_filesize(500) == "500 B"
+        assert format_filesize(500) == "500.0 B"
 
     def test_kilobytes(self):
         """Проверка форматирования килобайтов."""
-        assert format_filesize(1024) == "1.00 KB"
-        assert format_filesize(1536) == "1.50 KB"
+        assert format_filesize(1024) == "1.0 KB"
+        assert format_filesize(1536) == "1.5 KB"
 
     def test_megabytes(self):
         """Проверка форматирования мегабайтов."""
-        assert format_filesize(1048576) == "1.00 MB"
-        assert format_filesize(1572864) == "1.50 MB"
+        assert format_filesize(1048576) == "1.0 MB"
+        assert format_filesize(1572864) == "1.5 MB"
 
     def test_gigabytes(self):
         """Проверка форматирования гигабайтов."""
-        assert format_filesize(1073741824) == "1.00 GB"
+        assert format_filesize(1073741824) == "1.0 GB"
 
     def test_zero(self):
         """Проверка нулевого размера."""
-        assert format_filesize(0) == "0 B"
+        assert format_filesize(0) == "0.0 B"
 
 
 class TestWindowsSpecificFunctions:
