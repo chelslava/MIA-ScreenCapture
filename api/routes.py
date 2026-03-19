@@ -192,6 +192,11 @@ def register_routes(app, server) -> None:
     """
     from flask import g
 
+    from api.swagger import register_swagger_routes
+
+    # Регистрация Swagger документации
+    register_swagger_routes(app)
+
     @app.before_request
     def set_server_context() -> None:
         """Установка server в контекст запроса для декораторов."""
