@@ -958,9 +958,9 @@ def get_swagger_spec() -> dict[str, Any]:
     Возвращает OpenAPI спецификацию.
 
     Returns:
-        Словарь с OpenAPI спецификацией
+        Копия словаря с OpenAPI спецификацией
     """
-    return SWAGGER_SPEC
+    return SWAGGER_SPEC.copy()
 
 
 def register_swagger_routes(app) -> None:

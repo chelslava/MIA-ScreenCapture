@@ -27,48 +27,36 @@ classifiers = [
 dependencies = [
     # GUI Framework
     "PyQt6>=6.4.0",
-    
     # Screen Capture
     "mss>=9.0.1",
     "Pillow>=10.0.0",
-    
     # Video Processing
     "opencv-python>=4.8.0",
     "numpy>=1.24.0",
-    
     # Audio Recording
     "pyaudio>=0.2.13",
     "sounddevice>=0.4.6",
     "soundfile>=0.12.1",
-    
     # FFmpeg Integration
     "ffmpeg-python>=0.2.0",
-    
     # REST API
     "flask>=2.3.0",
     "flask-cors>=4.0.0",
     "waitress>=2.1.2",
-    
     # Task Scheduling
     "apscheduler>=3.10.0",
-    
     # System Utilities
     "psutil>=5.9.0",
     "pywin32>=305; sys_platform == 'win32'",
-    
     # Configuration
     "python-dotenv>=1.0.0",
-    
     # Window Management (platform-specific)
     "pygetwindow>=0.0.9; sys_platform == 'win32' or sys_platform == 'darwin'",
     "python-xlib>=0.33; sys_platform == 'linux'",
-    
     # Audio System Control (Windows)
     "pycaw>=20230407; sys_platform == 'win32'",
-    
     # Type hints support
     "typing-extensions>=4.7.0",
-    
     # Data Validation
     "pydantic>=2.0.0",
 ]
