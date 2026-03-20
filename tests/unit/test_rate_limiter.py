@@ -121,21 +121,20 @@ class TestInMemoryRateLimiter:
         config = RateLimitConfig(burst_limit=3, requests_per_minute=1000)
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context():
-            with patch.object(
-                limiter, "_get_client_ip", return_value="10.0.0.1"
-            ):
-                # Первые 3 запроса должны быть разрешены
-                for _ in range(3):
-                    allowed, info = limiter.check_rate_limit()
-                    assert allowed is True
-
-                # 4-й запрос должен быть отклонён
+        with app.test_request_context(), patch.object(
+            limiter, "_get_client_ip", return_value="10.0.0.1"
+        ):
+            # Первые 3 запроса должны быть разрешены
+            for _ in range(3):
                 allowed, info = limiter.check_rate_limit()
-                assert allowed is False
-                assert info is not None
-                assert info["limit_type"] == "burst"
-                assert info["limit"] == 3
+                assert allowed is True
+
+            # 4-й запрос должен быть отклонён
+            allowed, info = limiter.check_rate_limit()
+            assert allowed is False
+            assert info is not None
+            assert info["limit_type"] == "burst"
+            assert info["limit"] == 3
 
     def test_minute_limit_enforcement(self, app):
         """Тест минутного ограничения."""
@@ -144,21 +143,20 @@ class TestInMemoryRateLimiter:
         )
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context():
-            with patch.object(
-                limiter, "_get_client_ip", return_value="10.0.0.2"
-            ):
-                # Первые 5 запросов должны быть разрешены
-                for _ in range(5):
-                    allowed, info = limiter.check_rate_limit()
-                    assert allowed is True
-
-                # 6-й запрос должен быть отклонён
+        with app.test_request_context(), patch.object(
+            limiter, "_get_client_ip", return_value="10.0.0.2"
+        ):
+            # Первые 5 запросов должны быть разрешены
+            for _ in range(5):
                 allowed, info = limiter.check_rate_limit()
-                assert allowed is False
-                assert info is not None
-                assert info["limit_type"] == "minute"
-                assert info["limit"] == 5
+                assert allowed is True
+
+            # 6-й запрос должен быть отклонён
+            allowed, info = limiter.check_rate_limit()
+            assert allowed is False
+            assert info is not None
+            assert info["limit_type"] == "minute"
+            assert info["limit"] == 5
 
     def test_hour_limit_enforcement(self, app):
         """Тест часового ограничения."""
@@ -169,61 +167,58 @@ class TestInMemoryRateLimiter:
         )
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context():
-            with patch.object(
-                limiter, "_get_client_ip", return_value="10.0.0.3"
-            ):
-                # Первые 3 запроса должны быть разрешены
-                for _ in range(3):
-                    allowed, info = limiter.check_rate_limit()
-                    assert allowed is True
-
-                # 4-й запрос должен быть отклонён
+        with app.test_request_context(), patch.object(
+            limiter, "_get_client_ip", return_value="10.0.0.3"
+        ):
+            # Первые 3 запроса должны быть разрешены
+            for _ in range(3):
                 allowed, info = limiter.check_rate_limit()
-                assert allowed is False
-                assert info is not None
-                assert info["limit_type"] == "hour"
-                assert info["limit"] == 3
+                assert allowed is True
+
+            # 4-й запрос должен быть отклонён
+            allowed, info = limiter.check_rate_limit()
+            assert allowed is False
+            assert info is not None
+            assert info["limit_type"] == "hour"
+            assert info["limit"] == 3
 
     def test_get_client_stats(self, app):
         """Тест получения статистики клиента."""
         limiter = InMemoryRateLimiter()
 
-        with app.test_request_context():
-            with patch.object(
-                limiter, "_get_client_ip", return_value="10.0.0.4"
-            ):
-                # Выполнение нескольких запросов
-                for _ in range(5):
-                    limiter.check_rate_limit()
+        with app.test_request_context(), patch.object(
+            limiter, "_get_client_ip", return_value="10.0.0.4"
+        ):
+            # Выполнение нескольких запросов
+            for _ in range(5):
+                limiter.check_rate_limit()
 
-                stats = limiter.get_client_stats()
-                assert stats["ip"] == "10.0.0.4"
-                assert stats["minute_count"] == 5
-                assert stats["hour_count"] == 5
-                assert stats["is_blocked"] is False
+            stats = limiter.get_client_stats()
+            assert stats["ip"] == "10.0.0.4"
+            assert stats["minute_count"] == 5
+            assert stats["hour_count"] == 5
+            assert stats["is_blocked"] is False
 
     def test_reset_client(self, app):
         """Тест сброса ограничений клиента."""
         config = RateLimitConfig(requests_per_minute=2)
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context():
-            with patch.object(
-                limiter, "_get_client_ip", return_value="10.0.0.5"
-            ):
-                # Выполнение запросов до лимита
-                limiter.check_rate_limit()
-                limiter.check_rate_limit()
-                allowed, _ = limiter.check_rate_limit()
-                assert allowed is False
+        with app.test_request_context(), patch.object(
+            limiter, "_get_client_ip", return_value="10.0.0.5"
+        ):
+            # Выполнение запросов до лимита
+            limiter.check_rate_limit()
+            limiter.check_rate_limit()
+            allowed, _ = limiter.check_rate_limit()
+            assert allowed is False
 
-                # Сброс ограничений
-                limiter.reset_client("10.0.0.5")
+            # Сброс ограничений
+            limiter.reset_client("10.0.0.5")
 
-                # Теперь запросы должны быть разрешены
-                allowed, _ = limiter.check_rate_limit()
-                assert allowed is True
+            # Теперь запросы должны быть разрешены
+            allowed, _ = limiter.check_rate_limit()
+            assert allowed is True
 
     def test_clear_all(self, app):
         """Тест очистки всех данных."""
@@ -272,21 +267,20 @@ class TestInMemoryRateLimiter:
         config = RateLimitConfig(burst_limit=2)
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context():
-            with patch.object(
-                limiter, "_get_client_ip", return_value="10.0.0.6"
-            ):
-                # Превышение burst лимита
-                limiter.check_rate_limit()
-                limiter.check_rate_limit()
-                allowed, info = limiter.check_rate_limit()
-                assert allowed is False
-                assert info["limit_type"] == "burst"
+        with app.test_request_context(), patch.object(
+            limiter, "_get_client_ip", return_value="10.0.0.6"
+        ):
+            # Превышение burst лимита
+            limiter.check_rate_limit()
+            limiter.check_rate_limit()
+            allowed, info = limiter.check_rate_limit()
+            assert allowed is False
+            assert info["limit_type"] == "burst"
 
-                # Последующие запросы также должны быть заблокированы
-                allowed, info = limiter.check_rate_limit()
-                assert allowed is False
-                assert info["limit_type"] == "blocked"
+            # Последующие запросы также должны быть заблокированы
+            allowed, info = limiter.check_rate_limit()
+            assert allowed is False
+            assert info["limit_type"] == "blocked"
 
 
 class TestRateLimitDecorator:
@@ -307,14 +301,13 @@ class TestRateLimitDecorator:
         def test_endpoint():
             return {"success": True}
 
-        with app.test_request_context():
-            with patch(
-                "api.rate_limiter.get_rate_limiter", return_value=limiter
-            ), patch.object(
-                limiter, "_get_client_ip", return_value="10.0.0.7"
-            ):
-                result = test_endpoint()
-                assert result == {"success": True}
+        with app.test_request_context(), patch(
+            "api.rate_limiter.get_rate_limiter", return_value=limiter
+        ), patch.object(
+            limiter, "_get_client_ip", return_value="10.0.0.7"
+        ):
+            result = test_endpoint()
+            assert result == {"success": True}
 
     def test_blocks_request(self, app):
         """Тест блокировки запроса."""
@@ -325,19 +318,18 @@ class TestRateLimitDecorator:
         def test_endpoint():
             return {"success": True}
 
-        with app.test_request_context():
-            with patch(
-                "api.rate_limiter.get_rate_limiter", return_value=limiter
-            ), patch.object(
-                limiter, "_get_client_ip", return_value="10.0.0.8"
-            ):
-                # Первый запрос разрешён
-                result = test_endpoint()
-                assert result == {"success": True}
+        with app.test_request_context(), patch(
+            "api.rate_limiter.get_rate_limiter", return_value=limiter
+        ), patch.object(
+            limiter, "_get_client_ip", return_value="10.0.0.8"
+        ):
+            # Первый запрос разрешён
+            result = test_endpoint()
+            assert result == {"success": True}
 
-                # Второй запрос заблокирован
-                result = test_endpoint()
-                assert result.status_code == 429
+            # Второй запрос заблокирован
+            result = test_endpoint()
+            assert result.status_code == 429
 
 
 class TestInitRateLimiter:

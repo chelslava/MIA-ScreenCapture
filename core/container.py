@@ -5,7 +5,24 @@
 Предоставляет контейнер зависимостей для управления компонентами приложения.
 """
 
-from typing import Any, Callable, Protocol, TypeVar, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Optional,
+    Protocol,
+    TypeVar,
+    runtime_checkable,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from gui.models.recording_state import (
+        AudioSettings,
+        CaptureSettings,
+        VideoSettings,
+    )
 
 T = TypeVar("T")
 
@@ -19,6 +36,60 @@ class IConfigManager(Protocol):
         ...
 
     def save(self) -> bool:
+        """Сохраняет настройки."""
+        ...
+
+
+@runtime_checkable
+class IRecordingState(Protocol):
+    """Протокол модели состояния записи."""
+
+    def is_recording(self) -> bool:
+        """Проверка, идёт ли запись."""
+        ...
+
+    def is_paused(self) -> bool:
+        """Проверка, на паузе ли запись."""
+        ...
+
+
+@runtime_checkable
+class IRecordingController(Protocol):
+    """Протокол контроллера записи."""
+
+    def start_recording(
+        self,
+        output_path: "Path",
+        capture: "CaptureSettings",
+        audio: "AudioSettings",
+        video: "VideoSettings",
+        duration: int | None = None,
+    ) -> tuple[bool, Optional[str]]:
+        """Запускает запись. Возвращает (успех, сообщение об ошибке)."""
+        ...
+
+    def stop_recording(self) -> Optional["Path"]:
+        """Останавливает запись. Возвращает путь к файлу или None."""
+        ...
+
+    def pause_recording(self) -> bool:
+        """Приостанавливает запись."""
+        ...
+
+    def resume_recording(self) -> bool:
+        """Возобновляет запись."""
+        ...
+
+
+@runtime_checkable
+class ISettingsController(Protocol):
+    """Протокол контроллера настроек."""
+
+    def load_settings(self) -> None:
+        """Загружает настройки."""
+        ...
+
+    def save_settings(self) -> None:
         """Сохраняет настройки."""
         ...
 

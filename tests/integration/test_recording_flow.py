@@ -253,49 +253,49 @@ class TestAudioRecorderIntegration:
 
 
 class TestRecordingManagerIntegration:
-    """Интеграционные тесты для RecordingManager."""
+    """Интеграционные тесты для RecordingController."""
 
     def test_recording_manager_init(self):
-        """Проверка инициализации менеджера записи."""
-        from gui.main_window import RecordingManager
+        """Проверка инициализации контроллера записи."""
+        from gui.controllers.recording_controller import RecordingController
 
-        manager = RecordingManager()
+        controller = RecordingController()
 
-        assert manager.video_recorder is None
-        assert manager.audio_recorder is None
-        assert manager.encoder is None
-        assert not manager.is_recording
-        assert not manager.is_paused
+        assert controller._video_recorder is None
+        assert controller._audio_recorder is None
+        assert controller._encoder is None
+        assert not controller.state.is_recording()
+        assert not controller.state.is_paused()
 
     def test_recording_manager_elapsed_time(self):
         """Проверка получения времени записи."""
-        from gui.main_window import RecordingManager
+        from gui.controllers.recording_controller import RecordingController
 
-        manager = RecordingManager()
+        controller = RecordingController()
 
         # Без записи
-        assert manager.elapsed_time == 0
+        assert controller.elapsed_time == 0
 
         # С видеозаписью
         mock_video = MagicMock()
         mock_video.elapsed_time = 25.5
-        manager.video_recorder = mock_video
+        controller._video_recorder = mock_video
 
-        assert manager.elapsed_time == 25.5
+        assert controller.elapsed_time == 25.5
 
     def test_recording_manager_current_output(self):
         """Проверка получения текущего выходного файла."""
-        from gui.main_window import RecordingManager
+        from gui.controllers.recording_controller import RecordingController
 
-        manager = RecordingManager()
+        controller = RecordingController()
 
         # Без записи
-        assert manager.current_output is None
+        assert controller.state.current_output is None
 
-        # С записью
-        manager._current_output = Path("/tmp/test.mp4")
+        # С записью - используем публичный атрибут current_output
+        controller.state.current_output = Path("/tmp/test.mp4")
 
-        assert manager.current_output == Path("/tmp/test.mp4")
+        assert controller.state.current_output == Path("/tmp/test.mp4")
 
 
 class TestCaptureAreaIntegration:
@@ -389,19 +389,19 @@ class TestRecordingFlowIntegration:
         self, temp_output_dir: Path, mock_mss, mock_sounddevice
     ):
         """Тест полного цикла записи с моками."""
-        from gui.main_window import RecordingManager
+        from gui.controllers.recording_controller import RecordingController
 
-        manager = RecordingManager()
+        controller = RecordingController()
         output_path = temp_output_dir / "full_test.mp4"
 
-        # Проверка что менеджер инициализирован корректно
-        assert manager.video_recorder is None
-        assert manager.audio_recorder is None
-        assert not manager.is_recording
+        # Проверка что контроллер инициализирован корректно
+        assert controller._video_recorder is None
+        assert controller._audio_recorder is None
+        assert not controller.state.is_recording()
 
-        # Проверка что менеджер готов к работе
-        assert manager.elapsed_time == 0
-        assert manager.current_output is None
+        # Проверка что контроллер готов к работе
+        assert controller.elapsed_time == 0
+        assert controller.state.current_output is None
 
     def test_concurrent_video_audio_recording(self, temp_output_dir: Path):
         """Тест параллельной записи видео и аудио."""
@@ -501,20 +501,20 @@ class TestRecordingErrorHandling:
 
     def test_recording_cleanup_on_error(self, temp_output_dir: Path):
         """Проверка очистки ресурсов при ошибке."""
-        from gui.main_window import RecordingManager
+        from gui.controllers.recording_controller import RecordingController
 
-        manager = RecordingManager()
+        controller = RecordingController()
 
         # Симуляция ошибки после начала записи
-        manager._current_output = temp_output_dir / "partial.mp4"
+        controller.state.current_output = temp_output_dir / "partial.mp4"
 
         # Проверка что путь установлен
-        assert manager.current_output == temp_output_dir / "partial.mp4"
+        assert controller.state.current_output == temp_output_dir / "partial.mp4"
 
         # При ошибке ресурсы должны быть очищены
-        # Проверка что менеджер может быть очищен
-        manager._current_output = None
-        assert manager.current_output is None
+        # Проверка что контроллер может быть очищен
+        controller.state.current_output = None
+        assert controller.state.current_output is None
 
 
 class TestRecordingPerformance:

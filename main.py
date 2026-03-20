@@ -70,10 +70,10 @@ class VideoRecorderApp:
 
         # Компоненты
         self._app: Optional[Any] = None  # QApplication
-        self._main_window: Optional["MainWindow"] = None
-        self._tray_icon: Optional["TrayIcon"] = None
-        self._api_server: Optional["APIServer"] = None
-        self._scheduler: Optional["TaskScheduler"] = None
+        self._main_window: Optional[MainWindow] = None
+        self._tray_icon: Optional[TrayIcon] = None
+        self._api_server: Optional[APIServer] = None
+        self._scheduler: Optional[TaskScheduler] = None
 
         # Состояние
         self._running = False
