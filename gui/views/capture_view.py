@@ -240,4 +240,6 @@ class CaptureView(QWidget):
         Args:
             coords: Кортеж (x1, y1, x2, y2)
         """
-        self._rect_edit.setText(f"{coords[0]}, {coords[1]}, {coords[2]}, {coords[3]}")
+        self._rect_edit.setText(
+            f"{coords[0]}, {coords[1]}, {coords[2]}, {coords[3]}"
+        )

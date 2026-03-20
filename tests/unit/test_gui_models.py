@@ -270,7 +270,9 @@ class TestRecordingState:
 
         # Добавляем 25 записей
         for i in range(25):
-            state.add_recent_recording(Path(f"/path/to/video_{i}.mp4"), 1024000)
+            state.add_recent_recording(
+                Path(f"/path/to/video_{i}.mp4"), 1024000
+            )
 
         # Должно остаться только 20
         assert len(state.recent_recordings) == 20

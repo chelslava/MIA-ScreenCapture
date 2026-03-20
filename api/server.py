@@ -64,7 +64,11 @@ class APIServer:
         api_key = self.get_api_key()
         if api_key:
             # Показываем только начало и конец ключа для идентификации
-            masked_key = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else "***"
+            masked_key = (
+                f"{api_key[:8]}...{api_key[-4:]}"
+                if len(api_key) > 12
+                else "***"
+            )
             logger.info(f"API ключ: {masked_key}")
             logger.warning(
                 "Сохраните этот ключ для использования с CLI! "

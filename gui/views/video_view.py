@@ -90,7 +90,9 @@ class VideoView(QWidget):
         # Подключение сигналов
         self._fps_spin.valueChanged.connect(self._on_fps_changed)
         self._codec_combo.currentTextChanged.connect(self._on_codec_changed)
-        self._bitrate_combo.currentTextChanged.connect(self._on_bitrate_changed)
+        self._bitrate_combo.currentTextChanged.connect(
+            self._on_bitrate_changed
+        )
         self._format_combo.currentTextChanged.connect(self._on_format_changed)
 
         layout.addWidget(group)

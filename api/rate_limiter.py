@@ -315,8 +315,12 @@ def rate_limit(f: Callable) -> Callable:
                 }
             )
             response.status_code = 429
-            response.headers["Retry-After"] = str(rate_info.get("retry_after", 60))
-            response.headers["X-RateLimit-Limit"] = str(rate_info.get("limit", 0))
+            response.headers["Retry-After"] = str(
+                rate_info.get("retry_after", 60)
+            )
+            response.headers["X-RateLimit-Limit"] = str(
+                rate_info.get("limit", 0)
+            )
             return response
 
         # Выполняем функцию и добавляем заголовки с информацией о лимитах

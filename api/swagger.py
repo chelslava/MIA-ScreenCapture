@@ -27,11 +27,7 @@ SWAGGER_SPEC: dict[str, Any] = {
             "description": "Локальный сервер разработки",
         }
     ],
-    "security": [
-        {
-            "ApiKeyAuth": []
-        }
-    ],
+    "security": [{"ApiKeyAuth": []}],
     "components": {
         "securitySchemes": {
             "ApiKeyAuth": {
@@ -191,7 +187,13 @@ SWAGGER_SPEC: dict[str, Any] = {
                     },
                     "trigger": {
                         "type": "string",
-                        "enum": ["once", "daily", "weekly", "interval", "cron"],
+                        "enum": [
+                            "once",
+                            "daily",
+                            "weekly",
+                            "interval",
+                            "cron",
+                        ],
                     },
                     "enabled": {
                         "type": "boolean",
@@ -220,7 +222,13 @@ SWAGGER_SPEC: dict[str, Any] = {
                     },
                     "trigger": {
                         "type": "string",
-                        "enum": ["once", "daily", "weekly", "interval", "cron"],
+                        "enum": [
+                            "once",
+                            "daily",
+                            "weekly",
+                            "interval",
+                            "cron",
+                        ],
                     },
                     "datetime": {
                         "type": "string",

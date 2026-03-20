@@ -6,17 +6,23 @@
 """
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from recorder.utils import (
+    Singleton,
     check_ffmpeg,
+    ensure_directory,
     format_filesize,
     format_time,
+    get_all_monitors,
     get_audio_devices,
     get_available_windows,
     get_ffmpeg_path,
     get_platform,
     get_screen_size,
+    get_unique_filename,
+    is_valid_output_path,
     validate_rect_coords,
 )
 
@@ -439,3 +445,194 @@ class TestMacOSSpecificFunctions:
 
             assert len(windows) == 2
             assert windows[0]["title"] == "Safari"
+
+
+class TestGetAllMonitors:
+    """Тесты для функции get_all_monitors."""
+
+    def test_get_all_monitors_success(self):
+        """Проверка получения списка мониторов."""
+        mock_mss_module = MagicMock()
+        mock_sct = MagicMock()
+        mock_sct.monitors = [
+            {},  # Все мониторы вместе
+            {"left": 0, "top": 0, "width": 1920, "height": 1080},  # Основной
+            {"left": 1920, "top": 0, "width": 1920, "height": 1080},  # Второй
+        ]
+        mock_mss_module.mss.return_value.__enter__ = MagicMock(
+            return_value=mock_sct
+        )
+        mock_mss_module.mss.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
+
+        with patch.dict("sys.modules", {"mss": mock_mss_module}):
+            monitors = get_all_monitors()
+
+            assert len(monitors) == 2
+            assert monitors[0]["id"] == 1
+            assert monitors[0]["width"] == 1920
+            assert monitors[1]["id"] == 2
+
+    def test_get_all_monitors_error(self):
+        """Проверка обработки ошибки при получении мониторов."""
+        mock_mss_module = MagicMock()
+        mock_mss_module.mss.side_effect = Exception("MSS error")
+
+        with patch.dict("sys.modules", {"mss": mock_mss_module}):
+            monitors = get_all_monitors()
+
+            assert monitors == []
+
+
+class TestEnsureDirectory:
+    """Тесты для функции ensure_directory."""
+
+    def test_ensure_directory_creates_new(self, tmp_path: Path) -> None:
+        """Проверка создания новой директории."""
+        new_dir = tmp_path / "new_directory"
+        assert not new_dir.exists()
+
+        result = ensure_directory(new_dir)
+
+        assert result is True
+        assert new_dir.exists()
+
+    def test_ensure_directory_existing(self, tmp_path: Path) -> None:
+        """Проверка с существующей директорией."""
+        result = ensure_directory(tmp_path)
+
+        assert result is True
+
+    def test_ensure_directory_nested(self, tmp_path: Path) -> None:
+        """Проверка создания вложенных директорий."""
+        nested = tmp_path / "level1" / "level2" / "level3"
+
+        result = ensure_directory(nested)
+
+        assert result is True
+        assert nested.exists()
+
+    def test_ensure_directory_permission_error(self, tmp_path: Path) -> None:
+        """Проверка обработки ошибки прав доступа."""
+        with patch.object(
+            Path, "mkdir", side_effect=PermissionError("Access denied")
+        ):
+            result = ensure_directory(tmp_path / "restricted")
+
+            assert result is False
+
+
+class TestIsValidOutputPath:
+    """Тесты для функции is_valid_output_path."""
+
+    def test_valid_path_existing_dir(self, tmp_path: Path) -> None:
+        """Проверка валидного пути в существующей директории."""
+        valid_path = tmp_path / "output.mp4"
+        result = is_valid_output_path(str(valid_path))
+        assert result is True
+
+    def test_valid_path_existing_file(self, tmp_path: Path) -> None:
+        """Проверка валидного пути к существующему файлу."""
+        existing_file = tmp_path / "existing.mp4"
+        existing_file.write_text("test")
+
+        result = is_valid_output_path(str(existing_file))
+
+        assert result is True
+
+    def test_invalid_path_permission_denied(self, tmp_path: Path) -> None:
+        """Проверка невалидного пути без прав записи."""
+        with patch("os.access", return_value=False):
+            result = is_valid_output_path(str(tmp_path / "output.mp4"))
+            assert result is False
+
+    def test_invalid_path_exception(self) -> None:
+        """Проверка обработки исключения."""
+        with patch("pathlib.Path.__init__", side_effect=Exception("Error")):
+            result = is_valid_output_path("/some/path")
+            assert result is False
+
+
+class TestGetUniqueFilename:
+    """Тесты для функции get_unique_filename."""
+
+    def test_unique_filename_not_exists(self, tmp_path: Path) -> None:
+        """Проверка уникального имени для несуществующего файла."""
+        result = get_unique_filename(tmp_path, "video.mp4")
+
+        assert result == tmp_path / "video.mp4"
+
+    def test_unique_filename_exists_once(self, tmp_path: Path) -> None:
+        """Проверка уникального имени при одном существующем файле."""
+        existing = tmp_path / "video.mp4"
+        existing.write_text("test")
+
+        result = get_unique_filename(tmp_path, "video.mp4")
+
+        assert result == tmp_path / "video_1.mp4"
+
+    def test_unique_filename_exists_multiple(self, tmp_path: Path) -> None:
+        """Проверка уникального имени при нескольких существующих файлах."""
+        (tmp_path / "video.mp4").write_text("test")
+        (tmp_path / "video_1.mp4").write_text("test")
+        (tmp_path / "video_2.mp4").write_text("test")
+
+        result = get_unique_filename(tmp_path, "video.mp4")
+
+        assert result == tmp_path / "video_3.mp4"
+
+    def test_unique_filename_different_extension(self, tmp_path: Path) -> None:
+        """Проверка уникального имени с другим расширением."""
+        (tmp_path / "video.mp4").write_text("test")
+
+        result = get_unique_filename(tmp_path, "video.avi")
+
+        assert result == tmp_path / "video.avi"
+
+
+class TestSingleton:
+    """Тесты для метакласса Singleton."""
+
+    def test_singleton_creates_one_instance(self) -> None:
+        """Проверка создания только одного экземпляра."""
+
+        class TestClass(metaclass=Singleton):
+            def __init__(self) -> None:
+                self.value = 0
+
+        instance1 = TestClass()
+        instance2 = TestClass()
+
+        assert instance1 is instance2
+
+    def test_singleton_shared_state(self) -> None:
+        """Проверка общего состояния между экземплярами."""
+
+        class StateClass(metaclass=Singleton):
+            def __init__(self) -> None:
+                self.counter = 0
+
+        obj1 = StateClass()
+        obj2 = StateClass()
+
+        obj1.counter = 10
+        assert obj2.counter == 10
+
+    def test_singleton_different_classes(self) -> None:
+        """Проверка независимости разных Singleton классов."""
+
+        class FirstClass(metaclass=Singleton):
+            def __init__(self) -> None:
+                self.name = "first"
+
+        class SecondClass(metaclass=Singleton):
+            def __init__(self) -> None:
+                self.name = "second"
+
+        first = FirstClass()
+        second = SecondClass()
+
+        assert first is not second
+        assert first.name == "first"
+        assert second.name == "second"

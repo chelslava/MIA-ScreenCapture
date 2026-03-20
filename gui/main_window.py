@@ -258,14 +258,22 @@ class MainWindow(QMainWindow):
         self._capture_view.rect_selected.connect(self._on_rect_selected)
 
         # Сигналы AudioView
-        self._audio_view.audio_type_changed.connect(self._on_audio_type_changed)
-        self._audio_view.mic_device_changed.connect(self._on_mic_device_changed)
+        self._audio_view.audio_type_changed.connect(
+            self._on_audio_type_changed
+        )
+        self._audio_view.mic_device_changed.connect(
+            self._on_mic_device_changed
+        )
 
         # Сигналы VideoView
-        self._video_view.settings_changed.connect(self._on_video_settings_changed)
+        self._video_view.settings_changed.connect(
+            self._on_video_settings_changed
+        )
 
         # Сигналы OutputView
-        self._output_view.output_path_changed.connect(self._on_output_path_changed)
+        self._output_view.output_path_changed.connect(
+            self._on_output_path_changed
+        )
 
     def _apply_settings_to_views(self) -> None:
         """Применение настроек к представлениям."""
@@ -284,9 +292,7 @@ class MainWindow(QMainWindow):
         self.recordings_list.clear()
         for rec in self._state.recent_recordings:
             if rec.path.exists():
-                item_text = (
-                    f"{rec.path.name} - {format_filesize(rec.size)} - {rec.date}"
-                )
+                item_text = f"{rec.path.name} - {format_filesize(rec.size)} - {rec.date}"
                 item = QListWidgetItem(item_text)
                 item.setData(Qt.ItemDataRole.UserRole, str(rec.path))
                 self.recordings_list.addItem(item)

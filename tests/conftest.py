@@ -10,7 +10,10 @@ import sys
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
+
+if TYPE_CHECKING:
+    from PyQt6.QtWidgets import QApplication
 
 import pytest
 
@@ -220,3 +223,19 @@ def tasks_file(temp_dir: Path) -> Path:
     tasks_path = temp_dir / "tasks.json"
     tasks_path.write_text("[]")
     return tasks_path
+
+
+@pytest.fixture(scope="module")
+def qapp() -> "QApplication":
+    """
+    Создание QApplication для GUI тестов.
+
+    Returns:
+        Экземпляр QApplication
+    """
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    return app

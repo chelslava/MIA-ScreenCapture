@@ -106,7 +106,9 @@ class RecordingController:
         """
         try:
             # Настройка кодировщика
-            settings = EncodingSettings(codec=video.codec, bitrate=video.bitrate)
+            settings = EncodingSettings(
+                codec=video.codec, bitrate=video.bitrate
+            )
             self._encoder = RecordingEncoder(output_path, settings)
             self._temp_video, self._temp_audio = self._encoder.setup()
 
@@ -143,7 +145,9 @@ class RecordingController:
             elif audio.audio_type == AudioType.SYSTEM:
                 try:
                     self._audio_recorder = SystemAudioRecorder()
-                    self._audio_recorder.start(self._temp_audio, duration=duration)
+                    self._audio_recorder.start(
+                        self._temp_audio, duration=duration
+                    )
                 except Exception as e:
                     logger.warning(f"Системное аудио недоступно: {e}")
                     self._audio_recorder = None

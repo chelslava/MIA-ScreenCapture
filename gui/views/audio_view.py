@@ -94,7 +94,9 @@ class AudioView(QWidget):
 
         # Подключение сигналов
         self._button_group.buttonClicked.connect(self._on_button_clicked)
-        self._mic_combo.currentIndexChanged.connect(self._on_mic_device_changed)
+        self._mic_combo.currentIndexChanged.connect(
+            self._on_mic_device_changed
+        )
 
         layout.addWidget(group)
 

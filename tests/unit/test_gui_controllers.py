@@ -46,7 +46,9 @@ class TestRecordingController:
         controller = RecordingController()
         assert isinstance(controller.state, RecordingState)
 
-    def test_elapsed_time_no_recorder(self, controller: RecordingController) -> None:
+    def test_elapsed_time_no_recorder(
+        self, controller: RecordingController
+    ) -> None:
         """Проверка elapsed_time без рекордера."""
         assert controller.elapsed_time == 0.0
 
@@ -60,7 +62,9 @@ class TestRecordingController:
 
         assert area is not None
 
-    def test_build_capture_area_window(self, controller: RecordingController) -> None:
+    def test_build_capture_area_window(
+        self, controller: RecordingController
+    ) -> None:
         """Проверка построения области захвата - окно."""
         capture = CaptureSettings(
             capture_type=CaptureType.WINDOW,
@@ -117,13 +121,17 @@ class TestRecordingController:
         audio = AudioSettings()
         video = VideoSettings()
 
-        success, error_msg = controller.start_recording(output_path, capture, audio, video)
+        success, error_msg = controller.start_recording(
+            output_path, capture, audio, video
+        )
 
         assert success is True
         assert error_msg is None
         assert controller.state.status == RecordingStatus.RECORDING
 
-    def test_pause_recording_success(self, controller: RecordingController) -> None:
+    def test_pause_recording_success(
+        self, controller: RecordingController
+    ) -> None:
         """Проверка успешной паузы записи."""
         controller.state.status = RecordingStatus.RECORDING
 
@@ -153,7 +161,9 @@ class TestRecordingController:
 
         assert result is False
 
-    def test_resume_recording_success(self, controller: RecordingController) -> None:
+    def test_resume_recording_success(
+        self, controller: RecordingController
+    ) -> None:
         """Проверка успешного возобновления записи."""
         controller.state.status = RecordingStatus.PAUSED
 
@@ -246,7 +256,9 @@ class TestSettingsController:
         assert controller.state.video.bitrate == "2M"
         assert controller.state.video.format == "mp4"
 
-    def test_save_settings(self, controller: SettingsController, mock_config: MagicMock) -> None:
+    def test_save_settings(
+        self, controller: SettingsController, mock_config: MagicMock
+    ) -> None:
         """Проверка сохранения настроек."""
         controller.state.video.fps = 60
         controller.state.video.codec = "h264"
@@ -257,7 +269,9 @@ class TestSettingsController:
         assert mock_config.settings.video.codec == "h264"
         mock_config.save.assert_called_once()
 
-    def test_update_video_settings(self, controller: SettingsController) -> None:
+    def test_update_video_settings(
+        self, controller: SettingsController
+    ) -> None:
         """Проверка обновления настроек видео."""
         controller.update_video_settings(
             fps=60,
@@ -271,7 +285,9 @@ class TestSettingsController:
         assert controller.state.video.bitrate == "4M"
         assert controller.state.video.format == "mkv"
 
-    def test_update_video_settings_partial(self, controller: SettingsController) -> None:
+    def test_update_video_settings_partial(
+        self, controller: SettingsController
+    ) -> None:
         """Проверка частичного обновления настроек видео."""
         original_codec = controller.state.video.codec
         original_bitrate = controller.state.video.bitrate
@@ -284,7 +300,9 @@ class TestSettingsController:
         assert controller.state.video.bitrate == original_bitrate
         assert controller.state.video.format == original_format
 
-    def test_update_capture_settings(self, controller: SettingsController) -> None:
+    def test_update_capture_settings(
+        self, controller: SettingsController
+    ) -> None:
         """Проверка обновления настроек захвата."""
         controller.update_capture_settings(
             capture_type=CaptureType.WINDOW,
@@ -296,7 +314,9 @@ class TestSettingsController:
         assert controller.state.capture.window_title == "Test Window"
         assert controller.state.capture.rect_coords == (100, 100, 500, 400)
 
-    def test_update_audio_settings(self, controller: SettingsController) -> None:
+    def test_update_audio_settings(
+        self, controller: SettingsController
+    ) -> None:
         """Проверка обновления настроек аудио."""
         controller.update_audio_settings(
             audio_type=AudioType.MICROPHONE,
@@ -308,7 +328,9 @@ class TestSettingsController:
         assert controller.state.audio.mic_device_index == 1
         assert controller.state.audio.mic_device_name == "Test Mic"
 
-    def test_update_output_settings(self, controller: SettingsController) -> None:
+    def test_update_output_settings(
+        self, controller: SettingsController
+    ) -> None:
         """Проверка обновления настроек вывода."""
         controller.update_output_settings(
             output_path="/path/to/output.mp4",

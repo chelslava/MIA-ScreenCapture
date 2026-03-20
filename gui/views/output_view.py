@@ -72,9 +72,7 @@ class OutputView(QWidget):
 
     def _browse_output(self) -> None:
         """Выбор места сохранения выходного файла."""
-        default_name = (
-            f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{self._default_format}"
-        )
+        default_name = f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{self._default_format}"
 
         # Определяем начальный путь для диалога
         current_text = self._output_edit.text()
@@ -123,7 +121,11 @@ class OutputView(QWidget):
         Returns:
             Путь к выходному файлу
         """
-        return Path(self._output_edit.text()) if self._output_edit.text() else Path()
+        return (
+            Path(self._output_edit.text())
+            if self._output_edit.text()
+            else Path()
+        )
 
     def set_output_path(self, path: str) -> None:
         """

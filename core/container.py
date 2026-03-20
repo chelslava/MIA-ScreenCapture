@@ -181,9 +181,7 @@ class Container:
         """
         self._instances[name] = instance
 
-    def register_factory(
-        self, name: str, factory: Callable[[], Any]
-    ) -> None:
+    def register_factory(self, name: str, factory: Callable[[], Any]) -> None:
         """
         Регистрирует фабрику для создания объектов.
 
@@ -291,9 +289,7 @@ class Container:
         self._singletons.clear()
         self._singleton_cache.clear()
 
-    def get_instance(
-        self, name: str, default: Any = None
-    ) -> Any:
+    def get_instance(self, name: str, default: Any = None) -> Any:
         """
         Получает зависимость или возвращает default.
 

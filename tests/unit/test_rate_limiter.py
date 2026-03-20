@@ -121,8 +121,9 @@ class TestInMemoryRateLimiter:
         config = RateLimitConfig(burst_limit=3, requests_per_minute=1000)
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context(), patch.object(
-            limiter, "_get_client_ip", return_value="10.0.0.1"
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.1"),
         ):
             # Первые 3 запроса должны быть разрешены
             for _ in range(3):
@@ -138,13 +139,12 @@ class TestInMemoryRateLimiter:
 
     def test_minute_limit_enforcement(self, app):
         """Тест минутного ограничения."""
-        config = RateLimitConfig(
-            requests_per_minute=5, burst_limit=100
-        )
+        config = RateLimitConfig(requests_per_minute=5, burst_limit=100)
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context(), patch.object(
-            limiter, "_get_client_ip", return_value="10.0.0.2"
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.2"),
         ):
             # Первые 5 запросов должны быть разрешены
             for _ in range(5):
@@ -167,8 +167,9 @@ class TestInMemoryRateLimiter:
         )
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context(), patch.object(
-            limiter, "_get_client_ip", return_value="10.0.0.3"
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.3"),
         ):
             # Первые 3 запроса должны быть разрешены
             for _ in range(3):
@@ -186,8 +187,9 @@ class TestInMemoryRateLimiter:
         """Тест получения статистики клиента."""
         limiter = InMemoryRateLimiter()
 
-        with app.test_request_context(), patch.object(
-            limiter, "_get_client_ip", return_value="10.0.0.4"
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.4"),
         ):
             # Выполнение нескольких запросов
             for _ in range(5):
@@ -204,8 +206,9 @@ class TestInMemoryRateLimiter:
         config = RateLimitConfig(requests_per_minute=2)
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context(), patch.object(
-            limiter, "_get_client_ip", return_value="10.0.0.5"
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.5"),
         ):
             # Выполнение запросов до лимита
             limiter.check_rate_limit()
@@ -267,8 +270,9 @@ class TestInMemoryRateLimiter:
         config = RateLimitConfig(burst_limit=2)
         limiter = InMemoryRateLimiter(config)
 
-        with app.test_request_context(), patch.object(
-            limiter, "_get_client_ip", return_value="10.0.0.6"
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.6"),
         ):
             # Превышение burst лимита
             limiter.check_rate_limit()
@@ -301,10 +305,10 @@ class TestRateLimitDecorator:
         def test_endpoint():
             return {"success": True}
 
-        with app.test_request_context(), patch(
-            "api.rate_limiter.get_rate_limiter", return_value=limiter
-        ), patch.object(
-            limiter, "_get_client_ip", return_value="10.0.0.7"
+        with (
+            app.test_request_context(),
+            patch("api.rate_limiter.get_rate_limiter", return_value=limiter),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.7"),
         ):
             result = test_endpoint()
             assert result == {"success": True}
@@ -318,10 +322,10 @@ class TestRateLimitDecorator:
         def test_endpoint():
             return {"success": True}
 
-        with app.test_request_context(), patch(
-            "api.rate_limiter.get_rate_limiter", return_value=limiter
-        ), patch.object(
-            limiter, "_get_client_ip", return_value="10.0.0.8"
+        with (
+            app.test_request_context(),
+            patch("api.rate_limiter.get_rate_limiter", return_value=limiter),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.8"),
         ):
             # Первый запрос разрешён
             result = test_endpoint()

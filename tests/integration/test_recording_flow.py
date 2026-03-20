@@ -509,7 +509,9 @@ class TestRecordingErrorHandling:
         controller.state.current_output = temp_output_dir / "partial.mp4"
 
         # Проверка что путь установлен
-        assert controller.state.current_output == temp_output_dir / "partial.mp4"
+        assert (
+            controller.state.current_output == temp_output_dir / "partial.mp4"
+        )
 
         # При ошибке ресурсы должны быть очищены
         # Проверка что контроллер может быть очищен
