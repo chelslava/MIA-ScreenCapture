@@ -34,6 +34,7 @@ from gui.models.recording_state import (
     CaptureSettings,
     CaptureType,
     RecordingState,
+    VideoSettings,
 )
 from gui.views.audio_view import AudioView
 from gui.views.capture_view import CaptureView
@@ -561,3 +562,175 @@ class MainWindow(QMainWindow):
         self._settings_controller.save_settings()
         self._update_timer.stop()
         event.accept()
+
+    # === Публичные методы для API ===
+
+    def get_status(self) -> dict:
+        """
+        Получение текущего статуса записи.
+
+        Returns:
+            Словарь с информацией о статусе записи
+        """
+        return {
+            "is_recording": self._state.is_recording(),
+            "is_paused": self._state.is_paused(),
+            "elapsed_time": self._recording_controller.elapsed_time,
+            "current_file": str(self._state.current_output)
+            if self._state.current_output
+            else None,
+        }
+
+    def start_recording_with_params(self, params: dict) -> dict:
+        """
+        Запуск записи с параметрами из API.
+
+        Args:
+            params: Словарь с параметрами записи
+                - area: "full" | "window" | "rect"
+                - window_title: str (опционально)
+                - rect: [x1, y1, x2, y2] (опционально)
+                - audio: "mic" | "system" | "none" | "both"
+                - fps: int (опционально)
+                - codec: str (опционально)
+                - bitrate: str (опционально)
+                - duration: int (опционально)
+                - output_path: str (опционально)
+
+        Returns:
+            Словарь с результатом операции
+        """
+        if self._state.is_recording():
+            return {"success": False, "error": "Запись уже идёт"}
+
+        try:
+            # Определение типа захвата
+            area_type = params.get("area", "full")
+            capture_type_map = {
+                "full": CaptureType.FULL_SCREEN,
+                "window": CaptureType.WINDOW,
+                "rect": CaptureType.RECTANGLE,
+            }
+            capture_type = capture_type_map.get(area_type, CaptureType.FULL_SCREEN)
+
+            # Координаты прямоугольника
+            rect_coords = None
+            if area_type == "rect" and "rect" in params:
+                r = params["rect"]
+                if isinstance(r, (list, tuple)) and len(r) >= 4:
+                    rect_coords = (r[0], r[1], r[2], r[3])
+                else:
+                    return {
+                        "success": False,
+                        "error": "rect должен содержать 4 координаты [x1, y1, x2, y2]",
+                    }
+
+            # Настройки захвата
+            capture = CaptureSettings(
+                capture_type=capture_type,
+                window_title=params.get("window_title"),
+                rect_coords=rect_coords,
+            )
+
+            # Настройки аудио
+            audio_type_map = {
+                "mic": AudioType.MICROPHONE,
+                "system": AudioType.SYSTEM,
+                "none": AudioType.NONE,
+                "both": AudioType.BOTH,
+            }
+            audio_type = audio_type_map.get(
+                params.get("audio", "mic"), AudioType.MICROPHONE
+            )
+            # Используем метод состояния для thread-safe изменения
+            self._state.set_audio_type(audio_type)
+
+            # Настройки видео (создаём копию для избежания race condition)
+            base_settings = self._video_view.get_settings()
+            video_settings = VideoSettings(
+                fps=params.get("fps", base_settings.fps),
+                codec=params.get("codec", base_settings.codec),
+                bitrate=params.get("bitrate", base_settings.bitrate),
+                format=base_settings.format,
+            )
+
+            # Путь вывода
+            output_path = params.get("output_path")
+            if output_path:
+                output_path = Path(output_path)
+            else:
+                output_path = self._settings_controller.get_output_path()
+
+            # Запуск записи
+            success, error_msg = self._recording_controller.start_recording(
+                output_path=output_path,
+                capture=capture,
+                audio=audio_type,
+                video=video_settings,
+            )
+
+            if success:
+                self._on_recording_started(output_path)
+                return {
+                    "success": True,
+                    "output_path": str(output_path),
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": error_msg or "Не удалось запустить запись",
+                }
+
+        except Exception as e:
+            logger.error(f"Ошибка запуска записи: {e}")
+            return {"success": False, "error": str(e)}
+
+    def stop_recording(self) -> dict:
+        """
+        Остановка текущей записи.
+
+        Returns:
+            Словарь с результатом операции
+        """
+        if not self._state.is_recording():
+            return {"success": False, "error": "Запись не идёт"}
+
+        output_path = self._recording_controller.stop_recording()
+
+        if output_path:
+            self._on_recording_stopped(output_path)
+            return {
+                "success": True,
+                "filepath": str(output_path),
+            }
+        else:
+            return {"success": False, "error": "Не удалось сохранить запись"}
+
+    def toggle_pause(self) -> dict:
+        """
+        Переключение состояния паузы.
+
+        Returns:
+            Словарь с новым состоянием паузы
+        """
+        if not self._state.is_recording():
+            return {"success": False, "error": "Запись не идёт"}
+
+        if self._state.is_paused():
+            self._recording_controller.resume_recording()
+            self._on_recording_resumed()
+            return {"success": True, "is_paused": False}
+        else:
+            self._recording_controller.pause_recording()
+            self._on_recording_paused()
+            return {"success": True, "is_paused": True}
+
+    def get_recordings(self) -> list:
+        """
+        Получение списка недавних записей.
+
+        Returns:
+            Список словарей с информацией о записях
+        """
+        config = get_config()
+        return config.settings.recent_recordings

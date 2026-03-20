@@ -20,14 +20,24 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+# Добавление родительской директории в путь для импорта
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Загрузка .env файла ДО любых импортов, использующих переменные окружения
+from dotenv import load_dotenv
+
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    # .env не обязателен, переменные могут быть заданы в окружении
+    pass
+
 if TYPE_CHECKING:
     from api.server import APIServer
     from gui.main_window import MainWindow
     from gui.tray_icon import TrayIcon
     from scheduler.task_scheduler import TaskScheduler
-
-# Добавление родительской директории в путь для импорта
-sys.path.insert(0, str(Path(__file__).parent))
 
 from api.auth import API_KEY_ENV_VAR, API_KEY_HEADER
 from cli.parser import (
@@ -37,6 +47,7 @@ from cli.parser import (
     validate_recording_params,
 )
 from config import get_config, init_config
+from core.lifecycle import GracefulShutdown, get_shutdown_manager
 from logger_config import get_module_logger, setup_logger
 from recorder.utils import (
     check_ffmpeg,
@@ -78,6 +89,9 @@ class VideoRecorderApp:
         # Состояние
         self._running = False
 
+        # Graceful shutdown менеджер
+        self._shutdown_manager: Optional[GracefulShutdown] = None
+
     def _get_api_headers(self) -> dict:
         """
         Получение заголовков для API запросов с аутентификацией.
@@ -112,6 +126,9 @@ class VideoRecorderApp:
             Код выхода
         """
         try:
+            # Инициализация graceful shutdown
+            self._setup_graceful_shutdown()
+
             # Проверка FFmpeg
             ffmpeg_available, _ = check_ffmpeg()
             if not ffmpeg_available:
@@ -670,10 +687,105 @@ class VideoRecorderApp:
             # Если minimize_to_tray=False, завершаем приложение
             self._quit_app()
 
+    def _setup_graceful_shutdown(self) -> None:
+        """
+        Настройка graceful shutdown.
+
+        Регистрирует обработчики для корректного завершения работы.
+        """
+        self._shutdown_manager = get_shutdown_manager()
+        self._shutdown_manager.timeout = 30.0  # 30 секунд на завершение
+
+        # Регистрация обработчиков в обратном порядке (LIFO)
+        # Последний зарегистрированный выполнится первым
+
+        # 1. Очистка трея
+        self._shutdown_manager.register_handler(self._cleanup_tray)
+
+        # 2. Остановка API сервера
+        self._shutdown_manager.register_handler(self._cleanup_api_server)
+
+        # 3. Остановка планировщика
+        self._shutdown_manager.register_handler(self._cleanup_scheduler)
+
+        # 4. Остановка активной записи (критически важно!)
+        self._shutdown_manager.register_handler(self._stop_active_recording)
+
+        # 5. Сохранение конфигурации
+        self._shutdown_manager.register_handler(self._save_config)
+
+        # Установка обработчиков сигналов
+        self._shutdown_manager.setup_signal_handlers()
+
+        logger.info(
+            f"Graceful shutdown настроен "
+            f"({self._shutdown_manager.get_handlers_count()} обработчиков)"
+        )
+
+    def _stop_active_recording(self) -> None:
+        """Остановка активной записи при завершении."""
+        if self._main_window:
+            try:
+                status = self._main_window.get_status()
+                if status.get("is_recording"):
+                    logger.info("Остановка активной записи...")
+                    result = self._main_window.stop_recording()
+                    if result.get("success"):
+                        logger.info(
+                            f"Запись сохранена: {result.get('filepath', 'неизвестно')}"
+                        )
+                    else:
+                        logger.error(
+                            f"Ошибка при остановке записи: "
+                            f"{result.get('error', 'неизвестная ошибка')}"
+                        )
+            except Exception as e:
+                logger.error(f"Ошибка при остановке записи: {e}")
+
+    def _save_config(self) -> None:
+        """Сохранение конфигурации при завершении."""
+        try:
+            config = get_config()
+            config.save()
+            logger.info("Конфигурация сохранена")
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении конфигурации: {e}")
+
+    def _cleanup_scheduler(self) -> None:
+        """Остановка планировщика."""
+        if self._scheduler:
+            try:
+                logger.info("Остановка планировщика...")
+                self._scheduler.stop()
+                logger.info("Планировщик остановлен")
+            except Exception as e:
+                logger.error(f"Ошибка при остановке планировщика: {e}")
+
+    def _cleanup_api_server(self) -> None:
+        """Остановка API сервера."""
+        if self._api_server:
+            try:
+                logger.info("Остановка API сервера...")
+                self._api_server.stop()
+                logger.info("API сервер остановлен")
+            except Exception as e:
+                logger.error(f"Ошибка при остановке API сервера: {e}")
+
+    def _cleanup_tray(self) -> None:
+        """Очистка трея."""
+        if self._tray_icon:
+            try:
+                logger.info("Очистка трея...")
+                self._tray_icon.cleanup()
+                logger.info("Трей очищен")
+            except Exception as e:
+                logger.error(f"Ошибка при очистке трея: {e}")
+
     def _quit_app(self) -> None:
         """Выход из приложения."""
         self._running = False
 
+        # Graceful shutdown будет вызван в _cleanup() в finally блоке
         if self._main_window:
             self._main_window.close()
 
@@ -681,19 +793,28 @@ class VideoRecorderApp:
             self._app.quit()
 
     def _cleanup(self) -> None:
-        """Очистка ресурсов."""
-        logger.info("Очистка...")
+        """
+        Очистка ресурсов.
 
-        if self._scheduler:
-            self._scheduler.stop()
-
-        if self._api_server:
-            self._api_server.stop()
-
-        if self._tray_icon:
-            self._tray_icon.cleanup()
-
-        logger.info("Очистка завершена")
+        Вызывается в finally блоке метода run().
+        Если graceful shutdown ещё не был запущен, запускает его.
+        """
+        if self._shutdown_manager:
+            # Graceful shutdown через менеджер
+            if not self._shutdown_manager.is_shutting_down:
+                self._shutdown_manager.shutdown()
+        else:
+            # Fallback: базовая очистка если shutdown manager не инициализирован
+            logger.info("Очистка (fallback)...")
+            # Остановка активной записи (критически важно!)
+            self._stop_active_recording()
+            # Сохранение конфигурации
+            self._save_config()
+            # Остановка компонентов в обратном порядке
+            self._cleanup_scheduler()
+            self._cleanup_api_server()
+            self._cleanup_tray()
+            logger.info("Очистка завершена")
 
 
 def main() -> int:

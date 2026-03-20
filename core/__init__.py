@@ -17,8 +17,16 @@ from core.container import (
     get_container,
     reset_container,
 )
+from core.lifecycle import (
+    GracefulShutdown,
+    get_shutdown_manager,
+    register_shutdown_handler,
+    request_shutdown,
+    reset_shutdown_manager,
+)
 
 __all__ = [
+    # Container
     "Container",
     "IConfigManager",
     "IRecordingController",
@@ -29,4 +37,10 @@ __all__ = [
     "IAPIServer",
     "get_container",
     "reset_container",
+    # Lifecycle
+    "GracefulShutdown",
+    "get_shutdown_manager",
+    "register_shutdown_handler",
+    "request_shutdown",
+    "reset_shutdown_manager",
 ]

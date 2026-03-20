@@ -142,6 +142,17 @@ class RecordingState:
         self.status = RecordingStatus.IDLE
         self.recording_start_time = None
 
+    def set_audio_type(self, audio_type: AudioType) -> None:
+        """
+        Установить тип источника аудио.
+
+        Thread-safe метод для изменения настроек аудио.
+
+        Args:
+            audio_type: Новый тип источника аудио
+        """
+        self.audio.audio_type = audio_type
+
     def add_recent_recording(self, path: Path, size: int) -> None:
         """Добавить недавнюю запись."""
         recording = RecentRecording(
