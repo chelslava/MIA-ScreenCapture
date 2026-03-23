@@ -857,7 +857,10 @@ def register_routes(app, server) -> None:
             except ValidationError as e:
                 return handle_validation_error(e)
 
-            callback_data = validated.model_dump(exclude_none=True)
+            callback_data = validated.model_dump(
+                exclude_none=True,
+                exclude={"video", "audio", "output", "app"},
+            )
 
             callback = server.get_callback("update_config")
             if callback:

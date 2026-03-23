@@ -700,6 +700,11 @@ class TestAPIHealthEndpoint:
         data = response.get_json()
         assert "status" in data
         assert data["status"] == "ok"
+        assert "timestamp" in data
+        assert "version" in data
+        assert "uptime_seconds" in data
+        assert "websocket" in data
+        assert data["websocket"]["transport_ready"] is False
 
     def test_health_endpoint_no_auth(self, unauth_client: FlaskClient):
         """Проверка что health не требует аутентификации."""

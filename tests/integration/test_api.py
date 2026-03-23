@@ -460,6 +460,9 @@ class TestAPIEventsEndpoint:
         assert data["success"] is True
         assert isinstance(data["data"], list)
         assert data["data"][0]["type"] == "started"
+        assert "timestamp" in data["data"][0]
+        assert "data" in data["data"][0]
+        assert data["data"][0]["data"]["output_path"] == "/tmp/test_recording.mp4"
 
     def test_get_events_stats_success(self, client: FlaskClient) -> None:
         response = client.get("/api/events/stats")
@@ -468,7 +471,10 @@ class TestAPIEventsEndpoint:
         data = response.get_json()
         assert data["success"] is True
         assert data["data"]["transport_ready"] is True
+        assert data["data"]["buffered_events"] == 1
         assert "events_published_total" in data["data"]
+        assert data["data"]["events_published_total"] == 1
+        assert data["data"]["attached_to_event_bus"] is False
 
 
 class TestAPIScheduleEndpoints:
@@ -657,7 +663,9 @@ class TestAPIConfigEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert data["success"] is True
-        mock_callbacks["update_config"].assert_called_once()
+        mock_callbacks["update_config"].assert_called_once_with(
+            {"fps": 60}
+        )
 
 
 class TestAPIErrorHandling:
@@ -880,3 +888,8 @@ class TestAPIObservability:
         assert data["version"] != "unknown"
         assert isinstance(data["uptime_seconds"], (int, float))
         assert data["uptime_seconds"] >= 0
+        assert "websocket" in data
+        assert data["websocket"]["transport_ready"] is True
+        assert data["websocket"]["buffered_events"] >= 1
+        assert data["websocket"]["events_published_total"] >= 1
+        assert data["websocket"]["attached_to_event_bus"] is False

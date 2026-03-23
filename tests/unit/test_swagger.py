@@ -33,6 +33,7 @@ class TestSwaggerSpec:
         assert "description" in info
 
         assert "MIA-ScreenCapture" in info["title"]
+        assert info["version"] == "1.3.0"
 
     def test_swagger_spec_servers(self) -> None:
         """Проверка списка серверов."""
@@ -82,6 +83,10 @@ class TestSwaggerSpec:
         assert "properties" in error_schema
         assert "success" in error_schema["properties"]
         assert "error" in error_schema["properties"]
+        assert "trace_id" in error_schema["properties"]
+
+        error_props = error_schema["properties"]["error"]["properties"]
+        assert {"code", "message", "details"}.issubset(error_props.keys())
 
     def test_swagger_spec_validation_error_schema(self) -> None:
         """Проверка схемы ValidationError."""
@@ -91,7 +96,24 @@ class TestSwaggerSpec:
         validation_error = schemas["ValidationError"]
 
         assert "properties" in validation_error
-        assert "validation_errors" in validation_error["properties"]
+        assert "trace_id" in validation_error["properties"]
+
+        error_props = validation_error["properties"]["error"]["properties"]
+        assert "details" in error_props
+        item_props = error_props["details"]["items"]["properties"]
+        assert {"field", "message", "type"}.issubset(item_props.keys())
+
+    def test_swagger_spec_health_schema(self) -> None:
+        """Проверка схемы Health."""
+        schemas = SWAGGER_SPEC["components"]["schemas"]
+
+        assert "Health" in schemas
+        health_schema = schemas["Health"]
+
+        assert "websocket" in health_schema["properties"]
+        assert health_schema["properties"]["websocket"]["$ref"].endswith(
+            "/WebSocketStats"
+        )
 
     def test_swagger_spec_status_schema(self) -> None:
         """Проверка схемы Status."""
@@ -207,6 +229,12 @@ class TestSwaggerPaths:
 
         assert "/api/status" in paths
 
+    def test_health_path_exists(self) -> None:
+        """Проверка наличия пути /health."""
+        paths = SWAGGER_SPEC["paths"]
+
+        assert "/health" in paths
+
     def test_start_path_exists(self) -> None:
         """Проверка наличия пути /api/start."""
         paths = SWAGGER_SPEC["paths"]
@@ -249,6 +277,18 @@ class TestSwaggerPaths:
 
         assert "/api/config" in paths
 
+    def test_recent_events_path_exists(self) -> None:
+        """Проверка наличия пути /api/events/recent."""
+        paths = SWAGGER_SPEC["paths"]
+
+        assert "/api/events/recent" in paths
+
+    def test_events_stats_path_exists(self) -> None:
+        """Проверка наличия пути /api/events/stats."""
+        paths = SWAGGER_SPEC["paths"]
+
+        assert "/api/events/stats" in paths
+
 
 class TestSwaggerPathMethods:
     """Тесты HTTP методов в путях."""
@@ -277,6 +317,24 @@ class TestSwaggerPathMethods:
 
         assert "get" in config_path
         assert "put" in config_path
+
+    def test_health_has_get(self) -> None:
+        """Проверка GET метода для /health."""
+        health_path = SWAGGER_SPEC["paths"]["/health"]
+
+        assert "get" in health_path
+
+    def test_recent_events_has_get(self) -> None:
+        """Проверка GET метода для /api/events/recent."""
+        recent_events_path = SWAGGER_SPEC["paths"]["/api/events/recent"]
+
+        assert "get" in recent_events_path
+
+    def test_events_stats_has_get(self) -> None:
+        """Проверка GET метода для /api/events/stats."""
+        events_stats_path = SWAGGER_SPEC["paths"]["/api/events/stats"]
+
+        assert "get" in events_stats_path
 
 
 class TestSwaggerPathResponses:

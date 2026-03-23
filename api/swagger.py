@@ -13,7 +13,7 @@ SWAGGER_SPEC: dict[str, Any] = {
     "info": {
         "title": "MIA-ScreenCapture API",
         "description": "REST API для управления записью экрана",
-        "version": "1.2.0",
+        "version": "1.3.0",
         "contact": {
             "name": "MIA Development Team",
         },
@@ -46,11 +46,48 @@ SWAGGER_SPEC: dict[str, Any] = {
                         "example": False,
                     },
                     "error": {
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "example": "bad_request",
+                            },
+                            "message": {
+                                "type": "string",
+                                "example": "Ошибка запроса",
+                            },
+                            "details": {
+                                "nullable": True,
+                                "oneOf": [
+                                    {
+                                        "type": "array",
+                                    },
+                                    {
+                                        "type": "object",
+                                    },
+                                    {
+                                        "type": "string",
+                                    },
+                                    {
+                                        "type": "integer",
+                                    },
+                                    {
+                                        "type": "number",
+                                    },
+                                    {
+                                        "type": "boolean",
+                                    },
+                                ],
+                            },
+                        },
+                        "required": ["code", "message", "details"],
+                    },
+                    "trace_id": {
                         "type": "string",
-                        "example": "Описание ошибки",
+                        "example": "req_1234567890abcdef",
                     },
                 },
-                "required": ["success", "error"],
+                "required": ["success", "error", "trace_id"],
             },
             "ValidationError": {
                 "type": "object",
@@ -60,30 +97,125 @@ SWAGGER_SPEC: dict[str, Any] = {
                         "example": False,
                     },
                     "error": {
-                        "type": "string",
-                        "example": "Ошибка валидации данных",
-                    },
-                    "validation_errors": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "field": {
-                                    "type": "string",
-                                    "example": "fps",
-                                },
-                                "message": {
-                                    "type": "string",
-                                    "example": "Значение должно быть от 1 до 120",
-                                },
-                                "type": {
-                                    "type": "string",
-                                    "example": "value_error",
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "example": "validation_error",
+                            },
+                            "message": {
+                                "type": "string",
+                                "example": "Ошибка валидации данных",
+                            },
+                            "details": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "field": {
+                                            "type": "string",
+                                            "example": "fps",
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Значение должно быть от 1 до 120",
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "example": "value_error",
+                                        },
+                                    },
+                                    "required": [
+                                        "field",
+                                        "message",
+                                        "type",
+                                    ],
                                 },
                             },
                         },
+                        "required": ["code", "message", "details"],
+                    },
+                    "trace_id": {
+                        "type": "string",
+                        "example": "req_1234567890abcdef",
                     },
                 },
+                "required": ["success", "error", "trace_id"],
+            },
+            "Event": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "example": "started",
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-03-23T12:00:00+00:00",
+                    },
+                    "data": {
+                        "type": "object",
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["type", "timestamp", "data"],
+            },
+            "WebSocketStats": {
+                "type": "object",
+                "properties": {
+                    "buffered_events": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "example": 1,
+                    },
+                    "events_published_total": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "example": 1,
+                    },
+                    "transport_ready": {
+                        "type": "boolean",
+                        "example": True,
+                    },
+                    "attached_to_event_bus": {
+                        "type": "boolean",
+                        "example": False,
+                    },
+                },
+                "required": ["transport_ready"],
+            },
+            "Health": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "example": "ok",
+                    },
+                    "timestamp": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-03-23T12:00:00+00:00",
+                    },
+                    "version": {
+                        "type": "string",
+                        "example": "1.3.0",
+                    },
+                    "uptime_seconds": {
+                        "type": "number",
+                        "example": 12.345,
+                    },
+                    "websocket": {
+                        "$ref": "#/components/schemas/WebSocketStats",
+                    },
+                },
+                "required": [
+                    "status",
+                    "timestamp",
+                    "version",
+                    "uptime_seconds",
+                    "websocket",
+                ],
             },
             "Status": {
                 "type": "object",
@@ -108,9 +240,15 @@ SWAGGER_SPEC: dict[str, Any] = {
                                 "example": 120,
                                 "description": "Время записи в секундах",
                             },
+                            "current_file": {
+                                "type": "string",
+                                "nullable": True,
+                                "example": "C:/Videos/recording_20260320.mp4",
+                            },
                             "output_path": {
                                 "type": "string",
                                 "example": "C:/Videos/recording_20260320.mp4",
+                                "nullable": True,
                             },
                         },
                     },
@@ -384,6 +522,26 @@ SWAGGER_SPEC: dict[str, Any] = {
                 },
             },
         },
+        "/health": {
+            "get": {
+                "summary": "Проверить состояние сервиса",
+                "description": "Возвращает health payload с версией, uptime и состоянием real-time транспорта",
+                "operationId": "getHealth",
+                "security": [],
+                "responses": {
+                    "200": {
+                        "description": "Сервис работает",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Health",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
         "/api/start": {
             "post": {
                 "summary": "Начать запись",
@@ -561,6 +719,111 @@ SWAGGER_SPEC: dict[str, Any] = {
                                             },
                                         },
                                     },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "/api/events/recent": {
+            "get": {
+                "summary": "Получить недавние события",
+                "description": "Возвращает последние real-time события записи",
+                "operationId": "getRecentEvents",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": False,
+                        "schema": {
+                            "type": "integer",
+                            "default": 50,
+                            "minimum": 1,
+                            "maximum": 500,
+                        },
+                        "description": "Количество событий в ответе",
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Список событий",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": True,
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Event",
+                                            },
+                                        },
+                                    },
+                                    "required": ["success", "data"],
+                                },
+                            },
+                        },
+                    },
+                    "400": {
+                        "description": "Некорректный параметр limit",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error",
+                                },
+                            },
+                        },
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "/api/events/stats": {
+            "get": {
+                "summary": "Получить статистику событий",
+                "description": "Возвращает статистику real-time event-менеджера",
+                "operationId": "getEventsStats",
+                "responses": {
+                    "200": {
+                        "description": "Статистика событий",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": True,
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/WebSocketStats",
+                                        },
+                                    },
+                                    "required": ["success", "data"],
+                                },
+                            },
+                        },
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error",
                                 },
                             },
                         },

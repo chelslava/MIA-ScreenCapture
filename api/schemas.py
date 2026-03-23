@@ -286,6 +286,19 @@ class ToggleScheduleRequest(BaseModel):
 class UpdateConfigRequest(BaseModel):
     """Схема запроса для обновления конфигурации."""
 
+    video: Optional["UpdateConfigVideoRequest"] = Field(
+        default=None, description="Видео настройки"
+    )
+    audio: Optional["UpdateConfigAudioRequest"] = Field(
+        default=None, description="Аудио настройки"
+    )
+    output: Optional["UpdateConfigOutputRequest"] = Field(
+        default=None, description="Настройки вывода"
+    )
+    app: Optional["UpdateConfigAppRequest"] = Field(
+        default=None, description="Настройки приложения"
+    )
+
     # Видео настройки
     fps: Optional[int] = Field(
         default=None, ge=1, le=120, description="Кадров в секунду"
@@ -329,6 +342,110 @@ class UpdateConfigRequest(BaseModel):
                 "Битрейт должен быть в формате: число + опционально K/M"
             )
         return v
+
+    @model_validator(mode="after")
+    def sync_nested_sections(self) -> "UpdateConfigRequest":
+        """Заполняет flat-поля значениями из nested-полей для совместимости."""
+        if self.video is not None:
+            if self.fps is None and self.video.fps is not None:
+                self.fps = self.video.fps
+            if self.codec is None and self.video.codec is not None:
+                self.codec = self.video.codec
+            if self.bitrate is None and self.video.bitrate is not None:
+                self.bitrate = self.video.bitrate
+
+        if self.audio is not None:
+            if self.record_mic is None and self.audio.record_mic is not None:
+                self.record_mic = self.audio.record_mic
+            if (
+                self.record_system is None
+                and self.audio.record_system is not None
+            ):
+                self.record_system = self.audio.record_system
+
+        if self.output is not None:
+            if self.default_path is None and self.output.default_path is not None:
+                self.default_path = self.output.default_path
+            if (
+                self.filename_template is None
+                and self.output.filename_template is not None
+            ):
+                self.filename_template = self.output.filename_template
+
+        if self.app is not None:
+            if (
+                self.minimize_to_tray is None
+                and self.app.minimize_to_tray is not None
+            ):
+                self.minimize_to_tray = self.app.minimize_to_tray
+            if (
+                self.show_notifications is None
+                and self.app.show_notifications is not None
+            ):
+                self.show_notifications = self.app.show_notifications
+            if self.language is None and self.app.language is not None:
+                self.language = self.app.language
+
+        return self
+
+
+class UpdateConfigVideoRequest(BaseModel):
+    """Вложенная схема видео-настроек."""
+
+    fps: Optional[int] = Field(
+        default=None, ge=1, le=120, description="Кадров в секунду"
+    )
+    codec: Optional[str] = Field(default=None, description="Видеокодек")
+    bitrate: Optional[str] = Field(default=None, description="Битрейт видео")
+
+    @field_validator("bitrate")
+    @classmethod
+    def validate_bitrate(cls, v: Optional[str]) -> Optional[str]:
+        """Валидация формата битрейта."""
+        if v is not None and not re.match(r"^\d+[KMk]?$", v):
+            raise ValueError(
+                "Битрейт должен быть в формате: число + опционально K/M"
+            )
+        return v
+
+
+class UpdateConfigAudioRequest(BaseModel):
+    """Вложенная схема аудио-настроек."""
+
+    record_mic: Optional[bool] = Field(
+        default=None, description="Записывать микрофон"
+    )
+    record_system: Optional[bool] = Field(
+        default=None, description="Записывать системное аудио"
+    )
+
+
+class UpdateConfigOutputRequest(BaseModel):
+    """Вложенная схема настроек вывода."""
+
+    default_path: Optional[str] = Field(
+        default=None, description="Путь для сохранения записей по умолчанию"
+    )
+    filename_template: Optional[str] = Field(
+        default=None, description="Шаблон имени файла"
+    )
+
+
+class UpdateConfigAppRequest(BaseModel):
+    """Вложенная схема настроек приложения."""
+
+    minimize_to_tray: Optional[bool] = Field(
+        default=None, description="Сворачивать в трей"
+    )
+    show_notifications: Optional[bool] = Field(
+        default=None, description="Показывать уведомления"
+    )
+    language: Optional[str] = Field(
+        default=None, description="Язык интерфейса"
+    )
+
+
+UpdateConfigRequest.model_rebuild()
 
 
 # Модели ответов API

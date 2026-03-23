@@ -408,6 +408,54 @@ class TestUpdateConfigRequest:
         assert request.minimize_to_tray is False
         assert request.language == "ru"
 
+    def test_nested_payload(self):
+        """Проверка обновления из nested payload."""
+        request = UpdateConfigRequest(
+            video={
+                "fps": 60,
+                "codec": "h264",
+                "bitrate": "5M",
+            },
+            audio={
+                "record_mic": False,
+                "record_system": True,
+            },
+            output={
+                "default_path": "/tmp/recordings",
+                "filename_template": "rec_{datetime}",
+            },
+            app={
+                "minimize_to_tray": False,
+                "show_notifications": False,
+                "language": "ru",
+            },
+        )
+
+        assert request.video is not None
+        assert request.video.fps == 60
+        assert request.video.codec == "h264"
+        assert request.video.bitrate == "5M"
+        assert request.audio is not None
+        assert request.audio.record_mic is False
+        assert request.audio.record_system is True
+        assert request.output is not None
+        assert request.output.default_path == "/tmp/recordings"
+        assert request.output.filename_template == "rec_{datetime}"
+        assert request.app is not None
+        assert request.app.minimize_to_tray is False
+        assert request.app.show_notifications is False
+        assert request.app.language == "ru"
+        assert request.fps == 60
+        assert request.codec == "h264"
+        assert request.bitrate == "5M"
+        assert request.record_mic is False
+        assert request.record_system is True
+        assert request.default_path == "/tmp/recordings"
+        assert request.filename_template == "rec_{datetime}"
+        assert request.minimize_to_tray is False
+        assert request.show_notifications is False
+        assert request.language == "ru"
+
     def test_empty_request(self):
         """Проверка пустого запроса."""
         request = UpdateConfigRequest()
