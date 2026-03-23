@@ -103,8 +103,8 @@ class APIServer:
 
         @self.app.errorhandler(Exception)
         def handle_exception(e):
-            logger.error(f"Ошибка API: {e}")
-            return jsonify({"error": str(e)}), 500
+            logger.exception(f"Ошибка API: {e}")
+            return jsonify({"error": "Внутренняя ошибка сервера"}), 500
 
         @self.app.before_request
         def assign_request_id() -> None:

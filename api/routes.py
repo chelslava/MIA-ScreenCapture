@@ -77,6 +77,17 @@ def _error_response(
     return response
 
 
+def _internal_error_response() -> tuple:
+    """
+    Возвращает безопасный ответ 500 без утечки внутренней ошибки.
+    """
+    return _error_response(
+        500,
+        "internal_error",
+        "Внутренняя ошибка сервера",
+    )
+
+
 def _extract_error_details(data: dict[str, Any]) -> Optional[Any]:
     """Извлекает дополнительные детали из legacy error payload."""
     if "validation_errors" in data:
@@ -239,8 +250,8 @@ def api_endpoint(
             except ValidationError as e:
                 return handle_validation_error(e)
             except Exception as e:
-                logger.error(f"{error_message}: {e}")
-                return jsonify({"success": False, "error": str(e)}), 500
+                logger.exception(f"{error_message}: {e}")
+                return _internal_error_response()
 
         return wrapper
 
@@ -304,8 +315,8 @@ def api_callback(
             except ValidationError as e:
                 return handle_validation_error(e)
             except Exception as e:
-                logger.error(f"Ошибка в {callback_name}: {e}")
-                return jsonify({"success": False, "error": str(e)}), 500
+                logger.exception(f"Ошибка в {callback_name}: {e}")
+                return _internal_error_response()
 
         return wrapper
 
@@ -359,12 +370,12 @@ def register_routes(app, server) -> None:
                 }
             ), 500
         except Exception as e:
-            logger.error(f"Ошибка получения статуса: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка получения статуса: {e}")
+            return _internal_error_response()
 
     @app.route("/api/start", methods=["POST"])
-    @require_api_key
     @rate_limit
+    @require_api_key
     def start_recording():
         """
         Начало новой записи.
@@ -417,12 +428,12 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка начала записи: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка начала записи: {e}")
+            return _internal_error_response()
 
     @app.route("/api/stop", methods=["POST"])
-    @require_api_key
     @rate_limit
+    @require_api_key
     def stop_recording():
         """
         Остановка текущей записи.
@@ -445,12 +456,12 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка остановки записи: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка остановки записи: {e}")
+            return _internal_error_response()
 
     @app.route("/api/pause", methods=["POST"])
-    @require_api_key
     @rate_limit
+    @require_api_key
     def pause_recording():
         """
         Пауза или возобновление текущей записи.
@@ -471,8 +482,8 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка паузы записи: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка паузы записи: {e}")
+            return _internal_error_response()
 
     @app.route("/api/recordings", methods=["GET"])
     @require_api_key
@@ -496,8 +507,8 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка получения записей: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка получения записей: {e}")
+            return _internal_error_response()
 
     @app.route("/api/events/recent", methods=["GET"])
     @require_api_key
@@ -524,8 +535,8 @@ def register_routes(app, server) -> None:
             events = manager.get_recent_events(limit=limit)
             return jsonify({"success": True, "data": events})
         except Exception as e:
-            logger.error(f"Ошибка получения событий: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка получения событий: {e}")
+            return _internal_error_response()
 
     @app.route("/api/events/stats", methods=["GET"])
     @require_api_key
@@ -542,8 +553,8 @@ def register_routes(app, server) -> None:
                 )
             return jsonify({"success": True, "data": manager.get_stats()})
         except Exception as e:
-            logger.error(f"Ошибка получения статистики событий: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка получения статистики событий: {e}")
+            return _internal_error_response()
 
     @app.route("/api/schedule", methods=["GET"])
     @require_api_key
@@ -567,12 +578,12 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка получения расписания: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка получения расписания: {e}")
+            return _internal_error_response()
 
     @app.route("/api/schedule", methods=["POST"])
-    @require_api_key
     @rate_limit
+    @require_api_key
     def create_schedule():
         """
         Создание новой запланированной задачи.
@@ -630,12 +641,12 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка создания расписания: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка создания расписания: {e}")
+            return _internal_error_response()
 
     @app.route("/api/schedule/<task_id>", methods=["DELETE"])
-    @require_api_key
     @rate_limit
+    @require_api_key
     def delete_schedule(task_id: str):
         """
         Удаление запланированной задачи.
@@ -661,12 +672,12 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка удаления расписания: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка удаления расписания: {e}")
+            return _internal_error_response()
 
     @app.route("/api/schedule/<task_id>", methods=["PUT"])
-    @require_api_key
     @rate_limit
+    @require_api_key
     def update_schedule(task_id: str):
         """
         Обновление запланированной задачи.
@@ -706,12 +717,12 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка обновления расписания: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка обновления расписания: {e}")
+            return _internal_error_response()
 
     @app.route("/api/schedule/<task_id>/toggle", methods=["POST"])
-    @require_api_key
     @rate_limit
+    @require_api_key
     def toggle_schedule(task_id: str):
         """
         Включение или отключение запланированной задачи.
@@ -746,8 +757,8 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка переключения расписания: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка переключения расписания: {e}")
+            return _internal_error_response()
 
     @app.route("/api/devices", methods=["GET"])
     @require_api_key
@@ -771,8 +782,8 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка получения устройств: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка получения устройств: {e}")
+            return _internal_error_response()
 
     @app.route("/api/windows", methods=["GET"])
     @require_api_key
@@ -796,8 +807,8 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка получения окон: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка получения окон: {e}")
+            return _internal_error_response()
 
     @app.route("/api/config", methods=["GET"])
     @require_api_key
@@ -821,12 +832,12 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка получения конфигурации: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка получения конфигурации: {e}")
+            return _internal_error_response()
 
     @app.route("/api/config", methods=["PUT"])
-    @require_api_key
     @rate_limit
+    @require_api_key
     def update_config():
         """
         Обновление конфигурации.
@@ -860,8 +871,8 @@ def register_routes(app, server) -> None:
             ), 500
 
         except Exception as e:
-            logger.error(f"Ошибка обновления конфигурации: {e}")
-            return jsonify({"success": False, "error": str(e)}), 500
+            logger.exception(f"Ошибка обновления конфигурации: {e}")
+            return _internal_error_response()
 
     @app.route("/health", methods=["GET"])
     def health_check():
