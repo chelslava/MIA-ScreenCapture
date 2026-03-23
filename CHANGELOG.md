@@ -14,12 +14,13 @@
 ### Changed
 - Screen capture backend migrated to `windows-capture` (removed `mss` usage).
 - API server lifecycle improved with managed waitress shutdown.
-- API error payload standardized to include `code`, `message`, `details`, `trace_id`.
+- API error payload standardized to a unified contract:
+  `success=false`, `error={code,message,details}`, `trace_id`.
 - Atomic persistence for config and scheduler task files.
-- Health endpoint extended with version, uptime and real-time transport stats.
+- Health endpoint `GET /health` extended with `version`, `uptime_seconds`
+  and real-time transport stats (`websocket`).
 - Updated app version metadata to `1.3.0`.
 
 ### Reliability
 - Strengthened API rate limiting coverage on write endpoints.
 - Expanded integration and unit test coverage for API/server/recorder/scheduler paths.
-

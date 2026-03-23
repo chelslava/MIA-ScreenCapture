@@ -30,7 +30,7 @@
 
 ## Требования
 
-- Python 3.8+
+- Python 3.9+
 - FFmpeg (должен быть в PATH)
 - [UV](https://docs.astral.sh/uv/) — быстрый менеджер пакетов (рекомендуется)
 
@@ -240,6 +240,24 @@ uv run python main.py --headless
 
 API сервер запускается по адресу `http://127.0.0.1:5000`
 
+### Health
+
+#### GET /health
+Проверка доступности сервиса (без API key).
+
+**Ответ:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-03-23T18:12:34.567890+00:00",
+  "version": "1.3.0",
+  "uptime_seconds": 123.456,
+  "websocket": {
+    "transport_ready": false
+  }
+}
+```
+
 ### Эндпоинты
 
 #### GET /api/status
@@ -260,9 +278,35 @@ API сервер запускается по адресу `http://127.0.0.1:5000
 
 #### GET /api/events/recent?limit=50
 Получить последние события записи (transport-ready слой для WebSocket/SSE).
+`limit` должен быть числом в диапазоне `1..500`.
 
 #### GET /api/events/stats
 Получить статистику event-менеджера (буфер, количество событий, готовность транспорта).
+
+### Формат ошибок
+
+Для ошибок используется единый контракт:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "validation_error",
+    "message": "Ошибка валидации данных",
+    "details": [
+      {
+        "field": "fps",
+        "message": "Input should be less than or equal to 120",
+        "type": "less_than_equal"
+      }
+    ]
+  },
+  "trace_id": "a1b2c3d4e5f6478a9b0c1234567890ab"
+}
+```
+
+`trace_id` дублируется в заголовке `X-Request-ID`.
+Примечание: успешные ответы остаются в формате `{ "success": true, "data": ... }`.
 
 #### POST /api/start
 Начать запись.
