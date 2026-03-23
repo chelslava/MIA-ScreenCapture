@@ -283,6 +283,12 @@ API сервер запускается по адресу `http://127.0.0.1:5000
 #### GET /api/events/stats
 Получить статистику event-менеджера (буфер, количество событий, готовность транспорта).
 
+#### GET /api/observability/metrics
+Получить эксплуатационные метрики API (RPS, latency, статусы ответов, ресурсы процесса).
+
+#### GET /api/observability/baseline
+Получить baseline SLO и текущие значения (`p95 latency`, `error rate`, `requests_per_second`, `rss_mb`).
+
 ### Формат ошибок
 
 Для ошибок используется единый контракт:

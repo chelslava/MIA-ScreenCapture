@@ -9,6 +9,9 @@
 - API endpoints for recent events and event stats:
   - `GET /api/events/recent`
   - `GET /api/events/stats`
+- Observability endpoints:
+  - `GET /api/observability/metrics`
+  - `GET /api/observability/baseline`
 - New unit tests for recording service and event layer.
 
 ### Changed
@@ -24,3 +27,9 @@
 ### Reliability
 - Strengthened API rate limiting coverage on write endpoints.
 - Expanded integration and unit test coverage for API/server/recorder/scheduler paths.
+- Stabilized Windows test teardown for temporary directories in CI.
+
+### Automation
+- CI expanded to Python matrix (`3.10`, `3.11`) on Windows.
+- Added non-blocking security audit job (`pip-audit`) in CI.
+- Added tag-based release workflow (`v*`) with build artifacts and `SHA256SUMS`.
