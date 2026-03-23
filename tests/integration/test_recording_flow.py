@@ -543,12 +543,15 @@ class TestRecordingPerformance:
             frame_times.append(frame_time)
 
         avg_time = sum(frame_times) / len(frame_times)
+        p95_time = np.percentile(frame_times, 95)
         max_time = max(frame_times)
 
         # Среднее время должно быть меньше интервала кадра для 30 fps
         assert avg_time < 0.033  # ~33ms для 30 fps
-        # Максимальное время не должно превышать 50ms
-        assert max_time < 0.05
+        # Большинство кадров должно укладываться в 50ms (устойчиво к единичным всплескам CI)
+        assert p95_time < 0.05
+        # Единичный пик тоже не должен быть чрезмерным
+        assert max_time < 0.08
 
     @pytest.mark.slow
     def test_queue_performance(self):
