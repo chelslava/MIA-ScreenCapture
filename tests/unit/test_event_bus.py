@@ -46,3 +46,25 @@ class TestInMemoryEventBus:
         )
 
         assert called["count"] == 0
+
+    def test_handler_exception_does_not_break_chain(self) -> None:
+        bus = InMemoryEventBus()
+        called = {"ok": 0}
+
+        def broken_handler(event: RecordingEvent) -> None:
+            raise RuntimeError("handler failed")
+
+        def ok_handler(event: RecordingEvent) -> None:
+            called["ok"] += 1
+
+        bus.subscribe(RecordingEventType.ERROR, broken_handler)
+        bus.subscribe(RecordingEventType.ERROR, ok_handler)
+
+        bus.publish(
+            RecordingEvent(
+                event_type=RecordingEventType.ERROR,
+                payload={"error": "boom"},
+            )
+        )
+
+        assert called["ok"] == 1

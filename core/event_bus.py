@@ -10,6 +10,10 @@ from enum import Enum
 from threading import Lock
 from typing import Any, Callable, Dict, List, Protocol
 
+from logger_config import get_module_logger
+
+logger = get_module_logger(__name__)
+
 
 class RecordingEventType(str, Enum):
     """Типы доменных событий записи."""
@@ -88,4 +92,9 @@ class InMemoryEventBus:
         with self._lock:
             handlers = list(self._subscribers.get(event.event_type, []))
         for handler in handlers:
-            handler(event)
+            try:
+                handler(event)
+            except Exception as e:
+                logger.warning(
+                    f"Ошибка обработчика события {event.event_type}: {e}"
+                )

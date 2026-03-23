@@ -137,17 +137,23 @@ class RecordingController:
             # Запуск аудиозаписи при необходимости
             if audio.audio_type in (AudioType.MICROPHONE, AudioType.BOTH):
                 self._audio_recorder = AudioRecorder()
-                self._audio_recorder.start(
+                audio_started = self._audio_recorder.start(
                     self._temp_audio,
                     device_index=audio.mic_device_index,
                     duration=duration,
                 )
+                if not audio_started:
+                    self._cleanup()
+                    return False, "Не удалось запустить аудиозапись"
             elif audio.audio_type == AudioType.SYSTEM:
                 try:
                     self._audio_recorder = SystemAudioRecorder()
-                    self._audio_recorder.start(
+                    audio_started = self._audio_recorder.start(
                         self._temp_audio, duration=duration
                     )
+                    if not audio_started:
+                        self._cleanup()
+                        return False, "Не удалось запустить запись системного аудио"
                 except Exception as e:
                     logger.warning(f"Системное аудио недоступно: {e}")
                     self._audio_recorder = None

@@ -129,6 +129,44 @@ class TestRecordingController:
         assert error_msg is None
         assert controller.state.status == RecordingStatus.RECORDING
 
+    @patch("gui.controllers.recording_controller.AudioRecorder")
+    @patch("gui.controllers.recording_controller.RecordingEncoder")
+    @patch("gui.controllers.recording_controller.VideoRecorder")
+    def test_start_recording_fails_when_audio_start_fails(
+        self,
+        mock_video_recorder: MagicMock,
+        mock_encoder: MagicMock,
+        mock_audio_recorder: MagicMock,
+        controller: RecordingController,
+    ) -> None:
+        """Проверка ошибки запуска, если аудиозапись не стартовала."""
+        mock_encoder_instance = MagicMock()
+        mock_encoder_instance.setup.return_value = (
+            Path("/tmp/video.mp4"),
+            Path("/tmp/audio.wav"),
+        )
+        mock_encoder.return_value = mock_encoder_instance
+
+        mock_video_instance = MagicMock()
+        mock_video_instance.start.return_value = True
+        mock_video_recorder.return_value = mock_video_instance
+
+        mock_audio_instance = MagicMock()
+        mock_audio_instance.start.return_value = False
+        mock_audio_recorder.return_value = mock_audio_instance
+
+        output_path = Path("/output/test.mp4")
+        capture = CaptureSettings()
+        audio = AudioSettings(audio_type=AudioType.MICROPHONE)
+        video = VideoSettings()
+
+        success, error_msg = controller.start_recording(
+            output_path, capture, audio, video
+        )
+
+        assert success is False
+        assert error_msg == "Не удалось запустить аудиозапись"
+
     def test_pause_recording_success(
         self, controller: RecordingController
     ) -> None:
