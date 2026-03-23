@@ -532,7 +532,8 @@ class TestAPICallbackErrors:
 
         assert response.status_code == 500
         data = assert_error_contract(response, "internal_error")
-        assert "Start failed" in data["error"]["message"] or data["error"]["message"]
+        assert data["error"]["message"] == "Внутренняя ошибка сервера"
+        assert data["error"]["details"] is None
 
     def test_stop_callback_exception(
         self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]

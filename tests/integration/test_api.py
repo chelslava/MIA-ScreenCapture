@@ -10,7 +10,7 @@ from typing import Dict
 from unittest.mock import MagicMock
 
 import pytest
-from flask import Flask
+from flask import Flask, jsonify
 from flask.testing import FlaskClient
 
 from api.auth import init_api_auth
@@ -694,6 +694,41 @@ class TestAPIErrorHandling:
         data = assert_error_contract(response, "internal_error")
         assert isinstance(data["error"]["message"], str)
 
+    def test_legacy_error_payload_does_not_leak_internal_fields(
+        self, client: FlaskClient
+    ):
+        """Проверка, что legacy error payload не протаскивает внутренние поля."""
+        app = client.application
+
+        def legacy_error():
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "Legacy failure",
+                        "message": "Legacy failure",
+                        "debug": "internal-secret",
+                        "stacktrace": "traceback content",
+                    }
+                ),
+                400,
+            )
+
+        app.add_url_rule(
+            "/__legacy-error-test",
+            endpoint="legacy_error_test",
+            view_func=legacy_error,
+        )
+
+        response = client.get("/__legacy-error-test")
+
+        assert response.status_code == 400
+        data = assert_error_contract(response, "bad_request")
+        assert data["error"]["message"] == "Legacy failure"
+        assert data["error"]["details"] is None
+        assert "debug" not in data
+        assert "stacktrace" not in data["error"]
+
     def test_callback_returns_error(
         self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
     ):
@@ -797,6 +832,11 @@ class TestAPIAuthentication:
         assert response.status_code == 200
         data = response.get_json()
         assert data["status"] == "ok"
+        assert "timestamp" in data
+        assert "version" in data
+        assert "uptime_seconds" in data
+        assert "websocket" in data
+        assert data["websocket"]["transport_ready"] is True
 
     def test_start_requires_auth(self, unauth_client: FlaskClient):
         """Проверка что /api/start требует аутентификации."""

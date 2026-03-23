@@ -5,7 +5,6 @@
 Определяет REST API эндпоинты для видеозаписи с валидацией через Pydantic.
 """
 
-from datetime import datetime
 from functools import wraps
 import uuid
 from typing import Any, Callable, Optional
@@ -94,19 +93,7 @@ def _extract_error_details(data: dict[str, Any]) -> Optional[Any]:
         return data["validation_errors"]
     if "rate_limit" in data:
         return data["rate_limit"]
-
-    details = {
-        key: value
-        for key, value in data.items()
-        if key
-        not in {
-            "success",
-            "error",
-            "message",
-            "trace_id",
-        }
-    }
-    return details or None
+    return None
 
 
 def _normalize_error_payload(
@@ -114,14 +101,27 @@ def _normalize_error_payload(
     data: dict[str, Any],
 ) -> dict[str, Any]:
     """Преобразует legacy error payload в единый контракт."""
+    if status_code >= 500:
+        return _standard_error_payload(
+            "internal_error",
+            "Внутренняя ошибка сервера",
+        )
+
     if (
         data.get("success") is False
         and isinstance(data.get("error"), dict)
         and {"code", "message", "details"}.issubset(data["error"].keys())
     ):
-        payload = dict(data)
-        payload.setdefault("trace_id", _get_trace_id())
-        return payload
+        error_data = data["error"]
+        return {
+            "success": False,
+            "error": {
+                "code": error_data["code"],
+                "message": error_data["message"],
+                "details": error_data.get("details"),
+            },
+            "trace_id": data.get("trace_id") or _get_trace_id(),
+        }
 
     error_value = data.get("error")
     message = (
@@ -138,13 +138,11 @@ def _normalize_error_payload(
         )
 
     code = _ERROR_CODE_BY_STATUS.get(status_code, "internal_error")
-    if status_code >= 500:
-        code = "internal_error"
 
     if message is None and isinstance(error_value, str):
         message = error_value
     if message is None:
-        message = "Внутренняя ошибка сервера" if status_code >= 500 else "Ошибка запроса"
+        message = "Ошибка запроса"
 
     return _standard_error_payload(code, message, _extract_error_details(data))
 
@@ -237,12 +235,7 @@ def api_endpoint(
 
                 callback = server_instance.get_callback(callback_name)
                 if not callback:
-                    return jsonify(
-                        {
-                            "success": False,
-                            "error": f"Обратный вызов {callback_name} не установлен",
-                        }
-                    ), 500
+                    return _internal_error_response()
 
                 # Передаём callback в функцию
                 return func(*args, callback=callback, **kwargs)
@@ -293,21 +286,11 @@ def api_callback(
                     "g.server не установлен. Добавьте @app.before_request "
                     "для установки g.server"
                 )
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": "Сервер не инициализирован",
-                    }
-                ), 500
+                return _internal_error_response()
 
             callback = server_instance.get_callback(callback_name)
             if not callback:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": f"Обратный вызов {callback_name} не установлен",
-                    }
-                ), 500
+                return _internal_error_response()
 
             try:
                 result = callback()
@@ -342,7 +325,7 @@ def register_routes(app, server) -> None:
     def set_server_context() -> None:
         """Установка server в контекст запроса для декораторов."""
         g.server = server
-        _get_trace_id()
+        g.request_id = _get_trace_id()
 
     @app.after_request
     def standardize_error_responses(response):
@@ -363,12 +346,7 @@ def register_routes(app, server) -> None:
             if callback:
                 status = callback()
                 return jsonify({"success": True, "data": status})
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов статуса не установлен",
-                }
-            ), 500
+            return _internal_error_response()
         except Exception as e:
             logger.exception(f"Ошибка получения статуса: {e}")
             return _internal_error_response()
@@ -420,12 +398,7 @@ def register_routes(app, server) -> None:
                     }
                 ), 400
 
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов запуска не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка начала записи: {e}")
@@ -448,12 +421,7 @@ def register_routes(app, server) -> None:
                 return jsonify(
                     {"success": result.get("success", True), "data": result}
                 )
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов остановки не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка остановки записи: {e}")
@@ -474,12 +442,7 @@ def register_routes(app, server) -> None:
             if callback:
                 result = callback()
                 return jsonify({"success": True, "data": result})
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов паузы не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка паузы записи: {e}")
@@ -499,12 +462,7 @@ def register_routes(app, server) -> None:
             if callback:
                 recordings = callback()
                 return jsonify({"success": True, "data": recordings})
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов записей не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка получения записей: {e}")
@@ -570,12 +528,7 @@ def register_routes(app, server) -> None:
             if callback:
                 tasks = callback()
                 return jsonify({"success": True, "data": tasks})
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов расписания не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка получения расписания: {e}")
@@ -633,12 +586,7 @@ def register_routes(app, server) -> None:
                     }
                 ), 400
 
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов создания расписания не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка создания расписания: {e}")
@@ -664,12 +612,7 @@ def register_routes(app, server) -> None:
                 return jsonify(
                     {"success": result.get("success", True), "data": result}
                 )
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов удаления расписания не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка удаления расписания: {e}")
@@ -709,12 +652,7 @@ def register_routes(app, server) -> None:
                 return jsonify(
                     {"success": result.get("success", True), "data": result}
                 )
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов обновления расписания не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка обновления расписания: {e}")
@@ -749,12 +687,7 @@ def register_routes(app, server) -> None:
             if callback:
                 result = callback(task_id, validated.enabled)
                 return jsonify({"success": True, "data": result})
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов переключения расписания не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка переключения расписания: {e}")
@@ -774,12 +707,7 @@ def register_routes(app, server) -> None:
             if callback:
                 devices = callback()
                 return jsonify({"success": True, "data": devices})
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов устройств не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка получения устройств: {e}")
@@ -799,12 +727,7 @@ def register_routes(app, server) -> None:
             if callback:
                 windows = callback()
                 return jsonify({"success": True, "data": windows})
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов окон не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка получения окон: {e}")
@@ -824,12 +747,7 @@ def register_routes(app, server) -> None:
             if callback:
                 config = callback()
                 return jsonify({"success": True, "data": config})
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов конфигурации не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка получения конфигурации: {e}")
@@ -866,12 +784,7 @@ def register_routes(app, server) -> None:
             if callback:
                 result = callback(callback_data)
                 return jsonify({"success": True, "data": result})
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Обратный вызов обновления конфигурации не установлен",
-                }
-            ), 500
+            return _internal_error_response()
 
         except Exception as e:
             logger.exception(f"Ошибка обновления конфигурации: {e}")
@@ -880,8 +793,8 @@ def register_routes(app, server) -> None:
     @app.route("/health", methods=["GET"])
     def health_check():
         """Эндпоинт проверки здоровья."""
-        return jsonify(
-            {"status": "ok", "timestamp": datetime.now().isoformat()}
-        )
+        response = jsonify(server._get_health_payload())
+        response.headers["X-Request-ID"] = _get_trace_id()
+        return response
 
     logger.info("Маршруты API зарегистрированы")
