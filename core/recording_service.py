@@ -18,15 +18,16 @@ from core.event_bus import (
     RecordingEvent,
     RecordingEventType,
 )
-from gui.controllers.recording_controller import RecordingController
-from gui.models.recording_state import (
-    AudioSettings,
-    AudioType,
-    CaptureSettings,
-    CaptureType,
-    RecordingState,
-    VideoSettings,
+from core.recording_mapper import map_audio_to_gui, map_capture_to_gui, map_video_to_gui
+from core.recording_types import (
+    AudioMode,
+    AudioRequest,
+    CaptureMode,
+    CaptureRequest,
+    VideoRequest,
 )
+from gui.controllers.recording_controller import RecordingController
+from gui.models.recording_state import RecordingState
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -84,9 +85,9 @@ class RecordingService:
 
                 success, error_msg = self._controller.start_recording(
                     output_path=output_path,
-                    capture=capture,
-                    audio=audio,
-                    video=video,
+                    capture=map_capture_to_gui(capture),
+                    audio=map_audio_to_gui(audio),
+                    video=map_video_to_gui(video),
                     duration=duration,
                 )
                 if not success:
@@ -184,14 +185,14 @@ class RecordingService:
         normalized["audio"] = params.get("audio", params.get("audio_type", "none"))
         return normalized
 
-    def _build_capture_settings(self, params: dict[str, Any]) -> CaptureSettings:
+    def _build_capture_settings(self, params: dict[str, Any]) -> CaptureRequest:
         area = params.get("area", "full")
-        capture_type_map = {
-            "full": CaptureType.FULL_SCREEN,
-            "window": CaptureType.WINDOW,
-            "rect": CaptureType.RECTANGLE,
+        capture_mode_map = {
+            "full": CaptureMode.FULL,
+            "window": CaptureMode.WINDOW,
+            "rect": CaptureMode.RECT,
         }
-        capture_type = capture_type_map.get(area, CaptureType.FULL_SCREEN)
+        capture_mode = capture_mode_map.get(area, CaptureMode.FULL)
 
         rect_value = params.get("rect")
         rect_coords: tuple[int, int, int, int]
@@ -206,28 +207,28 @@ class RecordingService:
             # fallback на full-hd, если координаты не переданы
             rect_coords = (0, 0, 1920, 1080)
 
-        return CaptureSettings(
-            capture_type=capture_type,
+        return CaptureRequest(
+            mode=capture_mode,
             window_title=params.get("window_title", "") or "",
             rect_coords=rect_coords,
         )
 
-    def _build_audio_settings(self, params: dict[str, Any]) -> AudioSettings:
+    def _build_audio_settings(self, params: dict[str, Any]) -> AudioRequest:
         audio_map = {
-            "none": AudioType.NONE,
-            "mic": AudioType.MICROPHONE,
-            "system": AudioType.SYSTEM,
-            "both": AudioType.BOTH,
+            "none": AudioMode.NONE,
+            "mic": AudioMode.MIC,
+            "system": AudioMode.SYSTEM,
+            "both": AudioMode.BOTH,
         }
-        audio_type = audio_map.get(str(params.get("audio", "none")), AudioType.NONE)
-        return AudioSettings(
-            audio_type=audio_type,
+        audio_mode = audio_map.get(str(params.get("audio", "none")), AudioMode.NONE)
+        return AudioRequest(
+            mode=audio_mode,
             mic_device_index=params.get("mic_device_index"),
         )
 
-    def _build_video_settings(self, params: dict[str, Any]) -> VideoSettings:
+    def _build_video_settings(self, params: dict[str, Any]) -> VideoRequest:
         config = get_config().settings.video
-        return VideoSettings(
+        return VideoRequest(
             fps=int(params.get("fps", config.fps)),
             codec=str(params.get("codec", config.codec)),
             bitrate=str(params.get("bitrate", config.bitrate)),

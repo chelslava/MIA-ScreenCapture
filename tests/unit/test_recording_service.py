@@ -6,8 +6,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from core.event_bus import InMemoryEventBus, RecordingEventType
+from core.recording_types import AudioMode
 from core.recording_service import RecordingService
-from gui.models.recording_state import AudioType
 
 
 class TestRecordingService:
@@ -97,7 +97,7 @@ class TestRecordingService:
     def test_build_audio_settings(self) -> None:
         service = RecordingService()
         audio = service._build_audio_settings({"audio": "both"})
-        assert audio.audio_type == AudioType.BOTH
+        assert audio.mode == AudioMode.BOTH
 
     def test_publishes_started_event(self) -> None:
         bus = InMemoryEventBus()
