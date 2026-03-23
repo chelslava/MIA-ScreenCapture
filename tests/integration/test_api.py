@@ -17,6 +17,7 @@ from api.auth import init_api_auth
 from api.routes import register_routes
 from api.server import APIServer
 from api.rate_limiter import RateLimitConfig, init_rate_limiter
+from api.websocket import WebSocketManager
 
 # Тестовый API ключ для интеграционных тестов
 TEST_API_KEY = "test-api-key-for-integration-tests-12345"
@@ -141,6 +142,15 @@ def test_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
     # Установка mock callbacks
     for action, callback in mock_callbacks.items():
         server.set_callback(action, callback)
+    websocket_manager = WebSocketManager()
+    websocket_manager.publish(
+        {
+            "type": "started",
+            "timestamp": "2026-03-23T12:00:00+00:00",
+            "data": {"output_path": "/tmp/test_recording.mp4"},
+        }
+    )
+    server.set_websocket_manager(websocket_manager)
 
     # Регистрация маршрутов
     register_routes(server.app, server)
@@ -169,6 +179,7 @@ def rate_limited_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
     )
     for action, callback in mock_callbacks.items():
         server.set_callback(action, callback)
+    server.set_websocket_manager(WebSocketManager())
     register_routes(server.app, server)
     server.app.config["TESTING"] = True
     return server.app
@@ -436,6 +447,28 @@ class TestAPIRecordingsEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert data["data"]["recordings"] == []
+
+
+class TestAPIEventsEndpoint:
+    """Тесты для эндпоинтов событий."""
+
+    def test_get_recent_events_success(self, client: FlaskClient) -> None:
+        response = client.get("/api/events/recent?limit=10")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert isinstance(data["data"], list)
+        assert data["data"][0]["type"] == "started"
+
+    def test_get_events_stats_success(self, client: FlaskClient) -> None:
+        response = client.get("/api/events/stats")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["transport_ready"] is True
+        assert "events_published_total" in data["data"]
 
 
 class TestAPIScheduleEndpoints:

@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from scheduler.task_scheduler import TaskScheduler
 
 from api.auth import API_KEY_ENV_VAR, API_KEY_HEADER
+from api.websocket import WebSocketManager
 from cli.parser import (
     parse_args,
     print_schedule_list,
@@ -94,6 +95,8 @@ class VideoRecorderApp:
         self._shutdown_manager: Optional[GracefulShutdown] = None
         # Headless-friendly сервис записи (используется как fallback без GUI)
         self._recording_service = RecordingService()
+        self._websocket_manager = WebSocketManager()
+        self._websocket_manager.attach_event_bus(self._recording_service.event_bus)
 
     def _get_api_headers(self) -> dict:
         """
@@ -174,7 +177,7 @@ class VideoRecorderApp:
         self._app = QApplication(sys.argv)
         assert self._app is not None
         self._app.setApplicationName("MIA-ScreenCapture")
-        self._app.setApplicationVersion("1.0.0")
+        self._app.setApplicationVersion("1.3.0")
 
         # Примечание: В PyQt6 High DPI поддержка включена по умолчанию
         # Атрибуты AA_EnableHighDpiScaling и AA_UseHighDpiPixmaps удалены в Qt 6
@@ -440,6 +443,7 @@ class VideoRecorderApp:
             port=api_config.get("port", 5000),
         )
         assert self._api_server is not None
+        self._api_server.set_websocket_manager(self._websocket_manager)
 
         # Регистрация маршрутов
         register_routes(self._api_server.app, self._api_server)

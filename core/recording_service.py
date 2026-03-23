@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 from config import get_config
+from core.event_bus import (
+    EventBus,
+    InMemoryEventBus,
+    RecordingEvent,
+    RecordingEventType,
+)
 from gui.controllers.recording_controller import RecordingController
 from gui.models.recording_state import (
     AudioSettings,
@@ -29,14 +35,20 @@ logger = get_module_logger(__name__)
 class RecordingService:
     """Сервис записи, не требующий инициализации GUI."""
 
-    def __init__(self) -> None:
+    def __init__(self, event_bus: Optional[EventBus] = None) -> None:
         self._state = RecordingState()
         self._controller = RecordingController(self._state)
         self._lock = threading.Lock()
+        self._event_bus = event_bus or InMemoryEventBus()
+
+    @property
+    def event_bus(self) -> EventBus:
+        """Возвращает event bus для интеграции с транспортами (например, WebSocket)."""
+        return self._event_bus
 
     def get_status(self) -> dict[str, Any]:
         """Возвращает текущий статус записи."""
-        return {
+        status = {
             "is_recording": self._state.is_recording(),
             "is_paused": self._state.is_paused(),
             "elapsed_time": self._controller.elapsed_time,
@@ -44,6 +56,8 @@ class RecordingService:
             if self._state.current_output
             else None,
         }
+        self._publish_event(RecordingEventType.STATUS, status)
+        return status
 
     def start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
         """
@@ -56,7 +70,9 @@ class RecordingService:
         """
         with self._lock:
             if self._state.is_recording():
-                return {"success": False, "error": "Запись уже идёт"}
+                result = {"success": False, "error": "Запись уже идёт"}
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
 
             try:
                 normalized = self._normalize_params(params)
@@ -74,27 +90,37 @@ class RecordingService:
                     duration=duration,
                 )
                 if not success:
-                    return {
+                    result = {
                         "success": False,
                         "error": error_msg or "Не удалось запустить запись",
                     }
+                    self._publish_event(RecordingEventType.ERROR, result)
+                    return result
 
                 logger.info(f"Запись запущена: {output_path}")
-                return {"success": True, "output_path": str(output_path)}
+                result = {"success": True, "output_path": str(output_path)}
+                self._publish_event(RecordingEventType.STARTED, result)
+                return result
 
             except Exception as e:
                 logger.error(f"Ошибка запуска записи: {e}", exc_info=True)
-                return {"success": False, "error": str(e)}
+                result = {"success": False, "error": str(e)}
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
 
     def stop_recording(self) -> dict[str, Any]:
         """Останавливает текущую запись."""
         with self._lock:
             if not self._state.is_recording() and not self._state.is_paused():
-                return {"success": False, "error": "Запись не идёт"}
+                result = {"success": False, "error": "Запись не идёт"}
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
 
             output_path = self._controller.stop_recording()
             if not output_path:
-                return {"success": False, "error": "Не удалось сохранить запись"}
+                result = {"success": False, "error": "Не удалось сохранить запись"}
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
 
             try:
                 if output_path.exists():
@@ -106,24 +132,39 @@ class RecordingService:
                 logger.warning(f"Не удалось обновить список записей: {e}")
 
             logger.info(f"Запись остановлена: {output_path}")
-            return {"success": True, "filepath": str(output_path)}
+            result = {"success": True, "filepath": str(output_path)}
+            self._publish_event(RecordingEventType.STOPPED, result)
+            return result
 
     def toggle_pause(self) -> dict[str, Any]:
         """Переключает паузу текущей записи."""
         with self._lock:
             if not self._state.is_recording() and not self._state.is_paused():
-                return {"success": False, "error": "Запись не идёт"}
+                result = {"success": False, "error": "Запись не идёт"}
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
 
             if self._state.is_paused():
                 resumed = self._controller.resume_recording()
                 if not resumed:
-                    return {"success": False, "error": "Не удалось возобновить"}
-                return {"success": True, "is_paused": False}
+                    result = {"success": False, "error": "Не удалось возобновить"}
+                    self._publish_event(RecordingEventType.ERROR, result)
+                    return result
+                result = {"success": True, "is_paused": False}
+                self._publish_event(RecordingEventType.RESUMED, result)
+                return result
 
             paused = self._controller.pause_recording()
             if not paused:
-                return {"success": False, "error": "Не удалось поставить на паузу"}
-            return {"success": True, "is_paused": True}
+                result = {
+                    "success": False,
+                    "error": "Не удалось поставить на паузу",
+                }
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
+            result = {"success": True, "is_paused": True}
+            self._publish_event(RecordingEventType.PAUSED, result)
+            return result
 
     def get_recordings(self) -> list[dict[str, Any]]:
         """Возвращает список последних записей из конфигурации."""
@@ -199,3 +240,12 @@ class RecordingService:
             return Path(value)
         return get_config().get_output_path()
 
+    def _publish_event(
+        self, event_type: RecordingEventType, payload: dict[str, Any]
+    ) -> None:
+        try:
+            self._event_bus.publish(
+                RecordingEvent(event_type=event_type, payload=dict(payload))
+            )
+        except Exception as e:
+            logger.warning(f"Ошибка публикации события {event_type}: {e}")

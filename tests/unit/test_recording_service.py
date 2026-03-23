@@ -5,6 +5,7 @@ Unit тесты для RecordingService.
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from core.event_bus import InMemoryEventBus, RecordingEventType
 from core.recording_service import RecordingService
 from gui.models.recording_state import AudioType
 
@@ -97,3 +98,31 @@ class TestRecordingService:
         service = RecordingService()
         audio = service._build_audio_settings({"audio": "both"})
         assert audio.audio_type == AudioType.BOTH
+
+    def test_publishes_started_event(self) -> None:
+        bus = InMemoryEventBus()
+        events = []
+        bus.subscribe(RecordingEventType.STARTED, lambda e: events.append(e))
+        service = RecordingService(event_bus=bus)
+
+        with patch.object(
+            service._controller, "start_recording", return_value=(True, None)
+        ):
+            result = service.start_recording({"area": "full", "audio": "none"})
+
+        assert result["success"] is True
+        assert len(events) == 1
+        assert events[0].event_type == RecordingEventType.STARTED
+
+    def test_publishes_error_event(self) -> None:
+        bus = InMemoryEventBus()
+        events = []
+        bus.subscribe(RecordingEventType.ERROR, lambda e: events.append(e))
+        service = RecordingService(event_bus=bus)
+        service._state.start_recording(Path("demo.mp4"))
+
+        result = service.start_recording({"area": "full"})
+
+        assert result["success"] is False
+        assert len(events) == 1
+        assert events[0].payload["error"] == "Запись уже идёт"

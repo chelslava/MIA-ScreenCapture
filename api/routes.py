@@ -499,6 +499,52 @@ def register_routes(app, server) -> None:
             logger.error(f"Ошибка получения записей: {e}")
             return jsonify({"success": False, "error": str(e)}), 500
 
+    @app.route("/api/events/recent", methods=["GET"])
+    @require_api_key
+    def get_recent_events():
+        """
+        Получение недавних real-time событий записи.
+
+        Query параметры:
+            - limit: int (1..500), опционально, по умолчанию 50
+        """
+        try:
+            limit_raw = request.args.get("limit", "50")
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                return _error_response(
+                    400, "validation_error", "Параметр limit должен быть числом"
+                )
+
+            manager = server.get_websocket_manager()
+            if manager is None:
+                return jsonify({"success": True, "data": []})
+
+            events = manager.get_recent_events(limit=limit)
+            return jsonify({"success": True, "data": events})
+        except Exception as e:
+            logger.error(f"Ошибка получения событий: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    @app.route("/api/events/stats", methods=["GET"])
+    @require_api_key
+    def get_events_stats():
+        """Получение статистики real-time event-менеджера."""
+        try:
+            manager = server.get_websocket_manager()
+            if manager is None:
+                return jsonify(
+                    {
+                        "success": True,
+                        "data": {"transport_ready": False},
+                    }
+                )
+            return jsonify({"success": True, "data": manager.get_stats()})
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики событий: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
     @app.route("/api/schedule", methods=["GET"])
     @require_api_key
     def get_schedule():

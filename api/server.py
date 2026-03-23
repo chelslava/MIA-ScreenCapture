@@ -59,6 +59,7 @@ class APIServer:
 
         # Обратные вызовы
         self._callbacks: Dict[str, Callable] = {}
+        self._websocket_manager: Optional[Any] = None
 
         # Создание Flask приложения
         self._create_app()
@@ -147,6 +148,14 @@ class APIServer:
             Функция обратного вызова или None
         """
         return self._callbacks.get(action)
+
+    def set_websocket_manager(self, manager: Any) -> None:
+        """Устанавливает менеджер событий для real-time уведомлений."""
+        self._websocket_manager = manager
+
+    def get_websocket_manager(self) -> Optional[Any]:
+        """Возвращает менеджер real-time уведомлений."""
+        return self._websocket_manager
 
     def start(self) -> bool:
         """
@@ -241,9 +250,15 @@ class APIServer:
 
     def _get_health_payload(self) -> Dict[str, Any]:
         """Возвращает расширенный health payload."""
+        websocket = (
+            self._websocket_manager.get_stats()
+            if self._websocket_manager is not None
+            else {"transport_ready": False}
+        )
         return {
             "status": "ok",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "version": self._version,
             "uptime_seconds": round(time.monotonic() - self._start_time, 3),
+            "websocket": websocket,
         }

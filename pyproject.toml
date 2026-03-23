@@ -1,6 +1,6 @@
 [project]
 name = "mia-screencapture"
-version = "1.2.1"
+version = "1.3.0"
 description = "Профессиональная программа для записи видео с экрана с GUI, REST API и планировщиком задач"
 readme = "README.md"
 license = { text = "MIT" }

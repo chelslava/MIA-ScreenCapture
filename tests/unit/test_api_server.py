@@ -13,6 +13,7 @@ import pytest
 from api.auth import init_api_auth
 from api.routes import register_routes
 from api.server import APIServer
+from api.websocket import WebSocketManager
 
 
 class TestAPIServerInit:
@@ -131,6 +132,15 @@ class TestAPIServerCallbacks:
         result = callback({"key": "value"})
 
         assert result == {"received": {"key": "value"}}
+
+    def test_set_and_get_websocket_manager(self) -> None:
+        """Проверка установки менеджера real-time событий."""
+        server = APIServer()
+        manager = WebSocketManager()
+
+        server.set_websocket_manager(manager)
+
+        assert server.get_websocket_manager() is manager
 
 
 class TestAPIServerStartStop:
@@ -431,6 +441,7 @@ class TestAPIServerObservability:
     def _make_client(self):
         server = APIServer()
         init_api_auth(server.app, api_key="test-api-key")
+        server.set_websocket_manager(WebSocketManager())
         server.set_callback(
             "status",
             MagicMock(
@@ -480,3 +491,4 @@ class TestAPIServerObservability:
         assert data["version"] != "unknown"
         assert isinstance(data["uptime_seconds"], (int, float))
         assert data["uptime_seconds"] >= 0
+        assert data["websocket"]["transport_ready"] is True
