@@ -259,12 +259,10 @@ class Encoder:
         Returns:
             Словарь с информацией о видео или None при ошибке
         """
-        if not self._ffprobe_path:
-            return None
-
         try:
+            ffprobe_bin = self._ffprobe_path or "ffprobe"
             cmd = [
-                "ffprobe",
+                ffprobe_bin,
                 "-v",
                 "quiet",
                 "-print_format",
