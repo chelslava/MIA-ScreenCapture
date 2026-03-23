@@ -289,6 +289,13 @@ class TestSwaggerPaths:
 
         assert "/api/events/stats" in paths
 
+    def test_observability_paths_exist(self) -> None:
+        """Проверка наличия observability путей."""
+        paths = SWAGGER_SPEC["paths"]
+
+        assert "/api/observability/metrics" in paths
+        assert "/api/observability/baseline" in paths
+
 
 class TestSwaggerPathMethods:
     """Тесты HTTP методов в путях."""
@@ -335,6 +342,14 @@ class TestSwaggerPathMethods:
         events_stats_path = SWAGGER_SPEC["paths"]["/api/events/stats"]
 
         assert "get" in events_stats_path
+
+    def test_observability_paths_have_get(self) -> None:
+        """Проверка GET метода для observability путей."""
+        metrics_path = SWAGGER_SPEC["paths"]["/api/observability/metrics"]
+        baseline_path = SWAGGER_SPEC["paths"]["/api/observability/baseline"]
+
+        assert "get" in metrics_path
+        assert "get" in baseline_path
 
 
 class TestSwaggerPathResponses:

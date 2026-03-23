@@ -831,6 +831,84 @@ SWAGGER_SPEC: dict[str, Any] = {
                 },
             },
         },
+        "/api/observability/metrics": {
+            "get": {
+                "summary": "Получить эксплуатационные метрики API",
+                "description": "Возвращает runtime-метрики API сервера",
+                "operationId": "getObservabilityMetrics",
+                "responses": {
+                    "200": {
+                        "description": "Снапшот метрик",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": True,
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                        },
+                                    },
+                                    "required": ["success", "data"],
+                                },
+                            },
+                        },
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "/api/observability/baseline": {
+            "get": {
+                "summary": "Получить baseline SLO",
+                "description": "Возвращает baseline и текущие значения эксплуатационных SLO",
+                "operationId": "getObservabilityBaseline",
+                "responses": {
+                    "200": {
+                        "description": "Baseline SLO",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": True,
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                        },
+                                    },
+                                    "required": ["success", "data"],
+                                },
+                            },
+                        },
+                    },
+                    "401": {
+                        "description": "Не авторизован",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
         "/api/schedule": {
             "get": {
                 "summary": "Получить расписание",

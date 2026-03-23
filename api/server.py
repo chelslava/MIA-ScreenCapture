@@ -10,12 +10,14 @@ import re
 import threading
 import time
 import uuid
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from flask import Flask, g, jsonify, request
 from flask_cors import CORS
+import psutil
 from waitress.server import create_server
 
 from logger_config import get_module_logger
@@ -25,6 +27,149 @@ logger = get_module_logger(__name__)
 _VERSION_FALLBACK = "unknown"
 _REQUEST_ID_HEADER = "X-Request-ID"
 _PYPROJECT_PATH = Path(__file__).resolve().parent.parent / "pyproject.toml"
+
+
+class APIServerObservability:
+    """Потокобезопасный сбор базовых эксплуатационных метрик API."""
+
+    def __init__(self, max_latency_samples: int = 2000) -> None:
+        self._lock = threading.Lock()
+        self._started_at = time.monotonic()
+        self._requests_total = 0
+        self._requests_inflight = 0
+        self._errors_total = 0
+        self._status_counts: Dict[str, int] = {}
+        self._method_counts: Dict[str, int] = {}
+        self._path_counts: Dict[str, int] = {}
+        self._latency_ms = deque(maxlen=max_latency_samples)
+        self._process = psutil.Process()
+
+    def request_started(self) -> None:
+        with self._lock:
+            self._requests_inflight += 1
+
+    def request_finished(
+        self,
+        method: str,
+        path: str,
+        status_code: int,
+        latency_seconds: float,
+    ) -> None:
+        status_key = str(status_code)
+        latency_ms = max(0.0, latency_seconds * 1000.0)
+        with self._lock:
+            self._requests_total += 1
+            self._requests_inflight = max(0, self._requests_inflight - 1)
+            if status_code >= 500:
+                self._errors_total += 1
+            self._status_counts[status_key] = (
+                self._status_counts.get(status_key, 0) + 1
+            )
+            self._method_counts[method] = self._method_counts.get(method, 0) + 1
+            self._path_counts[path] = self._path_counts.get(path, 0) + 1
+            self._latency_ms.append(latency_ms)
+
+    @staticmethod
+    def _percentile(sorted_values: list[float], percentile: float) -> float:
+        if not sorted_values:
+            return 0.0
+        if percentile <= 0:
+            return sorted_values[0]
+        if percentile >= 100:
+            return sorted_values[-1]
+        index = (len(sorted_values) - 1) * (percentile / 100.0)
+        lower = int(index)
+        upper = min(lower + 1, len(sorted_values) - 1)
+        weight = index - lower
+        return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
+
+    def _latency_stats(self) -> dict[str, float | int]:
+        samples = sorted(self._latency_ms)
+        if not samples:
+            return {
+                "count": 0,
+                "avg_ms": 0.0,
+                "p50_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "max_ms": 0.0,
+            }
+        return {
+            "count": len(samples),
+            "avg_ms": round(sum(samples) / len(samples), 3),
+            "p50_ms": round(self._percentile(samples, 50), 3),
+            "p95_ms": round(self._percentile(samples, 95), 3),
+            "p99_ms": round(self._percentile(samples, 99), 3),
+            "max_ms": round(samples[-1], 3),
+        }
+
+    def _resource_stats(self) -> dict[str, float | int]:
+        memory_info = self._process.memory_info()
+        return {
+            "rss_mb": round(memory_info.rss / (1024 * 1024), 3),
+            "threads": self._process.num_threads(),
+            "cpu_percent": round(self._process.cpu_percent(interval=None), 3),
+        }
+
+    def get_metrics_snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            requests_total = self._requests_total
+            requests_inflight = self._requests_inflight
+            errors_total = self._errors_total
+            status_counts = dict(self._status_counts)
+            method_counts = dict(self._method_counts)
+            path_counts = dict(self._path_counts)
+            uptime = max(0.0, time.monotonic() - self._started_at)
+
+        top_paths = sorted(
+            path_counts.items(), key=lambda item: item[1], reverse=True
+        )[:10]
+        latency = self._latency_stats()
+        resources = self._resource_stats()
+        requests_per_second = round(requests_total / uptime, 6) if uptime else 0.0
+        error_rate_percent = (
+            round((errors_total / requests_total) * 100.0, 6)
+            if requests_total
+            else 0.0
+        )
+
+        return {
+            "uptime_seconds": round(uptime, 3),
+            "requests_total": requests_total,
+            "requests_inflight": requests_inflight,
+            "requests_per_second": requests_per_second,
+            "errors_total": errors_total,
+            "error_rate_percent": error_rate_percent,
+            "status_codes": status_counts,
+            "methods": method_counts,
+            "top_paths": [{"path": path, "count": count} for path, count in top_paths],
+            "latency_ms": latency,
+            "resources": resources,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def get_baseline(self) -> Dict[str, Any]:
+        snapshot = self.get_metrics_snapshot()
+        latency = snapshot["latency_ms"]
+        return {
+            "generated_at": snapshot["generated_at"],
+            "uptime_seconds": snapshot["uptime_seconds"],
+            "sample_size": latency["count"],
+            "slo_targets": {
+                "p95_latency_ms": 100.0,
+                "error_rate_percent": 1.0,
+            },
+            "current": {
+                "p95_latency_ms": latency["p95_ms"],
+                "error_rate_percent": snapshot["error_rate_percent"],
+                "requests_per_second": snapshot["requests_per_second"],
+                "rss_mb": snapshot["resources"]["rss_mb"],
+            },
+            "meets_targets": {
+                "latency": latency["p95_ms"] <= 100.0,
+                "error_rate": snapshot["error_rate_percent"] <= 1.0,
+            },
+        }
 
 
 class APIServer:
@@ -56,6 +201,7 @@ class APIServer:
         self._lock = threading.Lock()
         self._start_time = time.monotonic()
         self._version = self._load_version()
+        self._observability = APIServerObservability()
 
         # Обратные вызовы
         self._callbacks: Dict[str, Callable] = {}
@@ -112,6 +258,8 @@ class APIServer:
             if not request_id:
                 request_id = uuid.uuid4().hex
             g.request_id = request_id
+            g.request_started_at = time.monotonic()
+            self._observability.request_started()
 
             if request.path == "/health":
                 return jsonify(self._get_health_payload())
@@ -123,6 +271,14 @@ class APIServer:
                 request_id = uuid.uuid4().hex
                 g.request_id = request_id
             response.headers[_REQUEST_ID_HEADER] = request_id
+            started_at = getattr(g, "request_started_at", None)
+            if isinstance(started_at, float):
+                self._observability.request_finished(
+                    method=request.method,
+                    path=request.path,
+                    status_code=response.status_code,
+                    latency_seconds=max(0.0, time.monotonic() - started_at),
+                )
             return response
 
         logger.info("Flask приложение создано")
@@ -262,3 +418,11 @@ class APIServer:
             "uptime_seconds": round(time.monotonic() - self._start_time, 3),
             "websocket": websocket,
         }
+
+    def get_observability_metrics(self) -> Dict[str, Any]:
+        """Возвращает снапшот эксплуатационных метрик API."""
+        return self._observability.get_metrics_snapshot()
+
+    def get_observability_baseline(self) -> Dict[str, Any]:
+        """Возвращает baseline SLO по текущим эксплуатационным метрикам."""
+        return self._observability.get_baseline()

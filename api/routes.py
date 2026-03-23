@@ -797,4 +797,34 @@ def register_routes(app, server) -> None:
         response.headers["X-Request-ID"] = _get_trace_id()
         return response
 
+    @app.route("/api/observability/metrics", methods=["GET"])
+    @require_api_key
+    def get_observability_metrics():
+        """Получение эксплуатационных метрик API."""
+        try:
+            return jsonify(
+                {
+                    "success": True,
+                    "data": server.get_observability_metrics(),
+                }
+            )
+        except Exception as e:
+            logger.exception(f"Ошибка получения observability metrics: {e}")
+            return _internal_error_response()
+
+    @app.route("/api/observability/baseline", methods=["GET"])
+    @require_api_key
+    def get_observability_baseline():
+        """Получение baseline SLO по эксплуатационным метрикам."""
+        try:
+            return jsonify(
+                {
+                    "success": True,
+                    "data": server.get_observability_baseline(),
+                }
+            )
+        except Exception as e:
+            logger.exception(f"Ошибка получения observability baseline: {e}")
+            return _internal_error_response()
+
     logger.info("Маршруты API зарегистрированы")

@@ -477,6 +477,38 @@ class TestAPIEventsEndpoint:
         assert data["data"]["attached_to_event_bus"] is False
 
 
+class TestAPIObservabilityEndpoints:
+    """Тесты observability endpoint'ов."""
+
+    def test_get_observability_metrics_success(
+        self, client: FlaskClient
+    ) -> None:
+        response = client.get("/api/observability/metrics")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        payload = data["data"]
+        assert "requests_total" in payload
+        assert "requests_inflight" in payload
+        assert "latency_ms" in payload
+        assert "resources" in payload
+        assert "generated_at" in payload
+
+    def test_get_observability_baseline_success(
+        self, client: FlaskClient
+    ) -> None:
+        response = client.get("/api/observability/baseline")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        payload = data["data"]
+        assert "slo_targets" in payload
+        assert "current" in payload
+        assert "meets_targets" in payload
+
+
 class TestAPIScheduleEndpoints:
     """Тесты для эндпоинтов планировщика."""
 
@@ -855,6 +887,12 @@ class TestAPIAuthentication:
     def test_config_requires_auth(self, unauth_client: FlaskClient):
         """Проверка что /api/config требует аутентификации."""
         response = unauth_client.get("/api/config")
+
+        assert response.status_code == 401
+
+    def test_observability_requires_auth(self, unauth_client: FlaskClient):
+        """Проверка что observability endpoint требует аутентификации."""
+        response = unauth_client.get("/api/observability/metrics")
 
         assert response.status_code == 401
 
