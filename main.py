@@ -17,6 +17,7 @@ MIA-ScreenCapture - Главная точка входа
 
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -60,6 +61,45 @@ from recorder.utils import (
 logger = get_module_logger(__name__)
 
 
+class _MainThreadExecutor:
+    """Выполнение callables в главном потоке Qt из фоновых потоков."""
+
+    def __init__(self) -> None:
+        from PyQt6.QtCore import QObject, Qt, pyqtSignal
+
+        class _ExecutorObject(QObject):
+            execute = pyqtSignal(object)
+
+        self._obj = _ExecutorObject()
+        self._obj.execute.connect(  # type: ignore[attr-defined]
+            self._run_callable,
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+    @staticmethod
+    def _run_callable(fn: Any) -> None:
+        fn()
+
+    def run_sync(self, fn: Any, timeout: float = 10.0) -> Any:
+        done = threading.Event()
+        result: Dict[str, Any] = {}
+
+        def wrapped() -> None:
+            try:
+                result["value"] = fn()
+            except Exception as e:
+                result["error"] = e
+            finally:
+                done.set()
+
+        self._obj.execute.emit(wrapped)  # type: ignore[attr-defined]
+        if not done.wait(timeout):
+            raise TimeoutError("Таймаут выполнения в GUI потоке")
+        if "error" in result:
+            raise result["error"]
+        return result.get("value")
+
+
 class VideoRecorderApp:
     """
     Главный класс приложения.
@@ -97,6 +137,8 @@ class VideoRecorderApp:
         self._recording_service = RecordingService()
         self._websocket_manager = WebSocketManager()
         self._websocket_manager.attach_event_bus(self._recording_service.event_bus)
+        self._gui_executor: Optional[_MainThreadExecutor] = None
+        self._gui_thread_id: Optional[int] = None
 
     def _get_api_headers(self) -> dict:
         """
@@ -176,6 +218,8 @@ class VideoRecorderApp:
         # Создание Qt приложения
         self._app = QApplication(sys.argv)
         assert self._app is not None
+        self._gui_thread_id = threading.get_ident()
+        self._gui_executor = _MainThreadExecutor()
         self._app.setApplicationName("MIA-ScreenCapture")
         self._app.setApplicationVersion("1.3.0")
 
@@ -544,40 +588,66 @@ class VideoRecorderApp:
 
         # Запуск записи
         if self._main_window:
-            self._main_window.start_recording_with_params(param_dict)  # type: ignore[attr-defined]
+            self._run_on_gui_thread(
+                lambda: self._main_window.start_recording_with_params(
+                    param_dict
+                ),
+                timeout=20.0,
+            )
         else:
             self._start_recording(param_dict)
 
     # Реализации обратных вызовов API
 
+    def _run_on_gui_thread(self, fn: Any, timeout: float = 10.0) -> Any:
+        """Безопасный синхронный вызов функции в GUI-потоке."""
+        if not self._main_window:
+            return fn()
+        if self._gui_thread_id == threading.get_ident():
+            return fn()
+        if self._gui_executor is None:
+            raise RuntimeError("GUI executor не инициализирован")
+        return self._gui_executor.run_sync(fn, timeout=timeout)
+
     def _get_status(self) -> Dict[str, Any]:
         """Получение статуса записи."""
         if self._main_window:
-            return self._main_window.get_status()  # type: ignore[attr-defined,no-any-return]
+            return self._run_on_gui_thread(
+                lambda: self._main_window.get_status()
+            )
         return self._recording_service.get_status()
 
     def _start_recording(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Запуск записи."""
         if self._main_window:
-            return self._main_window.start_recording_with_params(params)  # type: ignore[attr-defined,no-any-return]
+            return self._run_on_gui_thread(
+                lambda: self._main_window.start_recording_with_params(params),
+                timeout=20.0,
+            )
         return self._recording_service.start_recording(params)
 
     def _stop_recording(self) -> Dict[str, Any]:
         """Остановка записи."""
         if self._main_window:
-            return self._main_window.stop_recording()  # type: ignore[attr-defined,no-any-return]
+            return self._run_on_gui_thread(
+                lambda: self._main_window.stop_recording()
+            )
         return self._recording_service.stop_recording()
 
     def _toggle_pause(self) -> Dict[str, Any]:
         """Переключение состояния паузы."""
         if self._main_window:
-            return self._main_window.toggle_pause()  # type: ignore[attr-defined,no-any-return]
+            return self._run_on_gui_thread(
+                lambda: self._main_window.toggle_pause()
+            )
         return self._recording_service.toggle_pause()
 
     def _get_recordings(self) -> list:
         """Получение недавних записей."""
         if self._main_window:
-            return self._main_window.get_recordings()  # type: ignore[attr-defined,no-any-return]
+            return self._run_on_gui_thread(
+                lambda: self._main_window.get_recordings()
+            )
         return self._recording_service.get_recordings()
 
     def _get_schedule(self) -> list:
@@ -596,8 +666,10 @@ class VideoRecorderApp:
             success = self._scheduler.add_task(task)
 
             if success and self._main_window:
-                self._main_window.scheduler_tab.set_tasks(
-                    self._scheduler.get_all_tasks()
+                self._run_on_gui_thread(
+                    lambda: self._main_window.scheduler_tab.set_tasks(  # type: ignore[union-attr]
+                        self._scheduler.get_all_tasks()
+                    )
                 )
 
             return {
@@ -615,8 +687,10 @@ class VideoRecorderApp:
         success = self._scheduler.remove_task(task_id)
 
         if success and self._main_window:
-            self._main_window.scheduler_tab.set_tasks(
-                self._scheduler.get_all_tasks()
+            self._run_on_gui_thread(
+                lambda: self._main_window.scheduler_tab.set_tasks(  # type: ignore[union-attr]
+                    self._scheduler.get_all_tasks()
+                )
             )
 
         return {"success": success}
@@ -632,8 +706,10 @@ class VideoRecorderApp:
             success = self._scheduler.update_task(task)
 
             if success and self._main_window:
-                self._main_window.scheduler_tab.set_tasks(
-                    self._scheduler.get_all_tasks()
+                self._run_on_gui_thread(
+                    lambda: self._main_window.scheduler_tab.set_tasks(  # type: ignore[union-attr]
+                        self._scheduler.get_all_tasks()
+                    )
                 )
 
             return {"success": success}
@@ -648,8 +724,10 @@ class VideoRecorderApp:
         success = self._scheduler.enable_task(task_id, enabled)
 
         if success and self._main_window:
-            self._main_window.scheduler_tab.set_tasks(
-                self._scheduler.get_all_tasks()
+            self._run_on_gui_thread(
+                lambda: self._main_window.scheduler_tab.set_tasks(  # type: ignore[union-attr]
+                    self._scheduler.get_all_tasks()
+                )
             )
 
         return {"success": success, "enabled": enabled}
