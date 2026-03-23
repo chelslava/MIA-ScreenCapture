@@ -6,8 +6,10 @@
 """
 
 import json
+import shutil
 import sys
 import tempfile
+import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict
@@ -499,8 +501,19 @@ def temp_dir() -> Generator[Path, None, None]:
     Yields:
         Путь к временной директории
     """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield Path(tmpdir)
+    tmpdir = Path(tempfile.mkdtemp())
+    try:
+        yield tmpdir
+    finally:
+        # На Windows возможны кратковременные блокировки файлов после теста.
+        for attempt in range(10):
+            try:
+                shutil.rmtree(tmpdir)
+                break
+            except OSError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
 
 
 @pytest.fixture
