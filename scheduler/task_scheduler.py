@@ -232,8 +232,18 @@ class TaskScheduler:
     def stop(self) -> None:
         """Остановка планировщика."""
         if self._scheduler.running:
-            self._scheduler.shutdown(wait=False)
+            # Ждём корректного завершения scheduler-потоков, чтобы не оставлять
+            # открытые дескрипторы во временных директориях (важно для Windows/CI).
+            self._scheduler.shutdown(wait=True)
             logger.info("Планировщик задач остановлен")
+
+    def __del__(self) -> None:
+        """Защитная остановка scheduler при сборке мусора."""
+        try:
+            self.stop()
+        except Exception:
+            # В деструкторе не поднимаем исключения.
+            pass
 
     def set_task_callback(self, callback: Callable) -> None:
         """
