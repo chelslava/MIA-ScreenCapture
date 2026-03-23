@@ -541,12 +541,12 @@ class TaskScheduler:
         task_id = data.get("id", str(uuid.uuid4())[:8])
         name = data.get("name", f"Задача {task_id}")
 
-        # Разбор типа расписания
-        trigger_type = data.get("trigger", "once")
+        # Разбор типа расписания (поддержка API- и GUI-форматов)
+        trigger_type = self._extract_trigger_type(data)
         schedule_type = ScheduleType(trigger_type)
 
-        # Разбор параметров записи
-        params_data = data.get("params", {})
+        # Разбор параметров записи (поддержка вложенного и плоского формата)
+        params_data = self._extract_params_data(data)
         params = RecordingParams.from_dict(params_data)
 
         # Создание задачи
@@ -560,20 +560,58 @@ class TaskScheduler:
 
         # Установка полей специфичных для расписания
         if schedule_type == ScheduleType.ONCE:
-            if data.get("datetime"):
-                task.start_time = datetime.fromisoformat(data["datetime"])
+            start_value = data.get("datetime", data.get("start_time"))
+            if start_value:
+                if isinstance(start_value, datetime):
+                    task.start_time = start_value
+                else:
+                    task.start_time = datetime.fromisoformat(str(start_value))
 
         elif schedule_type in (ScheduleType.DAILY, ScheduleType.WEEKLY):
-            task.time_of_day = data.get("time", "12:00")
+            task.time_of_day = data.get("time", data.get("time_of_day", "12:00"))
             if schedule_type == ScheduleType.WEEKLY:
-                days = data.get("day_of_week", "0,1,2,3,4")
-                task.days_of_week = [int(d.strip()) for d in days.split(",")]
+                days_value = data.get("day_of_week", data.get("days_of_week", "0,1,2,3,4"))
+                if isinstance(days_value, list):
+                    task.days_of_week = [int(d) for d in days_value]
+                else:
+                    task.days_of_week = [int(d.strip()) for d in str(days_value).split(",")]
 
         elif schedule_type == ScheduleType.INTERVAL:
-            task.interval_hours = data.get("hours", 0)
-            task.interval_minutes = data.get("minutes", 0)
+            task.interval_hours = int(data.get("hours", data.get("interval_hours", 0)))
+            task.interval_minutes = int(
+                data.get("minutes", data.get("interval_minutes", 0))
+            )
 
         elif schedule_type == ScheduleType.CRON:
             task.cron_expression = data.get("cron_expression")
 
         return task
+
+    def _extract_trigger_type(self, data: Dict[str, Any]) -> str:
+        """Извлекает тип расписания из API/GUІ payload."""
+        trigger_value = data.get("trigger", data.get("schedule_type", "once"))
+        if isinstance(trigger_value, ScheduleType):
+            return trigger_value.value
+        return str(trigger_value)
+
+    def _extract_params_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Извлекает параметры записи из вложенного или плоского payload."""
+        params_data = data.get("params")
+        if isinstance(params_data, dict):
+            return dict(params_data)
+
+        result: Dict[str, Any] = {}
+        for key in (
+            "area_type",
+            "window_title",
+            "rect_coords",
+            "audio_type",
+            "output_path",
+            "fps",
+            "codec",
+            "bitrate",
+            "duration",
+        ):
+            if key in data and data[key] is not None:
+                result[key] = data[key]
+        return result

@@ -344,6 +344,53 @@ class TestTaskScheduler:
         assert task.interval_hours == 2
         assert task.interval_minutes == 30
 
+    def test_create_task_from_dict_gui_format(self, tasks_file: Path):
+        """Проверка создания задачи из GUI-формата payload."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+
+        data = {
+            "name": "GUI Task",
+            "schedule_type": ScheduleType.WEEKLY,
+            "time_of_day": "11:15",
+            "days_of_week": [1, 3, 5],
+            "area_type": "window",
+            "window_title": "Browser",
+            "audio_type": "system",
+            "fps": 60,
+            "duration": 120,
+        }
+
+        task = scheduler.create_task_from_dict(data)
+
+        assert task.name == "GUI Task"
+        assert task.schedule_type == ScheduleType.WEEKLY
+        assert task.time_of_day == "11:15"
+        assert task.days_of_week == [1, 3, 5]
+        assert task.params.area_type == "window"
+        assert task.params.window_title == "Browser"
+        assert task.params.audio_type == "system"
+        assert task.params.fps == 60
+        assert task.params.duration == 120
+
+    def test_create_task_from_dict_start_time_datetime_instance(
+        self, tasks_file: Path
+    ):
+        """Проверка разовой задачи с datetime-объектом из GUI."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        start_time = datetime(2026, 4, 1, 9, 30)
+        data = {
+            "name": "GUI Once",
+            "schedule_type": ScheduleType.ONCE,
+            "start_time": start_time,
+            "area_type": "full",
+        }
+
+        task = scheduler.create_task_from_dict(data)
+
+        assert task.schedule_type == ScheduleType.ONCE
+        assert task.start_time == start_time
+        assert task.params.area_type == "full"
+
     def test_add_task(self, tasks_file: Path):
         """Проверка добавления задачи."""
         scheduler = TaskScheduler(persist_path=tasks_file)
