@@ -284,15 +284,22 @@ def get_screen_size() -> Tuple[int, int]:
     Returns:
         Кортеж (ширина, высота)
     """
-    try:
-        import mss
+    current_platform = get_platform()
+    if current_platform != "windows":
+        # Проект ориентирован на Windows-capture.
+        return 1920, 1080
 
-        with mss.mss() as sct:
-            monitor = sct.monitors[1]  # Основной монитор
-            return monitor["width"], monitor["height"]
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        width = int(user32.GetSystemMetrics(0))
+        height = int(user32.GetSystemMetrics(1))
+        if width > 0 and height > 0:
+            return width, height
     except Exception as e:
         logger.error(f"Ошибка получения размера экрана: {e}")
-        return 1920, 1080  # Значение по умолчанию
+    return 1920, 1080  # Значение по умолчанию
 
 
 def get_all_monitors() -> List[Dict[str, int]]:
@@ -302,25 +309,57 @@ def get_all_monitors() -> List[Dict[str, int]]:
     Returns:
         Список словарей с информацией о мониторах
     """
-    monitors = []
+    current_platform = get_platform()
+    if current_platform != "windows":
+        width, height = get_screen_size()
+        return [{"id": 1, "x": 0, "y": 0, "width": width, "height": height}]
 
+    monitors: List[Dict[str, int]] = []
     try:
-        import mss
+        import ctypes
+        from ctypes import wintypes
 
-        with mss.mss() as sct:
-            for i, monitor in enumerate(sct.monitors[1:], start=1):
-                monitors.append(
-                    {
-                        "id": i,
-                        "x": monitor["left"],
-                        "y": monitor["top"],
-                        "width": monitor["width"],
-                        "height": monitor["height"],
-                    }
-                )
+        monitor_count = 0
+
+        def _callback(h_monitor, hdc_monitor, lprc_monitor, dw_data):
+            nonlocal monitor_count
+            rect = lprc_monitor.contents
+            monitor_count += 1
+            monitors.append(
+                {
+                    "id": monitor_count,
+                    "x": int(rect.left),
+                    "y": int(rect.top),
+                    "width": int(rect.right - rect.left),
+                    "height": int(rect.bottom - rect.top),
+                }
+            )
+            return 1
+
+        class RECT(ctypes.Structure):
+            _fields_ = [
+                ("left", wintypes.LONG),
+                ("top", wintypes.LONG),
+                ("right", wintypes.LONG),
+                ("bottom", wintypes.LONG),
+            ]
+
+        monitor_enum_proc = ctypes.WINFUNCTYPE(
+            ctypes.c_int,
+            wintypes.HMONITOR,
+            wintypes.HDC,
+            ctypes.POINTER(RECT),
+            wintypes.LPARAM,
+        )
+        ctypes.windll.user32.EnumDisplayMonitors(
+            0, 0, monitor_enum_proc(_callback), 0
+        )
     except Exception as e:
         logger.error(f"Ошибка получения мониторов: {e}")
 
+    if not monitors:
+        width, height = get_screen_size()
+        monitors.append({"id": 1, "x": 0, "y": 0, "width": width, "height": height})
     return monitors
 
 

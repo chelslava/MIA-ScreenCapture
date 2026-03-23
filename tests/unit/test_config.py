@@ -241,6 +241,41 @@ class TestConfigManager:
         assert manager2.settings.video.fps == 60
         assert manager2.settings.api.port == 8080
 
+    def test_save_config_uses_atomic_replace(
+        self, temp_config_file: Path, monkeypatch
+    ):
+        """Проверка атомарной записи через os.replace."""
+        manager = ConfigManager(temp_config_file)
+        replace_calls: list[tuple[Path, Path]] = []
+
+        def fake_replace(src, dst):
+            replace_calls.append((Path(src), Path(dst)))
+            Path(dst).write_text(Path(src).read_text(encoding="utf-8"), encoding="utf-8")
+
+        monkeypatch.setattr("config.os.replace", fake_replace)
+
+        assert manager.save() is True
+        assert replace_calls
+        src, dst = replace_calls[0]
+        assert src.parent == dst.parent
+        assert src != dst
+        assert dst == temp_config_file
+
+    def test_save_config_returns_false_on_atomic_failure(
+        self, temp_config_file: Path, monkeypatch
+    ):
+        """Проверка обработки ошибки при атомарной записи."""
+        manager = ConfigManager(temp_config_file)
+        temp_config_file.write_text("{\"keep\": true}", encoding="utf-8")
+
+        def failing_replace(src, dst):
+            raise OSError("replace failed")
+
+        monkeypatch.setattr("config.os.replace", failing_replace)
+
+        assert manager.save() is False
+        assert json.loads(temp_config_file.read_text(encoding="utf-8")) == {"keep": True}
+
     def test_update_settings(self, temp_config_file: Path):
         """Проверка обновления настроек."""
         manager = ConfigManager(temp_config_file)

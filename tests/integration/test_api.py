@@ -16,9 +16,25 @@ from flask.testing import FlaskClient
 from api.auth import init_api_auth
 from api.routes import register_routes
 from api.server import APIServer
+from api.rate_limiter import RateLimitConfig, init_rate_limiter
 
 # Тестовый API ключ для интеграционных тестов
 TEST_API_KEY = "test-api-key-for-integration-tests-12345"
+
+
+def assert_error_contract(response, expected_code: str):
+    """Проверяет единый контракт ошибки API."""
+    data = response.get_json()
+    assert data["success"] is False
+    assert isinstance(data["trace_id"], str)
+    assert data["trace_id"]
+    assert response.headers.get("X-Request-ID")
+
+    error = data["error"]
+    assert error["code"] == expected_code
+    assert isinstance(error["message"], str)
+    assert "details" in error
+    return data
 
 
 @pytest.fixture
@@ -132,6 +148,37 @@ def test_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
     server.app.config["TESTING"] = True
 
     return server.app
+
+
+@pytest.fixture
+def rate_limited_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
+    """
+    Создание Flask приложения с очень низким лимитом для теста 429.
+    """
+    server = APIServer(host="127.0.0.1", port=5008)
+    init_api_auth(server.app, api_key=TEST_API_KEY)
+    init_rate_limiter(
+        server.app,
+        RateLimitConfig(
+            requests_per_minute=1,
+            requests_per_hour=10,
+            burst_limit=1,
+            block_duration=60,
+            enabled=True,
+        ),
+    )
+    for action, callback in mock_callbacks.items():
+        server.set_callback(action, callback)
+    register_routes(server.app, server)
+    server.app.config["TESTING"] = True
+    return server.app
+
+
+@pytest.fixture
+def rate_limited_client(rate_limited_app: Flask) -> FlaskClient:
+    client = rate_limited_app.test_client()
+    client.environ_base["HTTP_X_API_KEY"] = TEST_API_KEY
+    return client
 
 
 @pytest.fixture
@@ -254,13 +301,19 @@ class TestAPIStartEndpoint:
         }
 
         response = client.post(
-            "/api/start", json=request_data, content_type="application/json"
+            "/api/start",
+            json=request_data,
+            content_type="application/json",
+            headers={"X-Request-ID": "req-validation-fps"},
         )
 
         assert response.status_code == 400
-        data = response.get_json()
-        assert data["success"] is False
-        assert "validation_errors" in data
+        data = assert_error_contract(response, "validation_error")
+        assert isinstance(data["error"]["details"], list)
+        assert any(
+            item.get("field") == "fps" for item in data["error"]["details"]
+        )
+        assert data["error"]["code"] == "validation_error"
 
     def test_start_recording_invalid_area(
         self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
@@ -579,9 +632,14 @@ class TestAPIErrorHandling:
 
     def test_404_error(self, client: FlaskClient):
         """Проверка обработки 404 ошибки."""
-        response = client.get("/api/nonexistent")
+        response = client.get(
+            "/api/nonexistent",
+            headers={"X-Request-ID": "req-404"},
+        )
 
         assert response.status_code == 404
+        data = assert_error_contract(response, "not_found")
+        assert data["error"]["message"] == "Не найдено"
 
     def test_invalid_json(self, client: FlaskClient):
         """Проверка обработки некорректного JSON."""
@@ -592,6 +650,8 @@ class TestAPIErrorHandling:
 
         # API возвращает 500 при ошибке парсинга JSON
         assert response.status_code == 500
+        data = assert_error_contract(response, "internal_error")
+        assert isinstance(data["error"]["message"], str)
 
     def test_callback_returns_error(
         self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
@@ -603,12 +663,15 @@ class TestAPIErrorHandling:
         }
 
         response = client.post(
-            "/api/start", json={}, content_type="application/json"
+            "/api/start",
+            json={},
+            content_type="application/json",
+            headers={"X-Request-ID": "req-start-callback"},
         )
 
         assert response.status_code == 400
-        data = response.get_json()
-        assert data["success"] is False
+        data = assert_error_contract(response, "bad_request")
+        assert data["error"]["message"] == "Ошибка запуска записи"
 
 
 class TestAPIServerIntegration:
@@ -656,25 +719,27 @@ class TestAPIAuthentication:
 
     def test_protected_endpoint_without_key(self, unauth_client: FlaskClient):
         """Проверка защиты эндпоинта без API ключа."""
-        response = unauth_client.get("/api/status")
+        response = unauth_client.get(
+            "/api/status",
+            headers={"X-Request-ID": "req-401-missing-key"},
+        )
 
         assert response.status_code == 401
-        data = response.get_json()
-        assert data["success"] is False
-        assert (
-            "api" in data["error"].lower() and "ключ" in data["error"].lower()
-        )
+        data = assert_error_contract(response, "unauthorized")
+        assert data["error"]["message"]
 
     def test_protected_endpoint_with_invalid_key(
         self, unauth_client: FlaskClient
     ):
         """Проверка защиты эндпоинта с неверным API ключом."""
         unauth_client.environ_base["HTTP_X_API_KEY"] = "invalid-key"
-        response = unauth_client.get("/api/status")
+        response = unauth_client.get(
+            "/api/status",
+            headers={"X-Request-ID": "req-401-invalid-key"},
+        )
 
         assert response.status_code == 401
-        data = response.get_json()
-        assert data["success"] is False
+        assert_error_contract(response, "unauthorized")
 
     def test_protected_endpoint_with_valid_key(self, client: FlaskClient):
         """Проверка доступа с валидным API ключом."""
@@ -711,3 +776,74 @@ class TestAPIAuthentication:
         response = unauth_client.get("/api/config")
 
         assert response.status_code == 401
+
+
+class TestAPIRateLimit:
+    """Тесты rate limiting на mutating endpoints."""
+
+    def test_start_endpoint_returns_429_on_second_request(
+        self,
+        rate_limited_client: FlaskClient,
+        mock_callbacks: Dict[str, MagicMock],
+    ) -> None:
+        """Проверка 429 на повторном POST /api/start."""
+        first_response = rate_limited_client.post(
+            "/api/start", json={}, content_type="application/json"
+        )
+        second_response = rate_limited_client.post(
+            "/api/start", json={}, content_type="application/json"
+        )
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 429
+        data = assert_error_contract(second_response, "rate_limited")
+        assert data["error"]["details"]["limit_type"] in {"burst", "minute"}
+        assert mock_callbacks["start"].call_count == 1
+
+    def test_health_endpoint_stays_available(
+        self, rate_limited_client: FlaskClient
+    ) -> None:
+        """Проверка, что health endpoint не ограничивается rate limiter."""
+        response = rate_limited_client.get("/health")
+
+        assert response.status_code == 200
+
+
+class TestAPIObservability:
+    """Тесты request-id и расширенного health payload."""
+
+    def test_request_id_is_preserved_on_api_response(
+        self, client: FlaskClient
+    ) -> None:
+        """Проверка прокидывания X-Request-ID в ответ."""
+        response = client.get(
+            "/api/status", headers={"X-Request-ID": "request-abc-123"}
+        )
+
+        assert response.status_code == 200
+        assert response.headers["X-Request-ID"] == "request-abc-123"
+
+    def test_request_id_is_generated_for_health(
+        self, unauth_client: FlaskClient
+    ) -> None:
+        """Проверка генерации X-Request-ID при отсутствии заголовка."""
+        response = unauth_client.get("/health")
+
+        assert response.status_code == 200
+        assert response.headers["X-Request-ID"]
+
+    def test_health_includes_observability_fields(
+        self, unauth_client: FlaskClient
+    ) -> None:
+        """Проверка расширенного payload health endpoint."""
+        server = APIServer()
+        response = unauth_client.get("/health")
+        data = response.get_json()
+
+        assert response.status_code == 200
+        assert data["status"] == "ok"
+        assert "timestamp" in data
+        assert data["version"] == server._version
+        assert data["version"] != "unknown"
+        assert isinstance(data["uptime_seconds"], (int, float))
+        assert data["uptime_seconds"] >= 0

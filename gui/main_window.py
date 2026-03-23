@@ -30,6 +30,7 @@ from config import get_config
 from gui.controllers.recording_controller import RecordingController
 from gui.controllers.settings_controller import SettingsController
 from gui.models.recording_state import (
+    AudioSettings,
     AudioType,
     CaptureSettings,
     CaptureType,
@@ -644,6 +645,10 @@ class MainWindow(QMainWindow):
             )
             # Используем метод состояния для thread-safe изменения
             self._state.set_audio_type(audio_type)
+            audio_settings = AudioSettings(
+                audio_type=audio_type,
+                mic_device_index=params.get("mic_device_index"),
+            )
 
             # Настройки видео (создаём копию для избежания race condition)
             base_settings = self._video_view.get_settings()
@@ -665,7 +670,7 @@ class MainWindow(QMainWindow):
             success, error_msg = self._recording_controller.start_recording(
                 output_path=output_path,
                 capture=capture,
-                audio=audio_type,
+                audio=audio_settings,
                 video=video_settings,
             )
 

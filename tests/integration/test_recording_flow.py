@@ -34,8 +34,8 @@ def temp_output_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def mock_mss():
-    """Создание мока для MSS (захват экрана)."""
+def mock_screen_capture():
+    """Создание мока для захвата экрана."""
     mock = MagicMock()
 
     # Создание тестового кадра (1920x1080 RGB)
@@ -301,16 +301,16 @@ class TestRecordingManagerIntegration:
 class TestCaptureAreaIntegration:
     """Интеграционные тесты для CaptureArea."""
 
-    def test_to_mss_dict(self):
-        """Проверка преобразования в формат MSS."""
+    def test_to_capture_dict(self):
+        """Проверка преобразования в формат области захвата."""
         area = CaptureArea(type="rect", x=100, y=200, width=800, height=600)
 
-        mss_dict = area.to_mss_dict()
+        capture_dict = area.to_capture_dict()
 
-        assert mss_dict["left"] == 100
-        assert mss_dict["top"] == 200
-        assert mss_dict["width"] == 800
-        assert mss_dict["height"] == 600
+        assert capture_dict["left"] == 100
+        assert capture_dict["top"] == 200
+        assert capture_dict["width"] == 800
+        assert capture_dict["height"] == 600
 
     def test_full_screen_creates_correct_area(self):
         """Проверка создания области полного экрана."""
@@ -386,7 +386,7 @@ class TestRecordingFlowIntegration:
 
     @pytest.mark.slow
     def test_full_recording_flow_mocked(
-        self, temp_output_dir: Path, mock_mss, mock_sounddevice
+        self, temp_output_dir: Path, mock_screen_capture, mock_sounddevice
     ):
         """Тест полного цикла записи с моками."""
         from gui.controllers.recording_controller import RecordingController

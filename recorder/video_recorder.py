@@ -2,8 +2,8 @@
 Модуль видеозаписи
 ==================
 
-Обрабатывает захват экрана и кодирование видео с использованием MSS
-для быстрого захвата экрана и OpenCV для записи видео.
+Обрабатывает захват экрана и кодирование видео с использованием
+windows-capture (Windows Graphics Capture API) и OpenCV.
 """
 
 import queue
@@ -17,12 +17,10 @@ from typing import TYPE_CHECKING, Callable, Dict, Optional
 import cv2
 import numpy as np
 
-if TYPE_CHECKING:
-    import mss
-
 from logger_config import get_module_logger
 from recorder.utils import (
     get_available_windows,
+    get_platform,
     get_screen_size,
     validate_rect_coords,
 )
@@ -84,14 +82,116 @@ class CaptureArea:
         )
         return cls.full_screen()
 
-    def to_mss_dict(self) -> Dict[str, int]:
-        """Преобразование в формат словаря MSS для монитора."""
+    def to_capture_dict(self) -> Dict[str, int]:
+        """Преобразование в общий формат словаря области захвата."""
         return {
             "left": self.x,
             "top": self.y,
             "width": self.width,
             "height": self.height,
         }
+
+
+class _WindowsCaptureSession:
+    """
+    Обёртка над windows-capture с pull-подобным API.
+
+    Библиотека windows-capture работает event-driven, поэтому мы сохраняем
+    последний полученный кадр и возвращаем его по запросу.
+    """
+
+    def __init__(self) -> None:
+        self._capture = None
+        self._control = None
+        self._last_frame: Optional[np.ndarray] = None
+        self._frame_event = threading.Event()
+        self._lock = threading.Lock()
+        self._closed = False
+
+    def start(self, capture_area: CaptureArea) -> None:
+        try:
+            from windows_capture import InternalCaptureControl, WindowsCapture
+        except Exception as e:
+            raise RuntimeError(
+                "Библиотека windows-capture не установлена или недоступна"
+            ) from e
+
+        monitor_index = None
+        window_name = None
+        if capture_area.type == "window" and capture_area.window_title:
+            window_name = capture_area.window_title
+
+        capture = WindowsCapture(
+            cursor_capture=False,
+            draw_border=False,
+            monitor_index=monitor_index,
+            window_name=window_name,
+        )
+
+        @capture.event
+        def on_frame_arrived(
+            frame, capture_control: InternalCaptureControl
+        ) -> None:
+            if self._closed:
+                capture_control.stop()
+                return
+
+            frame_buffer = frame.frame_buffer
+            if frame_buffer is None:
+                return
+
+            # Обычно windows-capture отдаёт BGRA.
+            if frame_buffer.ndim == 3 and frame_buffer.shape[2] == 4:
+                bgr = frame_buffer[:, :, :3]
+            else:
+                bgr = frame_buffer
+
+            # Прямоугольная область - пост-обрезка кадра.
+            if capture_area.type == "rect":
+                x1 = max(capture_area.x, 0)
+                y1 = max(capture_area.y, 0)
+                x2 = max(capture_area.x + capture_area.width, x1)
+                y2 = max(capture_area.y + capture_area.height, y1)
+                if bgr.ndim == 3:
+                    h, w = bgr.shape[:2]
+                    x2 = min(x2, w)
+                    y2 = min(y2, h)
+                    bgr = bgr[y1:y2, x1:x2]
+
+            with self._lock:
+                # Копия нужна, т.к. буфер принадлежит native стороне.
+                self._last_frame = np.array(bgr, copy=True)
+                self._frame_event.set()
+
+        @capture.event
+        def on_closed() -> None:
+            self._closed = True
+
+        self._capture = capture
+        self._control = capture.start_free_threaded()
+
+    def read_frame(self, timeout: float) -> Optional[np.ndarray]:
+        if not self._frame_event.wait(timeout=timeout):
+            return None
+        with self._lock:
+            if self._last_frame is None:
+                return None
+            frame = self._last_frame.copy()
+            self._frame_event.clear()
+            return frame
+
+    def stop(self) -> None:
+        self._closed = True
+        control = self._control
+        if control is not None:
+            try:
+                control.stop()
+                if hasattr(control, "wait"):
+                    control.wait()
+            except Exception:
+                pass
+        self._control = None
+        self._capture = None
 
 
 class VideoRecorder:
@@ -144,7 +244,7 @@ class VideoRecorder:
         self._output_path: Optional[Path] = None
         self._video_writer: Optional[cv2.VideoWriter] = None
         self._capture_area: Optional[CaptureArea] = None
-        self._mss_instance: Optional[mss.base.MSSBase] = None
+        self._capture_session: Optional[_WindowsCaptureSession] = None
 
         # Статистика
         self._start_time: float = 0
@@ -155,6 +255,7 @@ class VideoRecorder:
         # Обратные вызовы
         self._on_frame_captured: Optional[Callable] = None
         self._on_error: Optional[Callable] = None
+        self._last_captured_frame: Optional[np.ndarray] = None
 
     @property
     def state(self) -> RecordingState:
@@ -229,6 +330,12 @@ class VideoRecorder:
                     f"Невозможно начать: текущее состояние {self._state}"
                 )
                 return False
+            if get_platform() != "windows":
+                message = "VideoRecorder поддерживает только Windows (windows-capture)"
+                logger.error(message)
+                if self._on_error:
+                    self._on_error(message)
+                return False
 
             try:
                 self._output_path = Path(output_path)
@@ -238,8 +345,8 @@ class VideoRecorder:
                 # Убедиться, что директория вывода существует
                 self._output_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # MSS будет создан внутри потока захвата, т.к. использует thread-local GDI объекты
-                self._mss_instance = None
+                # Session windows-capture создаётся в потоке захвата.
+                self._capture_session = None
 
                 # Инициализация видеозаписи
                 fourcc_code = self.CODEC_MAP.get(self.codec.lower(), "mp4v")
@@ -336,16 +443,13 @@ class VideoRecorder:
 
     def _capture_loop(self) -> None:
         """Основной цикл захвата в отдельном потоке."""
-        import mss
-
-        monitor = self._capture_area.to_mss_dict()  # type: ignore[union-attr]
         frame_interval: float = 1.0 / self.fps
         last_frame_time: float = 0
-
-        # Создаём MSS внутри потока захвата, т.к. он использует thread-local GDI объекты
-        self._mss_instance = mss.mss()
+        session = _WindowsCaptureSession()
+        self._capture_session = session
 
         try:
+            session.start(self._capture_area)  # type: ignore[arg-type]
             while self._state not in (
                 RecordingState.IDLE,
                 RecordingState.STOPPING,
@@ -364,16 +468,15 @@ class VideoRecorder:
 
                 # Захват кадра
                 try:
-                    screenshot = self._mss_instance.grab(monitor)  # type: ignore[union-attr,unused-ignore]
-                    frame = np.array(screenshot)
-
-                    # Преобразование BGRA в BGR для OpenCV
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                    frame = session.read_frame(timeout=max(frame_interval, 0.01))
+                    if frame is None:
+                        continue
 
                     # Запись кадра
                     if self._video_writer is not None:
                         self._video_writer.write(frame)
                         self._frame_count += 1
+                        self._last_captured_frame = frame
 
                     # Обратный вызов для предпросмотра
                     if self._on_frame_captured:
@@ -392,10 +495,11 @@ class VideoRecorder:
             if self._on_error:
                 self._on_error(str(e))
         finally:
-            # Закрываем MSS в том же потоке, где он был создан
-            if self._mss_instance is not None:
-                self._mss_instance.close()
-                self._mss_instance = None
+            try:
+                session.stop()
+            except Exception:
+                pass
+            self._capture_session = None
 
         # Сигнал завершения
         self._state = RecordingState.IDLE
@@ -406,11 +510,9 @@ class VideoRecorder:
             if self._video_writer is not None:
                 self._video_writer.release()
                 self._video_writer = None
-
-            # MSS закрывается в finally блоке _capture_loop, т.к. должен быть
-            # закрыт в том же потоке, где был создан (thread-local GDI объекты)
-            # Здесь только убеждаемся, что ссылка очищена
-            self._mss_instance = None
+            if self._capture_session is not None:
+                self._capture_session.stop()
+                self._capture_session = None
 
         except Exception as e:
             logger.error(f"Ошибка при очистке: {e}")
@@ -424,20 +526,6 @@ class VideoRecorder:
         Returns:
             Кадр предпросмотра или None при ошибке захвата
         """
-        try:
-            import mss
-
-            with mss.mss() as sct:
-                if self._capture_area:
-                    monitor = self._capture_area.to_mss_dict()
-                else:
-                    # По умолчанию основной монитор
-                    monitor = sct.monitors[1]
-
-                screenshot = sct.grab(monitor)
-                frame = np.array(screenshot)
-                return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)  # type: ignore[no-any-return]
-
-        except Exception as e:
-            logger.error(f"Ошибка получения кадра предпросмотра: {e}")
+        if self._last_captured_frame is None:
             return None
+        return self._last_captured_frame.copy()

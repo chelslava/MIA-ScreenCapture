@@ -541,6 +541,58 @@ class TestTaskScheduler:
         assert data["tasks"][0]["id"] == "persist-test"
         assert data["tasks"][0]["params"]["fps"] == 60
 
+    def test_save_tasks_uses_atomic_replace(
+        self, tasks_file: Path, monkeypatch
+    ):
+        """Проверка атомарной записи задач через os.replace."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        replace_calls: list[tuple[Path, Path]] = []
+
+        def fake_replace(src, dst):
+            replace_calls.append((Path(src), Path(dst)))
+            Path(dst).write_text(Path(src).read_text(encoding="utf-8"), encoding="utf-8")
+
+        monkeypatch.setattr("scheduler.task_scheduler.os.replace", fake_replace)
+
+        task = ScheduleTask(
+            id="atomic-save",
+            name="Atomic Save",
+            schedule_type=ScheduleType.ONCE,
+            params=RecordingParams(),
+        )
+        scheduler.add_task(task)
+
+        assert replace_calls
+        src, dst = replace_calls[0]
+        assert src.parent == dst.parent
+        assert src != dst
+        assert dst == tasks_file
+
+    def test_save_tasks_keeps_existing_file_on_replace_error(
+        self, tasks_file: Path, monkeypatch
+    ):
+        """Проверка сохранения старого файла при ошибке атомарной записи."""
+        tasks_file.write_text(
+            json.dumps({"tasks": [{"id": "original"}]}), encoding="utf-8"
+        )
+        scheduler = TaskScheduler(persist_path=tasks_file)
+
+        def failing_replace(src, dst):
+            raise OSError("replace failed")
+
+        monkeypatch.setattr("scheduler.task_scheduler.os.replace", failing_replace)
+
+        task = ScheduleTask(
+            id="failed-save",
+            name="Failed Save",
+            schedule_type=ScheduleType.ONCE,
+            params=RecordingParams(),
+        )
+        scheduler.add_task(task)
+
+        data = json.loads(tasks_file.read_text(encoding="utf-8"))
+        assert data == {"tasks": [{"id": "original"}]}
+
     def test_load_tasks_on_init(self, tasks_file: Path):
         """Проверка загрузки задач при инициализации."""
         # Создание файла с задачами в правильном формате

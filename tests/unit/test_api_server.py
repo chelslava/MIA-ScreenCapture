@@ -6,10 +6,12 @@ Unit тесты для API сервера
 """
 
 import threading
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from api.auth import init_api_auth
+from api.routes import register_routes
 from api.server import APIServer
 
 
@@ -421,3 +423,60 @@ class TestAPIServerEdgeCases:
 
         callback = server.get_callback("empty")
         assert callback() == {}
+
+
+class TestAPIServerObservability:
+    """Тесты observability заголовков и health endpoint."""
+
+    def _make_client(self):
+        server = APIServer()
+        init_api_auth(server.app, api_key="test-api-key")
+        server.set_callback(
+            "status",
+            MagicMock(
+                return_value={
+                    "is_recording": False,
+                    "is_paused": False,
+                    "elapsed_time": 0,
+                    "current_file": None,
+                }
+            ),
+        )
+        register_routes(server.app, server)
+        server.app.config["TESTING"] = True
+        client = server.app.test_client()
+        client.environ_base["HTTP_X_API_KEY"] = "test-api-key"
+        return client, server
+
+    def test_request_id_header_is_propagated(self) -> None:
+        client, _ = self._make_client()
+
+        response = client.get(
+            "/health", headers={"X-Request-ID": "request-123"}
+        )
+
+        assert response.status_code == 200
+        assert response.headers["X-Request-ID"] == "request-123"
+
+    def test_request_id_header_is_generated(self) -> None:
+        client, _ = self._make_client()
+
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        assert response.headers["X-Request-ID"]
+        assert len(response.headers["X-Request-ID"]) >= 16
+
+    def test_health_payload_includes_observability_fields(self) -> None:
+        client, server = self._make_client()
+
+        response = client.get("/health")
+        data = response.get_json()
+
+        assert response.status_code == 200
+        assert data["status"] == "ok"
+        assert "timestamp" in data
+        assert data["version"] == server._version
+        assert data["version"] != "unknown"
+        assert isinstance(data["uptime_seconds"], (int, float))
+        assert data["uptime_seconds"] >= 0

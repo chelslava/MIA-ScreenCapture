@@ -7,14 +7,42 @@
 """
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+import tempfile
 from typing import Any, Dict, List, Optional
 
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
+
+
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Атомарная запись JSON в файл через временный файл в той же директории."""
+    temp_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp_file:
+            temp_path = Path(tmp_file.name)
+            json.dump(data, tmp_file, indent=2, ensure_ascii=False)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+
+        os.replace(temp_path, path)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
 
 
 # Путь к файлу конфигурации
@@ -178,8 +206,7 @@ class ConfigManager:
         """
         try:
             data = asdict(self._settings)
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            _atomic_write_json(self.config_path, data)
             logger.info(f"Конфигурация сохранена в {self.config_path}")
             return True
         except Exception as e:

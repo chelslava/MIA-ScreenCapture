@@ -234,22 +234,11 @@ class TestGetScreenSize:
 
     def test_screen_size(self):
         """Проверка получения размера экрана."""
-        # Функция использует mss, мокаем её
-        mock_mss = MagicMock()
-        mock_sct = MagicMock()
-        mock_sct.monitors = [
-            {},  # Первый элемент пустой (all monitors combined)
-            {
-                "width": 1920,
-                "height": 1080,
-                "left": 0,
-                "top": 0,
-            },  # Основной монитор
-        ]
-        mock_mss.mss.return_value.__enter__ = MagicMock(return_value=mock_sct)
-        mock_mss.mss.return_value.__exit__ = MagicMock(return_value=False)
-
-        with patch.dict("sys.modules", {"mss": mock_mss}):
+        with patch("recorder.utils.get_platform", return_value="windows"), patch(
+            "ctypes.windll.user32.GetSystemMetrics",
+            side_effect=[1920, 1080],
+            create=True,
+        ):
             width, height = get_screen_size()
 
             assert width == 1920
@@ -452,37 +441,26 @@ class TestGetAllMonitors:
 
     def test_get_all_monitors_success(self):
         """Проверка получения списка мониторов."""
-        mock_mss_module = MagicMock()
-        mock_sct = MagicMock()
-        mock_sct.monitors = [
-            {},  # Все мониторы вместе
-            {"left": 0, "top": 0, "width": 1920, "height": 1080},  # Основной
-            {"left": 1920, "top": 0, "width": 1920, "height": 1080},  # Второй
-        ]
-        mock_mss_module.mss.return_value.__enter__ = MagicMock(
-            return_value=mock_sct
-        )
-        mock_mss_module.mss.return_value.__exit__ = MagicMock(
-            return_value=False
-        )
-
-        with patch.dict("sys.modules", {"mss": mock_mss_module}):
+        with patch("recorder.utils.get_platform", return_value="linux"), patch(
+            "recorder.utils.get_screen_size", return_value=(1920, 1080)
+        ):
             monitors = get_all_monitors()
 
-            assert len(monitors) == 2
+            assert len(monitors) == 1
             assert monitors[0]["id"] == 1
             assert monitors[0]["width"] == 1920
-            assert monitors[1]["id"] == 2
 
     def test_get_all_monitors_error(self):
         """Проверка обработки ошибки при получении мониторов."""
-        mock_mss_module = MagicMock()
-        mock_mss_module.mss.side_effect = Exception("MSS error")
-
-        with patch.dict("sys.modules", {"mss": mock_mss_module}):
+        with patch("recorder.utils.get_platform", return_value="windows"), patch(
+            "ctypes.WINFUNCTYPE",
+            side_effect=Exception("win32 error"),
+            create=True,
+        ), patch("recorder.utils.get_screen_size", return_value=(1920, 1080)):
             monitors = get_all_monitors()
 
-            assert monitors == []
+            assert len(monitors) == 1
+            assert monitors[0]["width"] == 1920
 
 
 class TestEnsureDirectory:

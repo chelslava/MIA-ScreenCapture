@@ -7,11 +7,13 @@
 """
 
 import json
+import os
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+import tempfile
 from typing import Any, Callable, Dict, List, Optional
 
 import tzlocal
@@ -25,6 +27,38 @@ from apscheduler.triggers.interval import IntervalTrigger
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
+
+
+def _atomic_write_json(path: Path, data: Any) -> bool:
+    """Атомарно записывает JSON в файл через временный файл."""
+    temp_path: Optional[Path] = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp_file:
+            temp_path = Path(tmp_file.name)
+            json.dump(data, tmp_file, indent=2, ensure_ascii=False)
+            tmp_file.flush()
+            os.fsync(tmp_file.fileno())
+
+        os.replace(temp_path, path)
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сохранения задач: {e}")
+        return False
+    finally:
+        if temp_path is not None and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
 
 
 class ScheduleType(Enum):
@@ -484,16 +518,11 @@ class TaskScheduler:
             return
 
         try:
-            self.persist_path.parent.mkdir(parents=True, exist_ok=True)
-
             data = {
                 "tasks": [task.to_dict() for task in self._tasks.values()],
                 "last_updated": datetime.now().isoformat(),
             }
-
-            with open(self.persist_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
+            _atomic_write_json(self.persist_path, data)
         except Exception as e:
             logger.error(f"Ошибка сохранения задач: {e}")
 

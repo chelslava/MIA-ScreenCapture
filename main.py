@@ -48,6 +48,7 @@ from cli.parser import (
 )
 from config import get_config, init_config
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
+from core.recording_service import RecordingService
 from logger_config import get_module_logger, setup_logger
 from recorder.utils import (
     check_ffmpeg,
@@ -91,6 +92,8 @@ class VideoRecorderApp:
 
         # Graceful shutdown менеджер
         self._shutdown_manager: Optional[GracefulShutdown] = None
+        # Headless-friendly сервис записи (используется как fallback без GUI)
+        self._recording_service = RecordingService()
 
     def _get_api_headers(self) -> dict:
         """
@@ -316,8 +319,16 @@ class VideoRecorderApp:
         # Запуск нового экземпляра в режиме без интерфейса
         logger.info("Запуск нового экземпляра записи")
 
-        # Пока просто запускаем режим без интерфейса
-        # В полной реализации здесь был бы fork фонового процесса
+        # Запускаем запись в текущем экземпляре без GUI
+        result = self._recording_service.start_recording(params)
+        if not result.get("success"):
+            print(
+                f"Ошибка: {result.get('error', 'Не удалось начать запись')}",
+                file=sys.stderr,
+            )
+            return 1
+
+        print("Запись начата")
         return self._run_headless()
 
     def _run_stop(self) -> int:
@@ -530,6 +541,8 @@ class VideoRecorderApp:
         # Запуск записи
         if self._main_window:
             self._main_window.start_recording_with_params(param_dict)  # type: ignore[attr-defined]
+        else:
+            self._start_recording(param_dict)
 
     # Реализации обратных вызовов API
 
@@ -537,36 +550,31 @@ class VideoRecorderApp:
         """Получение статуса записи."""
         if self._main_window:
             return self._main_window.get_status()  # type: ignore[attr-defined,no-any-return]
-        return {
-            "is_recording": False,
-            "is_paused": False,
-            "elapsed_time": 0,
-            "current_file": None,
-        }
+        return self._recording_service.get_status()
 
     def _start_recording(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Запуск записи."""
         if self._main_window:
             return self._main_window.start_recording_with_params(params)  # type: ignore[attr-defined,no-any-return]
-        return {"success": False, "error": "GUI недоступен"}
+        return self._recording_service.start_recording(params)
 
     def _stop_recording(self) -> Dict[str, Any]:
         """Остановка записи."""
         if self._main_window:
             return self._main_window.stop_recording()  # type: ignore[attr-defined,no-any-return]
-        return {"success": False, "error": "GUI недоступен"}
+        return self._recording_service.stop_recording()
 
     def _toggle_pause(self) -> Dict[str, Any]:
         """Переключение состояния паузы."""
         if self._main_window:
             return self._main_window.toggle_pause()  # type: ignore[attr-defined,no-any-return]
-        return {"success": False, "error": "GUI недоступен"}
+        return self._recording_service.toggle_pause()
 
     def _get_recordings(self) -> list:
         """Получение недавних записей."""
         if self._main_window:
             return self._main_window.get_recordings()  # type: ignore[attr-defined,no-any-return]
-        return []
+        return self._recording_service.get_recordings()
 
     def _get_schedule(self) -> list:
         """Получение запланированных задач."""
@@ -741,6 +749,15 @@ class VideoRecorderApp:
                         )
             except Exception as e:
                 logger.error(f"Ошибка при остановке записи: {e}")
+        else:
+            try:
+                result = self._recording_service.stop_active_recording_if_any()
+                if result and result.get("success"):
+                    logger.info(
+                        f"Запись сохранена: {result.get('filepath', 'неизвестно')}"
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка при остановке headless записи: {e}")
 
     def _save_config(self) -> None:
         """Сохранение конфигурации при завершении."""

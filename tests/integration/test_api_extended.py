@@ -16,9 +16,25 @@ from flask.testing import FlaskClient
 from api.auth import init_api_auth
 from api.routes import register_routes
 from api.server import APIServer
+from api.rate_limiter import RateLimitConfig, init_rate_limiter
 
 # Тестовый API ключ для интеграционных тестов
 TEST_API_KEY = "test-api-key-for-integration-tests-12345"
+
+
+def assert_error_contract(response, expected_code: str):
+    """Проверяет единый контракт ошибки API."""
+    data = response.get_json()
+    assert data["success"] is False
+    assert isinstance(data["trace_id"], str)
+    assert data["trace_id"]
+    assert response.headers.get("X-Request-ID")
+
+    error = data["error"]
+    assert error["code"] == expected_code
+    assert isinstance(error["message"], str)
+    assert "details" in error
+    return data
 
 
 @pytest.fixture
@@ -131,6 +147,35 @@ def test_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
     server.app.config["TESTING"] = True
 
     return server.app
+
+
+@pytest.fixture
+def rate_limited_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
+    """Создание приложения с низким лимитом для проверки 429."""
+    server = APIServer(host="127.0.0.1", port=5009)
+    init_api_auth(server.app, api_key=TEST_API_KEY)
+    init_rate_limiter(
+        server.app,
+        RateLimitConfig(
+            requests_per_minute=1,
+            requests_per_hour=10,
+            burst_limit=1,
+            block_duration=60,
+            enabled=True,
+        ),
+    )
+    for action, callback in mock_callbacks.items():
+        server.set_callback(action, callback)
+    register_routes(server.app, server)
+    server.app.config["TESTING"] = True
+    return server.app
+
+
+@pytest.fixture
+def rate_limited_client(rate_limited_app: Flask) -> FlaskClient:
+    client = rate_limited_app.test_client()
+    client.environ_base["HTTP_X_API_KEY"] = TEST_API_KEY
+    return client
 
 
 @pytest.fixture
@@ -479,10 +524,15 @@ class TestAPICallbackErrors:
         mock_callbacks["start"].side_effect = RuntimeError("Start failed")
 
         response = client.post(
-            "/api/start", json={}, content_type="application/json"
+            "/api/start",
+            json={},
+            content_type="application/json",
+            headers={"X-Request-ID": "req-start-exception"},
         )
 
         assert response.status_code == 500
+        data = assert_error_contract(response, "internal_error")
+        assert "Start failed" in data["error"]["message"] or data["error"]["message"]
 
     def test_stop_callback_exception(
         self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
@@ -563,6 +613,25 @@ class TestAPIRateLimiting:
 
         # Все должны быть успешными (или некоторые заблокированы rate limiter)
         assert all(code in [200, 429] for code in responses)
+
+    def test_config_update_rate_limited(
+        self,
+        rate_limited_client: FlaskClient,
+        mock_callbacks: Dict[str, MagicMock],
+    ) -> None:
+        """Проверка 429 на повторном PUT /api/config."""
+        request_data = {"video": {"fps": 60}}
+
+        first_response = rate_limited_client.put(
+            "/api/config", json=request_data, content_type="application/json"
+        )
+        second_response = rate_limited_client.put(
+            "/api/config", json=request_data, content_type="application/json"
+        )
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 429
+        assert mock_callbacks["update_config"].call_count == 1
 
 
 class TestAPIServerExtended:
@@ -667,14 +736,15 @@ class TestAPIErrorResponses:
         request_data = {"fps": 500}  # Превышает максимум
 
         response = client.post(
-            "/api/start", json=request_data, content_type="application/json"
+            "/api/start",
+            json=request_data,
+            content_type="application/json",
+            headers={"X-Request-ID": "req-validation-format"},
         )
 
         assert response.status_code == 400
-        data = response.get_json()
-        assert "success" in data
-        assert data["success"] is False
-        assert "validation_errors" in data or "error" in data
+        data = assert_error_contract(response, "validation_error")
+        assert isinstance(data["error"]["details"], list)
 
 
 class TestAPIStartRecordingExtended:

@@ -159,15 +159,15 @@ class TestCaptureArea:
         assert area.width == 1920
         assert area.height == 1080
 
-    def test_to_mss_dict(self) -> None:
-        """Проверка преобразования в формат MSS."""
+    def test_to_capture_dict(self) -> None:
+        """Проверка преобразования в формат области захвата."""
         area = CaptureArea(type="rect", x=100, y=200, width=800, height=600)
-        mss_dict = area.to_mss_dict()
+        capture_dict = area.to_capture_dict()
 
-        assert mss_dict["left"] == 100
-        assert mss_dict["top"] == 200
-        assert mss_dict["width"] == 800
-        assert mss_dict["height"] == 600
+        assert capture_dict["left"] == 100
+        assert capture_dict["top"] == 200
+        assert capture_dict["width"] == 800
+        assert capture_dict["height"] == 600
 
 
 class TestVideoRecorder:

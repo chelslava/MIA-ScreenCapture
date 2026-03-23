@@ -7,12 +7,14 @@
 
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable
+import uuid
+from typing import Any, Callable, Optional
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 from pydantic import ValidationError
 
 from api.auth import require_api_key
+from api.rate_limiter import rate_limit
 from api.schemas import (
     CreateScheduleRequest,
     StartRecordingRequest,
@@ -23,6 +25,135 @@ from api.schemas import (
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
+
+
+_ERROR_CODE_BY_STATUS = {
+    400: "bad_request",
+    401: "unauthorized",
+    403: "forbidden",
+    404: "not_found",
+    429: "rate_limited",
+}
+
+
+def _get_trace_id() -> str:
+    """Возвращает trace_id из контекста запроса или создаёт новый."""
+    trace_id = getattr(g, "trace_id", None)
+    if trace_id:
+        return trace_id
+
+    trace_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    g.trace_id = trace_id
+    return trace_id
+
+
+def _standard_error_payload(
+    code: str,
+    message: str,
+    details: Optional[Any] = None,
+) -> dict[str, Any]:
+    """Формирует единый контракт ошибки API."""
+    return {
+        "success": False,
+        "error": {
+            "code": code,
+            "message": message,
+            "details": details,
+        },
+        "trace_id": _get_trace_id(),
+    }
+
+
+def _error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    details: Optional[Any] = None,
+) -> tuple:
+    """Создаёт JSON-ответ в едином формате ошибки API."""
+    response = jsonify(_standard_error_payload(code, message, details))
+    response.status_code = status_code
+    response.headers["X-Request-ID"] = _get_trace_id()
+    return response
+
+
+def _extract_error_details(data: dict[str, Any]) -> Optional[Any]:
+    """Извлекает дополнительные детали из legacy error payload."""
+    if "validation_errors" in data:
+        return data["validation_errors"]
+    if "rate_limit" in data:
+        return data["rate_limit"]
+
+    details = {
+        key: value
+        for key, value in data.items()
+        if key
+        not in {
+            "success",
+            "error",
+            "message",
+            "trace_id",
+        }
+    }
+    return details or None
+
+
+def _normalize_error_payload(
+    status_code: int,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    """Преобразует legacy error payload в единый контракт."""
+    if (
+        data.get("success") is False
+        and isinstance(data.get("error"), dict)
+        and {"code", "message", "details"}.issubset(data["error"].keys())
+    ):
+        payload = dict(data)
+        payload.setdefault("trace_id", _get_trace_id())
+        return payload
+
+    error_value = data.get("error")
+    message = (
+        data.get("message")
+        if isinstance(data.get("message"), str)
+        else None
+    )
+
+    if status_code == 400 and "validation_errors" in data:
+        return _standard_error_payload(
+            "validation_error",
+            message or "Ошибка валидации данных",
+            data["validation_errors"],
+        )
+
+    code = _ERROR_CODE_BY_STATUS.get(status_code, "internal_error")
+    if status_code >= 500:
+        code = "internal_error"
+
+    if message is None and isinstance(error_value, str):
+        message = error_value
+    if message is None:
+        message = "Внутренняя ошибка сервера" if status_code >= 500 else "Ошибка запроса"
+
+    return _standard_error_payload(code, message, _extract_error_details(data))
+
+
+def _standardize_error_response(response):
+    """Нормализует JSON-ошибки в единый контракт."""
+    if response.status_code < 400 or not response.is_json:
+        response.headers.setdefault("X-Request-ID", _get_trace_id())
+        return response
+
+    data = response.get_json(silent=True)
+    if not isinstance(data, dict):
+        response.headers.setdefault("X-Request-ID", _get_trace_id())
+        return response
+
+    payload = _normalize_error_payload(response.status_code, data)
+    normalized = jsonify(payload)
+    normalized.status_code = response.status_code
+    normalized.headers["X-Request-ID"] = payload["trace_id"]
+    return normalized
 
 
 def handle_validation_error(error: ValidationError) -> tuple:
@@ -42,13 +173,12 @@ def handle_validation_error(error: ValidationError) -> tuple:
             {"field": field, "message": err["msg"], "type": err["type"]}
         )
 
-    return jsonify(
-        {
-            "success": False,
-            "error": "Ошибка валидации данных",
-            "validation_errors": errors,
-        }
-    ), 400
+    return _error_response(
+        400,
+        "validation_error",
+        "Ошибка валидации данных",
+        errors,
+    )
 
 
 # TODO: Декораторы api_endpoint и api_callback подготовлены для рефакторинга
@@ -201,6 +331,12 @@ def register_routes(app, server) -> None:
     def set_server_context() -> None:
         """Установка server в контекст запроса для декораторов."""
         g.server = server
+        _get_trace_id()
+
+    @app.after_request
+    def standardize_error_responses(response):
+        """Приведение legacy error payload к единому контракту."""
+        return _standardize_error_response(response)
 
     @app.route("/api/status", methods=["GET"])
     @require_api_key
@@ -228,6 +364,7 @@ def register_routes(app, server) -> None:
 
     @app.route("/api/start", methods=["POST"])
     @require_api_key
+    @rate_limit
     def start_recording():
         """
         Начало новой записи.
@@ -285,6 +422,7 @@ def register_routes(app, server) -> None:
 
     @app.route("/api/stop", methods=["POST"])
     @require_api_key
+    @rate_limit
     def stop_recording():
         """
         Остановка текущей записи.
@@ -312,6 +450,7 @@ def register_routes(app, server) -> None:
 
     @app.route("/api/pause", methods=["POST"])
     @require_api_key
+    @rate_limit
     def pause_recording():
         """
         Пауза или возобновление текущей записи.
@@ -387,6 +526,7 @@ def register_routes(app, server) -> None:
 
     @app.route("/api/schedule", methods=["POST"])
     @require_api_key
+    @rate_limit
     def create_schedule():
         """
         Создание новой запланированной задачи.
@@ -449,6 +589,7 @@ def register_routes(app, server) -> None:
 
     @app.route("/api/schedule/<task_id>", methods=["DELETE"])
     @require_api_key
+    @rate_limit
     def delete_schedule(task_id: str):
         """
         Удаление запланированной задачи.
@@ -479,6 +620,7 @@ def register_routes(app, server) -> None:
 
     @app.route("/api/schedule/<task_id>", methods=["PUT"])
     @require_api_key
+    @rate_limit
     def update_schedule(task_id: str):
         """
         Обновление запланированной задачи.
@@ -523,6 +665,7 @@ def register_routes(app, server) -> None:
 
     @app.route("/api/schedule/<task_id>/toggle", methods=["POST"])
     @require_api_key
+    @rate_limit
     def toggle_schedule(task_id: str):
         """
         Включение или отключение запланированной задачи.
@@ -637,6 +780,7 @@ def register_routes(app, server) -> None:
 
     @app.route("/api/config", methods=["PUT"])
     @require_api_key
+    @rate_limit
     def update_config():
         """
         Обновление конфигурации.
