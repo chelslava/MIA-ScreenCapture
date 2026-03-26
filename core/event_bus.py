@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from threading import Lock
-from typing import Any, Callable, Dict, List, Protocol
+from typing import Any, Callable, Protocol
 
 from logger_config import get_module_logger
 
@@ -32,7 +32,7 @@ class RecordingEvent:
     """Событие домена записи."""
 
     event_type: RecordingEventType
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -67,7 +67,7 @@ class InMemoryEventBus:
     """
 
     def __init__(self) -> None:
-        self._subscribers: Dict[RecordingEventType, List[EventHandler]] = {
+        self._subscribers: dict[RecordingEventType, list[EventHandler]] = {
             event_type: [] for event_type in RecordingEventType
         }
         self._lock = Lock()

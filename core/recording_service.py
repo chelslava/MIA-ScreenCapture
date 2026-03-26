@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from config import get_config
 from core.event_bus import (
@@ -18,7 +18,7 @@ from core.event_bus import (
     RecordingEvent,
     RecordingEventType,
 )
-from core.recording_mapper import map_audio_to_gui, map_capture_to_gui, map_video_to_gui
+from core.recording_backend import RecordingBackend
 from core.recording_types import (
     AudioMode,
     AudioRequest,
@@ -26,8 +26,6 @@ from core.recording_types import (
     CaptureRequest,
     VideoRequest,
 )
-from gui.controllers.recording_controller import RecordingController
-from gui.models.recording_state import RecordingState
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -36,9 +34,17 @@ logger = get_module_logger(__name__)
 class RecordingService:
     """Сервис записи, не требующий инициализации GUI."""
 
-    def __init__(self, event_bus: Optional[EventBus] = None) -> None:
-        self._state = RecordingState()
-        self._controller = RecordingController(self._state)
+    def __init__(
+        self,
+        event_bus: EventBus | None = None,
+        backend: RecordingBackend | None = None,
+    ) -> None:
+        if backend is None:
+            raise ValueError(
+                "backend обязателен. Передайте GUIRecordingBackend или другой "
+                "implementation RecordingBackend."
+            )
+        self._backend = backend
         self._lock = threading.Lock()
         self._event_bus = event_bus or InMemoryEventBus()
 
@@ -49,12 +55,13 @@ class RecordingService:
 
     def get_status(self) -> dict[str, Any]:
         """Возвращает текущий статус записи."""
+        backend_status = self._backend.get_status()
         status = {
-            "is_recording": self._state.is_recording(),
-            "is_paused": self._state.is_paused(),
-            "elapsed_time": self._controller.elapsed_time,
-            "current_file": str(self._state.current_output)
-            if self._state.current_output
+            "is_recording": backend_status.is_recording,
+            "is_paused": backend_status.is_paused,
+            "elapsed_time": backend_status.elapsed_time,
+            "current_file": str(backend_status.current_file)
+            if backend_status.current_file
             else None,
         }
         self._publish_event(RecordingEventType.STATUS, status)
@@ -70,7 +77,8 @@ class RecordingService:
         - audio / audio_type
         """
         with self._lock:
-            if self._state.is_recording():
+            backend_status = self._backend.get_status()
+            if backend_status.is_recording or backend_status.is_paused:
                 result = {"success": False, "error": "Запись уже идёт"}
                 self._publish_event(RecordingEventType.ERROR, result)
                 return result
@@ -83,11 +91,11 @@ class RecordingService:
                 output_path = self._build_output_path(normalized)
                 duration = normalized.get("duration")
 
-                success, error_msg = self._controller.start_recording(
+                success, error_msg = self._backend.start(
                     output_path=output_path,
-                    capture=map_capture_to_gui(capture),
-                    audio=map_audio_to_gui(audio),
-                    video=map_video_to_gui(video),
+                    capture=capture,
+                    audio=audio,
+                    video=video,
                     duration=duration,
                 )
                 if not success:
@@ -112,14 +120,21 @@ class RecordingService:
     def stop_recording(self) -> dict[str, Any]:
         """Останавливает текущую запись."""
         with self._lock:
-            if not self._state.is_recording() and not self._state.is_paused():
+            backend_status = self._backend.get_status()
+            if (
+                not backend_status.is_recording
+                and not backend_status.is_paused
+            ):
                 result = {"success": False, "error": "Запись не идёт"}
                 self._publish_event(RecordingEventType.ERROR, result)
                 return result
 
-            output_path = self._controller.stop_recording()
+            output_path = self._backend.stop()
             if not output_path:
-                result = {"success": False, "error": "Не удалось сохранить запись"}
+                result = {
+                    "success": False,
+                    "error": "Не удалось сохранить запись",
+                }
                 self._publish_event(RecordingEventType.ERROR, result)
                 return result
 
@@ -140,22 +155,29 @@ class RecordingService:
     def toggle_pause(self) -> dict[str, Any]:
         """Переключает паузу текущей записи."""
         with self._lock:
-            if not self._state.is_recording() and not self._state.is_paused():
+            backend_status = self._backend.get_status()
+            if (
+                not backend_status.is_recording
+                and not backend_status.is_paused
+            ):
                 result = {"success": False, "error": "Запись не идёт"}
                 self._publish_event(RecordingEventType.ERROR, result)
                 return result
 
-            if self._state.is_paused():
-                resumed = self._controller.resume_recording()
+            if backend_status.is_paused:
+                resumed = self._backend.resume()
                 if not resumed:
-                    result = {"success": False, "error": "Не удалось возобновить"}
+                    result = {
+                        "success": False,
+                        "error": "Не удалось возобновить",
+                    }
                     self._publish_event(RecordingEventType.ERROR, result)
                     return result
                 result = {"success": True, "is_paused": False}
                 self._publish_event(RecordingEventType.RESUMED, result)
                 return result
 
-            paused = self._controller.pause_recording()
+            paused = self._backend.pause()
             if not paused:
                 result = {
                     "success": False,
@@ -171,21 +193,31 @@ class RecordingService:
         """Возвращает список последних записей из конфигурации."""
         return get_config().settings.recent_recordings
 
-    def stop_active_recording_if_any(self) -> Optional[dict[str, Any]]:
+    def stop_active_recording_if_any(self) -> dict[str, Any] | None:
         """Безопасно останавливает активную запись, если она есть."""
         with self._lock:
-            if not self._state.is_recording() and not self._state.is_paused():
+            backend_status = self._backend.get_status()
+            if (
+                not backend_status.is_recording
+                and not backend_status.is_paused
+            ):
                 return None
         return self.stop_recording()
 
     def _normalize_params(self, params: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(params)
-        normalized["area"] = params.get("area", params.get("area_type", "full"))
+        normalized["area"] = params.get(
+            "area", params.get("area_type", "full")
+        )
         normalized["rect"] = params.get("rect", params.get("rect_coords"))
-        normalized["audio"] = params.get("audio", params.get("audio_type", "none"))
+        normalized["audio"] = params.get(
+            "audio", params.get("audio_type", "none")
+        )
         return normalized
 
-    def _build_capture_settings(self, params: dict[str, Any]) -> CaptureRequest:
+    def _build_capture_settings(
+        self, params: dict[str, Any]
+    ) -> CaptureRequest:
         area = params.get("area", "full")
         capture_mode_map = {
             "full": CaptureMode.FULL,
@@ -220,7 +252,9 @@ class RecordingService:
             "system": AudioMode.SYSTEM,
             "both": AudioMode.BOTH,
         }
-        audio_mode = audio_map.get(str(params.get("audio", "none")), AudioMode.NONE)
+        audio_mode = audio_map.get(
+            str(params.get("audio", "none")), AudioMode.NONE
+        )
         return AudioRequest(
             mode=audio_mode,
             mic_device_index=params.get("mic_device_index"),

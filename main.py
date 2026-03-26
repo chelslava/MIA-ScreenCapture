@@ -51,6 +51,7 @@ from cli.parser import (
 from config import get_config, init_config
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
 from core.recording_service import RecordingService
+from gui.backends import GUIRecordingBackend
 from logger_config import get_module_logger, setup_logger
 from recorder.utils import (
     check_ffmpeg,
@@ -134,7 +135,9 @@ class VideoRecorderApp:
         # Graceful shutdown менеджер
         self._shutdown_manager: Optional[GracefulShutdown] = None
         # Headless-friendly сервис записи (используется как fallback без GUI)
-        self._recording_service = RecordingService()
+        self._recording_service = RecordingService(
+            backend=GUIRecordingBackend()
+        )
         self._websocket_manager = WebSocketManager()
         self._websocket_manager.attach_event_bus(self._recording_service.event_bus)
         self._gui_executor: Optional[_MainThreadExecutor] = None
@@ -198,9 +201,21 @@ class VideoRecorderApp:
                 return self._run_status()
             elif self._mode == "schedule_list":
                 return self._run_schedule_list()
+            elif self._mode == "schedule_create":
+                return self._run_schedule_create()
+            elif self._mode == "schedule_update":
+                return self._run_schedule_update()
+            elif self._mode == "schedule_delete":
+                return self._run_schedule_delete()
+            elif self._mode == "schedule_toggle":
+                return self._run_schedule_toggle()
+            elif self._mode == "schedule_preview":
+                return self._run_schedule_preview()
+            elif self._mode == "list_presets":
+                return self._run_list_presets()
             else:
                 logger.error(f"Неизвестный режим: {self._mode}")
-                return 1
+            return 1
 
         except KeyboardInterrupt:
             logger.info("Прервано пользователем")
@@ -471,6 +486,43 @@ class VideoRecorderApp:
         except ImportError:
             print("Ошибка: библиотека requests недоступна", file=sys.stderr)
             return 1
+
+    def _run_schedule_create(self) -> int:
+        """Создание запланированной задачи через CLI."""
+        from cli.scheduler import create_schedule
+
+        return create_schedule(self._config)
+
+    def _run_schedule_update(self) -> int:
+        """Обновление запланированной задачи через CLI."""
+        from cli.scheduler import update_schedule
+
+        return update_schedule(self._config)
+
+    def _run_schedule_delete(self) -> int:
+        """Удаление запланированной задачи через CLI."""
+        from cli.scheduler import delete_schedule
+
+        return delete_schedule(self._config)
+
+    def _run_schedule_toggle(self) -> int:
+        """Включение/выключение запланированной задачи через CLI."""
+        from cli.scheduler import toggle_schedule
+
+        return toggle_schedule(self._config)
+
+    def _run_schedule_preview(self) -> int:
+        """Просмотр предстоящих запусков через CLI."""
+        from cli.scheduler import preview_upcoming_runs
+
+        return preview_upcoming_runs(self._config)
+
+    def _run_list_presets(self) -> int:
+        """Показ списка preset шаблонов."""
+        from cli.templates import print_presets_help
+
+        print_presets_help()
+        return 0
 
     def _start_api_server(self) -> None:
         """Запуск API сервера."""

@@ -6,15 +6,73 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from core.event_bus import InMemoryEventBus, RecordingEventType
-from core.recording_types import AudioMode
+from core.recording_backend import RecordingStatusSnapshot
 from core.recording_service import RecordingService
+from core.recording_types import AudioMode
+
+
+class FakeBackend:
+    def __init__(self) -> None:
+        self.status = RecordingStatusSnapshot(
+            is_recording=False,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=None,
+        )
+        self.start_result = (True, None)
+        self.stop_result = Path("demo.mp4")
+        self.pause_result = True
+        self.resume_result = True
+
+    def get_status(self) -> RecordingStatusSnapshot:
+        return self.status
+
+    def start(self, output_path, capture, audio, video, duration=None):
+        if self.start_result[0]:
+            self.status = RecordingStatusSnapshot(
+                is_recording=True,
+                is_paused=False,
+                elapsed_time=0.0,
+                current_file=output_path,
+            )
+        return self.start_result
+
+    def stop(self):
+        if self.stop_result is not None:
+            self.status = RecordingStatusSnapshot(
+                is_recording=False,
+                is_paused=False,
+                elapsed_time=0.0,
+                current_file=self.stop_result,
+            )
+        return self.stop_result
+
+    def pause(self) -> bool:
+        if self.pause_result:
+            self.status = RecordingStatusSnapshot(
+                is_recording=False,
+                is_paused=True,
+                elapsed_time=self.status.elapsed_time,
+                current_file=self.status.current_file,
+            )
+        return self.pause_result
+
+    def resume(self) -> bool:
+        if self.resume_result:
+            self.status = RecordingStatusSnapshot(
+                is_recording=True,
+                is_paused=False,
+                elapsed_time=self.status.elapsed_time,
+                current_file=self.status.current_file,
+            )
+        return self.resume_result
 
 
 class TestRecordingService:
     """Тесты сервиса записи без GUI."""
 
     def test_get_status_initial(self) -> None:
-        service = RecordingService()
+        service = RecordingService(backend=FakeBackend())
         status = service.get_status()
 
         assert status["is_recording"] is False
@@ -22,33 +80,38 @@ class TestRecordingService:
         assert status["current_file"] is None
 
     def test_start_recording_success(self) -> None:
-        service = RecordingService()
-        with patch.object(
-            service._controller, "start_recording", return_value=(True, None)
-        ) as start_mock:
-            result = service.start_recording({"area": "full", "audio": "none"})
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+        result = service.start_recording({"area": "full", "audio": "none"})
 
         assert result["success"] is True
         assert "output_path" in result
-        start_mock.assert_called_once()
+        assert backend.status.is_recording is True
 
     def test_start_recording_fails_when_already_recording(self) -> None:
-        service = RecordingService()
-        service._state.start_recording(Path("demo.mp4"))
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
 
         result = service.start_recording({"area": "full"})
         assert result == {"success": False, "error": "Запись уже идёт"}
 
     def test_stop_recording_success(self) -> None:
-        service = RecordingService()
-        service._state.start_recording(Path("demo.mp4"))
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
 
         with (
-            patch.object(
-                service._controller,
-                "stop_recording",
-                return_value=Path("demo.mp4"),
-            ),
             patch("core.recording_service.get_config") as get_config_mock,
             patch.object(Path, "exists", return_value=False),
         ):
@@ -59,33 +122,22 @@ class TestRecordingService:
         assert result["filepath"] == "demo.mp4"
 
     def test_toggle_pause(self) -> None:
-        service = RecordingService()
-        service._state.start_recording(Path("demo.mp4"))
-
-        def pause_side_effect() -> bool:
-            service._state.pause_recording()
-            return True
-
-        with patch.object(
-            service._controller, "pause_recording", side_effect=pause_side_effect
-        ):
-            paused = service.toggle_pause()
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+        paused = service.toggle_pause()
         assert paused == {"success": True, "is_paused": True}
 
-        def resume_side_effect() -> bool:
-            service._state.resume_recording()
-            return True
-
-        with patch.object(
-            service._controller,
-            "resume_recording",
-            side_effect=resume_side_effect,
-        ):
-            resumed = service.toggle_pause()
+        resumed = service.toggle_pause()
         assert resumed == {"success": True, "is_paused": False}
 
     def test_normalize_internal_keys(self) -> None:
-        service = RecordingService()
+        service = RecordingService(backend=FakeBackend())
         normalized = service._normalize_params(
             {"area_type": "rect", "rect_coords": [1, 2, 3, 4], "audio_type": "mic"}
         )
@@ -95,7 +147,7 @@ class TestRecordingService:
         assert normalized["audio"] == "mic"
 
     def test_build_audio_settings(self) -> None:
-        service = RecordingService()
+        service = RecordingService(backend=FakeBackend())
         audio = service._build_audio_settings({"audio": "both"})
         assert audio.mode == AudioMode.BOTH
 
@@ -103,12 +155,8 @@ class TestRecordingService:
         bus = InMemoryEventBus()
         events = []
         bus.subscribe(RecordingEventType.STARTED, lambda e: events.append(e))
-        service = RecordingService(event_bus=bus)
-
-        with patch.object(
-            service._controller, "start_recording", return_value=(True, None)
-        ):
-            result = service.start_recording({"area": "full", "audio": "none"})
+        service = RecordingService(event_bus=bus, backend=FakeBackend())
+        result = service.start_recording({"area": "full", "audio": "none"})
 
         assert result["success"] is True
         assert len(events) == 1
@@ -118,8 +166,14 @@ class TestRecordingService:
         bus = InMemoryEventBus()
         events = []
         bus.subscribe(RecordingEventType.ERROR, lambda e: events.append(e))
-        service = RecordingService(event_bus=bus)
-        service._state.start_recording(Path("demo.mp4"))
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(event_bus=bus, backend=backend)
 
         result = service.start_recording({"area": "full"})
 

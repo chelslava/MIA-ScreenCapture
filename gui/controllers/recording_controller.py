@@ -9,7 +9,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-from gui.models.recording_state import (
+from core.recording_state import (
     AudioSettings,
     AudioType,
     CaptureSettings,

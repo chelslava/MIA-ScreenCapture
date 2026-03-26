@@ -11,10 +11,9 @@
 - models: Модели данных (RecordingState)
 - views: Представления (CaptureView, AudioView, VideoView, OutputView)
 - controllers: Контроллеры (RecordingController, SettingsController)
-"""
 
-from .main_window import MainWindow
-from .scheduler_tab import SchedulerTab
-from .tray_icon import TrayIcon
+Примечание: Импорты модулей выполняются явно для избежания
+циклических зависимостей и不必要的 загрузки GUI в headless режиме.
+"""
 
 __all__ = ["MainWindow", "TrayIcon", "SchedulerTab"]

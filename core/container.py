@@ -18,7 +18,7 @@ from typing import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from gui.models.recording_state import (
+    from core.recording_state import (
         AudioSettings,
         CaptureSettings,
         VideoSettings,

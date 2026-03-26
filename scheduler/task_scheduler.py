@@ -379,6 +379,54 @@ class TaskScheduler:
         """Получение общего количества задач."""
         return len(self._tasks)
 
+    def get_upcoming_runs(self, count: int = 5) -> List[Dict[str, Any]]:
+        """
+        Возвращает предстоящие запуски задач.
+
+        Args:
+            count: Максимальное количество запусков для возврата
+
+        Returns:
+            Список словарей с информацией о запусках:
+            [{
+                'task_id': str,
+                'name': str,
+                'next_run': str (ISO format),
+                'type': str,
+                'enabled': bool
+            }, ...]
+        """
+        upcoming: List[Dict[str, Any]] = []
+
+        with self._lock:
+            for task in self._tasks.values():
+                if not task.enabled:
+                    continue
+
+                # Получение next_run из задачи или из job
+                next_run = task.next_run
+                if next_run is None and self._scheduler.running:
+                    try:
+                        job = self._scheduler.get_job(task.id)
+                        if job and job.next_run_time:
+                            next_run = job.next_run_time
+                    except Exception:
+                        pass
+
+                if next_run:
+                    upcoming.append({
+                        "task_id": task.id,
+                        "name": task.name,
+                        "next_run": next_run.isoformat() if hasattr(next_run, 'isoformat') else str(next_run),
+                        "type": task.schedule_type.value,
+                        "enabled": task.enabled,
+                    })
+
+        # Сортировка по времени (ближайшие сначала)
+        upcoming.sort(key=lambda x: x["next_run"])
+
+        return upcoming[:count]
+
     def _schedule_job(self, task: ScheduleTask) -> None:
         """
         Планирование задачи в APScheduler.

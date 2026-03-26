@@ -70,6 +70,7 @@ venv*/
 .project
 .pydevproject
 .settings/
+.continue/
 
 # Jupyter Notebook
 .ipynb_checkpoints

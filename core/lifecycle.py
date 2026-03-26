@@ -7,12 +7,12 @@
 
 Example:
     shutdown = GracefulShutdown()
-    
+
     # Регистрация обработчиков
     shutdown.register_handler(stop_recording)
     shutdown.register_handler(save_config)
     shutdown.register_handler(stop_api_server)
-    
+
     # Установка обработчиков сигналов
     shutdown.setup_signal_handlers()
 """
@@ -246,7 +246,9 @@ class GracefulShutdown:
             logger.info("Нет зарегистрированных обработчиков для выполнения")
             return True
 
-        logger.info(f"Выполнение {len(self._handlers)} обработчиков завершения...")
+        logger.info(
+            f"Выполнение {len(self._handlers)} обработчиков завершения..."
+        )
 
         success = True
         # Копируем список внутри lock для потокобезопасности.
@@ -257,10 +259,14 @@ class GracefulShutdown:
 
         for i, handler in enumerate(handlers, 1):
             handler_name = (
-                handler.__name__ if hasattr(handler, "__name__") else str(handler)
+                handler.__name__
+                if hasattr(handler, "__name__")
+                else str(handler)
             )
             try:
-                logger.debug(f"Выполнение обработчика {i}/{len(handlers)}: {handler_name}")
+                logger.debug(
+                    f"Выполнение обработчика {i}/{len(handlers)}: {handler_name}"
+                )
                 handler()
                 logger.debug(f"Обработчик {handler_name} выполнен успешно")
             except Exception as e:

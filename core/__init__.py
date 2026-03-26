@@ -24,6 +24,17 @@ from core.lifecycle import (
     request_shutdown,
     reset_shutdown_manager,
 )
+from core.recording_state import (
+    AudioSettings,
+    AudioType,
+    CaptureSettings,
+    CaptureType,
+    OutputSettings,
+    RecentRecording,
+    RecordingState,
+    RecordingStatus,
+    VideoSettings,
+)
 
 __all__ = [
     # Container
@@ -43,4 +54,14 @@ __all__ = [
     "register_shutdown_handler",
     "request_shutdown",
     "reset_shutdown_manager",
+    # Recording state
+    "AudioSettings",
+    "AudioType",
+    "CaptureSettings",
+    "CaptureType",
+    "OutputSettings",
+    "RecentRecording",
+    "RecordingState",
+    "RecordingStatus",
+    "VideoSettings",
 ]

@@ -363,6 +363,48 @@ def get_all_monitors() -> List[Dict[str, int]]:
     return monitors
 
 
+def get_available_monitors() -> List[Dict[str, Any]]:
+    """
+    Получение списка доступных мониторов для выбора.
+    
+    Это alias для get_all_monitors() с дополнительными метаданными.
+
+    Returns:
+        Список словарей с информацией о мониторах:
+        [{
+            'index': int,
+            'x': int, 'y': int,
+            'width': int, 'height': int,
+            'name': str,
+            'is_primary': bool
+        }, ...]
+    """
+    monitors = get_all_monitors()
+    result = []
+    
+    # Определение primary монитора (обычно 0,0)
+    primary_monitor = None
+    for i, mon in enumerate(monitors):
+        is_primary = (mon['x'] == 0 and mon['y'] == 0)
+        if is_primary:
+            primary_monitor = i
+        result.append({
+            'index': i,
+            'x': mon['x'],
+            'y': mon['y'],
+            'width': mon['width'],
+            'height': mon['height'],
+            'name': f"Monitor {i + 1}",
+            'is_primary': is_primary,
+        })
+    
+    # Если не нашли primary по координатам, считаем первый primary
+    if primary_monitor is None and result:
+        result[0]['is_primary'] = True
+    
+    return result
+
+
 def validate_rect_coords(
     x1: int, y1: int, x2: int, y2: int
 ) -> Tuple[int, int, int, int]:

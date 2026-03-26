@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 class CaptureMode(Enum):
@@ -42,7 +41,7 @@ class AudioRequest:
     """Параметры аудио на уровне core."""
 
     mode: AudioMode
-    mic_device_index: Optional[int] = None
+    mic_device_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -53,4 +52,3 @@ class VideoRequest:
     codec: str
     bitrate: str
     format: str
-

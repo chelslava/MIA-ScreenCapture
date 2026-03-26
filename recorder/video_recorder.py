@@ -47,12 +47,30 @@ class CaptureArea:
     width: int = 0
     height: int = 0
     window_title: Optional[str] = None
+    monitor_index: int = 0  # Индекс монитора (0 = primary)
+    include_cursor: bool = False  # Включить курсор в захват
 
     @classmethod
-    def full_screen(cls, monitor_index: int = 1) -> "CaptureArea":
-        """Создание области захвата полного экрана."""
-        width, height = get_screen_size()
-        return cls(type="full", width=width, height=height)
+    def full_screen(cls, monitor_index: int = 0) -> "CaptureArea":
+        """Создание области захвата полного экрана.
+        
+        Args:
+            monitor_index: Индекс монитора (0 = primary, 1 = secondary)
+        """
+        monitors = get_available_monitors()
+        if monitor_index >= len(monitors):
+            logger.warning(
+                f"Монитор {monitor_index} не найден, используется primary"
+            )
+            monitor_index = 0
+        
+        monitor = monitors[monitor_index] if monitors else {"width": 1920, "height": 1080}
+        return cls(
+            type="full",
+            monitor_index=monitor_index,
+            width=monitor.get("width", 1920),
+            height=monitor.get("height", 1080),
+        )
 
     @classmethod
     def from_rect(cls, x1: int, y1: int, x2: int, y2: int) -> "CaptureArea":
@@ -100,13 +118,15 @@ class _WindowsCaptureSession:
     последний полученный кадр и возвращаем его по запросу.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, on_closed_callback: Optional[Callable] = None) -> None:
         self._capture = None
         self._control = None
         self._last_frame: Optional[np.ndarray] = None
         self._frame_event = threading.Event()
         self._lock = threading.Lock()
         self._closed = False
+        self._on_closed_callback = on_closed_callback
+        self._capture_lost = False  # Флаг потери захвата
 
     def start(self, capture_area: CaptureArea) -> None:
         try:
@@ -118,11 +138,15 @@ class _WindowsCaptureSession:
 
         monitor_index = None
         window_name = None
+        
+        # Настройка в зависимости от типа захвата
         if capture_area.type == "window" and capture_area.window_title:
             window_name = capture_area.window_title
+        elif capture_area.type == "full":
+            monitor_index = capture_area.monitor_index
 
         capture = WindowsCapture(
-            cursor_capture=False,
+            cursor_capture=capture_area.include_cursor,
             draw_border=False,
             monitor_index=monitor_index,
             window_name=window_name,
@@ -165,12 +189,28 @@ class _WindowsCaptureSession:
 
         @capture.event
         def on_closed() -> None:
+            """Обработка закрытия capture session."""
+            logger.warning("Capture session closed unexpectedly")
             self._closed = True
+            self._capture_lost = True
+            
+            # Уведомление об ошибке
+            if self._on_closed_callback:
+                try:
+                    self._on_closed_callback(
+                        "Захват потерян (окно закрыто или монитор отключен)"
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка в on_closed callback: {e}")
 
         self._capture = capture
         self._control = capture.start_free_threaded()
 
     def read_frame(self, timeout: float) -> Optional[np.ndarray]:
+        if self._capture_lost:
+            # Попытка reconnect для window capture
+            return None
+        
         if not self._frame_event.wait(timeout=timeout):
             return None
         with self._lock:
@@ -179,6 +219,11 @@ class _WindowsCaptureSession:
             frame = self._last_frame.copy()
             self._frame_event.clear()
             return frame
+    
+    @property
+    def is_capture_lost(self) -> bool:
+        """Проверка, был ли потерян захват."""
+        return self._capture_lost
 
     def stop(self) -> None:
         self._closed = True
@@ -347,6 +392,7 @@ class VideoRecorder:
 
                 # Session windows-capture создаётся в потоке захвата.
                 self._capture_session = None
+                self._capture_lost = False  # Сброс флага потери захвата
 
                 # Инициализация видеозаписи
                 fourcc_code = self.CODEC_MAP.get(self.codec.lower(), "mp4v")
@@ -445,8 +491,19 @@ class VideoRecorder:
         """Основной цикл захвата в отдельном потоке."""
         frame_interval: float = 1.0 / self.fps
         last_frame_time: float = 0
-        session = _WindowsCaptureSession()
+        
+        # Callback для обработки потери захвата
+        def on_capture_lost(message: str) -> None:
+            logger.error(f"Capture lost: {message}")
+            if self._on_error:
+                try:
+                    self._on_error(message)
+                except Exception as e:
+                    logger.error(f"Ошибка в on_error callback: {e}")
+        
+        session = _WindowsCaptureSession(on_closed_callback=on_capture_lost)
         self._capture_session = session
+        self._capture_lost = False
 
         try:
             session.start(self._capture_area)  # type: ignore[arg-type]
@@ -457,6 +514,12 @@ class VideoRecorder:
                 if self._state == RecordingState.PAUSED:
                     time.sleep(0.1)
                     continue
+                
+                # Проверка потери захвата
+                if session.is_capture_lost:
+                    logger.warning("Capture lost detected in capture loop")
+                    self._capture_lost = True
+                    break
 
                 # Контроль частоты кадров
                 current_time = time.time()
@@ -470,7 +533,13 @@ class VideoRecorder:
                 try:
                     frame = session.read_frame(timeout=max(frame_interval, 0.01))
                     if frame is None:
+                        # Timeout - проверяем, не потерян ли захват
+                        if session.is_capture_lost:
+                            break
                         continue
+
+                    # Сброс флага потери при успешном захвате
+                    self._capture_lost = False
 
                     # Запись кадра
                     if self._video_writer is not None:
@@ -484,6 +553,8 @@ class VideoRecorder:
 
                 except Exception as e:
                     logger.error(f"Ошибка захвата кадра: {e}")
+                    # Не прерываем запись при единичных ошибках
+                    continue
 
                 # Проверка лимита длительности
                 if self._duration and self.elapsed_time >= self._duration:
@@ -491,7 +562,7 @@ class VideoRecorder:
                     break
 
         except Exception as e:
-            logger.error(f"Ошибка цикла захвата: {e}")
+            logger.error(f"Ошибка цикла захвата: {e}", exc_info=True)
             if self._on_error:
                 self._on_error(str(e))
         finally:
@@ -503,6 +574,11 @@ class VideoRecorder:
 
         # Сигнал завершения
         self._state = RecordingState.IDLE
+    
+    @property
+    def is_capture_lost(self) -> bool:
+        """Проверка, был ли потерян захват."""
+        return getattr(self, "_capture_lost", False)
 
     def _cleanup(self) -> None:
         """Очистка ресурсов."""

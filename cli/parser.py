@@ -8,7 +8,7 @@
 
 import argparse
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from logger_config import get_module_logger
 
@@ -66,6 +66,39 @@ def create_parser() -> argparse.ArgumentParser:
         "--schedule-list",
         action="store_true",
         help="Список запланированных задач",
+    )
+    mode_group.add_argument(
+        "--schedule-create",
+        action="store_true",
+        help="Создать новую запланированную задачу",
+    )
+    mode_group.add_argument(
+        "--schedule-update",
+        type=str,
+        metavar="TASK_ID",
+        help="Обновить запланированную задачу по ID",
+    )
+    mode_group.add_argument(
+        "--schedule-delete",
+        type=str,
+        metavar="TASK_ID",
+        help="Удалить запланированную задачу по ID",
+    )
+    mode_group.add_argument(
+        "--schedule-toggle",
+        type=str,
+        metavar="TASK_ID",
+        help="Включить/выключить запланированную задачу",
+    )
+    mode_group.add_argument(
+        "--schedule-preview",
+        action="store_true",
+        help="Показать предстоящие запуски задач",
+    )
+    mode_group.add_argument(
+        "--list-presets",
+        action="store_true",
+        help="Показать список preset шаблонов",
     )
 
     # Параметры записи
@@ -137,6 +170,21 @@ def create_parser() -> argparse.ArgumentParser:
         help="Длительность записи в секундах",
     )
 
+    record_group.add_argument(
+        "--monitor",
+        type=int,
+        default=0,
+        metavar="INDEX",
+        help="Индекс монитора для захвата (0 = primary, по умолчанию: 0)",
+    )
+
+    record_group.add_argument(
+        "--cursor",
+        action="store_true",
+        default=False,
+        help="Включить курсор в захват (по умолчанию: выключен)",
+    )
+
     # Конфигурация API
     api_group = parser.add_argument_group("Конфигурация API")
 
@@ -175,6 +223,67 @@ def create_parser() -> argparse.ArgumentParser:
         help="Имя для запланированной задачи",
     )
 
+    scheduler_group.add_argument(
+        "--trigger",
+        choices=["once", "daily", "weekly", "interval", "cron"],
+        help="Тип триггера для задачи (once, daily, weekly, interval, cron)",
+    )
+
+    scheduler_group.add_argument(
+        "--time",
+        type=str,
+        metavar="HH:MM",
+        help="Время запуска для daily/weekly расписания (формат: HH:MM)",
+    )
+
+    scheduler_group.add_argument(
+        "--days",
+        type=str,
+        metavar="DAYS",
+        help="Дни недели для weekly расписания (0-6, через запятую, 0=Понедельник)",
+    )
+
+    scheduler_group.add_argument(
+        "--interval-hours",
+        type=int,
+        metavar="HOURS",
+        help="Интервал в часах для interval расписания",
+    )
+
+    scheduler_group.add_argument(
+        "--interval-minutes",
+        type=int,
+        metavar="MINUTES",
+        help="Интервал в минутах для interval расписания",
+    )
+
+    scheduler_group.add_argument(
+        "--datetime",
+        type=str,
+        metavar="DATETIME",
+        help="Дата и время для once расписания (формат: YYYY-MM-DD HH:MM)",
+    )
+
+    scheduler_group.add_argument(
+        "--enabled",
+        type=lambda x: x.lower() in ("true", "1", "yes", "on"),
+        default=True,
+        help="Включить/выключить задачу (true/false, по умолчанию: true)",
+    )
+
+    scheduler_group.add_argument(
+        "--preset",
+        type=str,
+        metavar="NAME",
+        help="Использовать preset шаблон (workday-morning, weekly-meeting, etc.)",
+    )
+
+    scheduler_group.add_argument(
+        "--list-presets",
+        action="store_true",
+        help="Показать список preset шаблонов",
+    )
+
     # Другие опции
     other_group = parser.add_argument_group("Другие опции")
 
@@ -201,7 +310,7 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def process_args(args: argparse.Namespace) -> Dict[str, Any]:
+def process_args(args: argparse.Namespace) -> dict[str, Any]:
     """
     Обработка разобранных аргументов и возврат словаря конфигурации.
 
@@ -229,10 +338,25 @@ def process_args(args: argparse.Namespace) -> Dict[str, Any]:
         config["mode"] = "status"
     elif args.schedule_list:
         config["mode"] = "schedule_list"
+    elif args.schedule_create:
+        config["mode"] = "schedule_create"
+    elif args.schedule_update:
+        config["mode"] = "schedule_update"
+        config["schedule"]["task_id"] = args.schedule_update
+    elif args.schedule_delete:
+        config["mode"] = "schedule_delete"
+        config["schedule"]["task_id"] = args.schedule_delete
+    elif args.schedule_toggle:
+        config["mode"] = "schedule_toggle"
+        config["schedule"]["task_id"] = args.schedule_toggle
+    elif args.schedule_preview:
+        config["mode"] = "schedule_preview"
+    elif args.list_presets:
+        config["mode"] = "list_presets"
     else:
         config["mode"] = "gui"
 
-    # Параметры записи
+        # Параметры записи
     config["recording"] = {
         "area_type": args.area,
         "rect_coords": args.rect,
@@ -243,6 +367,8 @@ def process_args(args: argparse.Namespace) -> Dict[str, Any]:
         "codec": args.codec,
         "bitrate": args.bitrate,
         "duration": args.duration,
+        "monitor_index": args.monitor,
+        "include_cursor": args.cursor,
     }
 
     # Конфигурация API
@@ -253,12 +379,41 @@ def process_args(args: argparse.Namespace) -> Dict[str, Any]:
     }
 
     # Конфигурация планировщика
+    config["scheduler"] = {
+        "enabled": False,
+        "name": args.schedule_name or "Запланированная запись",
+    }
+
     if args.schedule:
-        config["scheduler"] = {
-            "enabled": True,
-            "cron": args.schedule,
-            "name": args.schedule_name or "Запланированная запись",
-        }
+        config["scheduler"]["enabled"] = True
+        config["scheduler"]["cron"] = args.schedule
+
+    if args.trigger:
+        config["scheduler"]["enabled"] = True
+        config["scheduler"]["trigger"] = args.trigger
+
+    if args.time:
+        config["scheduler"]["time"] = args.time
+
+    if args.days:
+        config["scheduler"]["days_of_week"] = [
+            int(d.strip()) for d in args.days.split(",")
+        ]
+
+    if args.interval_hours is not None:
+        config["scheduler"]["interval_hours"] = args.interval_hours
+
+    if args.interval_minutes is not None:
+        config["scheduler"]["interval_minutes"] = args.interval_minutes
+
+    if args.datetime:
+        config["scheduler"]["datetime"] = args.datetime
+
+    if hasattr(args, "enabled"):
+        config["scheduler"]["enabled"] = args.enabled
+
+    if args.preset:
+        config["scheduler"]["preset"] = args.preset
 
     # Другие опции
     config["config_path"] = args.config
@@ -268,7 +423,7 @@ def process_args(args: argparse.Namespace) -> Dict[str, Any]:
     return config
 
 
-def parse_args(argv: Optional[List[str]] = None) -> Dict[str, Any]:
+def parse_args(argv: Optional[list[str]] = None) -> dict[str, Any]:
     """
     Разбор аргументов командной строки.
 
@@ -284,8 +439,8 @@ def parse_args(argv: Optional[List[str]] = None) -> Dict[str, Any]:
 
 
 def validate_recording_params(
-    params: Dict[str, Any],
-) -> Tuple[bool, Optional[str]]:
+    params: dict[str, Any],
+) -> tuple[bool, Optional[str]]:
     """
     Валидация параметров записи.
 
@@ -341,7 +496,7 @@ def validate_recording_params(
     return True, None
 
 
-def print_status(status: Dict[str, Any]) -> None:
+def print_status(status: dict[str, Any]) -> None:
     """
     Вывод статуса записи в консоль.
 
@@ -359,7 +514,7 @@ def print_status(status: Dict[str, Any]) -> None:
         print("Статус: ОЖИДАНИЕ")
 
 
-def print_schedule_list(tasks: List[Dict[str, Any]]) -> None:
+def print_schedule_list(tasks: list[dict[str, Any]]) -> None:
     """
     Вывод запланированных задач в консоль.
 

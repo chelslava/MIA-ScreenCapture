@@ -208,6 +208,36 @@ uv run python main.py --status
 uv run python main.py --schedule-list
 ```
 
+Создание запланированной задачи:
+```bash
+# Ежедневная запись в 09:30
+uv run python main.py --schedule-create --trigger daily --time "09:30" --audio mic --duration 1800
+
+# Еженедельная запись по будням в 14:00
+uv run python main.py --schedule-create --trigger weekly --time "14:00" --days "0,2,4" --audio both
+
+# Использование preset шаблона
+uv run python main.py --schedule-create --preset workday-morning
+
+# Показать список presets
+uv run python main.py --list-presets
+```
+
+Управление задачами:
+```bash
+# Обновить задачу
+uv run python main.py --schedule-update TASK_ID --time "10:00"
+
+# Удалить задачу
+uv run python main.py --schedule-delete TASK_ID
+
+# Включить/выключить задачу
+uv run python main.py --schedule-toggle TASK_ID --enabled false
+
+# Показать предстоящие запуски
+uv run python main.py --schedule-preview
+```
+
 ### Headless режим (только API)
 
 ```bash

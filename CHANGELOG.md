@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.3.2] - 2026-01-16
+
+### Added
+- CLI CRUD операции для планировщика задач:
+  - `--schedule-create` — создание запланированной задачи
+  - `--schedule-update TASK_ID` — обновление задачи
+  - `--schedule-delete TASK_ID` — удаление задачи
+  - `--schedule-toggle TASK_ID` — включение/выключение задачи
+  - `--schedule-preview` — просмотр предстоящих запусков
+- Preset шаблоны для расписаний:
+  - `workday-morning` — ежедневный утренний стендап
+  - `workday-evening` — ежедневный вечерний отчёт
+  - `weekly-meeting` — еженедельная встреча
+  - `hourly-screenshot` — ежечасный скриншот
+  - `30min-interval` — каждые 30 минут
+  - `--list-presets` — показать список presets
+- Unified контракты данных (`core/contracts.py`):
+  - `RecordingParams` — унифицированные параметры записи
+  - `ScheduleParams` — унифицированные параметры расписания
+  - Pydantic валидация параметров
+- Модуль `cli/scheduler.py` с функциями CRUD для scheduler
+- Модуль `cli/templates.py` с preset шаблонами
+- Юнит-тесты для CLI scheduler (37 тестов)
+
+### Changed
+- Обновлены импорты в `cli/parser.py` для современных Python 3.10+ типов
+- Удалён неиспользуемый `core/recording_mapper.py`
+- Удалены устаревшие typing imports (Dict, List, Tuple)
+
+### Fixed
+- Исправлены тесты для `GUIRecordingBackend` с полными аргументами `CaptureRequest`
+- Исправлены ошибки линтера ruff в cli/ и core/
+
 ## [1.3.0] - 2026-03-23
 
 ### Added
