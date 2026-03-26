@@ -20,7 +20,8 @@ Example:
 import signal
 import sys
 import threading
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from logger_config import get_module_logger
 
@@ -179,7 +180,7 @@ class GracefulShutdown:
         self._original_handlers.clear()
         logger.debug("Оригинальные обработчики сигналов восстановлены")
 
-    def _handle_signal(self, signum: int, frame: Optional[Any]) -> None:
+    def _handle_signal(self, signum: int, frame: Any | None) -> None:
         """
         Обрабатывает сигнал завершения.
 
@@ -304,7 +305,7 @@ class GracefulShutdown:
 
 
 # Глобальный экземпляр для удобства
-_shutdown_manager: Optional[GracefulShutdown] = None
+_shutdown_manager: GracefulShutdown | None = None
 
 
 def get_shutdown_manager() -> GracefulShutdown:

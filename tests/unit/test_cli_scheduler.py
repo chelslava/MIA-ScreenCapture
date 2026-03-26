@@ -472,7 +472,6 @@ class TestPreviewUpcomingRuns:
 class TestMakeApiRequest:
     """Тесты внутренней функции _make_api_request."""
 
-    @pytest.mark.skip(reason="requests module required")
     @patch("requests.get")
     def test_make_api_request_connection_error(
         self, mock_get: Mock
@@ -489,7 +488,6 @@ class TestMakeApiRequest:
         assert status == 503
         assert "не доступен" in response["error"]
 
-    @pytest.mark.skip(reason="requests module required")
     @patch("requests.get")
     def test_make_api_request_timeout(self, mock_get: Mock) -> None:
         """Проверка обработки таймаута."""

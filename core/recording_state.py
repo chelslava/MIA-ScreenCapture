@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 
 class RecordingStatus(Enum):
@@ -50,7 +49,7 @@ class AudioSettings:
     """Настройки аудио."""
 
     audio_type: AudioType = AudioType.NONE
-    mic_device_index: Optional[int] = None
+    mic_device_index: int | None = None
     mic_device_name: str = ""
 
 
@@ -91,7 +90,7 @@ class RecordingState:
 
     status: RecordingStatus = RecordingStatus.IDLE
     elapsed_time: float = 0.0
-    current_output: Optional[Path] = None
+    current_output: Path | None = None
 
     capture: CaptureSettings = field(default_factory=CaptureSettings)
     audio: AudioSettings = field(default_factory=AudioSettings)
@@ -99,7 +98,7 @@ class RecordingState:
     output: OutputSettings = field(default_factory=OutputSettings)
 
     recent_recordings: list[RecentRecording] = field(default_factory=list)
-    recording_start_time: Optional[datetime] = None
+    recording_start_time: datetime | None = None
 
     def is_recording(self) -> bool:
         """Проверка, идёт ли запись."""

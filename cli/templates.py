@@ -4,7 +4,7 @@
 Предоставляет предустановленные шаблоны для часто используемых расписаний.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 SCHEDULE_TEMPLATES: dict[str, dict[str, Any]] = {
     "once": {
@@ -95,7 +95,7 @@ PRESET_TEMPLATES: dict[str, dict[str, Any]] = {
 }
 
 
-def get_template(name: str) -> Optional[dict[str, Any]]:
+def get_template(name: str) -> dict[str, Any] | None:
     """Получение шаблона по имени.
 
     Args:
@@ -107,7 +107,7 @@ def get_template(name: str) -> Optional[dict[str, Any]]:
     return SCHEDULE_TEMPLATES.get(name)
 
 
-def get_preset(name: str) -> Optional[dict[str, Any]]:
+def get_preset(name: str) -> dict[str, Any] | None:
     """Получение preset шаблона по имени.
 
     Args:

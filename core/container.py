@@ -5,10 +5,10 @@
 Предоставляет контейнер зависимостей для управления компонентами приложения.
 """
 
+from collections.abc import Callable
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     Optional,
     Protocol,
     TypeVar,
@@ -64,7 +64,7 @@ class IRecordingController(Protocol):
         audio: "AudioSettings",
         video: "VideoSettings",
         duration: int | None = None,
-    ) -> tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Запускает запись. Возвращает (успех, сообщение об ошибке)."""
         ...
 

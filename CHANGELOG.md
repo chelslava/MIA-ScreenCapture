@@ -22,16 +22,23 @@
   - Pydantic валидация параметров
 - Модуль `cli/scheduler.py` с функциями CRUD для scheduler
 - Модуль `cli/templates.py` с preset шаблонами
-- Юнит-тесты для CLI scheduler (37 тестов)
+- Юнит-тесты для CLI scheduler (39 тестов)
+- Добавлена зависимость `requests>=2.31.0` для CLI scheduler
 
 ### Changed
-- Обновлены импорты в `cli/parser.py` для современных Python 3.10+ типов
+- Минимальная версия Python повышена с 3.9 до 3.11
+- Обновлены импорты для Python 3.11+:
+  - Использование `X | None` вместо `Optional[X]`
+  - Использование `enum.StrEnum` вместо `str, Enum`
+  - Импорт `Callable` из `collections.abc`
+  - Использование `datetime.UTC` вместо `timezone.utc`
 - Удалён неиспользуемый `core/recording_mapper.py`
 - Удалены устаревшие typing imports (Dict, List, Tuple)
 
 ### Fixed
 - Исправлены тесты для `GUIRecordingBackend` с полными аргументами `CaptureRequest`
 - Исправлены ошибки линтера ruff в cli/ и core/
+- Все пропущенные тесты теперь проходят
 
 ## [1.3.0] - 2026-03-23
 

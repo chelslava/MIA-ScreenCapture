@@ -4,18 +4,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from threading import Lock
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
 
 
-class RecordingEventType(str, Enum):
+class RecordingEventType(StrEnum):
     """Типы доменных событий записи."""
 
     STARTED = "started"
@@ -33,9 +34,7 @@ class RecordingEvent:
 
     event_type: RecordingEventType
     payload: dict[str, Any] = field(default_factory=dict)
-    timestamp: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 EventHandler = Callable[[RecordingEvent], None]

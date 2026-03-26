@@ -9,7 +9,7 @@ import json
 import os
 import sys
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from logger_config import get_module_logger
 
@@ -35,7 +35,7 @@ def _make_api_request(
     method: str,
     endpoint: str,
     config: dict[str, Any],
-    data: Optional[dict[str, Any]] = None,
+    data: dict[str, Any] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """
     Выполняет API запрос.

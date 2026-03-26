@@ -8,7 +8,7 @@
 
 import argparse
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from logger_config import get_module_logger
 
@@ -423,7 +423,7 @@ def process_args(args: argparse.Namespace) -> dict[str, Any]:
     return config
 
 
-def parse_args(argv: Optional[list[str]] = None) -> dict[str, Any]:
+def parse_args(argv: list[str] | None = None) -> dict[str, Any]:
     """
     Разбор аргументов командной строки.
 
@@ -440,7 +440,7 @@ def parse_args(argv: Optional[list[str]] = None) -> dict[str, Any]:
 
 def validate_recording_params(
     params: dict[str, Any],
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Валидация параметров записи.
 
