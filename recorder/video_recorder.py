@@ -19,6 +19,7 @@ import numpy as np
 
 from logger_config import get_module_logger
 from recorder.utils import (
+    get_available_monitors,
     get_available_windows,
     get_platform,
     get_screen_size,

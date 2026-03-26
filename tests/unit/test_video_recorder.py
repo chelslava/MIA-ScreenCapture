@@ -57,8 +57,10 @@ class TestCaptureArea:
 
     def test_full_screen(self) -> None:
         """Проверка создания области полного экрана."""
-        with patch("recorder.video_recorder.get_screen_size") as mock_size:
-            mock_size.return_value = (1920, 1080)
+        with patch("recorder.video_recorder.get_available_monitors") as mock_monitors:
+            mock_monitors.return_value = [
+                {"index": 0, "width": 1920, "height": 1080, "is_primary": True}
+            ]
             area = CaptureArea.full_screen()
 
         assert area.type == "full"
@@ -67,9 +69,12 @@ class TestCaptureArea:
 
     def test_full_screen_with_monitor_index(self) -> None:
         """Проверка создания области полного экрана с индексом монитора."""
-        with patch("recorder.video_recorder.get_screen_size") as mock_size:
-            mock_size.return_value = (2560, 1440)
-            area = CaptureArea.full_screen(monitor_index=2)
+        with patch("recorder.video_recorder.get_available_monitors") as mock_monitors:
+            mock_monitors.return_value = [
+                {"index": 0, "width": 1920, "height": 1080, "is_primary": True},
+                {"index": 1, "width": 2560, "height": 1440, "is_primary": False},
+            ]
+            area = CaptureArea.full_screen(monitor_index=1)
 
         assert area.type == "full"
         assert area.width == 2560
@@ -149,10 +154,12 @@ class TestCaptureArea:
             patch(
                 "recorder.video_recorder.get_available_windows"
             ) as mock_windows,
-            patch("recorder.video_recorder.get_screen_size") as mock_size,
+            patch("recorder.video_recorder.get_available_monitors") as mock_monitors,
         ):
             mock_windows.return_value = []
-            mock_size.return_value = (1920, 1080)
+            mock_monitors.return_value = [
+                {"index": 0, "width": 1920, "height": 1080, "is_primary": True}
+            ]
             area = CaptureArea.from_window("Nonexistent Window")
 
         assert area.type == "full"

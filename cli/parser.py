@@ -278,12 +278,6 @@ def create_parser() -> argparse.ArgumentParser:
         help="Использовать preset шаблон (workday-morning, weekly-meeting, etc.)",
     )
 
-    scheduler_group.add_argument(
-        "--list-presets",
-        action="store_true",
-        help="Показать список preset шаблонов",
-    )
-
     # Другие опции
     other_group = parser.add_argument_group("Другие опции")
 

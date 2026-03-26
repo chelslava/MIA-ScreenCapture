@@ -82,8 +82,10 @@ class TestVideoRecorderIntegration:
 
     def test_capture_area_full_screen(self):
         """Проверка создания области захвата полного экрана."""
-        with patch("recorder.video_recorder.get_screen_size") as mock_size:
-            mock_size.return_value = (1920, 1080)
+        with patch("recorder.video_recorder.get_available_monitors") as mock_monitors:
+            mock_monitors.return_value = [
+                {"index": 0, "width": 1920, "height": 1080, "is_primary": True}
+            ]
 
             area = CaptureArea.full_screen()
 
@@ -134,8 +136,10 @@ class TestVideoRecorderIntegration:
         ) as mock_windows:
             mock_windows.return_value = []
 
-            with patch("recorder.video_recorder.get_screen_size") as mock_size:
-                mock_size.return_value = (1920, 1080)
+            with patch("recorder.video_recorder.get_available_monitors") as mock_monitors:
+                mock_monitors.return_value = [
+                    {"index": 0, "width": 1920, "height": 1080, "is_primary": True}
+                ]
 
                 area = CaptureArea.from_window("NonExistent")
 
@@ -314,8 +318,11 @@ class TestCaptureAreaIntegration:
 
     def test_full_screen_creates_correct_area(self):
         """Проверка создания области полного экрана."""
-        with patch("recorder.video_recorder.get_screen_size") as mock_size:
-            mock_size.return_value = (2560, 1440)
+        with patch("recorder.video_recorder.get_available_monitors") as mock_monitors:
+            mock_monitors.return_value = [
+                {"index": 0, "width": 1920, "height": 1080, "is_primary": True},
+                {"index": 1, "width": 2560, "height": 1440, "is_primary": False},
+            ]
 
             area = CaptureArea.full_screen(monitor_index=1)
 

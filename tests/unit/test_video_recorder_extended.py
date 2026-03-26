@@ -19,8 +19,8 @@ class TestCaptureAreaExtended:
     def test_capture_area_full_screen(self) -> None:
         """Проверка создания области полного экрана."""
         with patch(
-            "recorder.video_recorder.get_screen_size",
-            return_value=(1920, 1080),
+            "recorder.video_recorder.get_available_monitors",
+            return_value=[{"index": 0, "width": 1920, "height": 1080, "is_primary": True}],
         ):
             area = CaptureArea.full_screen()
 
@@ -96,8 +96,8 @@ class TestCaptureAreaExtended:
             "recorder.video_recorder.get_available_windows",
             return_value=mock_windows,
         ), patch(
-            "recorder.video_recorder.get_screen_size",
-            return_value=(1920, 1080),
+            "recorder.video_recorder.get_available_monitors",
+            return_value=[{"index": 0, "width": 1920, "height": 1080, "is_primary": True}],
         ):
             area = CaptureArea.from_window("NonExistent")
 
