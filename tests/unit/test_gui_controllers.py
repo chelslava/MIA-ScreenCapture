@@ -10,13 +10,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from core.recording_types import AudioMode, CaptureMode
 from gui.controllers.recording_controller import RecordingController
 from gui.controllers.settings_controller import SettingsController
 from gui.models.recording_state import (
     AudioSettings,
-    AudioType,
     CaptureSettings,
-    CaptureType,
     RecordingState,
     RecordingStatus,
     VideoSettings,
@@ -56,7 +55,7 @@ class TestRecordingController:
         self, controller: RecordingController
     ) -> None:
         """Проверка построения области захвата - весь экран."""
-        capture = CaptureSettings(capture_type=CaptureType.FULL_SCREEN)
+        capture = CaptureSettings(capture_type=CaptureMode.FULL)
 
         area = controller.build_capture_area(capture)
 
@@ -67,7 +66,7 @@ class TestRecordingController:
     ) -> None:
         """Проверка построения области захвата - окно."""
         capture = CaptureSettings(
-            capture_type=CaptureType.WINDOW,
+            capture_type=CaptureMode.WINDOW,
             window_title="Test Window",
         )
 
@@ -83,7 +82,7 @@ class TestRecordingController:
     ) -> None:
         """Проверка построения области захвата - прямоугольник."""
         capture = CaptureSettings(
-            capture_type=CaptureType.RECTANGLE,
+            capture_type=CaptureMode.RECT,
             rect_coords=(100, 100, 500, 400),
         )
 
@@ -157,7 +156,7 @@ class TestRecordingController:
 
         output_path = Path("/output/test.mp4")
         capture = CaptureSettings()
-        audio = AudioSettings(audio_type=AudioType.MICROPHONE)
+        audio = AudioSettings(audio_type=AudioMode.MIC)
         video = VideoSettings()
 
         success, error_msg = controller.start_recording(
@@ -343,12 +342,12 @@ class TestSettingsController:
     ) -> None:
         """Проверка обновления настроек захвата."""
         controller.update_capture_settings(
-            capture_type=CaptureType.WINDOW,
+            capture_type=CaptureMode.WINDOW,
             window_title="Test Window",
             rect_coords=(100, 100, 500, 400),
         )
 
-        assert controller.state.capture.capture_type == CaptureType.WINDOW
+        assert controller.state.capture.capture_type == CaptureMode.WINDOW
         assert controller.state.capture.window_title == "Test Window"
         assert controller.state.capture.rect_coords == (100, 100, 500, 400)
 
@@ -357,12 +356,12 @@ class TestSettingsController:
     ) -> None:
         """Проверка обновления настроек аудио."""
         controller.update_audio_settings(
-            audio_type=AudioType.MICROPHONE,
+            audio_type=AudioMode.MIC,
             mic_device_index=1,
             mic_device_name="Test Mic",
         )
 
-        assert controller.state.audio.audio_type == AudioType.MICROPHONE
+        assert controller.state.audio.audio_type == AudioMode.MIC
         assert controller.state.audio.mic_device_index == 1
         assert controller.state.audio.mic_device_name == "Test Mic"
 

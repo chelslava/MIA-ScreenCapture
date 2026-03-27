@@ -26,14 +26,21 @@ from core.lifecycle import (
 )
 from core.recording_state import (
     AudioSettings,
-    AudioType,
-    CaptureSettings,
-    CaptureType,
     OutputSettings,
     RecentRecording,
     RecordingState,
     RecordingStatus,
     VideoSettings,
+    CaptureSettings,
+)
+from core.recording_types import (
+    AudioMode,
+    AudioRequest,
+    AudioType,
+    CaptureMode,
+    CaptureRequest,
+    CaptureType,
+    VideoRequest,
 )
 
 __all__ = [
@@ -56,12 +63,18 @@ __all__ = [
     "reset_shutdown_manager",
     # Recording state
     "AudioSettings",
-    "AudioType",
     "CaptureSettings",
-    "CaptureType",
     "OutputSettings",
     "RecentRecording",
     "RecordingState",
     "RecordingStatus",
     "VideoSettings",
+    # Recording types (с aliases)
+    "AudioMode",
+    "AudioType",
+    "CaptureMode",
+    "CaptureType",
+    "AudioRequest",
+    "CaptureRequest",
+    "VideoRequest",
 ]

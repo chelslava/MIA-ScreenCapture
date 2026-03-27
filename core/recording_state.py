@@ -11,6 +11,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
+from core.recording_types import AudioMode, CaptureMode
+
 
 class RecordingStatus(Enum):
     """Статус записи."""
@@ -20,28 +22,16 @@ class RecordingStatus(Enum):
     PAUSED = "paused"
 
 
-class CaptureType(Enum):
-    """Тип области захвата."""
-
-    FULL_SCREEN = "full_screen"
-    WINDOW = "window"
-    RECTANGLE = "rectangle"
-
-
-class AudioType(Enum):
-    """Тип источника аудио."""
-
-    NONE = "none"
-    MICROPHONE = "mic"
-    SYSTEM = "system"
-    BOTH = "both"
+# Aliases для обратной совместимости с GUI
+CaptureType = CaptureMode
+AudioType = AudioMode
 
 
 @dataclass
 class CaptureSettings:
     """Настройки области захвата."""
 
-    capture_type: CaptureType = CaptureType.FULL_SCREEN
+    capture_type: CaptureMode = CaptureMode.FULL
     window_title: str = ""
     rect_coords: tuple[int, int, int, int] = (0, 0, 1920, 1080)
 
@@ -50,7 +40,7 @@ class CaptureSettings:
 class AudioSettings:
     """Настройки аудио."""
 
-    audio_type: AudioType = AudioType.NONE
+    audio_type: AudioMode = AudioMode.NONE
     mic_device_index: int | None = None
     mic_device_name: str = ""
 
@@ -146,7 +136,7 @@ class RecordingState:
             self.status = RecordingStatus.IDLE
             self.recording_start_time = None
 
-    def set_audio_type(self, audio_type: AudioType) -> None:
+    def set_audio_type(self, audio_type: AudioMode) -> None:
         """Установить тип источника аудио."""
         with self._lock:
             self.audio.audio_type = audio_type

@@ -12,9 +12,7 @@ from pathlib import Path
 from core.recording_backend import RecordingBackend, RecordingStatusSnapshot
 from core.recording_state import (
     AudioSettings,
-    AudioType,
     CaptureSettings,
-    CaptureType,
     RecordingState,
     VideoSettings,
 )
@@ -29,27 +27,16 @@ from gui.controllers.recording_controller import RecordingController
 
 
 def _map_capture(capture: CaptureRequest) -> CaptureSettings:
-    capture_type_map = {
-        CaptureMode.FULL: CaptureType.FULL_SCREEN,
-        CaptureMode.WINDOW: CaptureType.WINDOW,
-        CaptureMode.RECT: CaptureType.RECTANGLE,
-    }
     return CaptureSettings(
-        capture_type=capture_type_map[capture.mode],
+        capture_type=capture.mode,
         window_title=capture.window_title,
         rect_coords=capture.rect_coords,
     )
 
 
 def _map_audio(audio: AudioRequest) -> AudioSettings:
-    audio_type_map = {
-        AudioMode.NONE: AudioType.NONE,
-        AudioMode.MIC: AudioType.MICROPHONE,
-        AudioMode.SYSTEM: AudioType.SYSTEM,
-        AudioMode.BOTH: AudioType.BOTH,
-    }
     return AudioSettings(
-        audio_type=audio_type_map[audio.mode],
+        audio_type=audio.mode,
         mic_device_index=audio.mic_device_index,
     )
 

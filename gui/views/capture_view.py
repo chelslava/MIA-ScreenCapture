@@ -147,11 +147,11 @@ class CaptureView(QWidget):
 
         # Определение типа захвата
         if button == self._full_screen_radio:
-            capture_type = CaptureType.FULL_SCREEN
+            capture_type = CaptureType.FULL
         elif button == self._window_radio:
             capture_type = CaptureType.WINDOW
         else:
-            capture_type = CaptureType.RECTANGLE
+            capture_type = CaptureType.RECT
 
         self.capture_type_changed.emit(capture_type)
 
@@ -175,11 +175,11 @@ class CaptureView(QWidget):
             Тип области захвата
         """
         if self._full_screen_radio.isChecked():
-            return CaptureType.FULL_SCREEN
+            return CaptureType.FULL
         elif self._window_radio.isChecked():
             return CaptureType.WINDOW
         else:
-            return CaptureType.RECTANGLE
+            return CaptureType.RECT
 
     def get_window_title(self) -> str:
         """
@@ -213,7 +213,7 @@ class CaptureView(QWidget):
         Args:
             capture_type: Тип области захвата
         """
-        if capture_type == CaptureType.FULL_SCREEN:
+        if capture_type == CaptureType.FULL:
             self._full_screen_radio.setChecked(True)
         elif capture_type == CaptureType.WINDOW:
             self._window_radio.setChecked(True)

@@ -11,12 +11,11 @@ from typing import TYPE_CHECKING
 
 from core.recording_state import (
     AudioSettings,
-    AudioType,
     CaptureSettings,
-    CaptureType,
     RecordingState,
     VideoSettings,
 )
+from core.recording_types import AudioMode, CaptureMode
 from logger_config import get_module_logger
 from recorder.audio_recorder import AudioRecorder, SystemAudioRecorder
 from recorder.encoder import EncodingSettings, RecordingEncoder
@@ -74,11 +73,11 @@ class RecordingController:
         Returns:
             Объект CaptureArea для VideoRecorder
         """
-        if capture.capture_type == CaptureType.FULL_SCREEN:
+        if capture.capture_type == CaptureMode.FULL:
             return CaptureArea.full_screen()
-        elif capture.capture_type == CaptureType.WINDOW:
+        elif capture.capture_type == CaptureMode.WINDOW:
             return CaptureArea.from_window(capture.window_title)
-        elif capture.capture_type == CaptureType.RECTANGLE:
+        elif capture.capture_type == CaptureMode.RECT:
             return CaptureArea.from_rect(*capture.rect_coords)
 
         return CaptureArea.full_screen()
@@ -135,7 +134,7 @@ class RecordingController:
                 return False, "Не удалось запустить видеозапись"
 
             # Запуск аудиозаписи при необходимости
-            if audio.audio_type in (AudioType.MICROPHONE, AudioType.BOTH):
+            if audio.audio_type in (AudioMode.MIC, AudioMode.BOTH):
                 self._audio_recorder = AudioRecorder()
                 audio_started = self._audio_recorder.start(
                     self._temp_audio,
@@ -145,7 +144,7 @@ class RecordingController:
                 if not audio_started:
                     self._cleanup()
                     return False, "Не удалось запустить аудиозапись"
-            elif audio.audio_type == AudioType.SYSTEM:
+            elif audio.audio_type == AudioMode.SYSTEM:
                 try:
                     self._audio_recorder = SystemAudioRecorder()
                     audio_started = self._audio_recorder.start(

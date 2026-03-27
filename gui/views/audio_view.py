@@ -113,7 +113,7 @@ class AudioView(QWidget):
         if button == self._no_audio_radio:
             audio_type = AudioType.NONE
         elif button == self._mic_radio:
-            audio_type = AudioType.MICROPHONE
+            audio_type = AudioType.MIC
         elif button == self._system_audio_radio:
             audio_type = AudioType.SYSTEM
         else:
@@ -135,7 +135,7 @@ class AudioView(QWidget):
             Тип источника аудио
         """
         if self._mic_radio.isChecked():
-            return AudioType.MICROPHONE
+            return AudioType.MIC
         elif self._system_audio_radio.isChecked():
             return AudioType.SYSTEM
         elif self._both_audio_radio.isChecked():
@@ -177,7 +177,7 @@ class AudioView(QWidget):
         """
         if audio_type == AudioType.NONE:
             self._no_audio_radio.setChecked(True)
-        elif audio_type == AudioType.MICROPHONE:
+        elif audio_type == AudioType.MIC:
             self._mic_radio.setChecked(True)
         elif audio_type == AudioType.SYSTEM:
             self._system_audio_radio.setChecked(True)

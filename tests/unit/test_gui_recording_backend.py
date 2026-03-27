@@ -11,7 +11,6 @@ from core.recording_types import (
     VideoRequest,
 )
 from gui.backends.recording_backend import GUIRecordingBackend
-from gui.models.recording_state import AudioType, CaptureType
 
 
 def test_get_status_initial() -> None:
@@ -43,9 +42,9 @@ def test_start_maps_core_types_to_gui_controller_types() -> None:
 
     assert result == (True, None)
     kwargs = controller.start_recording.call_args.kwargs
-    assert kwargs["capture"].capture_type == CaptureType.RECTANGLE
+    assert kwargs["capture"].capture_type == CaptureMode.RECT
     assert kwargs["capture"].rect_coords == (1, 2, 3, 4)
-    assert kwargs["audio"].audio_type == AudioType.BOTH
+    assert kwargs["audio"].audio_type == AudioMode.BOTH
     assert kwargs["audio"].mic_device_index == 7
     assert kwargs["video"].fps == 60
     assert kwargs["duration"] == 30
@@ -154,7 +153,7 @@ def test_get_status_when_paused() -> None:
 
 
 def test_map_capture_full_mode() -> None:
-    """Маппинг CaptureMode.FULL -> CaptureType.FULL_SCREEN."""
+    """Маппинг CaptureMode.FULL -> CaptureMode.FULL."""
     from gui.backends.recording_backend import _map_capture
 
     capture = CaptureRequest(
@@ -164,12 +163,12 @@ def test_map_capture_full_mode() -> None:
     )
     result = _map_capture(capture)
 
-    assert result.capture_type == CaptureType.FULL_SCREEN
+    assert result.capture_type == CaptureMode.FULL
     assert result.window_title == ""
 
 
 def test_map_capture_window_mode() -> None:
-    """Маппинг CaptureMode.WINDOW -> CaptureType.WINDOW."""
+    """Маппинг CaptureMode.WINDOW -> CaptureMode.WINDOW."""
     from gui.backends.recording_backend import _map_capture
 
     capture = CaptureRequest(
@@ -179,12 +178,12 @@ def test_map_capture_window_mode() -> None:
     )
     result = _map_capture(capture)
 
-    assert result.capture_type == CaptureType.WINDOW
+    assert result.capture_type == CaptureMode.WINDOW
     assert result.window_title == "Test Window"
 
 
 def test_map_capture_rect_mode() -> None:
-    """Маппинг CaptureMode.RECT -> CaptureType.RECTANGLE."""
+    """Маппинг CaptureMode.RECT -> CaptureMode.RECT."""
     from gui.backends.recording_backend import _map_capture
 
     capture = CaptureRequest(
@@ -194,49 +193,49 @@ def test_map_capture_rect_mode() -> None:
     )
     result = _map_capture(capture)
 
-    assert result.capture_type == CaptureType.RECTANGLE
+    assert result.capture_type == CaptureMode.RECT
     assert result.rect_coords == (100, 200, 500, 600)
 
 
 def test_map_audio_none_mode() -> None:
-    """Маппинг AudioMode.NONE -> AudioType.NONE."""
+    """Маппинг AudioMode.NONE -> AudioMode.NONE."""
     from gui.backends.recording_backend import _map_audio
 
     audio = AudioRequest(mode=AudioMode.NONE)
     result = _map_audio(audio)
 
-    assert result.audio_type == AudioType.NONE
+    assert result.audio_type == AudioMode.NONE
 
 
 def test_map_audio_mic_mode() -> None:
-    """Маппинг AudioMode.MIC -> AudioType.MICROPHONE."""
+    """Маппинг AudioMode.MIC -> AudioMode.MIC."""
     from gui.backends.recording_backend import _map_audio
 
     audio = AudioRequest(mode=AudioMode.MIC, mic_device_index=2)
     result = _map_audio(audio)
 
-    assert result.audio_type == AudioType.MICROPHONE
+    assert result.audio_type == AudioMode.MIC
     assert result.mic_device_index == 2
 
 
 def test_map_audio_system_mode() -> None:
-    """Маппинг AudioMode.SYSTEM -> AudioType.SYSTEM."""
+    """Маппинг AudioMode.SYSTEM -> AudioMode.SYSTEM."""
     from gui.backends.recording_backend import _map_audio
 
     audio = AudioRequest(mode=AudioMode.SYSTEM)
     result = _map_audio(audio)
 
-    assert result.audio_type == AudioType.SYSTEM
+    assert result.audio_type == AudioMode.SYSTEM
 
 
 def test_map_audio_both_mode() -> None:
-    """Маппинг AudioMode.BOTH -> AudioType.BOTH."""
+    """Маппинг AudioMode.BOTH -> AudioMode.BOTH."""
     from gui.backends.recording_backend import _map_audio
 
     audio = AudioRequest(mode=AudioMode.BOTH, mic_device_index=3)
     result = _map_audio(audio)
 
-    assert result.audio_type == AudioType.BOTH
+    assert result.audio_type == AudioMode.BOTH
     assert result.mic_device_index == 3
 
 

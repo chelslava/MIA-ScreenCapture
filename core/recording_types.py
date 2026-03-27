@@ -2,6 +2,7 @@
 Core-типы для параметров записи.
 
 Не зависят от GUI-слоя и используются в use-case сервисах.
+Единый источник типов для всего приложения.
 """
 
 from __future__ import annotations
@@ -11,7 +12,12 @@ from enum import Enum
 
 
 class CaptureMode(Enum):
-    """Режим захвата экрана."""
+    """
+    Режим захвата экрана.
+
+    Используется во всех слоях приложения.
+    Значения совместимы с API и CLI.
+    """
 
     FULL = "full"
     WINDOW = "window"
@@ -19,12 +25,22 @@ class CaptureMode(Enum):
 
 
 class AudioMode(Enum):
-    """Режим записи аудио."""
+    """
+    Режим записи аудио.
+
+    Используется во всех слоях приложения.
+    Значения совместимы с API и CLI.
+    """
 
     NONE = "none"
     MIC = "mic"
     SYSTEM = "system"
     BOTH = "both"
+
+
+# Aliases для обратной совместимости
+CaptureType = CaptureMode
+AudioType = AudioMode
 
 
 @dataclass(frozen=True)
