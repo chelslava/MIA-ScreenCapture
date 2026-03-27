@@ -110,7 +110,6 @@ def _get_windows_windows() -> list[dict[str, Any]]:
     windows = []
 
     try:
-        import win32con
         import win32gui
 
         def enum_windows_callback(hwnd, _):
