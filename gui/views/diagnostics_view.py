@@ -28,9 +28,11 @@ class DiagnosticsView(QWidget):
     """Виджет диагностики системы."""
 
     recheck_requested = pyqtSignal()
+    fix_requested = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._output_path = ""
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -96,17 +98,24 @@ class DiagnosticsView(QWidget):
         group_layout.addWidget(desc_label)
 
         status_layout = QHBoxLayout()
-        self._status_label = QLabel("Не проверено")
-        self._status_label.setStyleSheet("font-weight: bold;")
-        status_layout.addWidget(self._status_label)
+        status_label = QLabel("Не проверено")
+        status_label.setStyleSheet("font-weight: bold;")
+        status_label.setObjectName("status_label")
+        status_layout.addWidget(status_label)
         status_layout.addStretch()
 
-        self._fix_btn = QPushButton("Исправить")
-        self._fix_btn.setVisible(False)
-        status_layout.addWidget(self._fix_btn)
+        fix_btn = QPushButton("Исправить")
+        fix_btn.setVisible(False)
+        fix_btn.setObjectName("fix_btn")
+        fix_btn.clicked.connect(lambda: self._on_fix_clicked(title))
+        status_layout.addWidget(fix_btn)
 
         group_layout.addLayout(status_layout)
         return group
+
+    def _on_fix_clicked(self, check_name: str) -> None:
+        """Обработка нажатия кнопки исправления."""
+        self.fix_requested.emit(check_name)
 
     def run_checks(
         self,
@@ -154,6 +163,7 @@ class DiagnosticsView(QWidget):
         )
 
         # Проверка папки вывода
+        self._output_path = output_path
         output_ok = self._check_output_path(output_path)
         results["output"] = output_ok
         self._update_group_status(

@@ -149,6 +149,7 @@ class MainWindow(QMainWindow):
 
         self._diagnostics_view = DiagnosticsView()
         self._diagnostics_view.recheck_requested.connect(self._run_diagnostics)
+        self._diagnostics_view.fix_requested.connect(self._on_diagnostics_fix)
         self.tabs.addTab(self._diagnostics_view, "Диагностика")
 
         # Строка состояния
@@ -594,9 +595,30 @@ class MainWindow(QMainWindow):
         output_path = config.settings.output.default_path
 
         self._diagnostics_view.run_checks(
-            api_enabled=True,
+            api_enabled=self._api_server is not None
+            and self._api_server.is_running(),
             output_path=output_path,
         )
+
+    def _on_diagnostics_fix(self, check_name: str) -> None:
+        """Обработка нажатия кнопки исправления."""
+        if check_name == "Папка вывода":
+            self._select_output_folder()
+
+    def _select_output_folder(self) -> None:
+        """Выбор папки для сохранения записей."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Выберите папку для сохранения записей",
+            "",
+        )
+        if folder:
+            config = get_config()
+            config.settings.output.default_path = folder
+            config.save()
+            self._run_diagnostics()
 
     def start_recording_with_params(self, params: dict) -> dict:
         """
