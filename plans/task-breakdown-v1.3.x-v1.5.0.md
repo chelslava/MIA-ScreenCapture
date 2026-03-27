@@ -1021,5 +1021,5 @@ def handle_subscribe(data):
 | v1.3.1 | ✅ Released | 100% |
 | v1.3.2 | ✅ Released | 100% |
 | v1.3.3 | ✅ Released | 100% |
-| v1.4.0 | 📋 Planned | 0% |
+| v1.4.0 | ✅ Released | 100% |
 | v1.5.0 | 📋 Planned | 0% |
