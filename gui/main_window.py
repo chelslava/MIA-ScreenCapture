@@ -27,13 +27,12 @@ from PyQt6.QtWidgets import (
 )
 
 from config import get_config
+from core.recording_types import AudioMode, CaptureMode
 from gui.controllers.recording_controller import RecordingController
 from gui.controllers.settings_controller import SettingsController
 from gui.models.recording_state import (
     AudioSettings,
-    AudioType,
     CaptureSettings,
-    CaptureType,
     RecordingState,
     VideoSettings,
 )
@@ -317,7 +316,7 @@ class MainWindow(QMainWindow):
         """Обработка выбора прямоугольника."""
         self._settings_controller.update_capture_settings(rect_coords=coords)
 
-    def _on_audio_type_changed(self, audio_type: AudioType) -> None:
+    def _on_audio_type_changed(self, audio_type: AudioMode) -> None:
         """Обработка изменения типа аудио."""
         self._settings_controller.update_audio_settings(audio_type=audio_type)
 
@@ -353,7 +352,7 @@ class MainWindow(QMainWindow):
         rect_coords = self._capture_view.get_rect_coords()
 
         # Проверка координат для прямоугольной области
-        if capture_type == CaptureType.RECTANGLE and rect_coords is None:
+        if capture_type == CaptureMode.RECT and rect_coords is None:
             self._show_error("Введите корректные координаты области захвата")
             return
 
@@ -608,11 +607,11 @@ class MainWindow(QMainWindow):
             # Определение типа захвата
             area_type = params.get("area", "full")
             capture_type_map = {
-                "full": CaptureType.FULL_SCREEN,
-                "window": CaptureType.WINDOW,
-                "rect": CaptureType.RECTANGLE,
+                "full": CaptureMode.FULL,
+                "window": CaptureMode.WINDOW,
+                "rect": CaptureMode.RECT,
             }
-            capture_type = capture_type_map.get(area_type, CaptureType.FULL_SCREEN)
+            capture_type = capture_type_map.get(area_type, CaptureMode.FULL)
 
             # Координаты прямоугольника
             rect_coords = None
@@ -629,19 +628,19 @@ class MainWindow(QMainWindow):
             # Настройки захвата
             capture = CaptureSettings(
                 capture_type=capture_type,
-                window_title=params.get("window_title"),
-                rect_coords=rect_coords,
+                window_title=params.get("window_title") or "",
+                rect_coords=rect_coords or (0, 0, 1920, 1080),
             )
 
             # Настройки аудио
             audio_type_map = {
-                "mic": AudioType.MICROPHONE,
-                "system": AudioType.SYSTEM,
-                "none": AudioType.NONE,
-                "both": AudioType.BOTH,
+                "mic": AudioMode.MIC,
+                "system": AudioMode.SYSTEM,
+                "none": AudioMode.NONE,
+                "both": AudioMode.BOTH,
             }
             audio_type = audio_type_map.get(
-                params.get("audio", "mic"), AudioType.MICROPHONE
+                params.get("audio", "mic"), AudioMode.MIC
             )
             # Используем метод состояния для thread-safe изменения
             self._state.set_audio_type(audio_type)
