@@ -392,7 +392,7 @@ class MainWindow(QMainWindow):
 
     def _stop_recording(self) -> None:
         """Остановка записи."""
-        if not self._state.is_recording():
+        if not self._state.is_recording() and not self._state.is_paused():
             return
 
         output_path = self._recording_controller.stop_recording()

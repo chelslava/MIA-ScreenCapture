@@ -221,6 +221,14 @@ class RecordingController:
         if not self._state.is_recording() and not self._state.is_paused():
             return None
 
+        # Если запись на паузе, возобновляем для корректной остановки
+        if self._state.is_paused():
+            if self._video_recorder:
+                self._video_recorder.resume()
+            if self._audio_recorder:
+                self._audio_recorder.resume()
+            self._state.resume_recording()
+
         # Остановка видео
         if self._video_recorder:
             self._video_recorder.stop()
