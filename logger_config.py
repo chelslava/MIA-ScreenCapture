@@ -1,28 +1,43 @@
 """
 Модуль конфигурации логирования
-================================
+===============================
 
 Настраивает логирование для всего приложения с поддержкой
-ротации файлов и вывода в консоль.
+ротации файлов по дням и вывода в консоль.
 """
 
+import atexit
 import logging
 import sys
-from collections.abc import MutableMapping
-from logging.handlers import RotatingFileHandler
+from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any
 
-# Директория для логов по умолчанию
-LOG_DIR = Path(__file__).parent / "logs"
-LOG_DIR.mkdir(exist_ok=True)
+from collections.abc import MutableMapping
 
-# Путь к файлу логов
-LOG_FILE = LOG_DIR / "recorder.log"
 
-# Формат логов
+def get_log_dir() -> Path:
+    """Получение директории для логов."""
+    import os
+
+    if getattr(sys, "frozen", False):
+        base_path = Path(os.environ.get("APPDATA", ".")) / "MIA-ScreenCapture"
+    else:
+        base_path = Path(__file__).parent
+
+    log_dir = base_path / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
+
+LOG_DIR = get_log_dir()
+
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+_root_logger: logging.Logger | None = None
+_file_handler: TimedRotatingFileHandler | None = None
 
 
 def setup_logger(
@@ -30,8 +45,7 @@ def setup_logger(
     level: int = logging.DEBUG,
     log_to_file: bool = True,
     log_to_console: bool = True,
-    max_bytes: int = 5 * 1024 * 1024,  # 5 МБ
-    backup_count: int = 5,
+    backup_days: int = 30,
 ) -> logging.Logger:
     """
     Настройка логгера с обработчиками файла и консоли.
@@ -41,47 +55,63 @@ def setup_logger(
         level: Уровень логирования (по умолчанию: DEBUG)
         log_to_file: Включить логирование в файл
         log_to_console: Включить логирование в консоль
-        max_bytes: Максимальный размер файла логов до ротации
-        backup_count: Количество резервных файлов для хранения
+        backup_days: Количество дней для хранения логов
 
     Returns:
         Настроенный экземпляр логгера
     """
+    global _root_logger, _file_handler
+
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    # Очистка существующих обработчиков
     logger.handlers.clear()
 
-    # Создание форматтера
     formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
 
-    # Файловый обработчик с ротацией
     if log_to_file:
         try:
-            file_handler = RotatingFileHandler(
-                LOG_FILE,
-                maxBytes=max_bytes,
-                backupCount=backup_count,
+            today = datetime.now().strftime("%Y-%m-%d")
+            log_file = LOG_DIR / f"mia_{today}.log"
+
+            _file_handler = TimedRotatingFileHandler(
+                log_file,
+                when="midnight",
+                interval=1,
+                backupCount=backup_days,
                 encoding="utf-8",
             )
-            file_handler.setLevel(logging.DEBUG)
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
+            _file_handler.suffix = "%Y-%m-%d"
+            _file_handler.setLevel(logging.DEBUG)
+            _file_handler.setFormatter(formatter)
+            logger.addHandler(_file_handler)
         except Exception as e:
             print(
                 f"Предупреждение: Не удалось создать файл логов: {e}",
                 file=sys.stderr,
             )
 
-    # Консольный обработчик
     if log_to_console:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
+    _root_logger = logger
+
+    atexit.register(_cleanup_handlers)
+
     return logger
+
+
+def _cleanup_handlers() -> None:
+    """Очистка обработчиков при выходе."""
+    global _root_logger, _file_handler
+    if _file_handler:
+        _file_handler.close()
+    if _root_logger:
+        for handler in _root_logger.handlers[:]:
+            handler.close()
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -97,7 +127,6 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-# Инициализация корневого логгера при импорте модуля
 root_logger = setup_logger("video_recorder")
 
 
@@ -138,7 +167,6 @@ def create_module_logger(module_name: str) -> logging.Logger:
     return logging.getLogger(f"video_recorder.{module_name}")
 
 
-# Удобная функция для получения логгеров модулей
 def get_module_logger(module_name: str) -> logging.Logger:
     """
     Получение логгера для модуля.
@@ -150,3 +178,19 @@ def get_module_logger(module_name: str) -> logging.Logger:
         Экземпляр логгера для модуля
     """
     return create_module_logger(module_name.split(".")[-1])
+
+
+def open_logs_folder() -> None:
+    """Открытие папки с логами в проводнике."""
+    import os
+    import subprocess
+
+    log_dir = get_log_dir()
+
+    if log_dir.exists():
+        if sys.platform == "win32":
+            os.startfile(str(log_dir))
+        elif sys.platform == "darwin":
+            subprocess.run(["open", str(log_dir)])
+        else:
+            subprocess.run(["xdg-open", str(log_dir)])

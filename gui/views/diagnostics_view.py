@@ -87,12 +87,23 @@ class DiagnosticsView(QWidget):
         self._recheck_btn.clicked.connect(self._on_recheck_clicked)
         buttons_layout.addWidget(self._recheck_btn)
 
+        self._logs_btn = QPushButton("Открыть логи")
+        self._logs_btn.clicked.connect(self._on_open_logs)
+        buttons_layout.addWidget(self._logs_btn)
+
         layout.addLayout(buttons_layout)
 
     def _on_recheck_clicked(self) -> None:
         """Обработка нажатия кнопки проверки."""
         logger.info("Кнопка 'Проверить снова' нажата")
         self.recheck_requested.emit()
+
+    def _on_open_logs(self) -> None:
+        """Открытие папки с логами."""
+        from logger_config import open_logs_folder
+
+        logger.info("Открытие папки логов")
+        open_logs_folder()
 
     def _create_check_group(self, title: str, description: str) -> QGroupBox:
         group = QGroupBox(title)
