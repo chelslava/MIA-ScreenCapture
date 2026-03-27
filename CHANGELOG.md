@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.4.0] - 2026-03-27
+
+### Added
+- **API Versioning**: все endpoints доступны с префиксом `/api/v1/`
+- **Package entry point**: команда `mia-capture` после `pip install`
+- **Pydantic валидация конфигурации**: автоматическая валидация настроек
+- **GUI диагностика**: вкладка для проверки состояния системы
+  - Проверка FFmpeg
+  - Проверка аудиоустройств
+  - Проверка API сервера
+  - Проверка папки вывода
+- **Thread safety**: RecordingState теперь потокобезопасен с RLock
+- **Rate limiter cleanup**: автоматическая очистка неактивных клиентов
+
+### Changed
+- **Консолидация типов**: CaptureMode/CaptureType и AudioMode/AudioType объединены
+- **Динамическая версия**: версия читается из package metadata
+- **monitor_index**: исправлена индексация для windows-capture (0-based → 1-based)
+- **Конфигурация**: полная реализация `_update_config` с поддержкой секций
+- **CI workflow**: обновлён для Python 3.11/3.12, добавлен coverage
+
+### Fixed
+- Остановка записи из состояния паузы
+- Ошибки mypy в основных модулях
+- Legacy API endpoints для обратной совместимости
+
+### Security
+- Rate limiter теперь очищает неактивных клиентов (TTL 2 часа)
+
 ## [1.3.2] - 2026-01-17
 
 ### Added
