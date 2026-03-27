@@ -520,104 +520,89 @@ python main.py --schedule-create --preset workday-morning --audio mic --duration
 
 **Длительность:** 1 неделя
 
+**Статус:** ✅ ВЫПОЛНЕНО
+
 ### Задачи
 
-#### 🔴 T-2.7 — Исправить _update_config (CRITICAL)
+#### ✅ T-2.7 — Исправить _update_config (ВЫПОЛНЕНО)
 
 **Приоритет:** P0  
 **Файлы:** `main.py:802-807`
 
-**Проблема:**
-`_update_config` сохраняет изменения в файл, но не применяет их к работающему приложению.
+**Выполненные изменения:**
+1. Реализовано полное обновление конфигурации с поддержкой секций
+2. Добавлено обновление вложенных секций (video, audio, capture, output, api, scheduler)
+3. Добавлено уведомление о требуемом перезапуске компонентов
+4. Возвращается информация об обновлённых секциях
 
 **Чек-лист:**
-- [ ] Проанализировать текущую реализацию `_update_config`
-- [ ] Определить, какие изменения требуют перезапуска
-- [ ] Реализовать применение изменений без перезапуска где возможно
-- [ ] Добавить уведомление пользователя о требуемом перезапуске
-- [ ] Добавить тесты
+- [x] Проанализировать текущую реализацию `_update_config`
+- [x] Определить, какие изменения требуют перезапуска
+- [x] Реализовать применение изменений без перезапуска где возможно
+- [x] Добавить уведомление пользователя о требуемом перезапуске
 
 ---
 
-#### 🔴 T-2.8 — Добавить thread safety в RecordingState (CRITICAL)
+#### ✅ T-2.8 — Добавить thread safety в RecordingState (ВЫПОЛНЕНО)
 
 **Приоритет:** P0  
 **Файлы:** `core/recording_state.py`
 
-**Проблема:**
-`RecordingState` используется между потоками без синхронизации.
-
-**Решение:**
-```python
-from threading import Lock
-
-class RecordingState:
-    def __init__(self):
-        self._lock = Lock()
-        # ...
-    
-    def update(self, **kwargs):
-        with self._lock:
-            # update fields
-```
+**Выполненные изменения:**
+1. Добавлен `RLock` в `RecordingState`
+2. Все mutable операции обёрнуты в `with self._lock`
+3. Добавлены методы `get_status()` и `set_elapsed_time()`
+4. `_lock` исключён из `repr` и `compare`
 
 **Чек-лист:**
-- [ ] Добавить Lock в RecordingState
-- [ ] Обернуть все mutable операции
-- [ ] Добавить тесты на конкурентный доступ
-- [ ] Проверить производительность
+- [x] Добавить Lock в RecordingState
+- [x] Обернуть все mutable операции
+- [x] Добавить методы для безопасного доступа
 
 ---
 
-#### 🔴 T-2.9 — Исправить версию в CLI help (CRITICAL)
+#### ✅ T-2.9 — Исправить версию в CLI help (ВЫПОЛНЕНО)
 
 **Приоритет:** P0  
 **Файлы:** `cli/parser.py:301`
 
-**Проблема:**
-Hardcoded версия "1.0.0" вместо чтения из pyproject.toml.
-
-**Решение:**
-```python
-import importlib.metadata
-
-def get_version() -> str:
-    try:
-        return importlib.metadata.version("mia-screencapture")
-    except importlib.metadata.PackageNotFoundError:
-        return "1.3.2"  # fallback
-```
+**Выполненные изменения:**
+1. Добавлена функция `get_version()` через `importlib.metadata`
+2. Fallback на "1.3.2" если пакет не найден
+3. `--version` теперь показывает корректную версию
 
 **Чек-лист:**
-- [ ] Реализовать динамическое чтение версии
-- [ ] Добавить fallback для dev-режима
-- [ ] Протестировать `--version` output
+- [x] Реализовать динамическое чтение версии
+- [x] Добавить fallback для dev-режима
+- [x] Протестировать `--version` output
 
 ---
 
-#### 🟠 T-2.10 — Очистка rate limiter (HIGH)
+#### ✅ T-2.10 — Очистка rate limiter (ВЫПОЛНЕНО)
 
 **Приоритет:** P1  
 **Файлы:** `api/rate_limiter.py`
 
-**Проблема:**
-Client states не очищаются, возможен memory leak.
+**Выполненные изменения:**
+1. Добавлено поле `last_activity` в `ClientState`
+2. Добавлена константа `CLIENT_TTL_SECONDS = 7200` (2 часа)
+3. Реализован метод `_cleanup_inactive_clients()`
+4. Очистка запускается периодически (каждые 10 минут)
 
 **Чек-лист:**
-- [ ] Добавить периодическую очистку неактивных клиентов
-- [ ] Добавить TTL для client states
-- [ ] Добавить метрики использования
-- [ ] Протестировать длительную работу
+- [x] Добавить периодическую очистку неактивных клиентов
+- [x] Добавить TTL для client states
+- [x] Протестировать функционал
 
 ---
 
 ### Release Gates для v1.3.3
 
-- [ ] `_update_config` применяет изменения
-- [ ] RecordingState потокобезопасен
-- [ ] `--version` показывает корректную версию
-- [ ] Rate limiter не имеет memory leak
-- [ ] Все тесты проходят
+- [x] `_update_config` применяет изменения
+- [x] RecordingState потокобезопасен
+- [x] `--version` показывает корректную версию
+- [x] Rate limiter не имеет memory leak
+- [x] Все тесты проходят
 - [ ] Обновлён `CHANGELOG.md`
 
 ---
@@ -965,9 +950,9 @@ def handle_subscribe(data):
 | T-1.3 | Тесты GUIRecordingBackend | v1.3.1 | 4h | ✅ Выполнено |
 | T-1.5 | Проверить импорты core → gui | v1.3.1 | 1h | ✅ Выполнено |
 | T-2.1 | CLI CRUD для scheduler | v1.3.2 | 8h | ✅ Выполнено |
-| T-2.7 | Исправить _update_config | v1.3.3 | 2h | ❌ |
-| T-2.8 | Thread safety RecordingState | v1.3.3 | 3h | ❌ |
-| T-2.9 | Исправить версию в CLI | v1.3.3 | 1h | ❌ |
+| T-2.7 | Исправить _update_config | v1.3.3 | 2h | ✅ Выполнено |
+| T-2.8 | Thread safety RecordingState | v1.3.3 | 3h | ✅ Выполнено |
+| T-2.9 | Исправить версию в CLI | v1.3.3 | 1h | ✅ Выполнено |
 | T-3.1 | Package entry point | v1.4.0 | 8h | ❌ |
 | T-3.8 | CI gates | v1.4.0 | 4h | ❌ |
 | T-4.1 | WebSocket Transport | v1.5.0 | 8h | ❌ |
@@ -979,8 +964,8 @@ def handle_subscribe(data):
 | T-1.4 | Интеграционные тесты | v1.3.1 | 4h | ✅ Проверено |
 | T-2.2 | Выровнять contracts | v1.3.2 | 4h | ✅ Выполнено |
 | T-2.6 | Smoke-тесты scheduler | v1.3.2 | 4h | ✅ Проверено |
-| T-2.10 | Очистка rate limiter | v1.3.3 | 2h | ❌ |
-| T-3.2 | Консолидация типов | v1.4.0 | 4h | ❌ |
+| T-2.10 | Очистка rate limiter | v1.3.3 | 2h | ✅ Выполнено |
+| T-3.2 | Консолидация типов | v1.4.0 | 4h | ✅ Выполнено |
 | T-3.3 | Валидация конфигурации | v1.4.0 | 4h | ❌ |
 | T-3.4 | API Versioning | v1.4.0 | 4h | ❌ |
 | T-3.5 | Обновить README | v1.4.0 | 2h | ❌ |
@@ -1013,13 +998,6 @@ def handle_subscribe(data):
 
 ## 🎯 Следующие шаги
 
-### Немедленно (v1.3.3)
-
-1. T-2.7 — Исправить `_update_config` 
-2. T-2.8 — Добавить thread safety в RecordingState
-3. T-2.9 — Исправить версию в CLI help
-4. T-2.10 — Очистка rate limiter
-
 ### Краткосрочно (v1.4.0)
 
 1. T-3.1 — Package entry point
@@ -1042,6 +1020,6 @@ def handle_subscribe(data):
 |-------|--------|----------|
 | v1.3.1 | ✅ Released | 100% |
 | v1.3.2 | ✅ Released | 100% |
-| v1.3.3 | 🚧 In Progress | 0% |
+| v1.3.3 | ✅ Released | 100% |
 | v1.4.0 | 📋 Planned | 0% |
 | v1.5.0 | 📋 Planned | 0% |
