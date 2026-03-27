@@ -954,7 +954,7 @@ def handle_subscribe(data):
 | T-2.8 | Thread safety RecordingState | v1.3.3 | 3h | ✅ Выполнено |
 | T-2.9 | Исправить версию в CLI | v1.3.3 | 1h | ✅ Выполнено |
 | T-3.1 | Package entry point | v1.4.0 | 8h | ❌ |
-| T-3.8 | CI gates | v1.4.0 | 4h | ❌ |
+| T-3.8 | CI gates | v1.4.0 | 4h | ✅ Выполнено |
 | T-4.1 | WebSocket Transport | v1.5.0 | 8h | ❌ |
 
 ### P1 — Высокий приоритет
@@ -968,7 +968,7 @@ def handle_subscribe(data):
 | T-3.2 | Консолидация типов | v1.4.0 | 4h | ✅ Выполнено |
 | T-3.3 | Валидация конфигурации | v1.4.0 | 4h | ✅ Выполнено |
 | T-3.4 | API Versioning | v1.4.0 | 4h | ✅ Выполнено |
-| T-3.5 | Обновить README | v1.4.0 | 2h | ❌ |
+| T-3.5 | Обновить README | v1.4.0 | 2h | ✅ Выполнено |
 | T-4.2 | Профили записи | v1.5.0 | 8h | ❌ |
 | T-4.3 | FFmpeg timeout | v1.5.0 | 2h | ❌ |
 | T-4.6 | Auth, audit, observability | v1.5.0 | 8h | ❌ |
