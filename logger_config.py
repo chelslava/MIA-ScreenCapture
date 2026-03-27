@@ -9,12 +9,11 @@
 import atexit
 import logging
 import sys
+from collections.abc import MutableMapping
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import Any
-
-from collections.abc import MutableMapping
 
 
 def get_log_dir() -> Path:
