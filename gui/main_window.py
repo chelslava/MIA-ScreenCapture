@@ -591,14 +591,23 @@ class MainWindow(QMainWindow):
 
     def _run_diagnostics(self) -> None:
         """Запуск диагностики системы."""
-        config = get_config()
-        output_path = config.settings.output.default_path
+        try:
+            config = get_config()
+            output_path = config.settings.output.default_path
 
-        self._diagnostics_view.run_checks(
-            api_enabled=self._api_server is not None
-            and self._api_server.is_running(),
-            output_path=output_path,
-        )
+            api_running = False
+            if self._api_server is not None:
+                try:
+                    api_running = self._api_server.is_running()
+                except Exception:
+                    api_running = False
+
+            self._diagnostics_view.run_checks(
+                api_enabled=api_running,
+                output_path=output_path,
+            )
+        except Exception as e:
+            logger.error(f"Ошибка диагностики: {e}")
 
     def _on_diagnostics_fix(self, check_name: str) -> None:
         """Обработка нажатия кнопки исправления."""

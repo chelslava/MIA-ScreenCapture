@@ -134,43 +134,46 @@ class DiagnosticsView(QWidget):
         """
         results: dict[str, bool] = {}
 
-        # Проверка FFmpeg
-        ffmpeg_ok = self._check_ffmpeg()
-        results["ffmpeg"] = ffmpeg_ok
-        self._update_group_status(
-            self._ffmpeg_group,
-            ffmpeg_ok,
-            "Найден" if ffmpeg_ok else "Не найден",
-        )
+        try:
+            # Проверка FFmpeg
+            ffmpeg_ok = self._check_ffmpeg()
+            results["ffmpeg"] = ffmpeg_ok
+            self._update_group_status(
+                self._ffmpeg_group,
+                ffmpeg_ok,
+                "Найден" if ffmpeg_ok else "Не найден",
+            )
 
-        # Проверка аудиоустройств
-        audio_ok, audio_count = self._check_audio_devices()
-        results["audio"] = audio_ok
-        self._update_group_status(
-            self._audio_group,
-            audio_ok,
-            f"Найдено устройств: {audio_count}"
-            if audio_ok
-            else "Нет устройств",
-        )
+            # Проверка аудиоустройств
+            audio_ok, audio_count = self._check_audio_devices()
+            results["audio"] = audio_ok
+            self._update_group_status(
+                self._audio_group,
+                audio_ok,
+                f"Найдено устройств: {audio_count}"
+                if audio_ok
+                else "Нет устройств",
+            )
 
-        # Проверка API
-        results["api"] = api_enabled
-        self._update_group_status(
-            self._api_group,
-            api_enabled,
-            "Запущен" if api_enabled else "Не запущен",
-        )
+            # Проверка API
+            results["api"] = api_enabled
+            self._update_group_status(
+                self._api_group,
+                api_enabled,
+                "Запущен" if api_enabled else "Не запущен",
+            )
 
-        # Проверка папки вывода
-        self._output_path = output_path
-        output_ok = self._check_output_path(output_path)
-        results["output"] = output_ok
-        self._update_group_status(
-            self._output_group,
-            output_ok,
-            "Доступна" if output_ok else "Недоступна или не указана",
-        )
+            # Проверка папки вывода
+            self._output_path = output_path
+            output_ok = self._check_output_path(output_path)
+            results["output"] = output_ok
+            self._update_group_status(
+                self._output_group,
+                output_ok,
+                "Доступна" if output_ok else "Недоступна или не указана",
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при выполнении проверок: {e}")
 
         return results
 
