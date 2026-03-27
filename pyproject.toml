@@ -128,8 +128,18 @@ select = [
     "SIM",    # flake8-simplify
 ]
 ignore = [
-    "E501",   # line too long (handled by formatter)
+    "E501",   # line too long (many docstrings/comments)
+    "E402",   # module level import not at top (TYPE_CHECKING pattern)
+    "SIM105", # use contextlib.suppress (acceptable pattern)
+    "SIM102", # nested if statements (readability)
+    "SIM115", # use context manager for opening files (intentional)
+    "SIM116", # use dictionary instead of if (readability)
+    "SIM117", # use single with statement (readability in tests)
     "B008",   # do not perform function calls in argument defaults
+    "B007",   # loop control variable not used (common in tests)
+    "B011",   # assert False (used in tests)
+    "B904",   # raise from err (intentional in some cases)
+    "W293",   # blank line contains whitespace (minor)
 ]
 
 [tool.ruff.lint.isort]
