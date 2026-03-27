@@ -7,8 +7,6 @@
 """
 
 import json
-import os
-import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from logger_config import get_module_logger
+from utils import atomic_write_json
 
 logger = get_module_logger(__name__)
 
@@ -129,32 +128,6 @@ class AppSettingsSchema(BaseModel):
 # ============================================================================
 # Dataclass модели (для совместимости)
 # ============================================================================
-
-
-def _atomic_write_json(path: Path, data: Any) -> None:
-    """Атомарная запись JSON в файл через временный файл в той же директории."""
-    temp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as tmp_file:
-            temp_path = Path(tmp_file.name)
-            json.dump(data, tmp_file, indent=2, ensure_ascii=False)
-            tmp_file.flush()
-            os.fsync(tmp_file.fileno())
-
-        os.replace(temp_path, path)
-    finally:
-        if temp_path is not None and temp_path.exists():
-            try:
-                temp_path.unlink()
-            except OSError:
-                pass
 
 
 # Путь к файлу конфигурации
@@ -322,7 +295,7 @@ class ConfigManager:
             data = asdict(self._settings)
             # Валидация перед сохранением
             AppSettingsSchema.model_validate(data)
-            _atomic_write_json(self.config_path, data)
+            atomic_write_json(self.config_path, data)
             logger.info(f"Конфигурация сохранена в {self.config_path}")
             return True
         except Exception as e:

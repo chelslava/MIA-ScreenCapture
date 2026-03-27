@@ -8,8 +8,6 @@
 
 import contextlib
 import json
-import os
-import tempfile
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -27,38 +25,9 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from logger_config import get_module_logger
+from utils import atomic_write_json
 
 logger = get_module_logger(__name__)
-
-
-def _atomic_write_json(path: Path, data: Any) -> bool:
-    """Атомарно записывает JSON в файл через временный файл."""
-    temp_path: Path | None = None
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as tmp_file:
-            temp_path = Path(tmp_file.name)
-            json.dump(data, tmp_file, indent=2, ensure_ascii=False)
-            tmp_file.flush()
-            os.fsync(tmp_file.fileno())
-
-        os.replace(temp_path, path)
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка сохранения задач: {e}")
-        return False
-    finally:
-        if temp_path is not None and temp_path.exists():
-            with contextlib.suppress(OSError):
-                temp_path.unlink()
 
 
 class ScheduleType(Enum):
@@ -576,7 +545,7 @@ class TaskScheduler:
                 "tasks": [task.to_dict() for task in self._tasks.values()],
                 "last_updated": datetime.now().isoformat(),
             }
-            _atomic_write_json(self.persist_path, data)
+            atomic_write_json(self.persist_path, data)
         except Exception as e:
             logger.error(f"Ошибка сохранения задач: {e}")
 

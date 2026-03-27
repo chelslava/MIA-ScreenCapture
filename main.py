@@ -15,6 +15,7 @@ MIA-ScreenCapture - Главная точка входа
     python main.py --status                 # Показать статус записи
 """
 
+import importlib.metadata
 import os
 import sys
 import threading
@@ -238,7 +239,11 @@ class VideoRecorderApp:
         self._gui_thread_id = threading.get_ident()
         self._gui_executor = _MainThreadExecutor()
         self._app.setApplicationName("MIA-ScreenCapture")
-        self._app.setApplicationVersion("1.3.0")
+        try:
+            version = importlib.metadata.version("mia-screencapture")
+        except importlib.metadata.PackageNotFoundError:
+            version = "dev"
+        self._app.setApplicationVersion(version)
 
         # Примечание: В PyQt6 High DPI поддержка включена по умолчанию
         # Атрибуты AA_EnableHighDpiScaling и AA_UseHighDpiPixmaps удалены в Qt 6
