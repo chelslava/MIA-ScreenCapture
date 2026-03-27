@@ -598,9 +598,10 @@ class MainWindow(QMainWindow):
             logger.info(f"output_path: {output_path}")
 
             api_running = False
-            if self._api_server is not None:
+            api_server = getattr(self, "_api_server", None)
+            if api_server is not None:
                 try:
-                    api_running = self._api_server.is_running()
+                    api_running = api_server.is_running()
                 except Exception:
                     api_running = False
 
