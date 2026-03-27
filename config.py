@@ -14,9 +14,113 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, Field, field_validator
+
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
+
+
+# ============================================================================
+# Pydantic модели для валидации
+# ============================================================================
+
+
+class VideoSettingsSchema(BaseModel):
+    """Схема валидации настроек видео."""
+
+    fps: int = Field(default=30, ge=1, le=120)
+    codec: str = Field(default="libx264")
+    bitrate: str = Field(default="2M")
+    format: str = Field(default="mp4")
+    compression: bool = Field(default=True)
+
+    @field_validator("bitrate")
+    @classmethod
+    def validate_bitrate(cls, v: str) -> str:
+        valid_suffixes = ("K", "M", "G", "k", "m", "g")
+        if not any(v.endswith(s) for s in valid_suffixes) and not v.isdigit():
+            raise ValueError("bitrate должен быть числом или числом с суффиксом K/M/G")
+        return v
+
+
+class AudioSettingsSchema(BaseModel):
+    """Схема валидации настроек аудио."""
+
+    record_mic: bool = Field(default=True)
+    record_system: bool = Field(default=False)
+    mic_device: str | None = Field(default=None)
+    system_device: str | None = Field(default=None)
+    sample_rate: int = Field(default=44100, ge=8000, le=192000)
+    channels: int = Field(default=2, ge=1, le=8)
+
+
+class CaptureSettingsSchema(BaseModel):
+    """Схема валидации настроек захвата."""
+
+    area_type: str = Field(default="full")
+    window_title: str | None = Field(default=None)
+    rect_coords: list[int] | None = Field(default=None)
+
+    @field_validator("area_type")
+    @classmethod
+    def validate_area_type(cls, v: str) -> str:
+        if v not in ("full", "window", "rect"):
+            raise ValueError("area_type должен быть 'full', 'window' или 'rect'")
+        return v
+
+    @field_validator("rect_coords")
+    @classmethod
+    def validate_rect_coords(
+        cls, v: list[int] | None
+    ) -> list[int] | None:
+        if v is not None and len(v) != 4:
+            raise ValueError("rect_coords должен содержать 4 элемента [x1, y1, x2, y2]")
+        return v
+
+
+class OutputSettingsSchema(BaseModel):
+    """Схема валидации настроек вывода."""
+
+    default_path: str = Field(default="")
+    filename_template: str = Field(default="recording_{datetime}")
+
+
+class APISettingsSchema(BaseModel):
+    """Схема валидации настроек API."""
+
+    enabled: bool = Field(default=True)
+    host: str = Field(default="127.0.0.1")
+    port: int = Field(default=5000, ge=1, le=65535)
+
+
+class SchedulerSettingsSchema(BaseModel):
+    """Схема валидации настроек планировщика."""
+
+    enabled: bool = Field(default=True)
+    persist_tasks: bool = Field(default=True)
+    max_concurrent_tasks: int = Field(default=1, ge=1, le=10)
+
+
+class AppSettingsSchema(BaseModel):
+    """Схема валидации основных настроек приложения."""
+
+    video: VideoSettingsSchema = Field(default_factory=VideoSettingsSchema)
+    audio: AudioSettingsSchema = Field(default_factory=AudioSettingsSchema)
+    capture: CaptureSettingsSchema = Field(default_factory=CaptureSettingsSchema)
+    output: OutputSettingsSchema = Field(default_factory=OutputSettingsSchema)
+    api: APISettingsSchema = Field(default_factory=APISettingsSchema)
+    scheduler: SchedulerSettingsSchema = Field(default_factory=SchedulerSettingsSchema)
+    minimize_to_tray: bool = Field(default=True)
+    show_notifications: bool = Field(default=True)
+    language: str = Field(default="en")
+    recent_recordings: list[dict[str, Any]] = Field(default_factory=list)
+    max_recent_recordings: int = Field(default=20, ge=1, le=100)
+
+
+# ============================================================================
+# Dataclass модели (для совместимости)
+# ============================================================================
 
 
 def _atomic_write_json(path: Path, data: Any) -> None:
@@ -153,7 +257,9 @@ class ConfigManager:
             try:
                 with open(self.config_path, encoding="utf-8") as f:
                     data = json.load(f)
-                self._settings = self._dict_to_settings(data)
+                # Валидация через Pydantic
+                validated = AppSettingsSchema.model_validate(data)
+                self._settings = self._dict_to_settings(validated.model_dump())
                 logger.info(f"Конфигурация загружена из {self.config_path}")
             except Exception as e:
                 logger.error(f"Ошибка загрузки конфигурации: {e}")
@@ -206,12 +312,29 @@ class ConfigManager:
         """
         try:
             data = asdict(self._settings)
+            # Валидация перед сохранением
+            AppSettingsSchema.model_validate(data)
             _atomic_write_json(self.config_path, data)
             logger.info(f"Конфигурация сохранена в {self.config_path}")
             return True
         except Exception as e:
             logger.error(f"Ошибка сохранения конфигурации: {e}")
             return False
+
+    def validate_settings(self) -> tuple[bool, list[str]]:
+        """
+        Валидация текущих настроек.
+
+        Returns:
+            Кортеж (валидно, список ошибок)
+        """
+        try:
+            data = asdict(self._settings)
+            AppSettingsSchema.model_validate(data)
+            return True, []
+        except Exception as e:
+            errors = [str(e)]
+            return False, errors
 
     @property
     def settings(self) -> AppSettings:
