@@ -591,9 +591,11 @@ class MainWindow(QMainWindow):
 
     def _run_diagnostics(self) -> None:
         """Запуск диагностики системы."""
+        logger.info("_run_diagnostics вызван")
         try:
             config = get_config()
             output_path = config.settings.output.default_path
+            logger.info(f"output_path: {output_path}")
 
             api_running = False
             if self._api_server is not None:
@@ -602,10 +604,12 @@ class MainWindow(QMainWindow):
                 except Exception:
                     api_running = False
 
+            logger.info(f"api_running: {api_running}")
             self._diagnostics_view.run_checks(
                 api_enabled=api_running,
                 output_path=output_path,
             )
+            logger.info("Диагностика завершена")
         except Exception as e:
             logger.error(f"Ошибка диагностики: {e}")
 
@@ -627,7 +631,6 @@ class MainWindow(QMainWindow):
             config = get_config()
             config.settings.output.default_path = folder
             config.save()
-            self._run_diagnostics()
             self._run_diagnostics()
 
     def start_recording_with_params(self, params: dict) -> dict:
