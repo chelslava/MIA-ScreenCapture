@@ -48,9 +48,7 @@ class TestCLIParserModes:
             (["--schedule-list"], "schedule_list"),
         ],
     )
-    def test_mode_parsing(
-        self, args: list[str], expected_mode: str
-    ) -> None:
+    def test_mode_parsing(self, args: list[str], expected_mode: str) -> None:
         """Проверка разбора режимов работы."""
         config = parse_args(args)
         assert config["mode"] == expected_mode
@@ -68,9 +66,7 @@ class TestCLIParserRecordingOptions:
             (["--start", "--area", "rect"], "rect"),
         ],
     )
-    def test_area_option(
-        self, args: list[str], expected_area: str
-    ) -> None:
+    def test_area_option(self, args: list[str], expected_area: str) -> None:
         """Проверка опции --area."""
         config = parse_args(args)
         assert config["recording"]["area_type"] == expected_area
@@ -84,9 +80,7 @@ class TestCLIParserRecordingOptions:
             (["--start", "--audio", "both"], "both"),
         ],
     )
-    def test_audio_option(
-        self, args: list[str], expected_audio: str
-    ) -> None:
+    def test_audio_option(self, args: list[str], expected_audio: str) -> None:
         """Проверка опции --audio."""
         config = parse_args(args)
         assert config["recording"]["audio_type"] == expected_audio
@@ -129,12 +123,16 @@ class TestCLIParserRecordingOptions:
 
     def test_rect_option(self) -> None:
         """Проверка опции --rect."""
-        config = parse_args(["--start", "--area", "rect", "--rect", "100", "100", "800", "600"])
+        config = parse_args(
+            ["--start", "--area", "rect", "--rect", "100", "100", "800", "600"]
+        )
         assert config["recording"]["rect_coords"] == [100, 100, 800, 600]
 
     def test_window_option(self) -> None:
         """Проверка опции --window."""
-        config = parse_args(["--start", "--area", "window", "--window", "Chrome"])
+        config = parse_args(
+            ["--start", "--area", "window", "--window", "Chrome"]
+        )
         assert config["recording"]["window_title"] == "Chrome"
 
     def test_output_option(self) -> None:
@@ -188,11 +186,15 @@ class TestCLIParserSchedulerOptions:
 
     def test_schedule_name_option(self) -> None:
         """Проверка опции --schedule-name."""
-        config = parse_args([
-            "--start",
-            "--schedule", "0 9 * * *",
-            "--schedule-name", "Morning Recording"
-        ])
+        config = parse_args(
+            [
+                "--start",
+                "--schedule",
+                "0 9 * * *",
+                "--schedule-name",
+                "Morning Recording",
+            ]
+        )
         assert config["scheduler"]["name"] == "Morning Recording"
 
     def test_default_schedule_name(self) -> None:
@@ -376,12 +378,17 @@ class TestCLIParserProcessArgs:
     def test_process_args_recording_params(self) -> None:
         """Проверка обработки параметров записи."""
         parser = create_parser()
-        args = parser.parse_args([
-            "--start",
-            "--fps", "60",
-            "--codec", "libx265",
-            "--bitrate", "5M",
-        ])
+        args = parser.parse_args(
+            [
+                "--start",
+                "--fps",
+                "60",
+                "--codec",
+                "libx265",
+                "--bitrate",
+                "5M",
+            ]
+        )
         config = process_args(args)
         assert config["recording"]["fps"] == 60
         assert config["recording"]["codec"] == "libx265"
@@ -391,7 +398,9 @@ class TestCLIParserProcessArgs:
 class TestCLIParserPrintFunctions:
     """Тесты функций вывода."""
 
-    def test_print_status_recording(self, capsys: pytest.CaptureFixture) -> None:
+    def test_print_status_recording(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
         """Проверка вывода статуса при записи."""
         status = {
             "is_recording": True,
@@ -424,13 +433,17 @@ class TestCLIParserPrintFunctions:
         captured = capsys.readouterr()
         assert "ОЖИДАНИЕ" in captured.out
 
-    def test_print_schedule_list_empty(self, capsys: pytest.CaptureFixture) -> None:
+    def test_print_schedule_list_empty(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
         """Проверка вывода пустого списка задач."""
         print_schedule_list([])
         captured = capsys.readouterr()
         assert "Нет запланированных задач" in captured.out
 
-    def test_print_schedule_list_with_tasks(self, capsys: pytest.CaptureFixture) -> None:
+    def test_print_schedule_list_with_tasks(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
         """Проверка вывода списка задач."""
         tasks = [
             {

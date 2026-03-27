@@ -316,7 +316,9 @@ class TestAPIServerThreadSafety:
         def set_callback(thread_id: int) -> None:
             try:
                 for i in range(100):
-                    server.set_callback(f"callback_{thread_id}_{i}", lambda: None)
+                    server.set_callback(
+                        f"callback_{thread_id}_{i}", lambda: None
+                    )
             except Exception as e:
                 errors.append(e)
 

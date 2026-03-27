@@ -30,13 +30,16 @@ class TestSchedulerTabBasics:
 class TestSchedulerTabComponents:
     """Параметризованные тесты компонентов вкладки."""
 
-    @pytest.mark.parametrize("component", [
-        "task_list",
-        "add_task_button",
-        "edit_task_button",
-        "delete_task_button",
-        "task_details_panel",
-    ])
+    @pytest.mark.parametrize(
+        "component",
+        [
+            "task_list",
+            "add_task_button",
+            "edit_task_button",
+            "delete_task_button",
+            "task_details_panel",
+        ],
+    )
     def test_component_exists(self, component: str) -> None:
         """Проверка наличия компонента."""
         components = [
@@ -74,7 +77,9 @@ class TestSchedulerTabTaskList:
 class TestSchedulerTabTaskTypes:
     """Параметризованные тесты типов задач."""
 
-    @pytest.mark.parametrize("task_type", ["once", "interval", "cron", "daily"])
+    @pytest.mark.parametrize(
+        "task_type", ["once", "interval", "cron", "daily"]
+    )
     def test_valid_task_types(self, task_type: str) -> None:
         """Проверка валидных типов задач."""
         valid_types = ["once", "interval", "cron", "daily"]
@@ -84,20 +89,30 @@ class TestSchedulerTabTaskTypes:
 class TestSchedulerTabScheduleSettings:
     """Параметризованные тесты настроек расписания."""
 
-    @pytest.mark.parametrize("settings_type,required_keys", [
-        ("once", ["datetime"]),
-        ("interval", ["interval_seconds"]),
-        ("cron", ["cron_expression"]),
-        ("daily", ["time"]),
-    ])
+    @pytest.mark.parametrize(
+        "settings_type,required_keys",
+        [
+            ("once", ["datetime"]),
+            ("interval", ["interval_seconds"]),
+            ("cron", ["cron_expression"]),
+            ("daily", ["time"]),
+        ],
+    )
     def test_schedule_settings_has_required_keys(
         self, settings_type: str, required_keys: list[str]
     ) -> None:
         """Проверка обязательных ключей для каждого типа расписания."""
         # Создаём пример настроек для каждого типа
         sample_settings = {
-            "once": {"type": "once", "datetime": datetime.now() + timedelta(hours=1)},
-            "interval": {"type": "interval", "interval_seconds": 3600, "start_date": datetime.now()},
+            "once": {
+                "type": "once",
+                "datetime": datetime.now() + timedelta(hours=1),
+            },
+            "interval": {
+                "type": "interval",
+                "interval_seconds": 3600,
+                "start_date": datetime.now(),
+            },
             "cron": {"type": "cron", "cron_expression": "0 9 * * 1-5"},
             "daily": {"type": "daily", "time": "09:00"},
         }
@@ -110,7 +125,9 @@ class TestSchedulerTabScheduleSettings:
 class TestSchedulerTabTaskStatus:
     """Параметризованные тесты статуса задач."""
 
-    @pytest.mark.parametrize("status", ["active", "paused", "completed", "error"])
+    @pytest.mark.parametrize(
+        "status", ["active", "paused", "completed", "error"]
+    )
     def test_valid_task_statuses(self, status: str) -> None:
         """Проверка валидных статусов задач."""
         valid_statuses = ["active", "paused", "completed", "error"]
@@ -120,14 +137,17 @@ class TestSchedulerTabTaskStatus:
 class TestSchedulerTabActions:
     """Параметризованные тесты действий вкладки."""
 
-    @pytest.mark.parametrize("action", [
-        "add_task",
-        "edit_task",
-        "delete_task",
-        "pause_task",
-        "resume_task",
-        "run_now",
-    ])
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "add_task",
+            "edit_task",
+            "delete_task",
+            "pause_task",
+            "resume_task",
+            "run_now",
+        ],
+    )
     def test_valid_actions(self, action: str) -> None:
         """Проверка валидных действий."""
         valid_actions = [
@@ -144,7 +164,9 @@ class TestSchedulerTabActions:
 class TestSchedulerTabDialogs:
     """Тесты диалогов."""
 
-    @pytest.mark.parametrize("dialog_type", ["add_task", "edit_task", "confirm_delete"])
+    @pytest.mark.parametrize(
+        "dialog_type", ["add_task", "edit_task", "confirm_delete"]
+    )
     def test_dialog_types(self, dialog_type: str) -> None:
         """Проверка типов диалогов."""
         valid_dialogs = ["add_task", "edit_task", "confirm_delete"]
@@ -159,37 +181,48 @@ class TestSchedulerTabDialogs:
 class TestSchedulerTabValidation:
     """Параметризованные тесты валидации."""
 
-    @pytest.mark.parametrize("name,expected_valid", [
-        ("Daily Recording", True),
-        ("", False),
-        ("   ", False),
-        ("A" * 100, True),
-    ])
+    @pytest.mark.parametrize(
+        "name,expected_valid",
+        [
+            ("Daily Recording", True),
+            ("", False),
+            ("   ", False),
+            ("A" * 100, True),
+        ],
+    )
     def test_validate_task_name(self, name: str, expected_valid: bool) -> None:
         """Проверка валидации имени задачи."""
         is_valid = len(name.strip()) > 0
         assert is_valid == expected_valid
 
-    @pytest.mark.parametrize("interval,expected_valid", [
-        (60, True),
-        (1, True),
-        (0, False),
-        (-1, False),
-        (3600, True),
-    ])
-    def test_validate_interval(self, interval: int, expected_valid: bool) -> None:
+    @pytest.mark.parametrize(
+        "interval,expected_valid",
+        [
+            (60, True),
+            (1, True),
+            (0, False),
+            (-1, False),
+            (3600, True),
+        ],
+    )
+    def test_validate_interval(
+        self, interval: int, expected_valid: bool
+    ) -> None:
         """Проверка валидации интервала."""
         is_valid = interval > 0
         assert is_valid == expected_valid
 
-    @pytest.mark.parametrize("cron_expr,expected_valid", [
-        ("0 9 * * 1-5", True),  # Будни в 9:00
-        ("*/15 * * * *", True),  # Каждые 15 минут
-        ("0 0 1 1 *", True),  # 1 января
-        ("invalid", False),
-        ("0 9 * *", False),  # Мало полей
-        ("0 9 * * * *", False),  # Много полей
-    ])
+    @pytest.mark.parametrize(
+        "cron_expr,expected_valid",
+        [
+            ("0 9 * * 1-5", True),  # Будни в 9:00
+            ("*/15 * * * *", True),  # Каждые 15 минут
+            ("0 0 1 1 *", True),  # 1 января
+            ("invalid", False),
+            ("0 9 * *", False),  # Мало полей
+            ("0 9 * * * *", False),  # Много полей
+        ],
+    )
     def test_validate_cron_expression(
         self, cron_expr: str, expected_valid: bool
     ) -> None:
@@ -203,13 +236,16 @@ class TestSchedulerTabValidation:
 class TestSchedulerTabCallbacks:
     """Параметризованные тесты обратных вызовов."""
 
-    @pytest.mark.parametrize("callback_name", [
-        "on_task_added",
-        "on_task_edited",
-        "on_task_deleted",
-        "on_task_triggered",
-        "on_task_error",
-    ])
+    @pytest.mark.parametrize(
+        "callback_name",
+        [
+            "on_task_added",
+            "on_task_edited",
+            "on_task_deleted",
+            "on_task_triggered",
+            "on_task_error",
+        ],
+    )
     def test_valid_callback_names(self, callback_name: str) -> None:
         """Проверка имён callback-функций."""
         valid_callbacks = [
@@ -230,10 +266,13 @@ class TestSchedulerTabUIUpdates:
         action = "refresh_task_list"
         assert action == "refresh_task_list"
 
-    @pytest.mark.parametrize("task_selected,edit_enabled,delete_enabled", [
-        (True, True, True),
-        (False, False, False),
-    ])
+    @pytest.mark.parametrize(
+        "task_selected,edit_enabled,delete_enabled",
+        [
+            (True, True, True),
+            (False, False, False),
+        ],
+    )
     def test_update_button_states(
         self, task_selected: bool, edit_enabled: bool, delete_enabled: bool
     ) -> None:
@@ -251,22 +290,28 @@ class TestSchedulerTabRecordingSettings:
         """Проверка настройки длительности записи."""
         assert duration_seconds > 0
 
-    @pytest.mark.parametrize("width,height", [
-        (1920, 1080),
-        (1280, 720),
-        (3840, 2160),
-    ])
+    @pytest.mark.parametrize(
+        "width,height",
+        [
+            (1920, 1080),
+            (1280, 720),
+            (3840, 2160),
+        ],
+    )
     def test_recording_area_dimensions(self, width: int, height: int) -> None:
         """Проверка настройки области записи."""
         assert width > 0
         assert height > 0
 
-    @pytest.mark.parametrize("audio_enabled,audio_source", [
-        (True, "microphone"),
-        (True, "system"),
-        (True, "both"),
-        (False, "none"),
-    ])
+    @pytest.mark.parametrize(
+        "audio_enabled,audio_source",
+        [
+            (True, "microphone"),
+            (True, "system"),
+            (True, "both"),
+            (False, "none"),
+        ],
+    )
     def test_recording_audio_settings(
         self, audio_enabled: bool, audio_source: str
     ) -> None:
@@ -284,16 +329,23 @@ class TestSchedulerTabRecordingSettings:
 class TestSchedulerTabErrorHandling:
     """Параметризованные тесты обработки ошибок."""
 
-    @pytest.mark.parametrize("error_type,error_message", [
-        ("invalid_datetime", "Указана прошедшая дата"),
-        ("invalid_interval", "Интервал должен быть больше 0"),
-        ("scheduler_error", "Ошибка планировщика"),
-    ])
+    @pytest.mark.parametrize(
+        "error_type,error_message",
+        [
+            ("invalid_datetime", "Указана прошедшая дата"),
+            ("invalid_interval", "Интервал должен быть больше 0"),
+            ("scheduler_error", "Ошибка планировщика"),
+        ],
+    )
     def test_error_types_and_messages(
         self, error_type: str, error_message: str
     ) -> None:
         """Проверка типов ошибок и сообщений."""
-        valid_error_types = ["invalid_datetime", "invalid_interval", "scheduler_error"]
+        valid_error_types = [
+            "invalid_datetime",
+            "invalid_interval",
+            "scheduler_error",
+        ]
         assert error_type in valid_error_types
         assert len(error_message) > 0
 
@@ -301,11 +353,14 @@ class TestSchedulerTabErrorHandling:
 class TestSchedulerTabPersistence:
     """Параметризованные тесты сохранения данных."""
 
-    @pytest.mark.parametrize("action", [
-        "load_tasks",
-        "save_tasks",
-        "save_on_exit",
-    ])
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "load_tasks",
+            "save_tasks",
+            "save_on_exit",
+        ],
+    )
     def test_persistence_actions(self, action: str) -> None:
         """Проверка действий сохранения."""
         valid_actions = ["load_tasks", "save_tasks", "save_on_exit"]
@@ -315,18 +370,23 @@ class TestSchedulerTabPersistence:
 class TestSchedulerTabFiltering:
     """Параметризованные тесты фильтрации задач."""
 
-    @pytest.mark.parametrize("filter_type,filter_value", [
-        ("status", "active"),
-        ("status", "paused"),
-        ("type", "interval"),
-        ("type", "cron"),
-    ])
+    @pytest.mark.parametrize(
+        "filter_type,filter_value",
+        [
+            ("status", "active"),
+            ("status", "paused"),
+            ("type", "interval"),
+            ("type", "cron"),
+        ],
+    )
     def test_filter_options(self, filter_type: str, filter_value: str) -> None:
         """Проверка опций фильтрации."""
         valid_filter_types = ["status", "type"]
         assert filter_type in valid_filter_types
 
-    @pytest.mark.parametrize("search_term", ["Daily", "Weekly", "Backup", "Recording"])
+    @pytest.mark.parametrize(
+        "search_term", ["Daily", "Weekly", "Backup", "Recording"]
+    )
     def test_search_by_name(self, search_term: str) -> None:
         """Проверка поиска по имени."""
         assert len(search_term) > 0
@@ -335,12 +395,15 @@ class TestSchedulerTabFiltering:
 class TestSchedulerTabSorting:
     """Параметризованные тесты сортировки задач."""
 
-    @pytest.mark.parametrize("sort_column,sort_order", [
-        ("name", "ascending"),
-        ("name", "descending"),
-        ("next_run", "ascending"),
-        ("status", "ascending"),
-    ])
+    @pytest.mark.parametrize(
+        "sort_column,sort_order",
+        [
+            ("name", "ascending"),
+            ("name", "descending"),
+            ("next_run", "ascending"),
+            ("status", "ascending"),
+        ],
+    )
     def test_sort_options(self, sort_column: str, sort_order: str) -> None:
         """Проверка опций сортировки."""
         valid_columns = ["name", "next_run", "status"]

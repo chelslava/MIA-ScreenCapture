@@ -236,7 +236,9 @@ class TestCaptureAreaWorkflow:
         """Проверка создания области полного экрана."""
         with patch(
             "recorder.video_recorder.get_available_monitors",
-            return_value=[{"index": 0, "width": 1920, "height": 1080, "is_primary": True}],
+            return_value=[
+                {"index": 0, "width": 1920, "height": 1080, "is_primary": True}
+            ],
         ):
             area = CaptureArea.full_screen()
 

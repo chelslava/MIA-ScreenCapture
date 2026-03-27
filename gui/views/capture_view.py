@@ -5,7 +5,6 @@
 Компонент UI для выбора области захвата экрана.
 """
 
-
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup,

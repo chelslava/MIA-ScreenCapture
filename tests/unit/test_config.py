@@ -250,7 +250,9 @@ class TestConfigManager:
 
         def fake_replace(src, dst):
             replace_calls.append((Path(src), Path(dst)))
-            Path(dst).write_text(Path(src).read_text(encoding="utf-8"), encoding="utf-8")
+            Path(dst).write_text(
+                Path(src).read_text(encoding="utf-8"), encoding="utf-8"
+            )
 
         monkeypatch.setattr("config.os.replace", fake_replace)
 
@@ -266,7 +268,7 @@ class TestConfigManager:
     ):
         """Проверка обработки ошибки при атомарной записи."""
         manager = ConfigManager(temp_config_file)
-        temp_config_file.write_text("{\"keep\": true}", encoding="utf-8")
+        temp_config_file.write_text('{"keep": true}', encoding="utf-8")
 
         def failing_replace(src, dst):
             raise OSError("replace failed")
@@ -274,7 +276,9 @@ class TestConfigManager:
         monkeypatch.setattr("config.os.replace", failing_replace)
 
         assert manager.save() is False
-        assert json.loads(temp_config_file.read_text(encoding="utf-8")) == {"keep": True}
+        assert json.loads(temp_config_file.read_text(encoding="utf-8")) == {
+            "keep": True
+        }
 
     def test_update_settings(self, temp_config_file: Path):
         """Проверка обновления настроек."""

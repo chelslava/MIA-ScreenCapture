@@ -193,7 +193,9 @@ class CreateScheduleRequest(BaseModel):
                             "Дни недели должны быть от 0 (Пн) до 6 (Вс)"
                         )
             except ValueError as e:
-                raise ValueError(f"Некорректный формат дней недели: {e}") from e
+                raise ValueError(
+                    f"Некорректный формат дней недели: {e}"
+                ) from e
         return v
 
     @field_validator("cron_expression")
@@ -330,9 +332,7 @@ class UpdateConfigRequest(BaseModel):
     show_notifications: bool | None = Field(
         default=None, description="Показывать уведомления"
     )
-    language: str | None = Field(
-        default=None, description="Язык интерфейса"
-    )
+    language: str | None = Field(default=None, description="Язык интерфейса")
 
     @field_validator("bitrate")
     @classmethod
@@ -365,7 +365,10 @@ class UpdateConfigRequest(BaseModel):
                 self.record_system = self.audio.record_system
 
         if self.output is not None:
-            if self.default_path is None and self.output.default_path is not None:
+            if (
+                self.default_path is None
+                and self.output.default_path is not None
+            ):
                 self.default_path = self.output.default_path
             if (
                 self.filename_template is None
@@ -441,9 +444,7 @@ class UpdateConfigAppRequest(BaseModel):
     show_notifications: bool | None = Field(
         default=None, description="Показывать уведомления"
     )
-    language: str | None = Field(
-        default=None, description="Язык интерфейса"
-    )
+    language: str | None = Field(default=None, description="Язык интерфейса")
 
 
 UpdateConfigRequest.model_rebuild()
@@ -457,9 +458,7 @@ class APIResponse(BaseModel):
 
     success: bool = Field(description="Успешность операции")
     data: dict | None = Field(default=None, description="Данные ответа")
-    error: str | None = Field(
-        default=None, description="Сообщение об ошибке"
-    )
+    error: str | None = Field(default=None, description="Сообщение об ошибке")
 
 
 class StatusResponse(BaseModel):

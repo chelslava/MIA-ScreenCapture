@@ -6,7 +6,6 @@
 """
 
 
-
 class MIAError(Exception):
     """
     Базовое исключение приложения MIA-ScreenCapture.

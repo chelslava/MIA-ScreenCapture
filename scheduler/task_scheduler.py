@@ -502,10 +502,7 @@ class TaskScheduler:
                 minutes=task.interval_minutes or 0,
             )
 
-        elif (
-            task.schedule_type == ScheduleType.CRON
-            and task.cron_expression
-        ):
+        elif task.schedule_type == ScheduleType.CRON and task.cron_expression:
             return CronTrigger.from_crontab(task.cron_expression)
 
         return None

@@ -131,10 +131,12 @@ class TestValidateScheduleParams:
 
     def test_multiple_errors(self) -> None:
         """Проверка нескольких ошибок валидации."""
-        is_valid, error = validate_schedule_params({
-            "time": "25:70",
-            "days_of_week": [8],
-        })
+        is_valid, error = validate_schedule_params(
+            {
+                "time": "25:70",
+                "days_of_week": [8],
+            }
+        )
         assert is_valid is False
         assert "23" in error  # Ошибка часа
         assert "0-6" in error  # Ошибка дня недели
@@ -231,9 +233,7 @@ class TestCreateSchedule:
         assert result == 1
 
     @patch("cli.scheduler._make_api_request")
-    def test_create_schedule_invalid_preset(
-        self, mock_request: Mock
-    ) -> None:
+    def test_create_schedule_invalid_preset(self, mock_request: Mock) -> None:
         """Проверка ошибки при невалидном preset."""
         config = {
             "api": {"host": "127.0.0.1", "port": 5000},
@@ -246,9 +246,7 @@ class TestCreateSchedule:
         mock_request.assert_not_called()
 
     @patch("cli.scheduler._make_api_request")
-    def test_create_schedule_api_error(
-        self, mock_request: Mock
-    ) -> None:
+    def test_create_schedule_api_error(self, mock_request: Mock) -> None:
         """Проверка обработки ошибки API."""
         mock_request.return_value = (500, {"error": "Server error"})
 
@@ -262,9 +260,7 @@ class TestCreateSchedule:
         assert result == 1
 
     @patch("cli.scheduler._make_api_request")
-    def test_create_schedule_unauthorized(
-        self, mock_request: Mock
-    ) -> None:
+    def test_create_schedule_unauthorized(self, mock_request: Mock) -> None:
         """Проверка обработки ошибки авторизации."""
         mock_request.return_value = (401, {"error": "Unauthorized"})
 
@@ -457,9 +453,7 @@ class TestPreviewUpcomingRuns:
         assert "Нет предстоящих запусков" in captured.out
 
     @patch("cli.scheduler._make_api_request")
-    def test_preview_upcoming_runs_api_error(
-        self, mock_request: Mock
-    ) -> None:
+    def test_preview_upcoming_runs_api_error(self, mock_request: Mock) -> None:
         """Проверка обработки ошибки API."""
         mock_request.return_value = (500, {"error": "Server error"})
 
@@ -475,9 +469,7 @@ class TestMakeApiRequest:
     """Тесты внутренней функции _make_api_request."""
 
     @patch("requests.get")
-    def test_make_api_request_connection_error(
-        self, mock_get: Mock
-    ) -> None:
+    def test_make_api_request_connection_error(self, mock_get: Mock) -> None:
         """Проверка обработки ошибки соединения."""
         import requests
 

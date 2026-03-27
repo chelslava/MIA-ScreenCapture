@@ -440,7 +440,9 @@ class TestAudioRecorderEdgeCases:
         # Должно пройти без ошибок
         assert recorder.state == AudioState.IDLE
 
-    @pytest.mark.parametrize("sample_rate", [22050, 44100, 48000, 96000, 192000])
+    @pytest.mark.parametrize(
+        "sample_rate", [22050, 44100, 48000, 96000, 192000]
+    )
     def test_various_sample_rates(self, sample_rate: int) -> None:
         """Проверка с различными частотами дискретизации."""
         with patch("recorder.audio_recorder.get_audio_devices"):
@@ -486,7 +488,9 @@ class TestAudioRecorderNegative:
 
             # Путь к несуществующей директории без прав записи
             # Должно выбросить исключение или вернуть False
-            with patch.object(recorder, "_init_audio", side_effect=Exception("Error")):
+            with patch.object(
+                recorder, "_init_audio", side_effect=Exception("Error")
+            ):
                 result = recorder.start(Path("/nonexistent/path/audio.wav"))
 
         assert result is False

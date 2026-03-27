@@ -239,7 +239,9 @@ class TestMainWindowPauseButtonText:
             (True, "Продолжить"),
         ],
     )
-    def test_pause_button_text(self, is_paused: bool, expected_text: str) -> None:
+    def test_pause_button_text(
+        self, is_paused: bool, expected_text: str
+    ) -> None:
         """Проверка текста кнопки паузы."""
         from gui.models.recording_state import RecordingState
 

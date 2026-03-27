@@ -5,7 +5,6 @@
 Компонент UI для настройки параметров видео.
 """
 
-
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,

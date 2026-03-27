@@ -358,14 +358,16 @@ def get_all_monitors() -> list[dict[str, int]]:
 
     if not monitors:
         width, height = get_screen_size()
-        monitors.append({"id": 1, "x": 0, "y": 0, "width": width, "height": height})
+        monitors.append(
+            {"id": 1, "x": 0, "y": 0, "width": width, "height": height}
+        )
     return monitors
 
 
 def get_available_monitors() -> list[dict[str, Any]]:
     """
     Получение списка доступных мониторов для выбора.
-    
+
     Это alias для get_all_monitors() с дополнительными метаданными.
 
     Returns:
@@ -384,22 +386,24 @@ def get_available_monitors() -> list[dict[str, Any]]:
     # Определение primary монитора (обычно 0,0)
     primary_monitor = None
     for i, mon in enumerate(monitors):
-        is_primary = (mon['x'] == 0 and mon['y'] == 0)
+        is_primary = mon["x"] == 0 and mon["y"] == 0
         if is_primary:
             primary_monitor = i
-        result.append({
-            'index': i,
-            'x': mon['x'],
-            'y': mon['y'],
-            'width': mon['width'],
-            'height': mon['height'],
-            'name': f"Monitor {i + 1}",
-            'is_primary': is_primary,
-        })
+        result.append(
+            {
+                "index": i,
+                "x": mon["x"],
+                "y": mon["y"],
+                "width": mon["width"],
+                "height": mon["height"],
+                "name": f"Monitor {i + 1}",
+                "is_primary": is_primary,
+            }
+        )
 
     # Если не нашли primary по координатам, считаем первый primary
     if primary_monitor is None and result:
-        result[0]['is_primary'] = True
+        result[0]["is_primary"] = True
 
     return result
 

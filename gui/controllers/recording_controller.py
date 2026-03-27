@@ -152,7 +152,10 @@ class RecordingController:
                     )
                     if not audio_started:
                         self._cleanup()
-                        return False, "Не удалось запустить запись системного аудио"
+                        return (
+                            False,
+                            "Не удалось запустить запись системного аудио",
+                        )
                 except Exception as e:
                     logger.warning(f"Системное аудио недоступно: {e}")
                     self._audio_recorder = None

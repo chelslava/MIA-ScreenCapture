@@ -597,9 +597,13 @@ class TestTaskScheduler:
 
         def fake_replace(src, dst):
             replace_calls.append((Path(src), Path(dst)))
-            Path(dst).write_text(Path(src).read_text(encoding="utf-8"), encoding="utf-8")
+            Path(dst).write_text(
+                Path(src).read_text(encoding="utf-8"), encoding="utf-8"
+            )
 
-        monkeypatch.setattr("scheduler.task_scheduler.os.replace", fake_replace)
+        monkeypatch.setattr(
+            "scheduler.task_scheduler.os.replace", fake_replace
+        )
 
         task = ScheduleTask(
             id="atomic-save",
@@ -627,7 +631,9 @@ class TestTaskScheduler:
         def failing_replace(src, dst):
             raise OSError("replace failed")
 
-        monkeypatch.setattr("scheduler.task_scheduler.os.replace", failing_replace)
+        monkeypatch.setattr(
+            "scheduler.task_scheduler.os.replace", failing_replace
+        )
 
         task = ScheduleTask(
             id="failed-save",

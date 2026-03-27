@@ -40,7 +40,9 @@ class VideoSettingsSchema(BaseModel):
     def validate_bitrate(cls, v: str) -> str:
         valid_suffixes = ("K", "M", "G", "k", "m", "g")
         if not any(v.endswith(s) for s in valid_suffixes) and not v.isdigit():
-            raise ValueError("bitrate должен быть числом или числом с суффиксом K/M/G")
+            raise ValueError(
+                "bitrate должен быть числом или числом с суффиксом K/M/G"
+            )
         return v
 
 
@@ -66,16 +68,18 @@ class CaptureSettingsSchema(BaseModel):
     @classmethod
     def validate_area_type(cls, v: str) -> str:
         if v not in ("full", "window", "rect"):
-            raise ValueError("area_type должен быть 'full', 'window' или 'rect'")
+            raise ValueError(
+                "area_type должен быть 'full', 'window' или 'rect'"
+            )
         return v
 
     @field_validator("rect_coords")
     @classmethod
-    def validate_rect_coords(
-        cls, v: list[int] | None
-    ) -> list[int] | None:
+    def validate_rect_coords(cls, v: list[int] | None) -> list[int] | None:
         if v is not None and len(v) != 4:
-            raise ValueError("rect_coords должен содержать 4 элемента [x1, y1, x2, y2]")
+            raise ValueError(
+                "rect_coords должен содержать 4 элемента [x1, y1, x2, y2]"
+            )
         return v
 
 
@@ -107,10 +111,14 @@ class AppSettingsSchema(BaseModel):
 
     video: VideoSettingsSchema = Field(default_factory=VideoSettingsSchema)
     audio: AudioSettingsSchema = Field(default_factory=AudioSettingsSchema)
-    capture: CaptureSettingsSchema = Field(default_factory=CaptureSettingsSchema)
+    capture: CaptureSettingsSchema = Field(
+        default_factory=CaptureSettingsSchema
+    )
     output: OutputSettingsSchema = Field(default_factory=OutputSettingsSchema)
     api: APISettingsSchema = Field(default_factory=APISettingsSchema)
-    scheduler: SchedulerSettingsSchema = Field(default_factory=SchedulerSettingsSchema)
+    scheduler: SchedulerSettingsSchema = Field(
+        default_factory=SchedulerSettingsSchema
+    )
     minimize_to_tray: bool = Field(default=True)
     show_notifications: bool = Field(default=True)
     language: str = Field(default="en")

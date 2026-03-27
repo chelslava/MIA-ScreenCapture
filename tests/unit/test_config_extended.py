@@ -71,16 +71,24 @@ class TestConfigVideoSettings:
         """Проверка что FPS находится в валидном диапазоне."""
         assert 1 <= fps <= 120
 
-    @pytest.mark.parametrize("codec", ["libx264", "libx265", "libvpx-vp9", "h264"])
+    @pytest.mark.parametrize(
+        "codec", ["libx264", "libx265", "libvpx-vp9", "h264"]
+    )
     def test_valid_video_codecs(self, codec: str) -> None:
         """Проверка валидных видео кодеков."""
         valid_codecs = ["libx264", "libx265", "libvpx-vp9", "h264"]
         assert codec in valid_codecs
 
-    @pytest.mark.parametrize("bitrate", ["1M", "2M", "5M", "10M", "500K", "128k"])
+    @pytest.mark.parametrize(
+        "bitrate", ["1M", "2M", "5M", "10M", "500K", "128k"]
+    )
     def test_bitrate_format(self, bitrate: str) -> None:
         """Проверка формата битрейта."""
-        assert bitrate.endswith("M") or bitrate.endswith("K") or bitrate.endswith("k")
+        assert (
+            bitrate.endswith("M")
+            or bitrate.endswith("K")
+            or bitrate.endswith("k")
+        )
 
 
 class TestConfigAudioSettings:
@@ -97,7 +105,9 @@ class TestConfigAudioSettings:
         """Проверка валидных конфигураций каналов."""
         assert channels in [1, 2]
 
-    @pytest.mark.parametrize("source", ["microphone", "system", "both", "none"])
+    @pytest.mark.parametrize(
+        "source", ["microphone", "system", "both", "none"]
+    )
     def test_valid_audio_sources(self, source: str) -> None:
         """Проверка валидных источников аудио."""
         valid_sources = ["microphone", "system", "both", "none"]
@@ -118,17 +128,24 @@ class TestConfigOutputSettings:
         valid_formats = ["mp4", "avi", "mkv", "webm"]
         assert output_format in valid_formats
 
-    @pytest.mark.parametrize("pattern,has_placeholder", [
-        ("recording_{date}_{time}", True),
-        ("video_{timestamp}", True),
-        ("simple_name", False),
-        ("output_{date}", True),
-    ])
+    @pytest.mark.parametrize(
+        "pattern,has_placeholder",
+        [
+            ("recording_{date}_{time}", True),
+            ("video_{timestamp}", True),
+            ("simple_name", False),
+            ("output_{date}", True),
+        ],
+    )
     def test_filename_pattern_placeholders(
         self, pattern: str, has_placeholder: bool
     ) -> None:
         """Проверка плейсхолдеров в шаблоне имени файла."""
-        contains_placeholder = "{date}" in pattern or "{time}" in pattern or "{timestamp}" in pattern
+        contains_placeholder = (
+            "{date}" in pattern
+            or "{time}" in pattern
+            or "{timestamp}" in pattern
+        )
         assert contains_placeholder == has_placeholder
 
 
@@ -141,12 +158,15 @@ class TestConfigCaptureSettings:
         valid_modes = ["full", "window", "region"]
         assert capture_mode in valid_modes
 
-    @pytest.mark.parametrize("width,height", [
-        (1920, 1080),
-        (1280, 720),
-        (3840, 2160),
-        (800, 600),
-    ])
+    @pytest.mark.parametrize(
+        "width,height",
+        [
+            (1920, 1080),
+            (1280, 720),
+            (3840, 2160),
+            (800, 600),
+        ],
+    )
     def test_valid_capture_resolutions(self, width: int, height: int) -> None:
         """Проверка валидных разрешений захвата."""
         assert width > 0
@@ -192,11 +212,14 @@ class TestConfigAPISettings:
         """Проверка настройки аутентификации API."""
         assert isinstance(auth_enabled, bool)
 
-    @pytest.mark.parametrize("requests,period", [
-        (100, 60),
-        (1000, 3600),
-        (10, 1),
-    ])
+    @pytest.mark.parametrize(
+        "requests,period",
+        [
+            (100, 60),
+            (1000, 3600),
+            (10, 1),
+        ],
+    )
     def test_rate_limit_settings(self, requests: int, period: int) -> None:
         """Проверка настроек rate limiting."""
         assert requests > 0
@@ -206,7 +229,9 @@ class TestConfigAPISettings:
 class TestConfigLogging:
     """Параметризованные тесты настроек логирования."""
 
-    @pytest.mark.parametrize("level", ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+    @pytest.mark.parametrize(
+        "level", ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    )
     def test_valid_log_levels(self, level: str) -> None:
         """Проверка валидных уровней логирования."""
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -226,52 +251,60 @@ class TestConfigLogging:
 class TestConfigValidation:
     """Параметризованные тесты валидации конфигурации."""
 
-    @pytest.mark.parametrize("fps,expected_valid", [
-        (1, True),
-        (30, True),
-        (60, True),
-        (120, True),
-        (0, False),
-        (-1, False),
-        (150, False),
-    ])
+    @pytest.mark.parametrize(
+        "fps,expected_valid",
+        [
+            (1, True),
+            (30, True),
+            (60, True),
+            (120, True),
+            (0, False),
+            (-1, False),
+            (150, False),
+        ],
+    )
     def test_validate_fps_range(self, fps: int, expected_valid: bool) -> None:
         """Проверка диапазона FPS."""
         is_valid = 1 <= fps <= 120
         assert is_valid == expected_valid
 
-    @pytest.mark.parametrize("port,expected_valid", [
-        (80, True),
-        (443, True),
-        (5000, True),
-        (8080, True),
-        (0, False),
-        (-1, False),
-        (70000, False),
-    ])
-    def test_validate_port_range(self, port: int, expected_valid: bool) -> None:
+    @pytest.mark.parametrize(
+        "port,expected_valid",
+        [
+            (80, True),
+            (443, True),
+            (5000, True),
+            (8080, True),
+            (0, False),
+            (-1, False),
+            (70000, False),
+        ],
+    )
+    def test_validate_port_range(
+        self, port: int, expected_valid: bool
+    ) -> None:
         """Проверка диапазона портов."""
         is_valid = 1 <= port <= 65535
         assert is_valid == expected_valid
 
-    @pytest.mark.parametrize("width,height,expected_valid", [
-        (1920, 1080, True),
-        (1280, 720, True),
-        (3840, 2160, True),
-        (7680, 4320, True),
-        (0, 1080, False),
-        (1920, 0, False),
-        (8000, 5000, False),  # Превышает 8K
-    ])
+    @pytest.mark.parametrize(
+        "width,height,expected_valid",
+        [
+            (1920, 1080, True),
+            (1280, 720, True),
+            (3840, 2160, True),
+            (7680, 4320, True),
+            (0, 1080, False),
+            (1920, 0, False),
+            (8000, 5000, False),  # Превышает 8K
+        ],
+    )
     def test_validate_resolution(
         self, width: int, height: int, expected_valid: bool
     ) -> None:
         """Проверка разрешения."""
         is_valid = (
-            width > 0
-            and height > 0
-            and width <= 7680
-            and height <= 4320
+            width > 0 and height > 0 and width <= 7680 and height <= 4320
         )
         assert is_valid == expected_valid
 
@@ -312,12 +345,15 @@ class TestConfigSave:
 class TestConfigDefaults:
     """Параметризованные тесты значений по умолчанию."""
 
-    @pytest.mark.parametrize("setting,expected_default", [
-        ("fps", 30),
-        ("codec", "libx264"),
-        ("format", "mp4"),
-        ("audio_source", "none"),
-    ])
+    @pytest.mark.parametrize(
+        "setting,expected_default",
+        [
+            ("fps", 30),
+            ("codec", "libx264"),
+            ("format", "mp4"),
+            ("audio_source", "none"),
+        ],
+    )
     def test_default_values(self, setting: str, expected_default) -> None:
         """Проверка значений по умолчанию."""
         defaults = {
@@ -332,12 +368,15 @@ class TestConfigDefaults:
 class TestConfigEnvironment:
     """Параметризованные тесты переменных окружения."""
 
-    @pytest.mark.parametrize("env_var,description", [
-        ("MIA_FPS", "переопределение FPS"),
-        ("MIA_OUTPUT_PATH", "переопределение пути вывода"),
-        ("MIA_API_PORT", "переопределение порта API"),
-        ("MIA_CONFIG_PATH", "путь к файлу конфигурации"),
-    ])
+    @pytest.mark.parametrize(
+        "env_var,description",
+        [
+            ("MIA_FPS", "переопределение FPS"),
+            ("MIA_OUTPUT_PATH", "переопределение пути вывода"),
+            ("MIA_API_PORT", "переопределение порта API"),
+            ("MIA_CONFIG_PATH", "путь к файлу конфигурации"),
+        ],
+    )
     def test_env_variable_names(self, env_var: str, description: str) -> None:
         """Проверка имён переменных окружения."""
         assert env_var.startswith("MIA_")

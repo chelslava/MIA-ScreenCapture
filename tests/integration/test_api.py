@@ -461,7 +461,9 @@ class TestAPIEventsEndpoint:
         assert data["data"][0]["type"] == "started"
         assert "timestamp" in data["data"][0]
         assert "data" in data["data"][0]
-        assert data["data"][0]["data"]["output_path"] == "/tmp/test_recording.mp4"
+        assert (
+            data["data"][0]["data"]["output_path"] == "/tmp/test_recording.mp4"
+        )
 
     def test_get_events_stats_success(self, client: FlaskClient) -> None:
         response = client.get("/api/events/stats")
@@ -694,9 +696,7 @@ class TestAPIConfigEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert data["success"] is True
-        mock_callbacks["update_config"].assert_called_once_with(
-            {"fps": 60}
-        )
+        mock_callbacks["update_config"].assert_called_once_with({"fps": 60})
 
 
 class TestAPIErrorHandling:

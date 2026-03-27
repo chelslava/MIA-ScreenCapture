@@ -53,7 +53,7 @@ class CaptureArea:
     @classmethod
     def full_screen(cls, monitor_index: int = 0) -> "CaptureArea":
         """Создание области захвата полного экрана.
-        
+
         Args:
             monitor_index: Индекс монитора (0 = primary, 1 = secondary)
         """
@@ -64,7 +64,11 @@ class CaptureArea:
             )
             monitor_index = 0
 
-        monitor = monitors[monitor_index] if monitors else {"width": 1920, "height": 1080}
+        monitor = (
+            monitors[monitor_index]
+            if monitors
+            else {"width": 1920, "height": 1080}
+        )
         return cls(
             type="full",
             monitor_index=monitor_index,
@@ -533,7 +537,9 @@ class VideoRecorder:
 
                 # Захват кадра
                 try:
-                    frame = session.read_frame(timeout=max(frame_interval, 0.01))
+                    frame = session.read_frame(
+                        timeout=max(frame_interval, 0.01)
+                    )
                     if frame is None:
                         # Timeout - проверяем, не потерян ли захват
                         if session.is_capture_lost:

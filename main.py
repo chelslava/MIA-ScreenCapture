@@ -139,7 +139,9 @@ class VideoRecorderApp:
             backend=GUIRecordingBackend()
         )
         self._websocket_manager = WebSocketManager()
-        self._websocket_manager.attach_event_bus(self._recording_service.event_bus)
+        self._websocket_manager.attach_event_bus(
+            self._recording_service.event_bus
+        )
         self._gui_executor: _MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
 
@@ -833,7 +835,9 @@ class VideoRecorderApp:
             if section_name in data:
                 section_data = data[section_name]
                 if isinstance(section_data, dict):
-                    current_section = getattr(config.settings, section_name, None)
+                    current_section = getattr(
+                        config.settings, section_name, None
+                    )
                     if current_section:
                         for key, value in section_data.items():
                             if hasattr(current_section, key):
@@ -845,7 +849,8 @@ class VideoRecorderApp:
                             section_name == "api"
                             and self._api_server
                             and any(
-                                k in section_data for k in ["host", "port", "enabled"]
+                                k in section_data
+                                for k in ["host", "port", "enabled"]
                             )
                         ):
                             restart_required.append("api")

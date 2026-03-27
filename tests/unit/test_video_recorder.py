@@ -57,7 +57,9 @@ class TestCaptureArea:
 
     def test_full_screen(self) -> None:
         """Проверка создания области полного экрана."""
-        with patch("recorder.video_recorder.get_available_monitors") as mock_monitors:
+        with patch(
+            "recorder.video_recorder.get_available_monitors"
+        ) as mock_monitors:
             mock_monitors.return_value = [
                 {"index": 0, "width": 1920, "height": 1080, "is_primary": True}
             ]
@@ -69,10 +71,22 @@ class TestCaptureArea:
 
     def test_full_screen_with_monitor_index(self) -> None:
         """Проверка создания области полного экрана с индексом монитора."""
-        with patch("recorder.video_recorder.get_available_monitors") as mock_monitors:
+        with patch(
+            "recorder.video_recorder.get_available_monitors"
+        ) as mock_monitors:
             mock_monitors.return_value = [
-                {"index": 0, "width": 1920, "height": 1080, "is_primary": True},
-                {"index": 1, "width": 2560, "height": 1440, "is_primary": False},
+                {
+                    "index": 0,
+                    "width": 1920,
+                    "height": 1080,
+                    "is_primary": True,
+                },
+                {
+                    "index": 1,
+                    "width": 2560,
+                    "height": 1440,
+                    "is_primary": False,
+                },
             ]
             area = CaptureArea.full_screen(monitor_index=1)
 
@@ -154,7 +168,9 @@ class TestCaptureArea:
             patch(
                 "recorder.video_recorder.get_available_windows"
             ) as mock_windows,
-            patch("recorder.video_recorder.get_available_monitors") as mock_monitors,
+            patch(
+                "recorder.video_recorder.get_available_monitors"
+            ) as mock_monitors,
         ):
             mock_windows.return_value = []
             mock_monitors.return_value = [

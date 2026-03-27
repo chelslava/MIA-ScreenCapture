@@ -7,7 +7,6 @@ Unit тесты для TrayIcon
 Примечание: PyQt6 мокируется в conftest.py для всех тестов.
 """
 
-
 import pytest
 
 
@@ -29,12 +28,15 @@ class TestTrayIconBasics:
 class TestTrayIconMenu:
     """Параметризованные тесты меню трея."""
 
-    @pytest.mark.parametrize("menu_item", [
-        "start_recording",
-        "stop_recording",
-        "show_window",
-        "exit",
-    ])
+    @pytest.mark.parametrize(
+        "menu_item",
+        [
+            "start_recording",
+            "stop_recording",
+            "show_window",
+            "exit",
+        ],
+    )
     def test_menu_has_item(self, menu_item: str) -> None:
         """Проверка наличия пункта меню."""
         menu_items = [
@@ -61,12 +63,15 @@ class TestTrayIconMenu:
 class TestTrayIconActions:
     """Параметризованные тесты действий трея."""
 
-    @pytest.mark.parametrize("action,callback", [
-        ("start", "on_start_recording"),
-        ("stop", "on_stop_recording"),
-        ("show", "on_show_window"),
-        ("exit", "on_exit"),
-    ])
+    @pytest.mark.parametrize(
+        "action,callback",
+        [
+            ("start", "on_start_recording"),
+            ("stop", "on_stop_recording"),
+            ("show", "on_show_window"),
+            ("exit", "on_exit"),
+        ],
+    )
     def test_action_has_callback(self, action: str, callback: str) -> None:
         """Проверка соответствия действия и callback."""
         action_callback_map = {
@@ -81,11 +86,14 @@ class TestTrayIconActions:
 class TestTrayIconTooltip:
     """Параметризованные тесты подсказки трея."""
 
-    @pytest.mark.parametrize("tooltip_text,expected_content", [
-        ("MIA-ScreenCapture - Запись экрана", "MIA"),
-        ("MIA-ScreenCapture - Готов", "Готов"),
-        ("MIA-ScreenCapture - Запись...", "Запись"),
-    ])
+    @pytest.mark.parametrize(
+        "tooltip_text,expected_content",
+        [
+            ("MIA-ScreenCapture - Запись экрана", "MIA"),
+            ("MIA-ScreenCapture - Готов", "Готов"),
+            ("MIA-ScreenCapture - Запись...", "Запись"),
+        ],
+    )
     def test_tooltip_contains_content(
         self, tooltip_text: str, expected_content: str
     ) -> None:
@@ -96,12 +104,15 @@ class TestTrayIconTooltip:
 class TestTrayIconStates:
     """Параметризованные тесты состояний иконки."""
 
-    @pytest.mark.parametrize("state,icon_type", [
-        ("idle", "normal"),
-        ("recording", "active"),
-        ("paused", "paused"),
-        ("error", "error"),
-    ])
+    @pytest.mark.parametrize(
+        "state,icon_type",
+        [
+            ("idle", "normal"),
+            ("recording", "active"),
+            ("paused", "paused"),
+            ("error", "error"),
+        ],
+    )
     def test_state_icon_mapping(self, state: str, icon_type: str) -> None:
         """Проверка соответствия состояния и типа иконки."""
         state_icon_map = {
@@ -116,11 +127,14 @@ class TestTrayIconStates:
 class TestTrayIconNotifications:
     """Параметризованные тесты уведомлений трея."""
 
-    @pytest.mark.parametrize("notification_type,title_contains", [
-        ("recording_started", "начата"),
-        ("recording_stopped", "остановлена"),
-        ("error", "Ошибка"),
-    ])
+    @pytest.mark.parametrize(
+        "notification_type,title_contains",
+        [
+            ("recording_started", "начата"),
+            ("recording_stopped", "остановлена"),
+            ("error", "Ошибка"),
+        ],
+    )
     def test_notification_titles(
         self, notification_type: str, title_contains: str
     ) -> None:
@@ -130,7 +144,10 @@ class TestTrayIconNotifications:
             "recording_stopped": "Запись остановлена",
             "error": "Ошибка",
         }
-        assert title_contains.lower() in notification_titles[notification_type].lower()
+        assert (
+            title_contains.lower()
+            in notification_titles[notification_type].lower()
+        )
 
     @pytest.mark.parametrize("duration", [1000, 3000, 5000])
     def test_notification_duration_positive(self, duration: int) -> None:
@@ -141,10 +158,13 @@ class TestTrayIconNotifications:
 class TestTrayIconDoubleClick:
     """Параметризованные тесты двойного клика по иконке."""
 
-    @pytest.mark.parametrize("action,trigger", [
-        ("show_window", "double_click"),
-        ("toggle_recording", "double_click"),
-    ])
+    @pytest.mark.parametrize(
+        "action,trigger",
+        [
+            ("show_window", "double_click"),
+            ("toggle_recording", "double_click"),
+        ],
+    )
     def test_double_click_actions(self, action: str, trigger: str) -> None:
         """Проверка действий при двойном клике."""
         assert trigger == "double_click"
@@ -153,10 +173,13 @@ class TestTrayIconDoubleClick:
 class TestTrayIconVisibility:
     """Параметризованные тесты видимости иконки."""
 
-    @pytest.mark.parametrize("visible,expected", [
-        (True, True),
-        (False, False),
-    ])
+    @pytest.mark.parametrize(
+        "visible,expected",
+        [
+            (True, True),
+            (False, False),
+        ],
+    )
     def test_icon_visibility(self, visible: bool, expected: bool) -> None:
         """Проверка видимости иконки."""
         assert visible == expected
@@ -171,12 +194,15 @@ class TestTrayIconVisibility:
 class TestTrayIconCallbacks:
     """Параметризованные тесты обратных вызовов."""
 
-    @pytest.mark.parametrize("callback_name", [
-        "on_start",
-        "on_stop",
-        "on_show",
-        "on_exit",
-    ])
+    @pytest.mark.parametrize(
+        "callback_name",
+        [
+            "on_start",
+            "on_stop",
+            "on_show",
+            "on_exit",
+        ],
+    )
     def test_valid_callback_names(self, callback_name: str) -> None:
         """Проверка имён callback-функций."""
         valid_callbacks = ["on_start", "on_stop", "on_show", "on_exit"]
@@ -186,11 +212,14 @@ class TestTrayIconCallbacks:
 class TestTrayIconCleanup:
     """Параметризованные тесты очистки ресурсов."""
 
-    @pytest.mark.parametrize("cleanup_action", [
-        "remove_icon",
-        "remove_menu",
-        "disconnect_signals",
-    ])
+    @pytest.mark.parametrize(
+        "cleanup_action",
+        [
+            "remove_icon",
+            "remove_menu",
+            "disconnect_signals",
+        ],
+    )
     def test_cleanup_actions(self, cleanup_action: str) -> None:
         """Проверка действий очистки."""
         valid_actions = ["remove_icon", "remove_menu", "disconnect_signals"]
@@ -217,11 +246,14 @@ class TestTrayIconContext:
 class TestTrayIconEnabledState:
     """Параметризованные тесты включённого/выключенного состояния."""
 
-    @pytest.mark.parametrize("state,enabled_count,disabled_count", [
-        ("idle", 3, 1),
-        ("recording", 3, 1),
-        ("paused", 3, 1),
-    ])
+    @pytest.mark.parametrize(
+        "state,enabled_count,disabled_count",
+        [
+            ("idle", 3, 1),
+            ("recording", 3, 1),
+            ("paused", 3, 1),
+        ],
+    )
     def test_menu_items_enabled_count(
         self, state: str, enabled_count: int, disabled_count: int
     ) -> None:
@@ -230,10 +262,13 @@ class TestTrayIconEnabledState:
         assert enabled_count >= 0
         assert disabled_count >= 0
 
-    @pytest.mark.parametrize("is_recording,start_enabled,stop_enabled", [
-        (False, True, False),  # idle: start доступен, stop недоступен
-        (True, False, True),   # recording: start недоступен, stop доступен
-    ])
+    @pytest.mark.parametrize(
+        "is_recording,start_enabled,stop_enabled",
+        [
+            (False, True, False),  # idle: start доступен, stop недоступен
+            (True, False, True),  # recording: start недоступен, stop доступен
+        ],
+    )
     def test_menu_items_enabled_by_recording_state(
         self, is_recording: bool, start_enabled: bool, stop_enabled: bool
     ) -> None:
@@ -247,11 +282,14 @@ class TestTrayIconEnabledState:
 class TestTrayIconPlatformSpecific:
     """Параметризованные тесты платформо-зависимого поведения."""
 
-    @pytest.mark.parametrize("platform,supports_notifications", [
-        ("windows", True),
-        ("linux", True),
-        ("macos", True),
-    ])
+    @pytest.mark.parametrize(
+        "platform,supports_notifications",
+        [
+            ("windows", True),
+            ("linux", True),
+            ("macos", True),
+        ],
+    )
     def test_platform_notification_support(
         self, platform: str, supports_notifications: bool
     ) -> None:

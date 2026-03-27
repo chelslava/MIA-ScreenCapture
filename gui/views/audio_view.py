@@ -5,7 +5,6 @@
 Компонент UI для настройки источников аудио.
 """
 
-
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup,

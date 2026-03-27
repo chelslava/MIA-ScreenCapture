@@ -167,7 +167,9 @@ class RecordingState:
                 "is_recording": self.status == RecordingStatus.RECORDING,
                 "is_paused": self.status == RecordingStatus.PAUSED,
                 "elapsed_time": self.elapsed_time,
-                "current_output": str(self.current_output) if self.current_output else None,
+                "current_output": str(self.current_output)
+                if self.current_output
+                else None,
             }
 
     def set_elapsed_time(self, elapsed: float) -> None:

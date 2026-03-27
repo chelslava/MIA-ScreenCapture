@@ -66,7 +66,9 @@ class APIServerObservability:
             self._status_counts[status_key] = (
                 self._status_counts.get(status_key, 0) + 1
             )
-            self._method_counts[method] = self._method_counts.get(method, 0) + 1
+            self._method_counts[method] = (
+                self._method_counts.get(method, 0) + 1
+            )
             self._path_counts[path] = self._path_counts.get(path, 0) + 1
             self._latency_ms.append(latency_ms)
 
@@ -82,7 +84,9 @@ class APIServerObservability:
         lower = int(index)
         upper = min(lower + 1, len(sorted_values) - 1)
         weight = index - lower
-        return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
+        return (
+            sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
+        )
 
     def _latency_stats(self) -> dict[str, float | int]:
         samples = sorted(self._latency_ms)
@@ -127,7 +131,9 @@ class APIServerObservability:
         )[:10]
         latency = self._latency_stats()
         resources = self._resource_stats()
-        requests_per_second = round(requests_total / uptime, 6) if uptime else 0.0
+        requests_per_second = (
+            round(requests_total / uptime, 6) if uptime else 0.0
+        )
         error_rate_percent = (
             round((errors_total / requests_total) * 100.0, 6)
             if requests_total
@@ -143,7 +149,9 @@ class APIServerObservability:
             "error_rate_percent": error_rate_percent,
             "status_codes": status_counts,
             "methods": method_counts,
-            "top_paths": [{"path": path, "count": count} for path, count in top_paths],
+            "top_paths": [
+                {"path": path, "count": count} for path, count in top_paths
+            ],
             "latency_ms": latency,
             "resources": resources,
             "generated_at": datetime.now(UTC).isoformat(),

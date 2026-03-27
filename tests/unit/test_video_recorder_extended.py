@@ -20,7 +20,9 @@ class TestCaptureAreaExtended:
         """Проверка создания области полного экрана."""
         with patch(
             "recorder.video_recorder.get_available_monitors",
-            return_value=[{"index": 0, "width": 1920, "height": 1080, "is_primary": True}],
+            return_value=[
+                {"index": 0, "width": 1920, "height": 1080, "is_primary": True}
+            ],
         ):
             area = CaptureArea.full_screen()
 
@@ -59,8 +61,20 @@ class TestCaptureAreaExtended:
     def test_capture_area_from_window_found(self) -> None:
         """Проверка создания области из найденного окна."""
         mock_windows = [
-            {"title": "Browser", "x": 0, "y": 0, "width": 1920, "height": 1080},
-            {"title": "Editor", "x": 100, "y": 100, "width": 800, "height": 600},
+            {
+                "title": "Browser",
+                "x": 0,
+                "y": 0,
+                "width": 1920,
+                "height": 1080,
+            },
+            {
+                "title": "Editor",
+                "x": 100,
+                "y": 100,
+                "width": 800,
+                "height": 600,
+            },
         ]
 
         with patch(
@@ -76,7 +90,13 @@ class TestCaptureAreaExtended:
     def test_capture_area_from_window_partial_match(self) -> None:
         """Проверка создания области при частичном совпадении заголовка."""
         mock_windows = [
-            {"title": "Google Chrome - Page", "x": 0, "y": 0, "width": 1920, "height": 1080},
+            {
+                "title": "Google Chrome - Page",
+                "x": 0,
+                "y": 0,
+                "width": 1920,
+                "height": 1080,
+            },
         ]
 
         with patch(
@@ -92,12 +112,22 @@ class TestCaptureAreaExtended:
         """Проверка создания области когда окно не найдено."""
         mock_windows = []
 
-        with patch(
-            "recorder.video_recorder.get_available_windows",
-            return_value=mock_windows,
-        ), patch(
-            "recorder.video_recorder.get_available_monitors",
-            return_value=[{"index": 0, "width": 1920, "height": 1080, "is_primary": True}],
+        with (
+            patch(
+                "recorder.video_recorder.get_available_windows",
+                return_value=mock_windows,
+            ),
+            patch(
+                "recorder.video_recorder.get_available_monitors",
+                return_value=[
+                    {
+                        "index": 0,
+                        "width": 1920,
+                        "height": 1080,
+                        "is_primary": True,
+                    }
+                ],
+            ),
         ):
             area = CaptureArea.from_window("NonExistent")
 
@@ -137,7 +167,9 @@ class TestVideoRecorderInit:
 
     def test_init_custom_params(self) -> None:
         """Проверка пользовательских параметров."""
-        recorder = VideoRecorder(fps=60, codec="h264", bitrate="5M", output_format="avi")
+        recorder = VideoRecorder(
+            fps=60, codec="h264", bitrate="5M", output_format="avi"
+        )
 
         assert recorder.fps == 60
         assert recorder.codec == "h264"
@@ -478,7 +510,9 @@ class TestCaptureAreaEdgeCases:
 
     def test_window_title_with_special_chars(self) -> None:
         """Проверка с спецсимволами в заголовке окна."""
-        area = CaptureArea(type="window", window_title="Window - Test (1) [HD]")
+        area = CaptureArea(
+            type="window", window_title="Window - Test (1) [HD]"
+        )
 
         assert area.window_title == "Window - Test (1) [HD]"
 

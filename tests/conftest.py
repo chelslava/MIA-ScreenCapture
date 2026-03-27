@@ -300,6 +300,7 @@ MockQScrollArea = _create_mock_class("QScrollArea", (MockQWidgetBase,))
 MockQSplitter = _create_mock_class("QSplitter", (MockQWidgetBase,))
 MockQFrame = _create_mock_class("QFrame", (MockQWidgetBase,))
 
+
 # Layout mocks - с методами setContentsMargins, addWidget и т.д.
 class MockQVBoxLayoutBase:
     """Базовый mock для QVBoxLayout с необходимыми методами."""

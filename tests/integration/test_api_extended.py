@@ -460,7 +460,9 @@ class TestAPIConfigExtended:
         self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки ошибки при обновлении конфигурации."""
-        mock_callbacks["update_config"].side_effect = RuntimeError("Update error")
+        mock_callbacks["update_config"].side_effect = RuntimeError(
+            "Update error"
+        )
 
         request_data = {"video": {"fps": 30}}
 
@@ -576,12 +578,12 @@ class TestAPIAuthenticationExtended:
             response = client.get("/api/status")
             assert response.status_code == 200
 
-    def test_key_in_different_headers(
-        self, unauth_client: FlaskClient
-    ):
+    def test_key_in_different_headers(self, unauth_client: FlaskClient):
         """Проверка что ключ работает только в правильном заголовке."""
         # Ключ в неправильном заголовке
-        unauth_client.environ_base["HTTP_AUTHORIZATION"] = f"Bearer {TEST_API_KEY}"
+        unauth_client.environ_base["HTTP_AUTHORIZATION"] = (
+            f"Bearer {TEST_API_KEY}"
+        )
         response = unauth_client.get("/api/status")
         assert response.status_code == 401
 
@@ -692,9 +694,7 @@ class TestAPIHealthEndpoint:
         response = unauth_client.get("/health")
         assert response.status_code == 200
 
-    def test_health_endpoint_response_format(
-        self, unauth_client: FlaskClient
-    ):
+    def test_health_endpoint_response_format(self, unauth_client: FlaskClient):
         """Проверка формата ответа health эндпоинта."""
         response = unauth_client.get("/health")
         data = response.get_json()
@@ -854,6 +854,10 @@ class TestAPIStartRecordingExtended:
         for bitrate in bitrates:
             request_data = {"bitrate": bitrate}
             response = client.post(
-                "/api/start", json=request_data, content_type="application/json"
+                "/api/start",
+                json=request_data,
+                content_type="application/json",
             )
-            assert response.status_code == 200, f"Failed for bitrate: {bitrate}"
+            assert response.status_code == 200, (
+                f"Failed for bitrate: {bitrate}"
+            )

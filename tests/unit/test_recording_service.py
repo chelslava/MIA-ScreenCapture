@@ -139,7 +139,11 @@ class TestRecordingService:
     def test_normalize_internal_keys(self) -> None:
         service = RecordingService(backend=FakeBackend())
         normalized = service._normalize_params(
-            {"area_type": "rect", "rect_coords": [1, 2, 3, 4], "audio_type": "mic"}
+            {
+                "area_type": "rect",
+                "rect_coords": [1, 2, 3, 4],
+                "audio_type": "mic",
+            }
         )
 
         assert normalized["area"] == "rect"

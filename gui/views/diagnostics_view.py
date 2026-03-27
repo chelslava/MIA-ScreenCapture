@@ -44,7 +44,9 @@ class DiagnosticsView(QWidget):
         # Scroll area для проверок
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
 
         self._checks_widget = QWidget()
         self._checks_layout = QVBoxLayout(self._checks_widget)
@@ -85,9 +87,7 @@ class DiagnosticsView(QWidget):
 
         layout.addLayout(buttons_layout)
 
-    def _create_check_group(
-        self, title: str, description: str
-    ) -> QGroupBox:
+    def _create_check_group(self, title: str, description: str) -> QGroupBox:
         group = QGroupBox(title)
         group_layout = QVBoxLayout(group)
 
@@ -140,7 +140,9 @@ class DiagnosticsView(QWidget):
         self._update_group_status(
             self._audio_group,
             audio_ok,
-            f"Найдено устройств: {audio_count}" if audio_ok else "Нет устройств",
+            f"Найдено устройств: {audio_count}"
+            if audio_ok
+            else "Нет устройств",
         )
 
         # Проверка API

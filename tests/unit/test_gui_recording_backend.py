@@ -36,7 +36,9 @@ def test_start_maps_core_types_to_gui_controller_types() -> None:
             rect_coords=(1, 2, 3, 4),
         ),
         audio=AudioRequest(mode=AudioMode.BOTH, mic_device_index=7),
-        video=VideoRequest(fps=60, codec="libx264", bitrate="5M", format="mp4"),
+        video=VideoRequest(
+            fps=60, codec="libx264", bitrate="5M", format="mp4"
+        ),
         duration=30,
     )
 
@@ -97,7 +99,9 @@ def test_start_recording_already_recording() -> None:
             rect_coords=(0, 0, 0, 0),
         ),
         audio=AudioRequest(mode=AudioMode.NONE),
-        video=VideoRequest(fps=30, codec="libx264", bitrate="2M", format="mp4"),
+        video=VideoRequest(
+            fps=30, codec="libx264", bitrate="2M", format="mp4"
+        ),
     )
 
     assert result == (False, "Запись уже идёт")

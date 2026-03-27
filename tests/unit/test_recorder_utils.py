@@ -234,10 +234,13 @@ class TestGetScreenSize:
 
     def test_screen_size(self):
         """Проверка получения размера экрана."""
-        with patch("recorder.utils.get_platform", return_value="windows"), patch(
-            "ctypes.windll.user32.GetSystemMetrics",
-            side_effect=[1920, 1080],
-            create=True,
+        with (
+            patch("recorder.utils.get_platform", return_value="windows"),
+            patch(
+                "ctypes.windll.user32.GetSystemMetrics",
+                side_effect=[1920, 1080],
+                create=True,
+            ),
         ):
             width, height = get_screen_size()
 
@@ -441,8 +444,9 @@ class TestGetAllMonitors:
 
     def test_get_all_monitors_success(self):
         """Проверка получения списка мониторов."""
-        with patch("recorder.utils.get_platform", return_value="linux"), patch(
-            "recorder.utils.get_screen_size", return_value=(1920, 1080)
+        with (
+            patch("recorder.utils.get_platform", return_value="linux"),
+            patch("recorder.utils.get_screen_size", return_value=(1920, 1080)),
         ):
             monitors = get_all_monitors()
 
@@ -452,11 +456,15 @@ class TestGetAllMonitors:
 
     def test_get_all_monitors_error(self):
         """Проверка обработки ошибки при получении мониторов."""
-        with patch("recorder.utils.get_platform", return_value="windows"), patch(
-            "ctypes.WINFUNCTYPE",
-            side_effect=Exception("win32 error"),
-            create=True,
-        ), patch("recorder.utils.get_screen_size", return_value=(1920, 1080)):
+        with (
+            patch("recorder.utils.get_platform", return_value="windows"),
+            patch(
+                "ctypes.WINFUNCTYPE",
+                side_effect=Exception("win32 error"),
+                create=True,
+            ),
+            patch("recorder.utils.get_screen_size", return_value=(1920, 1080)),
+        ):
             monitors = get_all_monitors()
 
             assert len(monitors) == 1

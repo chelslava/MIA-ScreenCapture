@@ -126,9 +126,7 @@ def _normalize_error_payload(
 
     error_value = data.get("error")
     message = (
-        data.get("message")
-        if isinstance(data.get("message"), str)
-        else None
+        data.get("message") if isinstance(data.get("message"), str) else None
     )
 
     if status_code == 400 and "validation_errors" in data:
@@ -489,7 +487,9 @@ def register_routes(app, server) -> None:
                 limit = int(limit_raw)
             except ValueError:
                 return _error_response(
-                    400, "validation_error", "Параметр limit должен быть числом"
+                    400,
+                    "validation_error",
+                    "Параметр limit должен быть числом",
                 )
 
             manager = server.get_websocket_manager()
