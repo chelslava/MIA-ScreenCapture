@@ -340,7 +340,7 @@ class TestCaptureAreaIntegration:
             # Координаты должны быть упорядочены
             mock_validate.return_value = (50, 50, 500, 400)
 
-            area = CaptureArea.from_rect(500, 400, 50, 50)
+            CaptureArea.from_rect(500, 400, 50, 50)
 
             # validate_rect_coords должен быть вызван
             mock_validate.assert_called_once()
@@ -399,7 +399,7 @@ class TestRecordingFlowIntegration:
         from gui.controllers.recording_controller import RecordingController
 
         controller = RecordingController()
-        output_path = temp_output_dir / "full_test.mp4"
+        temp_output_dir / "full_test.mp4"
 
         # Проверка что контроллер инициализирован корректно
         assert controller._video_recorder is None
@@ -578,7 +578,7 @@ class TestRecordingPerformance:
             consumed = 0
             while consumed < 100:
                 try:
-                    frame = frame_queue.get(timeout=1)
+                    frame_queue.get(timeout=1)
                     consumed += 1
                 except queue.Empty:
                     break

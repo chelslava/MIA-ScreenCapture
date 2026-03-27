@@ -60,7 +60,7 @@ class TestCaptureViewInit:
                 {"title": "Window 1"},
                 {"title": "Window 2"},
             ]
-            view = CaptureView()
+            CaptureView()
             # Проверяем, что метод был вызван
             assert mock_windows.called
 
@@ -284,7 +284,7 @@ class TestAudioViewInit:
                     {"name": "Mic 2", "id": 1},
                 ]
             }
-            view = AudioView()
+            AudioView()
             assert mock_devices.called
 
 

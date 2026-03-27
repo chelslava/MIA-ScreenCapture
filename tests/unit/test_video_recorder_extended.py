@@ -295,26 +295,26 @@ class TestVideoRecorderCodecSelection:
 
     def test_get_opencv_codec_libx264(self) -> None:
         """Проверка получения OpenCV кодека для libx264."""
-        recorder = VideoRecorder(codec="libx264")
+        VideoRecorder(codec="libx264")
 
         # libx264 -> mp4v в карте кодеков
         assert VideoRecorder.CODEC_MAP["libx264"] == "mp4v"
 
     def test_get_opencv_codec_h264(self) -> None:
         """Проверка получения OpenCV кодека для h264."""
-        recorder = VideoRecorder(codec="h264")
+        VideoRecorder(codec="h264")
 
         assert VideoRecorder.CODEC_MAP["h264"] == "mp4v"
 
     def test_get_opencv_codec_xvid(self) -> None:
         """Проверка получения OpenCV кодека для xvid."""
-        recorder = VideoRecorder(codec="xvid")
+        VideoRecorder(codec="xvid")
 
         assert VideoRecorder.CODEC_MAP["xvid"] == "XVID"
 
     def test_get_opencv_codec_avc1(self) -> None:
         """Проверка получения OpenCV кодека для avc1."""
-        recorder = VideoRecorder(codec="avc1")
+        VideoRecorder(codec="avc1")
 
         assert VideoRecorder.CODEC_MAP["avc1"] == "H264"
 

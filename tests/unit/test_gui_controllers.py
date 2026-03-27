@@ -74,7 +74,7 @@ class TestRecordingController:
             "gui.controllers.recording_controller.CaptureArea.from_window"
         ) as mock:
             mock.return_value = MagicMock()
-            area = controller.build_capture_area(capture)
+            controller.build_capture_area(capture)
             mock.assert_called_once_with("Test Window")
 
     def test_build_capture_area_rectangle(
@@ -90,7 +90,7 @@ class TestRecordingController:
             "gui.controllers.recording_controller.CaptureArea.from_rect"
         ) as mock:
             mock.return_value = MagicMock()
-            area = controller.build_capture_area(capture)
+            controller.build_capture_area(capture)
             mock.assert_called_once_with(100, 100, 500, 400)
 
     @patch("gui.controllers.recording_controller.RecordingEncoder")
