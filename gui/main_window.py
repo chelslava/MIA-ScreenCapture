@@ -628,6 +628,7 @@ class MainWindow(QMainWindow):
             config.settings.output.default_path = folder
             config.save()
             self._run_diagnostics()
+            self._run_diagnostics()
 
     def start_recording_with_params(self, params: dict) -> dict:
         """

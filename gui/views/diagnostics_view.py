@@ -84,10 +84,15 @@ class DiagnosticsView(QWidget):
         buttons_layout.addStretch()
 
         self._recheck_btn = QPushButton("Проверить снова")
-        self._recheck_btn.clicked.connect(self.recheck_requested)
+        self._recheck_btn.clicked.connect(self._on_recheck_clicked)
         buttons_layout.addWidget(self._recheck_btn)
 
         layout.addLayout(buttons_layout)
+
+    def _on_recheck_clicked(self) -> None:
+        """Обработка нажатия кнопки проверки."""
+        logger.info("Кнопка 'Проверить снова' нажата")
+        self.recheck_requested.emit()
 
     def _create_check_group(self, title: str, description: str) -> QGroupBox:
         group = QGroupBox(title)
