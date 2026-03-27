@@ -31,6 +31,7 @@ class VideoView(QWidget):
     - Выбор кодека
     - Выбор битрейта
     - Выбор формата
+    - Выбор preset (скорость кодирования)
     """
 
     # Сигналы
@@ -38,6 +39,7 @@ class VideoView(QWidget):
     codec_changed = pyqtSignal(str)
     bitrate_changed = pyqtSignal(str)
     format_changed = pyqtSignal(str)
+    preset_changed = pyqtSignal(str)
     settings_changed = pyqtSignal(VideoSettings)
 
     def __init__(self, parent: QWidget | None = None):
@@ -85,6 +87,25 @@ class VideoView(QWidget):
         self._format_combo.addItems(["mp4", "avi", "mkv"])
         group_layout.addWidget(self._format_combo, 1, 3)
 
+        # Preset (скорость кодирования)
+        group_layout.addWidget(QLabel("Скорость кодирования:"), 2, 0)
+        self._preset_combo = QComboBox()
+        self._preset_combo.addItems(
+            [
+                "ultrafast (максимальная скорость)",
+                "superfast",
+                "veryfast",
+                "faster",
+                "fast",
+                "medium (по умолчанию)",
+                "slow",
+                "slower",
+                "veryslow (максимальное качество)",
+            ]
+        )
+        self._preset_combo.setCurrentIndex(5)  # medium
+        group_layout.addWidget(self._preset_combo, 2, 1, 1, 3)
+
         # Подключение сигналов
         self._fps_spin.valueChanged.connect(self._on_fps_changed)
         self._codec_combo.currentTextChanged.connect(self._on_codec_changed)
@@ -92,6 +113,7 @@ class VideoView(QWidget):
             self._on_bitrate_changed
         )
         self._format_combo.currentTextChanged.connect(self._on_format_changed)
+        self._preset_combo.currentIndexChanged.connect(self._on_preset_changed)
 
         layout.addWidget(group)
 
@@ -115,6 +137,28 @@ class VideoView(QWidget):
         self.format_changed.emit(value)
         self._emit_settings()
 
+    def _on_preset_changed(self, index: int) -> None:
+        """Обработка изменения preset."""
+        preset = self._get_preset_value()
+        self.preset_changed.emit(preset)
+        self._emit_settings()
+
+    def _get_preset_value(self) -> str:
+        """Получение значения preset из выпадающего списка."""
+        presets = [
+            "ultrafast",
+            "superfast",
+            "veryfast",
+            "faster",
+            "fast",
+            "medium",
+            "slow",
+            "slower",
+            "veryslow",
+        ]
+        index = self._preset_combo.currentIndex()
+        return presets[index] if 0 <= index < len(presets) else "medium"
+
     def _emit_settings(self) -> None:
         """Отправка сигнала с текущими настройками."""
         settings = VideoSettings(
@@ -122,6 +166,7 @@ class VideoView(QWidget):
             codec=self._codec_combo.currentText(),
             bitrate=self._bitrate_combo.currentText(),
             format=self._format_combo.currentText(),
+            preset=self._get_preset_value(),
         )
         self.settings_changed.emit(settings)
 
@@ -161,6 +206,15 @@ class VideoView(QWidget):
         """
         return self._format_combo.currentText()
 
+    def get_preset(self) -> str:
+        """
+        Получить выбранный preset.
+
+        Returns:
+            Значение preset
+        """
+        return self._get_preset_value()
+
     def get_settings(self) -> VideoSettings:
         """
         Получить текущие настройки видео.
@@ -173,6 +227,7 @@ class VideoView(QWidget):
             codec=self.get_codec(),
             bitrate=self.get_bitrate(),
             format=self.get_format(),
+            preset=self.get_preset(),
         )
 
     def set_fps(self, fps: int) -> None:
@@ -221,6 +276,27 @@ class VideoView(QWidget):
         if index >= 0:
             self._format_combo.setCurrentIndex(index)
 
+    def set_preset(self, preset: str) -> None:
+        """
+        Установить preset.
+
+        Args:
+            preset: Значение preset
+        """
+        presets = [
+            "ultrafast",
+            "superfast",
+            "veryfast",
+            "faster",
+            "fast",
+            "medium",
+            "slow",
+            "slower",
+            "veryslow",
+        ]
+        if preset in presets:
+            self._preset_combo.setCurrentIndex(presets.index(preset))
+
     def set_settings(self, settings: VideoSettings) -> None:
         """
         Установить все настройки видео.
@@ -232,3 +308,5 @@ class VideoView(QWidget):
         self.set_codec(settings.codec)
         self.set_bitrate(settings.bitrate)
         self.set_format(settings.format)
+        if hasattr(settings, "preset"):
+            self.set_preset(settings.preset)

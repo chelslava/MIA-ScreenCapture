@@ -33,6 +33,25 @@ class VideoSettingsSchema(BaseModel):
     bitrate: str = Field(default="2M")
     format: str = Field(default="mp4")
     compression: bool = Field(default=True)
+    preset: str = Field(default="medium")
+
+    @field_validator("preset")
+    @classmethod
+    def validate_preset(cls, v: str) -> str:
+        valid_presets = (
+            "ultrafast",
+            "superfast",
+            "veryfast",
+            "faster",
+            "fast",
+            "medium",
+            "slow",
+            "slower",
+            "veryslow",
+        )
+        if v not in valid_presets:
+            raise ValueError(f"preset должен быть одним из: {valid_presets}")
+        return v
 
     @field_validator("bitrate")
     @classmethod
@@ -145,6 +164,7 @@ class VideoSettings:
     bitrate: str = "2M"
     format: str = "mp4"
     compression: bool = True
+    preset: str = "medium"
 
 
 @dataclass

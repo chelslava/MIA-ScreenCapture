@@ -105,8 +105,9 @@ class RecordingController:
         """
         try:
             # Настройка кодировщика
+            preset = getattr(video, "preset", "medium")
             settings = EncodingSettings(
-                codec=video.codec, bitrate=video.bitrate
+                codec=video.codec, bitrate=video.bitrate, preset=preset
             )
             self._encoder = RecordingEncoder(output_path, settings)
             self._temp_video, self._temp_audio = self._encoder.setup()

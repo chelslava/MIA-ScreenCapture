@@ -53,6 +53,7 @@ class VideoSettings:
     codec: str = "libx264"
     bitrate: str = "2M"
     format: str = "mp4"
+    preset: str = "medium"
 
 
 @dataclass
