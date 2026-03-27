@@ -1,6 +1,8 @@
-# MIA-ScreenCapture v1.3.0
+# MIA-ScreenCapture v1.4.0
 
 Профессиональная программа для записи видео с экрана с графическим интерфейсом, REST API, планировщиком задач и поддержкой командной строки.
+
+**⚠️ Платформа: Windows 10/11 только** — проект использует Windows Graphics Capture API.
 
 ## Возможности
 
@@ -11,11 +13,12 @@
   - Список последних записей
   - Иконка в системном трее
 
-- **REST API** для удаленного управления
+- **REST API v1** для удаленного управления
   - Запуск/остановка/пауза записи
   - Получение статуса
   - Управление планировщиком
-  - Получение recent event-ленты для real-time интеграций
+  - API versioning (`/api/v1/*`)
+  - Валидация через Pydantic
 
 - **Планировщик задач** на базе APScheduler
   - Одноразовые задачи
@@ -27,11 +30,13 @@
   - Запуск записи с параметрами
   - Остановка записи
   - Получение статуса
+  - CRUD для планировщика
 
 ## Требования
 
-- Python 3.9+
-- FFmpeg (должен быть в PATH)
+- **Python 3.11+** (проект требует 3.11 и выше)
+- **Windows 10/11** (Windows Graphics Capture API)
+- **FFmpeg** (должен быть в PATH)
 - [UV](https://docs.astral.sh/uv/) — быстрый менеджер пакетов (рекомендуется)
 
 ## Установка
@@ -270,6 +275,8 @@ uv run python main.py --headless
 
 API сервер запускается по адресу `http://127.0.0.1:5000`
 
+**API Versioning:** Все endpoints доступны с префиксом `/api/v1/`. Legacy endpoints (`/api/*`) сохранены для обратной совместимости.
+
 ### Health
 
 #### GET /health
@@ -279,8 +286,8 @@ API сервер запускается по адресу `http://127.0.0.1:5000
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-03-23T18:12:34.567890+00:00",
-  "version": "1.3.0",
+  "timestamp": "2026-03-27T18:12:34.567890+00:00",
+  "version": "1.4.0",
   "uptime_seconds": 123.456,
   "websocket": {
     "transport_ready": false
@@ -288,9 +295,9 @@ API сервер запускается по адресу `http://127.0.0.1:5000
 }
 ```
 
-### Эндпоинты
+### Эндпоинты v1
 
-#### GET /api/status
+#### GET /api/v1/status
 Получить текущий статус записи.
 
 **Ответ:**
@@ -412,24 +419,24 @@ API сервер запускается по адресу `http://127.0.0.1:5000
 
 Начать запись:
 ```bash
-curl -X POST http://localhost:5000/api/start \
+curl -X POST http://localhost:5000/api/v1/start \
   -H "Content-Type: application/json" \
   -d '{"area":"full", "audio":"mic", "fps":30}'
 ```
 
 Остановить запись:
 ```bash
-curl -X POST http://localhost:5000/api/stop
+curl -X POST http://localhost:5000/api/v1/stop
 ```
 
 Получить статус:
 ```bash
-curl http://localhost:5000/api/status
+curl http://localhost:5000/api/v1/status
 ```
 
 Создать задачу планировщика:
 ```bash
-curl -X POST http://localhost:5000/api/schedule \
+curl -X POST http://localhost:5000/api/v1/schedule \
   -H "Content-Type: application/json" \
   -d '{
     "trigger": "cron",
@@ -483,12 +490,12 @@ MIA-ScreenCapture/
 
 ### Компоненты
 
-1. **VideoRecorder** - захват экрана с помощью MSS и запись через OpenCV
-2. **AudioRecorder** - захват звука через sounddevice/pyaudio
+1. **VideoRecorder** - захват экрана с помощью Windows Graphics Capture (`windows-capture` библиотека)
+2. **AudioRecorder** - захват звука через sounddevice
 3. **Encoder** - объединение видео и аудио через FFmpeg
 4. **MainWindow** - главное окно приложения на PyQt6
 5. **TrayIcon** - иконка в системном трее
-6. **APIServer** - REST API сервер на Flask
+6. **APIServer** - REST API сервер на Flask с versioning
 7. **TaskScheduler** - планировщик задач на APScheduler
 
 ## Логирование
@@ -522,17 +529,18 @@ MIA-ScreenCapture/
 
 ## Известные ограничения
 
-1. **Системный звук**:
+1. **Платформа**: Windows 10/11 только (Windows Graphics Capture API)
+
+2. **Системный звук**:
    - Windows: Требует наличия устройства "Stereo Mix" или loopback
-   - Linux: Требует PulseAudio monitor
-   - macOS: Требует виртуальное аудиоустройство (BlackHole, Soundflower)
 
-2. **Захват окон**:
-   - Требует дополнительные библиотеки для некоторых платформ
+3. **Захват окон**:
+   - Работает с большинством приложений Windows
+   - Некоторые защищённые окна (DRM контент) не захватываются
 
-3. **Кодирование**:
-   - OpenCV поддерживает ограниченный набор кодеков
-   - Для полного функционала требуется FFmpeg
+4. **Кодирование**:
+   - OpenCV используется для предварительной записи
+   - FFmpeg применяется для финального кодирования
 
 ## Решение проблем
 
