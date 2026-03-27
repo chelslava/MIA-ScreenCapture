@@ -143,4 +143,4 @@ uv.lock
 .ruff_cache/
 
 # Plans and documentation (внутренние документы)
-plans/
+# plans/

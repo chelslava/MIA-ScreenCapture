@@ -17,9 +17,7 @@ from core.recording_state import (
     VideoSettings,
 )
 from core.recording_types import (
-    AudioMode,
     AudioRequest,
-    CaptureMode,
     CaptureRequest,
     VideoRequest,
 )

@@ -26,12 +26,12 @@ from core.lifecycle import (
 )
 from core.recording_state import (
     AudioSettings,
+    CaptureSettings,
     OutputSettings,
     RecentRecording,
     RecordingState,
     RecordingStatus,
     VideoSettings,
-    CaptureSettings,
 )
 from core.recording_types import (
     AudioMode,
