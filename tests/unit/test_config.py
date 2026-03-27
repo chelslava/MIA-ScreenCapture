@@ -254,7 +254,7 @@ class TestConfigManager:
                 Path(src).read_text(encoding="utf-8"), encoding="utf-8"
             )
 
-        monkeypatch.setattr("config.os.replace", fake_replace)
+        monkeypatch.setattr("utils.os.replace", fake_replace)
 
         assert manager.save() is True
         assert replace_calls
@@ -273,7 +273,7 @@ class TestConfigManager:
         def failing_replace(src, dst):
             raise OSError("replace failed")
 
-        monkeypatch.setattr("config.os.replace", failing_replace)
+        monkeypatch.setattr("utils.os.replace", failing_replace)
 
         assert manager.save() is False
         assert json.loads(temp_config_file.read_text(encoding="utf-8")) == {
