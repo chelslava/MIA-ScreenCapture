@@ -953,7 +953,7 @@ def handle_subscribe(data):
 | T-2.7 | Исправить _update_config | v1.3.3 | 2h | ✅ Выполнено |
 | T-2.8 | Thread safety RecordingState | v1.3.3 | 3h | ✅ Выполнено |
 | T-2.9 | Исправить версию в CLI | v1.3.3 | 1h | ✅ Выполнено |
-| T-3.1 | Package entry point | v1.4.0 | 8h | ❌ |
+| T-3.1 | Package entry point | v1.4.0 | 8h | ✅ Выполнено |
 | T-3.8 | CI gates | v1.4.0 | 4h | ✅ Выполнено |
 | T-4.1 | WebSocket Transport | v1.5.0 | 8h | ❌ |
 
@@ -981,7 +981,7 @@ def handle_subscribe(data):
 | T-2.3 | Preview ближайших запусков | v1.3.2 | 4h | ✅ Выполнено |
 | T-2.4 | Шаблоны расписаний | v1.3.2 | 4h | ✅ Выполнено |
 | T-2.5 | Validation feedback | v1.3.2 | 4h | ⚠️ Частично |
-| T-3.6 | GUI диагностика | v1.4.0 | 8h | ❌ |
+| T-3.6 | GUI диагностика | v1.4.0 | 8h | ✅ Выполнено |
 | T-3.9 | Снизить warnings | v1.4.0 | 4h | ❌ |
 | T-4.4 | Post-recording flow | v1.5.0 | 8h | ❌ |
 | T-4.5 | Библиотека записей | v1.5.0 | 8h | ❌ |
