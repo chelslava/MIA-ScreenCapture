@@ -862,6 +862,6 @@ def register_routes(app, server) -> None:
     @require_api_key
     def legacy_toggle_pause():
         """Legacy endpoint для обратной совместимости."""
-        return toggle_pause()
+        return pause_recording()
 
     logger.info("Маршруты API зарегистрированы (v1 + legacy)")

@@ -360,22 +360,23 @@ class TestMainWindowAudioSettings:
 
     def test_default_audio_settings(self) -> None:
         """Проверка настроек аудио по умолчанию."""
-        from gui.models.recording_state import AudioSettings, AudioType
+        from core.recording_types import AudioMode
+        from gui.models.recording_state import AudioSettings
 
         settings = AudioSettings()
 
-        assert settings.audio_type == AudioType.NONE
+        assert settings.audio_type == AudioMode.NONE
         assert settings.mic_device_index is None
 
     @pytest.mark.parametrize(
         "audio_type",
-        ["NONE", "MICROPHONE", "SYSTEM", "BOTH"],
+        ["NONE", "MIC", "SYSTEM", "BOTH"],
     )
     def test_audio_type_enum(self, audio_type: str) -> None:
         """Проверка типов источников аудио."""
-        from gui.models.recording_state import AudioType
+        from core.recording_types import AudioMode
 
-        assert hasattr(AudioType, audio_type)
+        assert hasattr(AudioMode, audio_type)
 
 
 class TestMainWindowCaptureSettings:
@@ -383,36 +384,39 @@ class TestMainWindowCaptureSettings:
 
     def test_default_capture_settings(self) -> None:
         """Проверка настроек захвата по умолчанию."""
-        from gui.models.recording_state import CaptureSettings, CaptureType
+        from core.recording_types import CaptureMode
+        from gui.models.recording_state import CaptureSettings
 
         settings = CaptureSettings()
 
-        assert settings.capture_type == CaptureType.FULL_SCREEN
+        assert settings.capture_type == CaptureMode.FULL
         assert settings.window_title == ""
         assert settings.rect_coords == (0, 0, 1920, 1080)
 
     def test_window_capture_settings(self) -> None:
         """Проверка настроек захвата окна."""
-        from gui.models.recording_state import CaptureSettings, CaptureType
+        from core.recording_types import CaptureMode
+        from gui.models.recording_state import CaptureSettings
 
         settings = CaptureSettings(
-            capture_type=CaptureType.WINDOW,
+            capture_type=CaptureMode.WINDOW,
             window_title="Chrome",
         )
 
-        assert settings.capture_type == CaptureType.WINDOW
+        assert settings.capture_type == CaptureMode.WINDOW
         assert settings.window_title == "Chrome"
 
     def test_rectangle_capture_settings(self) -> None:
         """Проверка настроек захвата области."""
-        from gui.models.recording_state import CaptureSettings, CaptureType
+        from core.recording_types import CaptureMode
+        from gui.models.recording_state import CaptureSettings
 
         settings = CaptureSettings(
-            capture_type=CaptureType.RECTANGLE,
+            capture_type=CaptureMode.RECT,
             rect_coords=(100, 100, 800, 600),
         )
 
-        assert settings.capture_type == CaptureType.RECTANGLE
+        assert settings.capture_type == CaptureMode.RECT
         assert settings.rect_coords == (100, 100, 800, 600)
 
 

@@ -193,7 +193,7 @@ class CreateScheduleRequest(BaseModel):
                             "Дни недели должны быть от 0 (Пн) до 6 (Вс)"
                         )
             except ValueError as e:
-                raise ValueError(f"Некорректный формат дней недели: {e}")
+                raise ValueError(f"Некорректный формат дней недели: {e}") from e
         return v
 
     @field_validator("cron_expression")
@@ -269,9 +269,10 @@ class UpdateScheduleRequest(BaseModel):
     @classmethod
     def validate_time(cls, v: str | None) -> str | None:
         """Валидация формата времени."""
-        if v is not None:
-            if not re.match(r"^([01]?[0-9]|2[0-3]):([0-5][0-9])$", v):
-                raise ValueError("time должен быть в формате HH:MM")
+        if v is not None and not re.match(
+            r"^([01]?[0-9]|2[0-3]):([0-5][0-9])$", v
+        ):
+            raise ValueError("time должен быть в формате HH:MM")
         return v
 
 
