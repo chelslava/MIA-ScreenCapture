@@ -800,11 +800,77 @@ class VideoRecorderApp:
         return asdict(config.settings)
 
     def _update_config(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Обновление конфигурации."""
+        """
+        Обновление конфигурации.
+
+        Поддерживает обновление вложенных секций (video, audio, capture, output, api, scheduler).
+        Некоторые изменения требуют перезапуска соответствующих компонентов.
+        """
+        from config import (
+            APISettings,
+            AudioSettings,
+            CaptureSettings,
+            OutputSettings,
+            SchedulerSettings,
+            VideoSettings,
+        )
+
         config = get_config()
-        # Здесь было бы обновление
+        restart_required: list[str] = []
+        updated_sections: list[str] = []
+
+        # Обновление вложенных секций
+        section_classes = {
+            "video": VideoSettings,
+            "audio": AudioSettings,
+            "capture": CaptureSettings,
+            "output": OutputSettings,
+            "api": APISettings,
+            "scheduler": SchedulerSettings,
+        }
+
+        for section_name, _section_class in section_classes.items():
+            if section_name in data:
+                section_data = data[section_name]
+                if isinstance(section_data, dict):
+                    current_section = getattr(config.settings, section_name, None)
+                    if current_section:
+                        for key, value in section_data.items():
+                            if hasattr(current_section, key):
+                                setattr(current_section, key, value)
+                        updated_sections.append(section_name)
+
+                        # Проверка, нужен ли перезапуск
+                        if (
+                            section_name == "api"
+                            and self._api_server
+                            and any(
+                                k in section_data for k in ["host", "port", "enabled"]
+                            )
+                        ):
+                            restart_required.append("api")
+
+        # Обновление простых полей
+        simple_fields = ["minimize_to_tray", "show_notifications", "language"]
+        for field_name in simple_fields:
+            if field_name in data:
+                setattr(config.settings, field_name, data[field_name])
+                updated_sections.append(field_name)
+
+        # Сохранение
         config.save()
-        return {"success": True}
+
+        # Уведомление о требуемом перезапуске
+        if restart_required:
+            logger.warning(
+                f"Для применения изменений требуется перезапуск: {', '.join(restart_required)}"
+            )
+
+        return {
+            "success": True,
+            "updated_sections": updated_sections,
+            "restart_required": restart_required,
+        }
 
     # Вспомогательные методы GUI
 

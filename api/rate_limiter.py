@@ -45,6 +45,11 @@ class ClientState:
     last_hour_reset: float = 0.0
     last_burst_reset: float = 0.0
     blocked_until: float = 0.0
+    last_activity: float = 0.0  # Время последней активности
+
+
+# Время жизни неактивного клиента (2 часа)
+CLIENT_TTL_SECONDS = 7200
 
 
 class InMemoryRateLimiter:
@@ -67,6 +72,7 @@ class InMemoryRateLimiter:
         self.config = config or RateLimitConfig()
         self._clients: dict[str, ClientState] = defaultdict(ClientState)
         self._lock = Lock()
+        self._last_cleanup = time.time()
 
     def _get_client_ip(self) -> str:
         """Получение IP-адреса клиента."""
@@ -104,6 +110,38 @@ class InMemoryRateLimiter:
             state.hour_count = 0
             state.last_hour_reset = current_time
 
+    def _cleanup_inactive_clients(self) -> int:
+        """
+        Удаление неактивных клиентов для предотвращения memory leak.
+
+        Returns:
+            Количество удалённых клиентов
+        """
+        current_time = time.time()
+        removed = 0
+
+        # Периодическая очистка (раз в 10 минут)
+        if current_time - self._last_cleanup < 600:
+            return 0
+
+        self._last_cleanup = current_time
+
+        # Удаление клиентов без активности более CLIENT_TTL_SECONDS
+        inactive_ips = [
+            ip
+            for ip, state in self._clients.items()
+            if current_time - state.last_activity > CLIENT_TTL_SECONDS
+        ]
+
+        for ip in inactive_ips:
+            del self._clients[ip]
+            removed += 1
+
+        if removed > 0:
+            logger.info(f"Cleaned up {removed} inactive rate limit clients")
+
+        return removed
+
     def check_rate_limit(self) -> tuple[bool, dict | None]:
         """
         Проверка ограничения частоты для текущего запроса.
@@ -121,8 +159,14 @@ class InMemoryRateLimiter:
             return True, None
 
         with self._lock:
+            # Периодическая очистка неактивных клиентов
+            self._cleanup_inactive_clients()
+
             state = self._clients[client_ip]
             current_time = time.time()
+
+            # Обновление времени последней активности
+            state.last_activity = current_time
 
             # Проверка блокировки
             if current_time < state.blocked_until:
