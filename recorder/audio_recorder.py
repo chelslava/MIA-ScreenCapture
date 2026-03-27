@@ -10,10 +10,10 @@ import queue
 import threading
 import time
 import wave
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, List, Optional
 
 from logger_config import get_module_logger
 from recorder.utils import get_audio_devices, get_platform
@@ -37,7 +37,7 @@ class AudioConfig:
     sample_rate: int = 44100
     channels: int = 2
     chunk_size: int = 1024
-    device_index: Optional[int] = None
+    device_index: int | None = None
 
 
 class AudioRecorder:
@@ -70,13 +70,13 @@ class AudioRecorder:
         self._state = AudioState.IDLE
         self._lock = threading.Lock()
         self._audio_queue: queue.Queue = queue.Queue()
-        self._record_thread: Optional[threading.Thread] = None
+        self._record_thread: threading.Thread | None = None
 
         # Информация о записи
-        self._output_path: Optional[Path] = None
+        self._output_path: Path | None = None
         self._audio_interface = None
         self._audio_stream = None
-        self._wave_file: Optional[wave.Wave_write] = None
+        self._wave_file: wave.Wave_write | None = None
 
         # Статистика
         self._start_time: float = 0
@@ -85,7 +85,7 @@ class AudioRecorder:
         self._frames_recorded: int = 0
 
         # Обратные вызовы
-        self._on_error: Optional[Callable] = None
+        self._on_error: Callable | None = None
 
         # Информация о платформе
         self._platform = get_platform()
@@ -116,11 +116,11 @@ class AudioRecorder:
         return max(0, elapsed)
 
     @property
-    def output_path(self) -> Optional[Path]:
+    def output_path(self) -> Path | None:
         """Получение текущего пути вывода."""
         return self._output_path
 
-    def set_callbacks(self, on_error: Optional[Callable] = None) -> None:
+    def set_callbacks(self, on_error: Callable | None = None) -> None:
         """
         Установка функций обратного вызова.
 
@@ -130,7 +130,7 @@ class AudioRecorder:
         self._on_error = on_error
 
     @staticmethod
-    def get_available_devices() -> List[dict]:
+    def get_available_devices() -> list[dict]:
         """
         Получение списка доступных устройств ввода аудио.
 
@@ -143,8 +143,8 @@ class AudioRecorder:
     def start(
         self,
         output_path: Path,
-        device_index: Optional[int] = None,
-        duration: Optional[float] = None,
+        device_index: int | None = None,
+        duration: float | None = None,
     ) -> bool:
         """
         Начало аудиозаписи.

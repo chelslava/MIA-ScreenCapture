@@ -7,7 +7,6 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
@@ -40,7 +39,7 @@ class OutputView(QWidget):
     output_path_changed = pyqtSignal(str)
     browse_requested = pyqtSignal()
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         """
         Инициализация представления.
 

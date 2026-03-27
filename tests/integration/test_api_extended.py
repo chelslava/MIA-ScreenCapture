@@ -6,7 +6,6 @@
 """
 
 from datetime import datetime, timedelta
-from typing import Dict
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,9 +13,9 @@ from flask import Flask
 from flask.testing import FlaskClient
 
 from api.auth import init_api_auth
+from api.rate_limiter import RateLimitConfig, init_rate_limiter
 from api.routes import register_routes
 from api.server import APIServer
-from api.rate_limiter import RateLimitConfig, init_rate_limiter
 
 # Тестовый API ключ для интеграционных тестов
 TEST_API_KEY = "test-api-key-for-integration-tests-12345"
@@ -38,7 +37,7 @@ def assert_error_contract(response, expected_code: str):
 
 
 @pytest.fixture
-def mock_callbacks() -> Dict[str, MagicMock]:
+def mock_callbacks() -> dict[str, MagicMock]:
     """
     Создание mock функций обратного вызова.
 
@@ -122,7 +121,7 @@ def mock_callbacks() -> Dict[str, MagicMock]:
 
 
 @pytest.fixture
-def test_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
+def test_app(mock_callbacks: dict[str, MagicMock]) -> Flask:
     """
     Создание тестового Flask приложения.
 
@@ -150,7 +149,7 @@ def test_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
 
 
 @pytest.fixture
-def rate_limited_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
+def rate_limited_app(mock_callbacks: dict[str, MagicMock]) -> Flask:
     """Создание приложения с низким лимитом для проверки 429."""
     server = APIServer(host="127.0.0.1", port=5009)
     init_api_auth(server.app, api_key=TEST_API_KEY)
@@ -212,7 +211,7 @@ class TestAPIScheduleValidation:
     """Тесты валидации параметров планировщика."""
 
     def test_create_schedule_invalid_trigger(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка валидации некорректного типа триггера."""
         request_data = {
@@ -230,7 +229,7 @@ class TestAPIScheduleValidation:
         assert data["success"] is False
 
     def test_create_schedule_missing_required_fields(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка валидации отсутствующих обязательных полей."""
         request_data = {
@@ -247,7 +246,7 @@ class TestAPIScheduleValidation:
         assert data["success"] is False
 
     def test_create_schedule_past_datetime(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка валидации даты в прошлом."""
         past_datetime = (datetime.now() - timedelta(hours=1)).isoformat()
@@ -267,7 +266,7 @@ class TestAPIScheduleValidation:
         assert response.status_code in [200, 400]
 
     def test_create_schedule_invalid_time_format(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка валидации некорректного формата времени."""
         request_data = {
@@ -284,7 +283,7 @@ class TestAPIScheduleValidation:
         assert response.status_code == 400
 
     def test_create_schedule_invalid_day_of_week(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка валидации некорректного дня недели."""
         request_data = {
@@ -306,7 +305,7 @@ class TestAPIScheduleUpdate:
     """Тесты обновления задач планировщика."""
 
     def test_update_schedule_task(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обновления задачи."""
         request_data = {
@@ -326,7 +325,7 @@ class TestAPIScheduleUpdate:
         mock_callbacks["update_schedule"].assert_called_once()
 
     def test_update_schedule_not_found(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обновления несуществующей задачи."""
         mock_callbacks["update_schedule"].return_value = {
@@ -351,7 +350,7 @@ class TestAPIDevicesExtended:
     """Расширенные тесты для эндпоинта /api/devices."""
 
     def test_devices_empty_input_list(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка получения пустого списка входных устройств."""
         mock_callbacks["devices"].return_value = {
@@ -366,7 +365,7 @@ class TestAPIDevicesExtended:
         assert data["data"]["input"] == []
 
     def test_devices_empty_output_list(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка получения пустого списка выходных устройств."""
         mock_callbacks["devices"].return_value = {
@@ -381,7 +380,7 @@ class TestAPIDevicesExtended:
         assert data["data"]["output"] == []
 
     def test_devices_callback_error(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки ошибки при получении устройств."""
         mock_callbacks["devices"].side_effect = RuntimeError("Device error")
@@ -395,7 +394,7 @@ class TestAPIWindowsExtended:
     """Расширенные тесты для эндпоинта /api/windows."""
 
     def test_windows_empty_list(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка получения пустого списка окон."""
         mock_callbacks["windows"].return_value = {"windows": []}
@@ -407,7 +406,7 @@ class TestAPIWindowsExtended:
         assert data["data"]["windows"] == []
 
     def test_windows_callback_error(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки ошибки при получении окон."""
         mock_callbacks["windows"].side_effect = RuntimeError("Window error")
@@ -421,7 +420,7 @@ class TestAPIConfigExtended:
     """Расширенные тесты для эндпоинтов конфигурации."""
 
     def test_config_update_partial(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка частичного обновления конфигурации."""
         request_data = {"video": {"fps": 60}}
@@ -435,7 +434,7 @@ class TestAPIConfigExtended:
         assert data["success"] is True
 
     def test_config_update_invalid_value(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обновления конфигурации с некорректным значением."""
         request_data = {"video": {"fps": 500}}  # Превышает максимум
@@ -448,7 +447,7 @@ class TestAPIConfigExtended:
         assert response.status_code in [200, 400]
 
     def test_config_get_error(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки ошибки при получении конфигурации."""
         mock_callbacks["get_config"].side_effect = RuntimeError("Config error")
@@ -458,7 +457,7 @@ class TestAPIConfigExtended:
         assert response.status_code == 500
 
     def test_config_update_error(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки ошибки при обновлении конфигурации."""
         mock_callbacks["update_config"].side_effect = RuntimeError("Update error")
@@ -476,7 +475,7 @@ class TestAPIRequestHandling:
     """Тесты обработки запросов."""
 
     def test_request_with_missing_content_type(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запроса без Content-Type."""
         response = client.post("/api/start", data="{}")
@@ -485,7 +484,7 @@ class TestAPIRequestHandling:
         assert response.status_code in [200, 400, 415, 500]
 
     def test_request_with_empty_body(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запроса с пустым телом."""
         response = client.post(
@@ -497,7 +496,7 @@ class TestAPIRequestHandling:
         assert response.status_code in [200, 400, 500]
 
     def test_request_with_extra_fields(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запроса с дополнительными полями."""
         request_data = {
@@ -518,7 +517,7 @@ class TestAPICallbackErrors:
     """Тесты обработки ошибок callback функций."""
 
     def test_start_callback_exception(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки исключения в start callback."""
         mock_callbacks["start"].side_effect = RuntimeError("Start failed")
@@ -536,7 +535,7 @@ class TestAPICallbackErrors:
         assert data["error"]["details"] is None
 
     def test_stop_callback_exception(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки исключения в stop callback."""
         mock_callbacks["stop"].side_effect = RuntimeError("Stop failed")
@@ -546,7 +545,7 @@ class TestAPICallbackErrors:
         assert response.status_code == 500
 
     def test_pause_callback_exception(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки исключения в pause callback."""
         mock_callbacks["pause"].side_effect = RuntimeError("Pause failed")
@@ -556,7 +555,7 @@ class TestAPICallbackErrors:
         assert response.status_code == 500
 
     def test_status_callback_exception(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки исключения в status callback."""
         mock_callbacks["status"].side_effect = RuntimeError("Status failed")
@@ -570,7 +569,7 @@ class TestAPIAuthenticationExtended:
     """Расширенные тесты аутентификации API."""
 
     def test_multiple_requests_same_key(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка нескольких запросов с одним ключом."""
         for _ in range(5):
@@ -603,7 +602,7 @@ class TestAPIRateLimiting:
     """Тесты rate limiting (если реализован)."""
 
     def test_multiple_rapid_requests(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка множественных быстрых запросов."""
         # Делаем много запросов быстро
@@ -618,7 +617,7 @@ class TestAPIRateLimiting:
     def test_config_update_rate_limited(
         self,
         rate_limited_client: FlaskClient,
-        mock_callbacks: Dict[str, MagicMock],
+        mock_callbacks: dict[str, MagicMock],
     ) -> None:
         """Проверка 429 на повторном PUT /api/config."""
         request_data = {"video": {"fps": 60}}
@@ -717,7 +716,7 @@ class TestAPIErrorResponses:
     """Тесты формата ошибок."""
 
     def test_error_response_format(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка формата ответа с ошибкой."""
         mock_callbacks["start"].return_value = {
@@ -736,7 +735,7 @@ class TestAPIErrorResponses:
         assert "error" in data
 
     def test_validation_error_format(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка формата ошибки валидации."""
         request_data = {"fps": 500}  # Превышает максимум
@@ -757,7 +756,7 @@ class TestAPIStartRecordingExtended:
     """Расширенные тесты запуска записи."""
 
     def test_start_with_all_params(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запуска со всеми параметрами."""
         request_data = {
@@ -780,7 +779,7 @@ class TestAPIStartRecordingExtended:
         assert data["success"] is True
 
     def test_start_with_window_area(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запуска с захватом окна."""
         request_data = {
@@ -795,7 +794,7 @@ class TestAPIStartRecordingExtended:
         assert response.status_code == 200
 
     def test_start_with_audio_both(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запуска с обоими источниками аудио."""
         request_data = {
@@ -809,7 +808,7 @@ class TestAPIStartRecordingExtended:
         assert response.status_code == 200
 
     def test_start_with_audio_none(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запуска без аудио."""
         request_data = {
@@ -823,7 +822,7 @@ class TestAPIStartRecordingExtended:
         assert response.status_code == 200
 
     def test_start_with_minimum_fps(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запуска с минимальным FPS."""
         request_data = {"fps": 1}
@@ -835,7 +834,7 @@ class TestAPIStartRecordingExtended:
         assert response.status_code == 200
 
     def test_start_with_maximum_fps(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запуска с максимальным FPS."""
         request_data = {"fps": 120}
@@ -847,7 +846,7 @@ class TestAPIStartRecordingExtended:
         assert response.status_code == 200
 
     def test_start_with_various_bitrates(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запуска с различными битрейтами."""
         bitrates = ["500K", "1M", "2M", "5M", "10M", "5000K"]

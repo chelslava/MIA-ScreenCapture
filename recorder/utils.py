@@ -11,7 +11,7 @@ import platform
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from logger_config import get_module_logger
 
@@ -35,7 +35,7 @@ def get_platform() -> str:
     return system
 
 
-def check_ffmpeg() -> Tuple[bool, Optional[str]]:
+def check_ffmpeg() -> tuple[bool, str | None]:
     """
     Проверка доступности FFmpeg в системном PATH.
 
@@ -66,7 +66,7 @@ def check_ffmpeg() -> Tuple[bool, Optional[str]]:
     return False, None
 
 
-def get_ffmpeg_path() -> Optional[str]:
+def get_ffmpeg_path() -> str | None:
     """
     Получение пути к исполняемому файлу FFmpeg.
 
@@ -76,7 +76,7 @@ def get_ffmpeg_path() -> Optional[str]:
     return shutil.which("ffmpeg")
 
 
-def get_available_windows() -> List[Dict[str, Any]]:
+def get_available_windows() -> list[dict[str, Any]]:
     """
     Получение списка всех видимых окон с их заголовками и позициями.
 
@@ -100,7 +100,7 @@ def get_available_windows() -> List[Dict[str, Any]]:
     return windows
 
 
-def _get_windows_windows() -> List[Dict[str, Any]]:
+def _get_windows_windows() -> list[dict[str, Any]]:
     """
     Получение окон на платформе Windows с использованием win32gui.
 
@@ -154,7 +154,7 @@ def _get_windows_windows() -> List[Dict[str, Any]]:
     return windows
 
 
-def _get_linux_windows() -> List[Dict[str, Any]]:
+def _get_linux_windows() -> list[dict[str, Any]]:
     """
     Получение окон на платформе Linux с использованием xlib или wmctrl.
 
@@ -188,7 +188,7 @@ def _get_linux_windows() -> List[Dict[str, Any]]:
     return windows
 
 
-def _get_macos_windows() -> List[Dict[str, Any]]:
+def _get_macos_windows() -> list[dict[str, Any]]:
     """
     Получение окон на macOS с использованием pygetwindow или AppleScript.
 
@@ -217,14 +217,14 @@ def _get_macos_windows() -> List[Dict[str, Any]]:
     return windows
 
 
-def get_audio_devices() -> Dict[str, List[Dict[str, Any]]]:
+def get_audio_devices() -> dict[str, list[dict[str, Any]]]:
     """
     Получение доступных устройств ввода и вывода аудио.
 
     Returns:
         Словарь со списками 'input' и 'output' информации об устройствах
     """
-    devices: Dict[str, List[Dict[str, Any]]] = {"input": [], "output": []}
+    devices: dict[str, list[dict[str, Any]]] = {"input": [], "output": []}
 
     try:
         import sounddevice as sd
@@ -277,7 +277,7 @@ def get_audio_devices() -> Dict[str, List[Dict[str, Any]]]:
     return devices
 
 
-def get_screen_size() -> Tuple[int, int]:
+def get_screen_size() -> tuple[int, int]:
     """
     Получение размера основного экрана.
 
@@ -302,7 +302,7 @@ def get_screen_size() -> Tuple[int, int]:
     return 1920, 1080  # Значение по умолчанию
 
 
-def get_all_monitors() -> List[Dict[str, int]]:
+def get_all_monitors() -> list[dict[str, int]]:
     """
     Получение информации о всех подключенных мониторах.
 
@@ -314,7 +314,7 @@ def get_all_monitors() -> List[Dict[str, int]]:
         width, height = get_screen_size()
         return [{"id": 1, "x": 0, "y": 0, "width": width, "height": height}]
 
-    monitors: List[Dict[str, int]] = []
+    monitors: list[dict[str, int]] = []
     try:
         import ctypes
         from ctypes import wintypes
@@ -363,7 +363,7 @@ def get_all_monitors() -> List[Dict[str, int]]:
     return monitors
 
 
-def get_available_monitors() -> List[Dict[str, Any]]:
+def get_available_monitors() -> list[dict[str, Any]]:
     """
     Получение списка доступных мониторов для выбора.
     
@@ -381,7 +381,7 @@ def get_available_monitors() -> List[Dict[str, Any]]:
     """
     monitors = get_all_monitors()
     result = []
-    
+
     # Определение primary монитора (обычно 0,0)
     primary_monitor = None
     for i, mon in enumerate(monitors):
@@ -397,17 +397,17 @@ def get_available_monitors() -> List[Dict[str, Any]]:
             'name': f"Monitor {i + 1}",
             'is_primary': is_primary,
         })
-    
+
     # Если не нашли primary по координатам, считаем первый primary
     if primary_monitor is None and result:
         result[0]['is_primary'] = True
-    
+
     return result
 
 
 def validate_rect_coords(
     x1: int, y1: int, x2: int, y2: int
-) -> Tuple[int, int, int, int]:
+) -> tuple[int, int, int, int]:
     """
     Проверка и нормализация координат прямоугольника.
 
@@ -546,7 +546,7 @@ class Singleton(type):
     Метакласс Singleton для обеспечения существования только одного экземпляра класса.
     """
 
-    _instances: Dict[type, Any] = {}
+    _instances: dict[type, Any] = {}
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:

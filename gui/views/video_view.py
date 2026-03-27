@@ -5,7 +5,6 @@
 Компонент UI для настройки параметров видео.
 """
 
-from typing import Optional
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
@@ -42,7 +41,7 @@ class VideoView(QWidget):
     format_changed = pyqtSignal(str)
     settings_changed = pyqtSignal(VideoSettings)
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         """
         Инициализация представления.
 

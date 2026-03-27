@@ -6,7 +6,7 @@
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from PyQt6.QtCore import QDate, Qt, QTime, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -44,7 +44,7 @@ logger = get_module_logger(__name__)
 class TaskDialog(QDialog):
     """Диалог для создания/редактирования запланированных задач."""
 
-    def __init__(self, parent=None, task: Optional[ScheduleTask] = None):
+    def __init__(self, parent=None, task: ScheduleTask | None = None):
         """
         Инициализация диалога задачи.
 
@@ -295,7 +295,7 @@ class TaskDialog(QDialog):
 
         self.fps_spin.setValue(task.params.fps)
 
-    def get_task_data(self) -> Dict[str, Any]:
+    def get_task_data(self) -> dict[str, Any]:
         """Получение данных задачи из диалога."""
         schedule_types = [
             ScheduleType.ONCE,
@@ -310,7 +310,7 @@ class TaskDialog(QDialog):
 
         # Вычисление длительности с учётом единиц измерения
         duration_spin_value = self.duration_spin.value()
-        duration_value: Optional[int] = None
+        duration_value: int | None = None
         if duration_spin_value > 0:
             # Если выбраны минуты (индекс 1), конвертируем в секунды
             if self.duration_unit_combo.currentIndex() == 1:
@@ -377,7 +377,7 @@ class SchedulerTab(QWidget):
         """Инициализация вкладки планировщика."""
         super().__init__(parent)
 
-        self._tasks: List[ScheduleTask] = []
+        self._tasks: list[ScheduleTask] = []
 
         self._setup_ui()
 
@@ -498,7 +498,7 @@ class SchedulerTab(QWidget):
         task = self._tasks[row]
         self.task_toggled.emit(task.id, not task.enabled)
 
-    def set_tasks(self, tasks: List[ScheduleTask]) -> None:
+    def set_tasks(self, tasks: list[ScheduleTask]) -> None:
         """
         Обновление списка задач.
 

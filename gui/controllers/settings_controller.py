@@ -7,7 +7,7 @@
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from config import ConfigManager, get_config
 from gui.models.recording_state import (
@@ -35,8 +35,8 @@ class SettingsController:
 
     def __init__(
         self,
-        state: Optional[RecordingState] = None,
-        config: Optional[ConfigManager] = None,
+        state: RecordingState | None = None,
+        config: ConfigManager | None = None,
     ):
         """
         Инициализация контроллера.
@@ -102,10 +102,10 @@ class SettingsController:
 
     def update_video_settings(
         self,
-        fps: Optional[int] = None,
-        codec: Optional[str] = None,
-        bitrate: Optional[str] = None,
-        format: Optional[str] = None,
+        fps: int | None = None,
+        codec: str | None = None,
+        bitrate: str | None = None,
+        format: str | None = None,
     ) -> None:
         """
         Обновить настройки видео.
@@ -127,9 +127,9 @@ class SettingsController:
 
     def update_capture_settings(
         self,
-        capture_type: Optional[CaptureType] = None,
-        window_title: Optional[str] = None,
-        rect_coords: Optional[tuple[int, int, int, int]] = None,
+        capture_type: CaptureType | None = None,
+        window_title: str | None = None,
+        rect_coords: tuple[int, int, int, int] | None = None,
     ) -> None:
         """
         Обновить настройки области захвата.
@@ -148,9 +148,9 @@ class SettingsController:
 
     def update_audio_settings(
         self,
-        audio_type: Optional[AudioType] = None,
-        mic_device_index: Optional[int] = None,
-        mic_device_name: Optional[str] = None,
+        audio_type: AudioType | None = None,
+        mic_device_index: int | None = None,
+        mic_device_name: str | None = None,
     ) -> None:
         """
         Обновить настройки аудио.
@@ -169,8 +169,8 @@ class SettingsController:
 
     def update_output_settings(
         self,
-        output_path: Optional[str] = None,
-        default_path: Optional[str] = None,
+        output_path: str | None = None,
+        default_path: str | None = None,
     ) -> None:
         """
         Обновить настройки вывода.

@@ -8,11 +8,11 @@
 
 import json
 import os
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from logger_config import get_module_logger
 
@@ -21,7 +21,7 @@ logger = get_module_logger(__name__)
 
 def _atomic_write_json(path: Path, data: Any) -> None:
     """Атомарная запись JSON в файл через временный файл в той же директории."""
-    temp_path: Optional[Path] = None
+    temp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -68,8 +68,8 @@ class AudioSettings:
 
     record_mic: bool = True
     record_system: bool = False
-    mic_device: Optional[str] = None
-    system_device: Optional[str] = None
+    mic_device: str | None = None
+    system_device: str | None = None
     sample_rate: int = 44100
     channels: int = 2
 
@@ -79,8 +79,8 @@ class CaptureSettings:
     """Настройки захвата экрана."""
 
     area_type: str = "full"  # "full", "window", "rect"
-    window_title: Optional[str] = None
-    rect_coords: Optional[List[int]] = None  # [x1, y1, x2, y2]
+    window_title: str | None = None
+    rect_coords: list[int] | None = None  # [x1, y1, x2, y2]
 
 
 @dataclass
@@ -124,7 +124,7 @@ class AppSettings:
     language: str = "en"
 
     # Недавние записи (путь, дата, размер)
-    recent_recordings: List[Dict[str, Any]] = field(default_factory=list)
+    recent_recordings: list[dict[str, Any]] = field(default_factory=list)
     max_recent_recordings: int = 20
 
 
@@ -136,7 +136,7 @@ class ConfigManager:
     с автоматическим сохранением в JSON файл.
     """
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         """
         Инициализация менеджера конфигурации.
 
@@ -162,7 +162,7 @@ class ConfigManager:
             self._settings = AppSettings()
             logger.info("Создана конфигурация по умолчанию")
 
-    def _dict_to_settings(self, data: Dict[str, Any]) -> AppSettings:
+    def _dict_to_settings(self, data: dict[str, Any]) -> AppSettings:
         """
         Преобразование словаря в dataclass AppSettings.
 
@@ -267,7 +267,7 @@ class ConfigManager:
 
         self.save()
 
-    def get_output_path(self, filename: Optional[str] = None) -> Path:
+    def get_output_path(self, filename: str | None = None) -> Path:
         """
         Получение пути вывода для записи.
 
@@ -302,7 +302,7 @@ class ConfigManager:
 
 
 # Глобальный экземпляр конфигурации
-_config: Optional[ConfigManager] = None
+_config: ConfigManager | None = None
 
 
 def get_config() -> ConfigManager:
@@ -318,7 +318,7 @@ def get_config() -> ConfigManager:
     return _config
 
 
-def init_config(config_path: Optional[Path] = None) -> ConfigManager:
+def init_config(config_path: Path | None = None) -> ConfigManager:
     """
     Инициализация глобального менеджера конфигурации.
 

@@ -12,7 +12,7 @@ import tempfile
 import time
 from collections.abc import Generator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
@@ -573,7 +573,7 @@ def temp_config_file(temp_dir: Path) -> Path:
 
 
 @pytest.fixture
-def sample_recording_params() -> Dict[str, Any]:
+def sample_recording_params() -> dict[str, Any]:
     """
     Пример параметров записи для тестов.
 
@@ -594,7 +594,7 @@ def sample_recording_params() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_schedule_task() -> Dict[str, Any]:
+def sample_schedule_task() -> dict[str, Any]:
     """
     Пример задачи планировщика для тестов.
 

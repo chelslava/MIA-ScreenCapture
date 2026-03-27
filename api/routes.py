@@ -5,9 +5,10 @@
 Определяет REST API эндпоинты для видеозаписи с валидацией через Pydantic.
 """
 
-from functools import wraps
 import uuid
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from functools import wraps
+from typing import Any
 
 from flask import g, jsonify, request
 from pydantic import ValidationError
@@ -49,7 +50,7 @@ def _get_trace_id() -> str:
 def _standard_error_payload(
     code: str,
     message: str,
-    details: Optional[Any] = None,
+    details: Any | None = None,
 ) -> dict[str, Any]:
     """Формирует единый контракт ошибки API."""
     return {
@@ -67,7 +68,7 @@ def _error_response(
     status_code: int,
     code: str,
     message: str,
-    details: Optional[Any] = None,
+    details: Any | None = None,
 ) -> tuple:
     """Создаёт JSON-ответ в едином формате ошибки API."""
     response = jsonify(_standard_error_payload(code, message, details))
@@ -87,7 +88,7 @@ def _internal_error_response() -> tuple:
     )
 
 
-def _extract_error_details(data: dict[str, Any]) -> Optional[Any]:
+def _extract_error_details(data: dict[str, Any]) -> Any | None:
     """Извлекает дополнительные детали из legacy error payload."""
     if "validation_errors" in data:
         return data["validation_errors"]

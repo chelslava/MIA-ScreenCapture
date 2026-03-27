@@ -137,7 +137,7 @@ def create_schedule(config: dict[str, Any]) -> int:
             task_data["params"].update(cli_params)
     else:
         # Формирование данных задачи без preset
-        task_data: dict[str, Any] = {
+        task_data = {
             "name": scheduler_config.get("name", "Запланированная запись"),
             "enabled": scheduler_config.get("enabled", True),
         }

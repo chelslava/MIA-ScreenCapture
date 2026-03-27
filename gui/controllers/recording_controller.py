@@ -7,7 +7,7 @@
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from core.recording_state import (
     AudioSettings,
@@ -38,7 +38,7 @@ class RecordingController:
     - Управление кодировщиком
     """
 
-    def __init__(self, state: Optional[RecordingState] = None):
+    def __init__(self, state: RecordingState | None = None):
         """
         Инициализация контроллера.
 
@@ -46,11 +46,11 @@ class RecordingController:
             state: Модель состояния записи (создаётся новая, если не указана)
         """
         self._state = state or RecordingState()
-        self._video_recorder: Optional[VideoRecorder] = None
-        self._audio_recorder: Optional[AudioRecorder] = None
-        self._encoder: Optional[RecordingEncoder] = None
-        self._temp_video: Optional[Path] = None
-        self._temp_audio: Optional[Path] = None
+        self._video_recorder: VideoRecorder | None = None
+        self._audio_recorder: AudioRecorder | None = None
+        self._encoder: RecordingEncoder | None = None
+        self._temp_video: Path | None = None
+        self._temp_audio: Path | None = None
 
     @property
     def state(self) -> RecordingState:
@@ -89,8 +89,8 @@ class RecordingController:
         capture: CaptureSettings,
         audio: AudioSettings,
         video: VideoSettings,
-        duration: Optional[int] = None,
-    ) -> tuple[bool, Optional[str]]:
+        duration: int | None = None,
+    ) -> tuple[bool, str | None]:
         """
         Запуск записи.
 
@@ -212,7 +212,7 @@ class RecordingController:
         logger.info("Запись возобновлена")
         return True
 
-    def stop_recording(self) -> Optional[Path]:
+    def stop_recording(self) -> Path | None:
         """
         Остановка записи и финализация.
 

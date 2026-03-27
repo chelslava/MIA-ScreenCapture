@@ -6,7 +6,6 @@
 """
 
 from datetime import datetime, timedelta
-from typing import Dict
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,9 +13,9 @@ from flask import Flask, jsonify
 from flask.testing import FlaskClient
 
 from api.auth import init_api_auth
+from api.rate_limiter import RateLimitConfig, init_rate_limiter
 from api.routes import register_routes
 from api.server import APIServer
-from api.rate_limiter import RateLimitConfig, init_rate_limiter
 from api.websocket import WebSocketManager
 
 # Тестовый API ключ для интеграционных тестов
@@ -39,7 +38,7 @@ def assert_error_contract(response, expected_code: str):
 
 
 @pytest.fixture
-def mock_callbacks() -> Dict[str, MagicMock]:
+def mock_callbacks() -> dict[str, MagicMock]:
     """
     Создание mock функций обратного вызова.
 
@@ -124,7 +123,7 @@ def mock_callbacks() -> Dict[str, MagicMock]:
 
 
 @pytest.fixture
-def test_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
+def test_app(mock_callbacks: dict[str, MagicMock]) -> Flask:
     """
     Создание тестового Flask приложения.
 
@@ -161,7 +160,7 @@ def test_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
 
 
 @pytest.fixture
-def rate_limited_app(mock_callbacks: Dict[str, MagicMock]) -> Flask:
+def rate_limited_app(mock_callbacks: dict[str, MagicMock]) -> Flask:
     """
     Создание Flask приложения с очень низким лимитом для теста 429.
     """
@@ -229,7 +228,7 @@ class TestAPIStatusEndpoint:
     """Тесты для эндпоинта /api/status."""
 
     def test_get_status_success(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка успешного получения статуса."""
         response = client.get("/api/status")
@@ -242,7 +241,7 @@ class TestAPIStatusEndpoint:
         mock_callbacks["status"].assert_called_once()
 
     def test_get_status_recording(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка статуса во время записи."""
         mock_callbacks["status"].return_value = {
@@ -264,7 +263,7 @@ class TestAPIStartEndpoint:
     """Тесты для эндпоинта /api/start."""
 
     def test_start_recording_default_params(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запуска записи с параметрами по умолчанию."""
         response = client.post(
@@ -277,7 +276,7 @@ class TestAPIStartEndpoint:
         mock_callbacks["start"].assert_called_once()
 
     def test_start_recording_with_params(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка запуска записи с пользовательскими параметрами."""
         request_data = {
@@ -304,7 +303,7 @@ class TestAPIStartEndpoint:
         assert call_args["fps"] == 60
 
     def test_start_recording_invalid_fps(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка валидации некорректного FPS."""
         request_data = {
@@ -327,7 +326,7 @@ class TestAPIStartEndpoint:
         assert data["error"]["code"] == "validation_error"
 
     def test_start_recording_invalid_area(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка валидации некорректной области."""
         request_data = {
@@ -343,7 +342,7 @@ class TestAPIStartEndpoint:
         assert data["success"] is False
 
     def test_start_recording_invalid_rect(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка валидации некорректных координат прямоугольника."""
         request_data = {
@@ -360,7 +359,7 @@ class TestAPIStartEndpoint:
         assert data["success"] is False
 
     def test_start_recording_invalid_bitrate(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка валидации некорректного битрейта."""
         request_data = {"bitrate": "invalid"}
@@ -378,7 +377,7 @@ class TestAPIStopEndpoint:
     """Тесты для эндпоинта /api/stop."""
 
     def test_stop_recording_success(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка успешной остановки записи."""
         response = client.post("/api/stop")
@@ -389,7 +388,7 @@ class TestAPIStopEndpoint:
         mock_callbacks["stop"].assert_called_once()
 
     def test_stop_recording_not_recording(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка остановки когда запись не активна."""
         # Примечание: API возвращает 200 даже при неудаче, проверяем success=False
@@ -410,7 +409,7 @@ class TestAPIPauseEndpoint:
     """Тесты для эндпоинта /api/pause."""
 
     def test_pause_recording_success(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка успешной паузы записи."""
         response = client.post("/api/pause")
@@ -425,7 +424,7 @@ class TestAPIRecordingsEndpoint:
     """Тесты для эндпоинта /api/recordings."""
 
     def test_get_recordings_success(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка получения списка записей."""
         response = client.get("/api/recordings")
@@ -437,7 +436,7 @@ class TestAPIRecordingsEndpoint:
         mock_callbacks["recordings"].assert_called_once()
 
     def test_get_recordings_empty(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка пустого списка записей."""
         mock_callbacks["recordings"].return_value = {"recordings": []}
@@ -513,7 +512,7 @@ class TestAPIScheduleEndpoints:
     """Тесты для эндпоинтов планировщика."""
 
     def test_get_schedule_list(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка получения списка задач."""
         response = client.get("/api/schedule")
@@ -524,7 +523,7 @@ class TestAPIScheduleEndpoints:
         mock_callbacks["get_schedule"].assert_called_once()
 
     def test_create_schedule_task_once(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка создания разовой задачи."""
         # Используем будущую дату (через 1 час от текущего времени)
@@ -547,7 +546,7 @@ class TestAPIScheduleEndpoints:
         mock_callbacks["create_schedule"].assert_called_once()
 
     def test_create_schedule_task_daily(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка создания ежедневной задачи."""
         request_data = {
@@ -566,7 +565,7 @@ class TestAPIScheduleEndpoints:
         assert data["success"] is True
 
     def test_create_schedule_task_weekly(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка создания еженедельной задачи."""
         request_data = {
@@ -586,7 +585,7 @@ class TestAPIScheduleEndpoints:
         assert data["success"] is True
 
     def test_create_schedule_task_interval(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка создания интервальной задачи."""
         request_data = {
@@ -606,7 +605,7 @@ class TestAPIScheduleEndpoints:
         assert data["success"] is True
 
     def test_delete_schedule_task(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка удаления задачи."""
         response = client.delete("/api/schedule/test-task-001")
@@ -617,7 +616,7 @@ class TestAPIScheduleEndpoints:
         mock_callbacks["delete_schedule"].assert_called_once()
 
     def test_toggle_schedule_task(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка переключения активности задачи."""
         request_data = {"enabled": False}
@@ -637,7 +636,7 @@ class TestAPIDevicesEndpoint:
     """Тесты для эндпоинта /api/devices."""
 
     def test_get_devices_success(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка получения списка устройств."""
         response = client.get("/api/devices")
@@ -655,7 +654,7 @@ class TestAPIWindowsEndpoint:
     """Тесты для эндпоинта /api/windows."""
 
     def test_get_windows_success(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка получения списка окон."""
         response = client.get("/api/windows")
@@ -672,7 +671,7 @@ class TestAPIConfigEndpoint:
     """Тесты для эндпоинтов конфигурации."""
 
     def test_get_config_success(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка получения конфигурации."""
         response = client.get("/api/config")
@@ -683,7 +682,7 @@ class TestAPIConfigEndpoint:
         mock_callbacks["get_config"].assert_called_once()
 
     def test_update_config_success(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обновления конфигурации."""
         request_data = {"video": {"fps": 60}}
@@ -762,7 +761,7 @@ class TestAPIErrorHandling:
         assert "stacktrace" not in data["error"]
 
     def test_callback_returns_error(
-        self, client: FlaskClient, mock_callbacks: Dict[str, MagicMock]
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
         """Проверка обработки ошибки от callback."""
         mock_callbacks["start"].return_value = {
@@ -903,7 +902,7 @@ class TestAPIRateLimit:
     def test_start_endpoint_returns_429_on_second_request(
         self,
         rate_limited_client: FlaskClient,
-        mock_callbacks: Dict[str, MagicMock],
+        mock_callbacks: dict[str, MagicMock],
     ) -> None:
         """Проверка 429 на повторном POST /api/start."""
         first_response = rate_limited_client.post(

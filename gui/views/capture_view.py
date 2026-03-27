@@ -5,7 +5,6 @@
 Компонент UI для выбора области захвата экрана.
 """
 
-from typing import Optional
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
@@ -44,7 +43,7 @@ class CaptureView(QWidget):
     window_selected = pyqtSignal(str)
     rect_selected = pyqtSignal(tuple)  # (x1, y1, x2, y2)
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         """
         Инициализация представления.
 
@@ -191,7 +190,7 @@ class CaptureView(QWidget):
         """
         return self._window_combo.currentText()
 
-    def get_rect_coords(self) -> Optional[tuple[int, int, int, int]]:
+    def get_rect_coords(self) -> tuple[int, int, int, int] | None:
         """
         Получить координаты прямоугольника.
 

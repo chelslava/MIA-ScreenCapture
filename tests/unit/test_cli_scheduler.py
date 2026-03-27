@@ -4,16 +4,18 @@
 Модуль содержит тесты для проверки CRUD операций планировщика через CLI.
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+
 from cli.scheduler import (
     create_schedule,
-    update_schedule,
     delete_schedule,
-    toggle_schedule,
-    preview_upcoming_runs,
-    validate_schedule_params,
     get_api_headers,
+    preview_upcoming_runs,
+    toggle_schedule,
+    update_schedule,
+    validate_schedule_params,
 )
 
 
@@ -478,6 +480,7 @@ class TestMakeApiRequest:
     ) -> None:
         """Проверка обработки ошибки соединения."""
         import requests
+
         from cli.scheduler import _make_api_request
 
         mock_get.side_effect = requests.exceptions.ConnectionError()
@@ -492,6 +495,7 @@ class TestMakeApiRequest:
     def test_make_api_request_timeout(self, mock_get: Mock) -> None:
         """Проверка обработки таймаута."""
         import requests
+
         from cli.scheduler import _make_api_request
 
         mock_get.side_effect = requests.exceptions.Timeout()

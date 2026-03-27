@@ -19,7 +19,7 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent))
@@ -83,7 +83,7 @@ class _MainThreadExecutor:
 
     def run_sync(self, fn: Any, timeout: float = 10.0) -> Any:
         done = threading.Event()
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         def wrapped() -> None:
             try:
@@ -112,7 +112,7 @@ class VideoRecorderApp:
     - Менеджер записи
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """
         Инициализация приложения.
 
@@ -123,25 +123,25 @@ class VideoRecorderApp:
         self._mode = config.get("mode", "gui")
 
         # Компоненты
-        self._app: Optional[Any] = None  # QApplication
-        self._main_window: Optional[MainWindow] = None
-        self._tray_icon: Optional[TrayIcon] = None
-        self._api_server: Optional[APIServer] = None
-        self._scheduler: Optional[TaskScheduler] = None
+        self._app: Any | None = None  # QApplication
+        self._main_window: MainWindow | None = None
+        self._tray_icon: TrayIcon | None = None
+        self._api_server: APIServer | None = None
+        self._scheduler: TaskScheduler | None = None
 
         # Состояние
         self._running = False
 
         # Graceful shutdown менеджер
-        self._shutdown_manager: Optional[GracefulShutdown] = None
+        self._shutdown_manager: GracefulShutdown | None = None
         # Headless-friendly сервис записи (используется как fallback без GUI)
         self._recording_service = RecordingService(
             backend=GUIRecordingBackend()
         )
         self._websocket_manager = WebSocketManager()
         self._websocket_manager.attach_event_bus(self._recording_service.event_bus)
-        self._gui_executor: Optional[_MainThreadExecutor] = None
-        self._gui_thread_id: Optional[int] = None
+        self._gui_executor: _MainThreadExecutor | None = None
+        self._gui_thread_id: int | None = None
 
     def _get_api_headers(self) -> dict:
         """
@@ -661,7 +661,7 @@ class VideoRecorderApp:
             raise RuntimeError("GUI executor не инициализирован")
         return self._gui_executor.run_sync(fn, timeout=timeout)
 
-    def _get_status(self) -> Dict[str, Any]:
+    def _get_status(self) -> dict[str, Any]:
         """Получение статуса записи."""
         if self._main_window:
             return self._run_on_gui_thread(
@@ -669,7 +669,7 @@ class VideoRecorderApp:
             )
         return self._recording_service.get_status()
 
-    def _start_recording(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
         """Запуск записи."""
         if self._main_window:
             return self._run_on_gui_thread(
@@ -678,7 +678,7 @@ class VideoRecorderApp:
             )
         return self._recording_service.start_recording(params)
 
-    def _stop_recording(self) -> Dict[str, Any]:
+    def _stop_recording(self) -> dict[str, Any]:
         """Остановка записи."""
         if self._main_window:
             return self._run_on_gui_thread(
@@ -686,7 +686,7 @@ class VideoRecorderApp:
             )
         return self._recording_service.stop_recording()
 
-    def _toggle_pause(self) -> Dict[str, Any]:
+    def _toggle_pause(self) -> dict[str, Any]:
         """Переключение состояния паузы."""
         if self._main_window:
             return self._run_on_gui_thread(
@@ -708,7 +708,7 @@ class VideoRecorderApp:
             return [task.to_dict() for task in self._scheduler.get_all_tasks()]
         return []
 
-    def _create_schedule(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_schedule(self, data: dict[str, Any]) -> dict[str, Any]:
         """Создание запланированной задачи."""
         if not self._scheduler:
             return {"success": False, "error": "Планировщик недоступен"}
@@ -731,7 +731,7 @@ class VideoRecorderApp:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def _delete_schedule(self, task_id: str) -> Dict[str, Any]:
+    def _delete_schedule(self, task_id: str) -> dict[str, Any]:
         """Удаление запланированной задачи."""
         if not self._scheduler:
             return {"success": False, "error": "Планировщик недоступен"}
@@ -747,7 +747,7 @@ class VideoRecorderApp:
 
         return {"success": success}
 
-    def _update_schedule(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _update_schedule(self, data: dict[str, Any]) -> dict[str, Any]:
         """Обновление запланированной задачи."""
         if not self._scheduler:
             return {"success": False, "error": "Планировщик недоступен"}
@@ -768,7 +768,7 @@ class VideoRecorderApp:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def _toggle_schedule(self, task_id: str, enabled: bool) -> Dict[str, Any]:
+    def _toggle_schedule(self, task_id: str, enabled: bool) -> dict[str, Any]:
         """Переключение запланированной задачи."""
         if not self._scheduler:
             return {"success": False, "error": "Планировщик недоступен"}
@@ -784,7 +784,7 @@ class VideoRecorderApp:
 
         return {"success": success, "enabled": enabled}
 
-    def _get_devices(self) -> Dict[str, list]:
+    def _get_devices(self) -> dict[str, list]:
         """Получение аудиоустройств."""
         return get_audio_devices()
 
@@ -792,14 +792,14 @@ class VideoRecorderApp:
         """Получение доступных окон."""
         return get_available_windows()
 
-    def _get_config(self) -> Dict[str, Any]:
+    def _get_config(self) -> dict[str, Any]:
         """Получение текущей конфигурации."""
         config = get_config()
         from dataclasses import asdict
 
         return asdict(config.settings)
 
-    def _update_config(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _update_config(self, data: dict[str, Any]) -> dict[str, Any]:
         """Обновление конфигурации."""
         config = get_config()
         # Здесь было бы обновление

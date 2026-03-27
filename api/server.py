@@ -11,13 +11,14 @@ import threading
 import time
 import uuid
 from collections import deque
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
+import psutil
 from flask import Flask, g, jsonify, request
 from flask_cors import CORS
-import psutil
 from waitress.server import create_server
 
 from logger_config import get_module_logger
@@ -38,9 +39,9 @@ class APIServerObservability:
         self._requests_total = 0
         self._requests_inflight = 0
         self._errors_total = 0
-        self._status_counts: Dict[str, int] = {}
-        self._method_counts: Dict[str, int] = {}
-        self._path_counts: Dict[str, int] = {}
+        self._status_counts: dict[str, int] = {}
+        self._method_counts: dict[str, int] = {}
+        self._path_counts: dict[str, int] = {}
         self._latency_ms = deque(maxlen=max_latency_samples)
         self._process = psutil.Process()
 
@@ -111,7 +112,7 @@ class APIServerObservability:
             "cpu_percent": round(self._process.cpu_percent(interval=None), 3),
         }
 
-    def get_metrics_snapshot(self) -> Dict[str, Any]:
+    def get_metrics_snapshot(self) -> dict[str, Any]:
         with self._lock:
             requests_total = self._requests_total
             requests_inflight = self._requests_inflight
@@ -145,10 +146,10 @@ class APIServerObservability:
             "top_paths": [{"path": path, "count": count} for path, count in top_paths],
             "latency_ms": latency,
             "resources": resources,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
         }
 
-    def get_baseline(self) -> Dict[str, Any]:
+    def get_baseline(self) -> dict[str, Any]:
         snapshot = self.get_metrics_snapshot()
         latency = snapshot["latency_ms"]
         return {
@@ -194,9 +195,9 @@ class APIServer:
         self.port = port
 
         # Flask приложение
-        self.app: Optional[Flask] = None
-        self._server_thread: Optional[threading.Thread] = None
-        self._wsgi_server: Optional[Any] = None
+        self.app: Flask | None = None
+        self._server_thread: threading.Thread | None = None
+        self._wsgi_server: Any | None = None
         self._running = False
         self._lock = threading.Lock()
         self._start_time = time.monotonic()
@@ -204,8 +205,8 @@ class APIServer:
         self._observability = APIServerObservability()
 
         # Обратные вызовы
-        self._callbacks: Dict[str, Callable] = {}
-        self._websocket_manager: Optional[Any] = None
+        self._callbacks: dict[str, Callable] = {}
+        self._websocket_manager: Any | None = None
 
         # Создание Flask приложения
         self._create_app()
@@ -293,7 +294,7 @@ class APIServer:
         """
         self._callbacks[action] = callback
 
-    def get_callback(self, action: str) -> Optional[Callable]:
+    def get_callback(self, action: str) -> Callable | None:
         """
         Получение обратного вызова для действия.
 
@@ -309,7 +310,7 @@ class APIServer:
         """Устанавливает менеджер событий для real-time уведомлений."""
         self._websocket_manager = manager
 
-    def get_websocket_manager(self) -> Optional[Any]:
+    def get_websocket_manager(self) -> Any | None:
         """Возвращает менеджер real-time уведомлений."""
         return self._websocket_manager
 
@@ -382,7 +383,7 @@ class APIServer:
         """Получение URL сервера."""
         return f"http://{self.host}:{self.port}"
 
-    def get_api_key(self) -> Optional[str]:
+    def get_api_key(self) -> str | None:
         """
         Получение текущего API ключа.
 
@@ -404,7 +405,7 @@ class APIServer:
             logger.debug(f"Не удалось прочитать версию из pyproject.toml: {e}")
         return _VERSION_FALLBACK
 
-    def _get_health_payload(self) -> Dict[str, Any]:
+    def _get_health_payload(self) -> dict[str, Any]:
         """Возвращает расширенный health payload."""
         websocket = (
             self._websocket_manager.get_stats()
@@ -413,16 +414,16 @@ class APIServer:
         )
         return {
             "status": "ok",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "version": self._version,
             "uptime_seconds": round(time.monotonic() - self._start_time, 3),
             "websocket": websocket,
         }
 
-    def get_observability_metrics(self) -> Dict[str, Any]:
+    def get_observability_metrics(self) -> dict[str, Any]:
         """Возвращает снапшот эксплуатационных метрик API."""
         return self._observability.get_metrics_snapshot()
 
-    def get_observability_baseline(self) -> Dict[str, Any]:
+    def get_observability_baseline(self) -> dict[str, Any]:
         """Возвращает baseline SLO по текущим эксплуатационным метрикам."""
         return self._observability.get_baseline()

@@ -10,9 +10,10 @@
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any
 
 from logger_config import get_module_logger
 from recorder.utils import check_ffmpeg, get_ffmpeg_path
@@ -44,7 +45,7 @@ class Encoder:
     - Конвертации между форматами
     """
 
-    def __init__(self, settings: Optional[EncodingSettings] = None):
+    def __init__(self, settings: EncodingSettings | None = None):
         """
         Инициализация кодировщика.
 
@@ -73,7 +74,7 @@ class Encoder:
             )
         return available
 
-    def _get_ffprobe_path(self) -> Optional[str]:
+    def _get_ffprobe_path(self) -> str | None:
         """Получение пути к исполняемому файлу ffprobe."""
         return shutil.which("ffprobe")
 
@@ -88,8 +89,8 @@ class Encoder:
         audio_path: Path,
         output_path: Path,
         keep_originals: bool = True,
-        progress_callback: Optional[Callable[[float], None]] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> tuple[bool, str | None]:
         """
         Объединение видеофайла и аудиофайла в один выходной файл.
 
@@ -189,9 +190,9 @@ class Encoder:
         self,
         input_path: Path,
         output_path: Path,
-        settings: Optional[EncodingSettings] = None,
-        progress_callback: Optional[Callable[[float], None]] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        settings: EncodingSettings | None = None,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> tuple[bool, str | None]:
         """
         Перекодирование видео с указанными настройками.
 
@@ -249,7 +250,7 @@ class Encoder:
         except Exception as e:
             return False, str(e)
 
-    def get_video_info(self, video_path: Path) -> Optional[Dict[str, Any]]:
+    def get_video_info(self, video_path: Path) -> dict[str, Any] | None:
         """
         Получение информации о видеофайле с использованием ffprobe.
 
@@ -286,7 +287,7 @@ class Encoder:
 
         return None
 
-    def get_duration(self, video_path: Path) -> Optional[float]:
+    def get_duration(self, video_path: Path) -> float | None:
         """
         Получение длительности видео в секундах.
 
@@ -306,7 +307,7 @@ class Encoder:
         video_path: Path,
         audio_path: Path,
         audio_codec: str = "pcm_s16le",
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Извлечение аудио из видеофайла.
 
@@ -347,7 +348,7 @@ class Encoder:
 
     def create_thumbnail(
         self, video_path: Path, output_path: Path, timestamp: float = 0
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Создание миниатюры из видео в указанной временной метке.
 
@@ -399,7 +400,7 @@ class RecordingEncoder:
     """
 
     def __init__(
-        self, output_path: Path, settings: Optional[EncodingSettings] = None
+        self, output_path: Path, settings: EncodingSettings | None = None
     ):
         """
         Инициализация кодировщика записи.
@@ -413,11 +414,11 @@ class RecordingEncoder:
         self.encoder = Encoder(settings)
 
         # Временные файлы
-        self._temp_dir: Optional[Path] = None
-        self._temp_video: Optional[Path] = None
-        self._temp_audio: Optional[Path] = None
+        self._temp_dir: Path | None = None
+        self._temp_video: Path | None = None
+        self._temp_audio: Path | None = None
 
-    def setup(self) -> Tuple[Path, Path]:
+    def setup(self) -> tuple[Path, Path]:
         """
         Настройка временных файлов для записи.
 
@@ -437,8 +438,8 @@ class RecordingEncoder:
     def finalize(
         self,
         has_audio: bool = True,
-        progress_callback: Optional[Callable[[float], None]] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> tuple[bool, str | None]:
         """
         Завершение записи объединением видео и аудио.
 

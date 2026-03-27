@@ -5,7 +5,6 @@
 Определяет иерархию кастомных исключений для приложения.
 """
 
-from typing import Optional
 
 
 class MIAError(Exception):
@@ -19,7 +18,7 @@ class MIAError(Exception):
         details: Дополнительные детали ошибки (опционально)
     """
 
-    def __init__(self, message: str, details: Optional[str] = None) -> None:
+    def __init__(self, message: str, details: str | None = None) -> None:
         self.message = message
         self.details = details
         super().__init__(self.message)
@@ -187,7 +186,7 @@ class APIError(MIAError):
         self,
         message: str,
         status_code: int = 500,
-        details: Optional[str] = None,
+        details: str | None = None,
     ) -> None:
         self.status_code = status_code
         super().__init__(message, details)
@@ -199,7 +198,7 @@ class APIAuthenticationError(APIError):
     def __init__(
         self,
         message: str = "Требуется аутентификация",
-        details: Optional[str] = None,
+        details: str | None = None,
     ) -> None:
         super().__init__(message, 401, details)
 
@@ -208,7 +207,7 @@ class APIAuthorizationError(APIError):
     """Ошибка авторизации API."""
 
     def __init__(
-        self, message: str = "Доступ запрещён", details: Optional[str] = None
+        self, message: str = "Доступ запрещён", details: str | None = None
     ) -> None:
         super().__init__(message, 403, details)
 
@@ -219,7 +218,7 @@ class APIValidationError(APIError):
     def __init__(
         self,
         message: str = "Некорректные данные",
-        details: Optional[str] = None,
+        details: str | None = None,
     ) -> None:
         super().__init__(message, 400, details)
 
@@ -228,7 +227,7 @@ class APINotFoundError(APIError):
     """Ошибка ресурс не найден."""
 
     def __init__(
-        self, message: str = "Ресурс не найден", details: Optional[str] = None
+        self, message: str = "Ресурс не найден", details: str | None = None
     ) -> None:
         super().__init__(message, 404, details)
 
@@ -239,7 +238,7 @@ class APIRateLimitError(APIError):
     def __init__(
         self,
         message: str = "Превышен лимит запросов",
-        details: Optional[str] = None,
+        details: str | None = None,
     ) -> None:
         super().__init__(message, 429, details)
 

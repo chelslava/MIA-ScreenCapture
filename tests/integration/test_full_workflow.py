@@ -7,7 +7,6 @@
 
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -32,7 +31,7 @@ TEST_API_KEY = "test-api-key-for-workflow-tests-12345"
 
 
 @pytest.fixture
-def mock_recording_callbacks() -> Dict[str, MagicMock]:
+def mock_recording_callbacks() -> dict[str, MagicMock]:
     """
     Создание mock функций обратного вызова для записи.
 
@@ -69,7 +68,7 @@ def mock_recording_callbacks() -> Dict[str, MagicMock]:
 
 
 @pytest.fixture
-def workflow_app(mock_recording_callbacks: Dict[str, MagicMock]) -> Flask:
+def workflow_app(mock_recording_callbacks: dict[str, MagicMock]) -> Flask:
     """
     Создание тестового Flask приложения для workflow тестов.
 
@@ -113,7 +112,7 @@ class TestFullRecordingWorkflow:
     def test_start_record_stop_workflow(
         self,
         workflow_client: FlaskClient,
-        mock_recording_callbacks: Dict[str, MagicMock],
+        mock_recording_callbacks: dict[str, MagicMock],
     ) -> None:
         """Проверка полного цикла: старт -> запись -> стоп через API."""
         # Проверяем начальный статус

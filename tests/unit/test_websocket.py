@@ -2,8 +2,8 @@
 Unit тесты для api.websocket.
 """
 
-from core.event_bus import InMemoryEventBus, RecordingEvent, RecordingEventType
 from api.websocket import WebSocketManager
+from core.event_bus import InMemoryEventBus, RecordingEvent, RecordingEventType
 
 
 class TestWebSocketManager:

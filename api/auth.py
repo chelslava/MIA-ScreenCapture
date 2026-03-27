@@ -7,8 +7,9 @@
 
 import os
 import secrets
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any
 
 from flask import Flask, current_app, g, jsonify, request
 
@@ -34,7 +35,7 @@ def generate_api_key() -> str:
     return secrets.token_urlsafe(API_KEY_LENGTH)
 
 
-def get_stored_api_key() -> Optional[str]:
+def get_stored_api_key() -> str | None:
     """
     Получение сохранённого API ключа из переменных окружения.
 
@@ -44,7 +45,7 @@ def get_stored_api_key() -> Optional[str]:
     return os.environ.get(API_KEY_ENV_VAR)
 
 
-def init_api_auth(app: Flask, api_key: Optional[str] = None) -> str:
+def init_api_auth(app: Flask, api_key: str | None = None) -> str:
     """
     Инициализация аутентификации API для Flask приложения.
 
@@ -193,7 +194,7 @@ def optional_api_key(f: Callable) -> Callable:
     return decorated_function
 
 
-def get_api_key(app: Optional[Flask] = None) -> Optional[str]:
+def get_api_key(app: Flask | None = None) -> str | None:
     """
     Получение текущего API ключа из конфигурации.
 
@@ -212,7 +213,7 @@ def get_api_key(app: Optional[Flask] = None) -> Optional[str]:
     return app.config.get(API_KEY_CONFIG_KEY)
 
 
-def check_api_key(provided_key: str, app: Optional[Flask] = None) -> bool:
+def check_api_key(provided_key: str, app: Flask | None = None) -> bool:
     """
     Проверка API ключа без декоратора.
 

@@ -7,7 +7,6 @@
 """
 
 from pathlib import Path
-from typing import Optional
 
 from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
@@ -35,7 +34,7 @@ class TrayIcon(QSystemTrayIcon):
     show_window_requested = pyqtSignal()
     exit_requested = pyqtSignal()
 
-    def __init__(self, parent=None, icon_path: Optional[Path] = None):
+    def __init__(self, parent=None, icon_path: Path | None = None):
         """
         Инициализация иконки трея.
 

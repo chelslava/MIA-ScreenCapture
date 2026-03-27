@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import asdict
 from threading import Lock
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any
 
 from core.event_bus import EventBus, RecordingEvent, RecordingEventType
 
@@ -26,10 +26,10 @@ class WebSocketManager:
     """
 
     def __init__(self, max_events: int = 500) -> None:
-        self._events: Deque[Dict[str, Any]] = deque(maxlen=max_events)
+        self._events: deque[dict[str, Any]] = deque(maxlen=max_events)
         self._lock = Lock()
         self._events_published = 0
-        self._attached_bus: Optional[EventBus] = None
+        self._attached_bus: EventBus | None = None
 
     def attach_event_bus(self, event_bus: EventBus) -> None:
         """Подключает менеджер ко всем доменным событиям event bus."""
@@ -58,19 +58,19 @@ class WebSocketManager:
         payload = self._event_to_payload(event)
         self.publish(payload)
 
-    def publish(self, payload: Dict[str, Any]) -> None:
+    def publish(self, payload: dict[str, Any]) -> None:
         """Публикация события в очередь уведомлений."""
         with self._lock:
             self._events.append(dict(payload))
             self._events_published += 1
 
-    def get_recent_events(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_recent_events(self, limit: int = 50) -> list[dict[str, Any]]:
         """Возвращает последние события (по умолчанию до 50)."""
         safe_limit = max(1, min(limit, 500))
         with self._lock:
             return list(self._events)[-safe_limit:]
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Возвращает статистику менеджера уведомлений."""
         with self._lock:
             buffered = len(self._events)
@@ -83,7 +83,7 @@ class WebSocketManager:
         }
 
     @staticmethod
-    def _event_to_payload(event: RecordingEvent) -> Dict[str, Any]:
+    def _event_to_payload(event: RecordingEvent) -> dict[str, Any]:
         raw = asdict(event)
         timestamp = raw["timestamp"]
         return {

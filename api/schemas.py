@@ -6,8 +6,8 @@
 """
 
 import re
-from datetime import datetime, timezone
-from typing import List, Literal, Optional
+from datetime import UTC, datetime
+from typing import Literal, Optional
 
 import tzlocal
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -20,11 +20,11 @@ class StartRecordingRequest(BaseModel):
         default="full",
         description="Тип области захвата: full, window или rect",
     )
-    window_title: Optional[str] = Field(
+    window_title: str | None = Field(
         default=None,
         description="Заголовок окна для захвата (требуется если area='window')",
     )
-    rect: Optional[List[int]] = Field(
+    rect: list[int] | None = Field(
         default=None,
         description="Координаты прямоугольника [x1, y1, x2, y2] (требуется если area='rect')",
         min_length=4,
@@ -34,7 +34,7 @@ class StartRecordingRequest(BaseModel):
         default="none",
         description="Источник аудио: mic, system, none или both",
     )
-    output_path: Optional[str] = Field(
+    output_path: str | None = Field(
         default=None, description="Путь для сохранения файла записи"
     )
     fps: int = Field(
@@ -44,16 +44,16 @@ class StartRecordingRequest(BaseModel):
     bitrate: str = Field(
         default="2M", description="Битрейт видео (например: 2M, 5000K)"
     )
-    duration: Optional[int] = Field(
+    duration: int | None = Field(
         default=None, ge=1, description="Длительность записи в секундах"
     )
-    mic_device: Optional[int] = Field(
+    mic_device: int | None = Field(
         default=None, description="Индекс устройства микрофона"
     )
 
     @field_validator("rect")
     @classmethod
-    def validate_rect(cls, v: Optional[List[int]]) -> Optional[List[int]]:
+    def validate_rect(cls, v: list[int] | None) -> list[int] | None:
         """Валидация координат прямоугольника."""
         if v is not None:
             if len(v) != 4:
@@ -106,31 +106,31 @@ class CreateScheduleRequest(BaseModel):
     )
 
     # Поля для разовой задачи
-    datetime: Optional[str] = Field(
+    datetime: str | None = Field(
         default=None,
         description="Дата и время выполнения (ISO формат) для trigger='once'",
     )
 
     # Поля для daily/weekly
-    time: Optional[str] = Field(
+    time: str | None = Field(
         default=None,
         description="Время выполнения в формате HH:MM для daily/weekly",
     )
 
     # Поля для weekly
-    day_of_week: Optional[str] = Field(
+    day_of_week: str | None = Field(
         default=None,
         description="Дни недели через запятую (0=Пн, 6=Вс) для weekly. Пример: '0,2,4'",
     )
 
     # Поля для interval
-    hours: Optional[int] = Field(
+    hours: int | None = Field(
         default=None,
         ge=0,
         le=168,
         description="Интервал в часах для interval (0-168)",
     )
-    minutes: Optional[int] = Field(
+    minutes: int | None = Field(
         default=None,
         ge=0,
         le=59,
@@ -138,19 +138,19 @@ class CreateScheduleRequest(BaseModel):
     )
 
     # Поле для cron
-    cron_expression: Optional[str] = Field(
+    cron_expression: str | None = Field(
         default=None,
         description="Cron-выражение для trigger='cron'. Пример: '0 9 * * 1-5' (каждый будний день в 9:00)",
     )
 
     # Параметры записи
-    params: Optional[StartRecordingRequest] = Field(
+    params: StartRecordingRequest | None = Field(
         default=None, description="Параметры записи"
     )
 
     @field_validator("datetime")
     @classmethod
-    def validate_datetime(cls, v: Optional[str]) -> Optional[str]:
+    def validate_datetime(cls, v: str | None) -> str | None:
         """Валидация формата datetime."""
         if v is not None:
             try:
@@ -161,8 +161,8 @@ class CreateScheduleRequest(BaseModel):
                     local_tz = tzlocal.get_localzone()
                     dt = dt.replace(tzinfo=local_tz)
                 # Сравниваем с текущим временем в той же timezone
-                now_utc = datetime.now(timezone.utc)
-                dt_utc = dt.astimezone(timezone.utc)
+                now_utc = datetime.now(UTC)
+                dt_utc = dt.astimezone(UTC)
                 if dt_utc < now_utc:
                     raise ValueError("datetime должен быть в будущем")
             except ValueError as e:
@@ -171,7 +171,7 @@ class CreateScheduleRequest(BaseModel):
 
     @field_validator("time")
     @classmethod
-    def validate_time(cls, v: Optional[str]) -> Optional[str]:
+    def validate_time(cls, v: str | None) -> str | None:
         """Валидация формата времени."""
         if v is not None:  # noqa: SIM102
             if not re.match(r"^([01]?[0-9]|2[0-3]):([0-5][0-9])$", v):
@@ -182,7 +182,7 @@ class CreateScheduleRequest(BaseModel):
 
     @field_validator("day_of_week")
     @classmethod
-    def validate_day_of_week(cls, v: Optional[str]) -> Optional[str]:
+    def validate_day_of_week(cls, v: str | None) -> str | None:
         """Валидация дней недели."""
         if v is not None:
             try:
@@ -198,7 +198,7 @@ class CreateScheduleRequest(BaseModel):
 
     @field_validator("cron_expression")
     @classmethod
-    def validate_cron_expression(cls, v: Optional[str]) -> Optional[str]:
+    def validate_cron_expression(cls, v: str | None) -> str | None:
         """Валидация cron-выражения."""
         if v is not None:
             # Стандартное cron-выражение имеет 5 полей:
@@ -250,24 +250,24 @@ class UpdateScheduleRequest(BaseModel):
     """Схема запроса для обновления запланированной задачи."""
 
     id: str = Field(min_length=1, description="ID задачи")
-    name: Optional[str] = Field(
+    name: str | None = Field(
         default=None,
         min_length=1,
         max_length=100,
         description="Название задачи",
     )
-    enabled: Optional[bool] = Field(
+    enabled: bool | None = Field(
         default=None, description="Включена ли задача"
     )
-    params: Optional[StartRecordingRequest] = Field(
+    params: StartRecordingRequest | None = Field(
         default=None, description="Параметры записи"
     )
-    time: Optional[str] = Field(default=None, description="Время выполнения")
-    day_of_week: Optional[str] = Field(default=None, description="Дни недели")
+    time: str | None = Field(default=None, description="Время выполнения")
+    day_of_week: str | None = Field(default=None, description="Дни недели")
 
     @field_validator("time")
     @classmethod
-    def validate_time(cls, v: Optional[str]) -> Optional[str]:
+    def validate_time(cls, v: str | None) -> str | None:
         """Валидация формата времени."""
         if v is not None:
             if not re.match(r"^([01]?[0-9]|2[0-3]):([0-5][0-9])$", v):
@@ -300,42 +300,42 @@ class UpdateConfigRequest(BaseModel):
     )
 
     # Видео настройки
-    fps: Optional[int] = Field(
+    fps: int | None = Field(
         default=None, ge=1, le=120, description="Кадров в секунду"
     )
-    codec: Optional[str] = Field(default=None, description="Видеокодек")
-    bitrate: Optional[str] = Field(default=None, description="Битрейт видео")
+    codec: str | None = Field(default=None, description="Видеокодек")
+    bitrate: str | None = Field(default=None, description="Битрейт видео")
 
     # Аудио настройки
-    record_mic: Optional[bool] = Field(
+    record_mic: bool | None = Field(
         default=None, description="Записывать микрофон"
     )
-    record_system: Optional[bool] = Field(
+    record_system: bool | None = Field(
         default=None, description="Записывать системное аудио"
     )
 
     # Настройки вывода
-    default_path: Optional[str] = Field(
+    default_path: str | None = Field(
         default=None, description="Путь для сохранения записей по умолчанию"
     )
-    filename_template: Optional[str] = Field(
+    filename_template: str | None = Field(
         default=None, description="Шаблон имени файла"
     )
 
     # Настройки приложения
-    minimize_to_tray: Optional[bool] = Field(
+    minimize_to_tray: bool | None = Field(
         default=None, description="Сворачивать в трей"
     )
-    show_notifications: Optional[bool] = Field(
+    show_notifications: bool | None = Field(
         default=None, description="Показывать уведомления"
     )
-    language: Optional[str] = Field(
+    language: str | None = Field(
         default=None, description="Язык интерфейса"
     )
 
     @field_validator("bitrate")
     @classmethod
-    def validate_bitrate(cls, v: Optional[str]) -> Optional[str]:
+    def validate_bitrate(cls, v: str | None) -> str | None:
         """Валидация формата битрейта."""
         if v is not None and not re.match(r"^\d+[KMk]?$", v):
             raise ValueError(
@@ -392,15 +392,15 @@ class UpdateConfigRequest(BaseModel):
 class UpdateConfigVideoRequest(BaseModel):
     """Вложенная схема видео-настроек."""
 
-    fps: Optional[int] = Field(
+    fps: int | None = Field(
         default=None, ge=1, le=120, description="Кадров в секунду"
     )
-    codec: Optional[str] = Field(default=None, description="Видеокодек")
-    bitrate: Optional[str] = Field(default=None, description="Битрейт видео")
+    codec: str | None = Field(default=None, description="Видеокодек")
+    bitrate: str | None = Field(default=None, description="Битрейт видео")
 
     @field_validator("bitrate")
     @classmethod
-    def validate_bitrate(cls, v: Optional[str]) -> Optional[str]:
+    def validate_bitrate(cls, v: str | None) -> str | None:
         """Валидация формата битрейта."""
         if v is not None and not re.match(r"^\d+[KMk]?$", v):
             raise ValueError(
@@ -412,10 +412,10 @@ class UpdateConfigVideoRequest(BaseModel):
 class UpdateConfigAudioRequest(BaseModel):
     """Вложенная схема аудио-настроек."""
 
-    record_mic: Optional[bool] = Field(
+    record_mic: bool | None = Field(
         default=None, description="Записывать микрофон"
     )
-    record_system: Optional[bool] = Field(
+    record_system: bool | None = Field(
         default=None, description="Записывать системное аудио"
     )
 
@@ -423,10 +423,10 @@ class UpdateConfigAudioRequest(BaseModel):
 class UpdateConfigOutputRequest(BaseModel):
     """Вложенная схема настроек вывода."""
 
-    default_path: Optional[str] = Field(
+    default_path: str | None = Field(
         default=None, description="Путь для сохранения записей по умолчанию"
     )
-    filename_template: Optional[str] = Field(
+    filename_template: str | None = Field(
         default=None, description="Шаблон имени файла"
     )
 
@@ -434,13 +434,13 @@ class UpdateConfigOutputRequest(BaseModel):
 class UpdateConfigAppRequest(BaseModel):
     """Вложенная схема настроек приложения."""
 
-    minimize_to_tray: Optional[bool] = Field(
+    minimize_to_tray: bool | None = Field(
         default=None, description="Сворачивать в трей"
     )
-    show_notifications: Optional[bool] = Field(
+    show_notifications: bool | None = Field(
         default=None, description="Показывать уведомления"
     )
-    language: Optional[str] = Field(
+    language: str | None = Field(
         default=None, description="Язык интерфейса"
     )
 
@@ -455,8 +455,8 @@ class APIResponse(BaseModel):
     """Базовая модель ответа API."""
 
     success: bool = Field(description="Успешность операции")
-    data: Optional[dict] = Field(default=None, description="Данные ответа")
-    error: Optional[str] = Field(
+    data: dict | None = Field(default=None, description="Данные ответа")
+    error: str | None = Field(
         default=None, description="Сообщение об ошибке"
     )
 
@@ -467,10 +467,10 @@ class StatusResponse(BaseModel):
     is_recording: bool = Field(description="Идёт ли запись")
     is_paused: bool = Field(description="На паузе ли запись")
     elapsed_time: float = Field(description="Прошедшее время в секундах")
-    current_file: Optional[str] = Field(
+    current_file: str | None = Field(
         default=None, description="Текущий файл записи"
     )
-    frame_count: Optional[int] = Field(
+    frame_count: int | None = Field(
         default=None, description="Количество записанных кадров"
     )
 

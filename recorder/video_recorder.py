@@ -9,10 +9,10 @@ windows-capture (Windows Graphics Capture API) и OpenCV.
 import queue
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 import cv2
 import numpy as np
@@ -22,7 +22,6 @@ from recorder.utils import (
     get_available_monitors,
     get_available_windows,
     get_platform,
-    get_screen_size,
     validate_rect_coords,
 )
 
@@ -47,7 +46,7 @@ class CaptureArea:
     y: int = 0
     width: int = 0
     height: int = 0
-    window_title: Optional[str] = None
+    window_title: str | None = None
     monitor_index: int = 0  # Индекс монитора (0 = primary)
     include_cursor: bool = False  # Включить курсор в захват
 
@@ -64,7 +63,7 @@ class CaptureArea:
                 f"Монитор {monitor_index} не найден, используется primary"
             )
             monitor_index = 0
-        
+
         monitor = monitors[monitor_index] if monitors else {"width": 1920, "height": 1080}
         return cls(
             type="full",
@@ -101,7 +100,7 @@ class CaptureArea:
         )
         return cls.full_screen()
 
-    def to_capture_dict(self) -> Dict[str, int]:
+    def to_capture_dict(self) -> dict[str, int]:
         """Преобразование в общий формат словаря области захвата."""
         return {
             "left": self.x,
@@ -119,10 +118,10 @@ class _WindowsCaptureSession:
     последний полученный кадр и возвращаем его по запросу.
     """
 
-    def __init__(self, on_closed_callback: Optional[Callable] = None) -> None:
+    def __init__(self, on_closed_callback: Callable | None = None) -> None:
         self._capture = None
         self._control = None
-        self._last_frame: Optional[np.ndarray] = None
+        self._last_frame: np.ndarray | None = None
         self._frame_event = threading.Event()
         self._lock = threading.Lock()
         self._closed = False
@@ -139,7 +138,7 @@ class _WindowsCaptureSession:
 
         monitor_index = None
         window_name = None
-        
+
         # Настройка в зависимости от типа захвата
         if capture_area.type == "window" and capture_area.window_title:
             window_name = capture_area.window_title
@@ -194,7 +193,7 @@ class _WindowsCaptureSession:
             logger.warning("Capture session closed unexpectedly")
             self._closed = True
             self._capture_lost = True
-            
+
             # Уведомление об ошибке
             if self._on_closed_callback:
                 try:
@@ -207,11 +206,11 @@ class _WindowsCaptureSession:
         self._capture = capture
         self._control = capture.start_free_threaded()
 
-    def read_frame(self, timeout: float) -> Optional[np.ndarray]:
+    def read_frame(self, timeout: float) -> np.ndarray | None:
         if self._capture_lost:
             # Попытка reconnect для window capture
             return None
-        
+
         if not self._frame_event.wait(timeout=timeout):
             return None
         with self._lock:
@@ -220,7 +219,7 @@ class _WindowsCaptureSession:
             frame = self._last_frame.copy()
             self._frame_event.clear()
             return frame
-    
+
     @property
     def is_capture_lost(self) -> bool:
         """Проверка, был ли потерян захват."""
@@ -283,14 +282,14 @@ class VideoRecorder:
         self._state = RecordingState.IDLE
         self._lock = threading.Lock()
         self._frame_queue: queue.Queue = queue.Queue(maxsize=100)
-        self._capture_thread: Optional[threading.Thread] = None
-        self._write_thread: Optional[threading.Thread] = None
+        self._capture_thread: threading.Thread | None = None
+        self._write_thread: threading.Thread | None = None
 
         # Информация о записи
-        self._output_path: Optional[Path] = None
-        self._video_writer: Optional[cv2.VideoWriter] = None
-        self._capture_area: Optional[CaptureArea] = None
-        self._capture_session: Optional[_WindowsCaptureSession] = None
+        self._output_path: Path | None = None
+        self._video_writer: cv2.VideoWriter | None = None
+        self._capture_area: CaptureArea | None = None
+        self._capture_session: _WindowsCaptureSession | None = None
 
         # Статистика
         self._start_time: float = 0
@@ -299,9 +298,9 @@ class VideoRecorder:
         self._frame_count: int = 0
 
         # Обратные вызовы
-        self._on_frame_captured: Optional[Callable] = None
-        self._on_error: Optional[Callable] = None
-        self._last_captured_frame: Optional[np.ndarray] = None
+        self._on_frame_captured: Callable | None = None
+        self._on_error: Callable | None = None
+        self._last_captured_frame: np.ndarray | None = None
 
     @property
     def state(self) -> RecordingState:
@@ -329,7 +328,7 @@ class VideoRecorder:
         return max(0, elapsed)
 
     @property
-    def output_path(self) -> Optional[Path]:
+    def output_path(self) -> Path | None:
         """Получение текущего пути вывода."""
         return self._output_path
 
@@ -340,8 +339,8 @@ class VideoRecorder:
 
     def set_callbacks(
         self,
-        on_frame_captured: Optional[Callable] = None,
-        on_error: Optional[Callable] = None,
+        on_frame_captured: Callable | None = None,
+        on_error: Callable | None = None,
     ) -> None:
         """
         Установка функций обратного вызова.
@@ -357,7 +356,7 @@ class VideoRecorder:
         self,
         output_path: Path,
         capture_area: CaptureArea,
-        duration: Optional[float] = None,
+        duration: float | None = None,
     ) -> bool:
         """
         Начало записи.
@@ -492,7 +491,7 @@ class VideoRecorder:
         """Основной цикл захвата в отдельном потоке."""
         frame_interval: float = 1.0 / self.fps
         last_frame_time: float = 0
-        
+
         # Callback для обработки потери захвата
         def on_capture_lost(message: str) -> None:
             logger.error(f"Capture lost: {message}")
@@ -501,7 +500,7 @@ class VideoRecorder:
                     self._on_error(message)
                 except Exception as e:
                     logger.error(f"Ошибка в on_error callback: {e}")
-        
+
         session = _WindowsCaptureSession(on_closed_callback=on_capture_lost)
         self._capture_session = session
         self._capture_lost = False
@@ -515,7 +514,7 @@ class VideoRecorder:
                 if self._state == RecordingState.PAUSED:
                     time.sleep(0.1)
                     continue
-                
+
                 # Проверка потери захвата
                 if session.is_capture_lost:
                     logger.warning("Capture lost detected in capture loop")
@@ -575,7 +574,7 @@ class VideoRecorder:
 
         # Сигнал завершения
         self._state = RecordingState.IDLE
-    
+
     @property
     def is_capture_lost(self) -> bool:
         """Проверка, был ли потерян захват."""
@@ -596,7 +595,7 @@ class VideoRecorder:
 
         self._state = RecordingState.IDLE
 
-    def get_preview_frame(self) -> Optional[np.ndarray]:
+    def get_preview_frame(self) -> np.ndarray | None:
         """
         Получение кадра предпросмотра без записи.
 

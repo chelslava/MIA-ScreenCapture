@@ -10,7 +10,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 
@@ -39,7 +39,7 @@ def temp_tasks_file(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def task_callback_results() -> Dict[str, Any]:
+def task_callback_results() -> dict[str, Any]:
     """
     Хранилище результатов выполнения callback.
 
@@ -51,7 +51,7 @@ def task_callback_results() -> Dict[str, Any]:
 
 @pytest.fixture
 def scheduler_with_callback(
-    temp_tasks_file: Path, task_callback_results: Dict[str, Any]
+    temp_tasks_file: Path, task_callback_results: dict[str, Any]
 ) -> TaskScheduler:
     """
     Создание планировщика с настроенным callback.
@@ -65,7 +65,7 @@ def scheduler_with_callback(
     """
     scheduler = TaskScheduler(persist_path=temp_tasks_file)
 
-    def task_callback(params: RecordingParams) -> Dict[str, Any]:
+    def task_callback(params: RecordingParams) -> dict[str, Any]:
         """Callback для выполнения задачи."""
         task_callback_results["executed_tasks"].append(
             {
@@ -100,7 +100,7 @@ class TestTaskSchedulerFullCycle:
     def test_add_and_execute_immediate_task(
         self,
         scheduler_with_callback: TaskScheduler,
-        task_callback_results: Dict[str, Any],
+        task_callback_results: dict[str, Any],
     ):
         """Проверка добавления и немедленного выполнения задачи."""
         scheduler_with_callback.start()
@@ -345,7 +345,7 @@ class TestTaskSchedulerTriggers:
     def test_once_trigger(
         self,
         scheduler_with_callback: TaskScheduler,
-        task_callback_results: Dict[str, Any],
+        task_callback_results: dict[str, Any],
     ):
         """Проверка разового триггера."""
         scheduler_with_callback.start()
@@ -376,7 +376,7 @@ class TestTaskSchedulerTriggers:
     def test_interval_trigger(
         self,
         scheduler_with_callback: TaskScheduler,
-        task_callback_results: Dict[str, Any],
+        task_callback_results: dict[str, Any],
     ):
         """Проверка интервального триггера."""
         scheduler_with_callback.start()
@@ -412,7 +412,7 @@ class TestTaskSchedulerTriggers:
     def test_disabled_task_not_executed(
         self,
         scheduler_with_callback: TaskScheduler,
-        task_callback_results: Dict[str, Any],
+        task_callback_results: dict[str, Any],
     ):
         """Проверка что выключенная задача не выполняется."""
         scheduler_with_callback.start()

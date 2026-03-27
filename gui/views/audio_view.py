@@ -5,7 +5,6 @@
 Компонент UI для настройки источников аудио.
 """
 
-from typing import Optional
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
@@ -40,7 +39,7 @@ class AudioView(QWidget):
     audio_type_changed = pyqtSignal(AudioType)
     mic_device_changed = pyqtSignal(int)  # device index
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         """
         Инициализация представления.
 
@@ -144,7 +143,7 @@ class AudioView(QWidget):
         else:
             return AudioType.NONE
 
-    def get_mic_device_index(self) -> Optional[int]:
+    def get_mic_device_index(self) -> int | None:
         """
         Получить индекс выбранного устройства микрофона.
 

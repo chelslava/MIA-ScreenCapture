@@ -7,10 +7,11 @@
 
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import wraps
 from threading import Lock
-from typing import Any, Callable, Optional
+from typing import Any
 
 from flask import Flask, jsonify, request
 
@@ -56,7 +57,7 @@ class InMemoryRateLimiter:
     - Hour: долгосрочные (в час)
     """
 
-    def __init__(self, config: Optional[RateLimitConfig] = None):
+    def __init__(self, config: RateLimitConfig | None = None):
         """
         Инициализация ограничителя.
 
@@ -103,7 +104,7 @@ class InMemoryRateLimiter:
             state.hour_count = 0
             state.last_hour_reset = current_time
 
-    def check_rate_limit(self) -> tuple[bool, Optional[dict]]:
+    def check_rate_limit(self) -> tuple[bool, dict | None]:
         """
         Проверка ограничения частоты для текущего запроса.
 
@@ -188,7 +189,7 @@ class InMemoryRateLimiter:
 
             return True, None
 
-    def get_client_stats(self, client_ip: Optional[str] = None) -> dict:
+    def get_client_stats(self, client_ip: str | None = None) -> dict:
         """
         Получение статистики запросов клиента.
 
@@ -246,7 +247,7 @@ class InMemoryRateLimiter:
 
 
 # Глобальный экземпляр ограничителя
-_rate_limiter: Optional[InMemoryRateLimiter] = None
+_rate_limiter: InMemoryRateLimiter | None = None
 
 
 def get_rate_limiter() -> InMemoryRateLimiter:
@@ -258,7 +259,7 @@ def get_rate_limiter() -> InMemoryRateLimiter:
 
 
 def init_rate_limiter(
-    app: Flask, config: Optional[RateLimitConfig] = None
+    app: Flask, config: RateLimitConfig | None = None
 ) -> None:
     """
     Инициализация ограничителя для Flask приложения.
