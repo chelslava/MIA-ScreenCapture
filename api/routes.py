@@ -216,7 +216,7 @@ def api_endpoint(
         Декоратор для функции-обработчика
 
     Example:
-        @app.route("/api/status", methods=["GET"])
+        @api_v1.route("status", methods=["GET"])
         @require_api_key
         @api_endpoint("status", "Ошибка получения статуса")
         def get_status(callback):
@@ -268,7 +268,7 @@ def api_callback(
         См. register_routes для примера установки.
 
     Example:
-        @app.route("/api/status", methods=["GET"])
+        @api_v1.route("status", methods=["GET"])
         @require_api_key
         @api_callback("status")
         def get_status():
@@ -333,7 +333,12 @@ def register_routes(app, server) -> None:
         """Приведение legacy error payload к единому контракту."""
         return _standardize_error_response(response)
 
-    @app.route("/api/status", methods=["GET"])
+    # Создаём Blueprint для API v1
+    from flask import Blueprint
+
+    api_v1 = Blueprint("api_v1", __name__, url_prefix="/api/v1")
+
+    @api_v1.route("/status", methods=["GET"])
     @require_api_key
     def get_status():
         """
@@ -352,7 +357,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения статуса: {e}")
             return _internal_error_response()
 
-    @app.route("/api/start", methods=["POST"])
+    @api_v1.route("/start", methods=["POST"])
     @rate_limit
     @require_api_key
     def start_recording():
@@ -405,7 +410,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка начала записи: {e}")
             return _internal_error_response()
 
-    @app.route("/api/stop", methods=["POST"])
+    @api_v1.route("stop", methods=["POST"])
     @rate_limit
     @require_api_key
     def stop_recording():
@@ -428,7 +433,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка остановки записи: {e}")
             return _internal_error_response()
 
-    @app.route("/api/pause", methods=["POST"])
+    @api_v1.route("pause", methods=["POST"])
     @rate_limit
     @require_api_key
     def pause_recording():
@@ -449,7 +454,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка паузы записи: {e}")
             return _internal_error_response()
 
-    @app.route("/api/recordings", methods=["GET"])
+    @api_v1.route("recordings", methods=["GET"])
     @require_api_key
     def get_recordings():
         """
@@ -469,7 +474,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения записей: {e}")
             return _internal_error_response()
 
-    @app.route("/api/events/recent", methods=["GET"])
+    @api_v1.route("events/recent", methods=["GET"])
     @require_api_key
     def get_recent_events():
         """
@@ -497,7 +502,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения событий: {e}")
             return _internal_error_response()
 
-    @app.route("/api/events/stats", methods=["GET"])
+    @api_v1.route("events/stats", methods=["GET"])
     @require_api_key
     def get_events_stats():
         """Получение статистики real-time event-менеджера."""
@@ -515,7 +520,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения статистики событий: {e}")
             return _internal_error_response()
 
-    @app.route("/api/schedule", methods=["GET"])
+    @api_v1.route("schedule", methods=["GET"])
     @require_api_key
     def get_schedule():
         """
@@ -535,7 +540,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения расписания: {e}")
             return _internal_error_response()
 
-    @app.route("/api/schedule", methods=["POST"])
+    @api_v1.route("schedule", methods=["POST"])
     @rate_limit
     @require_api_key
     def create_schedule():
@@ -593,7 +598,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка создания расписания: {e}")
             return _internal_error_response()
 
-    @app.route("/api/schedule/<task_id>", methods=["DELETE"])
+    @api_v1.route("schedule/<task_id>", methods=["DELETE"])
     @rate_limit
     @require_api_key
     def delete_schedule(task_id: str):
@@ -619,7 +624,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка удаления расписания: {e}")
             return _internal_error_response()
 
-    @app.route("/api/schedule/<task_id>", methods=["PUT"])
+    @api_v1.route("schedule/<task_id>", methods=["PUT"])
     @rate_limit
     @require_api_key
     def update_schedule(task_id: str):
@@ -659,7 +664,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка обновления расписания: {e}")
             return _internal_error_response()
 
-    @app.route("/api/schedule/<task_id>/toggle", methods=["POST"])
+    @api_v1.route("schedule/<task_id>/toggle", methods=["POST"])
     @rate_limit
     @require_api_key
     def toggle_schedule(task_id: str):
@@ -694,7 +699,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка переключения расписания: {e}")
             return _internal_error_response()
 
-    @app.route("/api/devices", methods=["GET"])
+    @api_v1.route("devices", methods=["GET"])
     @require_api_key
     def get_devices():
         """
@@ -714,7 +719,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения устройств: {e}")
             return _internal_error_response()
 
-    @app.route("/api/windows", methods=["GET"])
+    @api_v1.route("windows", methods=["GET"])
     @require_api_key
     def get_windows():
         """
@@ -734,7 +739,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения окон: {e}")
             return _internal_error_response()
 
-    @app.route("/api/config", methods=["GET"])
+    @api_v1.route("config", methods=["GET"])
     @require_api_key
     def get_config():
         """
@@ -754,7 +759,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения конфигурации: {e}")
             return _internal_error_response()
 
-    @app.route("/api/config", methods=["PUT"])
+    @api_v1.route("config", methods=["PUT"])
     @rate_limit
     @require_api_key
     def update_config():
@@ -798,7 +803,7 @@ def register_routes(app, server) -> None:
         response.headers["X-Request-ID"] = _get_trace_id()
         return response
 
-    @app.route("/api/observability/metrics", methods=["GET"])
+    @api_v1.route("observability/metrics", methods=["GET"])
     @require_api_key
     def get_observability_metrics():
         """Получение эксплуатационных метрик API."""
@@ -813,7 +818,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения observability metrics: {e}")
             return _internal_error_response()
 
-    @app.route("/api/observability/baseline", methods=["GET"])
+    @api_v1.route("observability/baseline", methods=["GET"])
     @require_api_key
     def get_observability_baseline():
         """Получение baseline SLO по эксплуатационным метрикам."""
@@ -828,4 +833,35 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения observability baseline: {e}")
             return _internal_error_response()
 
-    logger.info("Маршруты API зарегистрированы")
+    # Регистрация Blueprint
+    app.register_blueprint(api_v1)
+
+    # Legacy routes для обратной совместимости (перенаправляют на /api/v1/*)
+    @app.route("/api/status", methods=["GET"])
+    @require_api_key
+    def legacy_get_status():
+        """Legacy endpoint для обратной совместимости."""
+        return get_status()
+
+    @app.route("/api/start", methods=["POST"])
+    @rate_limit
+    @require_api_key
+    def legacy_start_recording():
+        """Legacy endpoint для обратной совместимости."""
+        return start_recording()
+
+    @app.route("/api/stop", methods=["POST"])
+    @rate_limit
+    @require_api_key
+    def legacy_stop_recording():
+        """Legacy endpoint для обратной совместимости."""
+        return stop_recording()
+
+    @app.route("/api/pause", methods=["POST"])
+    @rate_limit
+    @require_api_key
+    def legacy_toggle_pause():
+        """Legacy endpoint для обратной совместимости."""
+        return toggle_pause()
+
+    logger.info("Маршруты API зарегистрированы (v1 + legacy)")
