@@ -40,11 +40,11 @@ def _get_trace_id() -> str:
     """Возвращает trace_id из контекста запроса или создаёт новый."""
     trace_id = getattr(g, "trace_id", None)
     if trace_id:
-        return trace_id
+        return str(trace_id)
 
     trace_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
     g.trace_id = trace_id
-    return trace_id
+    return str(trace_id)
 
 
 def _standard_error_payload(
@@ -69,12 +69,12 @@ def _error_response(
     code: str,
     message: str,
     details: Any | None = None,
-) -> tuple:
+) -> tuple[Any, int]:
     """Создаёт JSON-ответ в едином формате ошибки API."""
     response = jsonify(_standard_error_payload(code, message, details))
     response.status_code = status_code
     response.headers["X-Request-ID"] = _get_trace_id()
-    return response
+    return response, status_code
 
 
 def _internal_error_response() -> tuple:

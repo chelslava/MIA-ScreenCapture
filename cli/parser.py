@@ -323,7 +323,7 @@ def process_args(args: argparse.Namespace) -> dict[str, Any]:
     Returns:
         Словарь с обработанной конфигурацией
     """
-    config = {
+    config: dict[str, Any] = {
         "mode": "gui",  # Режим по умолчанию
         "recording": {},
         "api": {},

@@ -72,7 +72,7 @@ class _MainThreadExecutor:
             execute = pyqtSignal(object)
 
         self._obj = _ExecutorObject()
-        self._obj.execute.connect(  # type: ignore[attr-defined]
+        self._obj.execute.connect(
             self._run_callable,
             Qt.ConnectionType.QueuedConnection,
         )
@@ -93,7 +93,7 @@ class _MainThreadExecutor:
             finally:
                 done.set()
 
-        self._obj.execute.emit(wrapped)  # type: ignore[attr-defined]
+        self._obj.execute.emit(wrapped)
         if not done.wait(timeout):
             raise TimeoutError("Таймаут выполнения в GUI потоке")
         if "error" in result:
@@ -719,7 +719,7 @@ class VideoRecorderApp:
 
             if success and self._main_window:
                 self._run_on_gui_thread(
-                    lambda: self._main_window.scheduler_tab.set_tasks(  # type: ignore[union-attr]
+                    lambda: self._main_window.scheduler_tab.set_tasks(
                         self._scheduler.get_all_tasks()
                     )
                 )
@@ -740,7 +740,7 @@ class VideoRecorderApp:
 
         if success and self._main_window:
             self._run_on_gui_thread(
-                lambda: self._main_window.scheduler_tab.set_tasks(  # type: ignore[union-attr]
+                lambda: self._main_window.scheduler_tab.set_tasks(
                     self._scheduler.get_all_tasks()
                 )
             )
@@ -759,7 +759,7 @@ class VideoRecorderApp:
 
             if success and self._main_window:
                 self._run_on_gui_thread(
-                    lambda: self._main_window.scheduler_tab.set_tasks(  # type: ignore[union-attr]
+                    lambda: self._main_window.scheduler_tab.set_tasks(
                         self._scheduler.get_all_tasks()
                     )
                 )
@@ -777,7 +777,7 @@ class VideoRecorderApp:
 
         if success and self._main_window:
             self._run_on_gui_thread(
-                lambda: self._main_window.scheduler_tab.set_tasks(  # type: ignore[union-attr]
+                lambda: self._main_window.scheduler_tab.set_tasks(
                     self._scheduler.get_all_tasks()
                 )
             )
@@ -952,7 +952,7 @@ class VideoRecorderApp:
         else:
             try:
                 result = self._recording_service.stop_active_recording_if_any()
-                if result and result.get("success"):
+                if result is not None and result.get("success"):
                     logger.info(
                         f"Запись сохранена: {result.get('filepath', 'неизвестно')}"
                     )

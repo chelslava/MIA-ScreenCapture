@@ -8,11 +8,10 @@
 from datetime import datetime
 from pathlib import Path
 
+from core.recording_types import AudioMode, CaptureMode
 from gui.models.recording_state import (
     AudioSettings,
-    AudioType,
     CaptureSettings,
-    CaptureType,
     OutputSettings,
     RecentRecording,
     RecordingState,
@@ -31,25 +30,25 @@ class TestRecordingStatus:
         assert RecordingStatus.PAUSED.value == "paused"
 
 
-class TestCaptureType:
-    """Тесты перечисления CaptureType."""
+class TestCaptureMode:
+    """Тесты перечисления CaptureMode."""
 
     def test_capture_type_values(self) -> None:
         """Проверка значений типа захвата."""
-        assert CaptureType.FULL_SCREEN.value == "full_screen"
-        assert CaptureType.WINDOW.value == "window"
-        assert CaptureType.RECTANGLE.value == "rectangle"
+        assert CaptureMode.FULL.value == "full"
+        assert CaptureMode.WINDOW.value == "window"
+        assert CaptureMode.RECT.value == "rect"
 
 
-class TestAudioType:
-    """Тесты перечисления AudioType."""
+class TestAudioMode:
+    """Тесты перечисления AudioMode."""
 
     def test_audio_type_values(self) -> None:
         """Проверка значений типа аудио."""
-        assert AudioType.NONE.value == "none"
-        assert AudioType.MICROPHONE.value == "mic"
-        assert AudioType.SYSTEM.value == "system"
-        assert AudioType.BOTH.value == "both"
+        assert AudioMode.NONE.value == "none"
+        assert AudioMode.MIC.value == "mic"
+        assert AudioMode.SYSTEM.value == "system"
+        assert AudioMode.BOTH.value == "both"
 
 
 class TestCaptureSettings:
@@ -58,18 +57,18 @@ class TestCaptureSettings:
     def test_default_values(self) -> None:
         """Проверка значений по умолчанию."""
         settings = CaptureSettings()
-        assert settings.capture_type == CaptureType.FULL_SCREEN
+        assert settings.capture_type == CaptureMode.FULL
         assert settings.window_title == ""
         assert settings.rect_coords == (0, 0, 1920, 1080)
 
     def test_custom_values(self) -> None:
         """Проверка пользовательских значений."""
         settings = CaptureSettings(
-            capture_type=CaptureType.WINDOW,
+            capture_type=CaptureMode.WINDOW,
             window_title="Test Window",
             rect_coords=(100, 100, 500, 400),
         )
-        assert settings.capture_type == CaptureType.WINDOW
+        assert settings.capture_type == CaptureMode.WINDOW
         assert settings.window_title == "Test Window"
         assert settings.rect_coords == (100, 100, 500, 400)
 
@@ -80,18 +79,18 @@ class TestAudioSettings:
     def test_default_values(self) -> None:
         """Проверка значений по умолчанию."""
         settings = AudioSettings()
-        assert settings.audio_type == AudioType.NONE
+        assert settings.audio_type == AudioMode.NONE
         assert settings.mic_device_index is None
         assert settings.mic_device_name == ""
 
     def test_custom_values(self) -> None:
         """Проверка пользовательских значений."""
         settings = AudioSettings(
-            audio_type=AudioType.MICROPHONE,
+            audio_type=AudioMode.MIC,
             mic_device_index=1,
             mic_device_name="Test Mic",
         )
-        assert settings.audio_type == AudioType.MICROPHONE
+        assert settings.audio_type == AudioMode.MIC
         assert settings.mic_device_index == 1
         assert settings.mic_device_name == "Test Mic"
 

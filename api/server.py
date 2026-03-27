@@ -42,7 +42,7 @@ class APIServerObservability:
         self._status_counts: dict[str, int] = {}
         self._method_counts: dict[str, int] = {}
         self._path_counts: dict[str, int] = {}
-        self._latency_ms = deque(maxlen=max_latency_samples)
+        self._latency_ms: deque[float] = deque(maxlen=max_latency_samples)
         self._process = psutil.Process()
 
     def request_started(self) -> None:
@@ -263,7 +263,7 @@ class APIServer:
             self._observability.request_started()
 
             if request.path == "/health":
-                return jsonify(self._get_health_payload())
+                return jsonify(self._get_health_payload())  # type: ignore[return-value]
 
         @self.app.after_request
         def add_request_id_header(response):

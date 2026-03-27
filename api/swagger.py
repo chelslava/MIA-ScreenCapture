@@ -1304,7 +1304,7 @@ def get_swagger_spec() -> dict[str, Any]:
     return SWAGGER_SPEC.copy()
 
 
-def register_swagger_routes(app) -> None:
+def register_swagger_routes(app: Any) -> None:
     """
     Регистрирует маршруты для Swagger документации.
 
@@ -1314,12 +1314,12 @@ def register_swagger_routes(app) -> None:
     from flask import jsonify
 
     @app.route("/api/swagger.json", methods=["GET"])
-    def get_swagger_json():
+    def get_swagger_json() -> Any:
         """Возвращает OpenAPI спецификацию в формате JSON."""
         return jsonify(SWAGGER_SPEC)
 
     @app.route("/api/docs", methods=["GET"])
-    def swagger_ui():
+    def swagger_ui() -> Any:
         """Возвращает Swagger UI страницу."""
         return """
 <!DOCTYPE html>

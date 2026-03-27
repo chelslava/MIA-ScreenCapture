@@ -335,7 +335,7 @@ class Container:
         Returns:
             Список имён зависимостей
         """
-        all_names = set()
+        all_names: set[str] = set()
         all_names.update(self._instances.keys())
         all_names.update(self._factories.keys())
         all_names.update(self._singletons.keys())
