@@ -144,6 +144,13 @@ class MainWindow(QMainWindow):
         self.scheduler_tab = SchedulerTab()
         self.tabs.addTab(self.scheduler_tab, "Планировщик")
 
+        # Вкладка диагностики
+        from gui.views.diagnostics_view import DiagnosticsView
+
+        self._diagnostics_view = DiagnosticsView()
+        self._diagnostics_view.recheck_requested.connect(self._run_diagnostics)
+        self.tabs.addTab(self._diagnostics_view, "Диагностика")
+
         # Строка состояния
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -580,6 +587,16 @@ class MainWindow(QMainWindow):
             if self._state.current_output
             else None,
         }
+
+    def _run_diagnostics(self) -> None:
+        """Запуск диагностики системы."""
+        config = get_config()
+        output_path = config.settings.output.default_path
+
+        self._diagnostics_view.run_checks(
+            api_enabled=True,
+            output_path=output_path,
+        )
 
     def start_recording_with_params(self, params: dict) -> dict:
         """
