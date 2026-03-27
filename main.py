@@ -295,6 +295,9 @@ class VideoRecorderApp:
         # Запуск API сервера
         self._start_api_server()
 
+        # Передача ссылки на API сервер в главное окно
+        self._main_window._api_server = self._api_server
+
         # Запуск планировщика
         self._start_scheduler()
 
