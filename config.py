@@ -293,11 +293,11 @@ class ConfigManager:
         """
         try:
             data = asdict(self._settings)
-            # Валидация перед сохранением
             AppSettingsSchema.model_validate(data)
-            atomic_write_json(self.config_path, data)
-            logger.info(f"Конфигурация сохранена в {self.config_path}")
-            return True
+            result = atomic_write_json(self.config_path, data)
+            if result:
+                logger.info(f"Конфигурация сохранена в {self.config_path}")
+            return result
         except Exception as e:
             logger.error(f"Ошибка сохранения конфигурации: {e}")
             return False
