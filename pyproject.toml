@@ -1,6 +1,6 @@
 [project]
 name = "mia-screencapture"
-version = "1.3.2"
+version = "1.4.0"
 description = "Профессиональная программа для записи видео с экрана с GUI, REST API и планировщиком задач"
 readme = "README.md"
 license = { text = "MIT" }
@@ -72,17 +72,16 @@ dev = [
     "mypy>=1.5.0",
 ]
 
-# Точка входа для CLI отключена, так как проект запускается через python main.py
-# Для создания консольной команды требуется структура пакета в src/
-# [project.scripts]
-# mia-capture = "mia_screencapture.main:main"
+[project.scripts]
+mia-capture = "main:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["api", "cli", "gui", "recorder", "scheduler"]
+packages = ["api", "cli", "core", "exceptions.py", "gui", "recorder", "scheduler", "config.py", "logger_config.py"]
+artifacts = ["main.py"]
 
 [tool.hatch.build.targets.sdist]
 include = [
