@@ -143,7 +143,9 @@ class _WindowsCaptureSession:
         if capture_area.type == "window" and capture_area.window_title:
             window_name = capture_area.window_title
         elif capture_area.type == "full":
-            monitor_index = capture_area.monitor_index
+            # windows-capture ожидает monitor_index >= 1 (1 = primary)
+            # Конвертируем из 0-based в 1-based
+            monitor_index = capture_area.monitor_index + 1
 
         capture = WindowsCapture(
             cursor_capture=capture_area.include_cursor,
