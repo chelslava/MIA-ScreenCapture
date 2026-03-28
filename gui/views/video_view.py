@@ -70,7 +70,16 @@ class VideoView(QWidget):
         # Кодек
         group_layout.addWidget(QLabel("Кодек:"), 0, 2)
         self._codec_combo = QComboBox()
-        self._codec_combo.addItems(["libx264", "mp4v", "h264", "xvid"])
+        self._codec_combo.addItems(
+            [
+                "libx264 (CPU)",
+                "h264_nvenc (NVIDIA GPU)",
+                "h264_qsv (Intel GPU)",
+                "libx265 (HEVC CPU)",
+                "hevc_nvenc (NVIDIA HEVC)",
+                "mp4v",
+            ]
+        )
         group_layout.addWidget(self._codec_combo, 0, 3)
 
         # Битрейт
@@ -186,7 +195,16 @@ class VideoView(QWidget):
         Returns:
             Название кодека
         """
-        return self._codec_combo.currentText()
+        text = self._codec_combo.currentText()
+        codec_map = {
+            "libx264 (CPU)": "libx264",
+            "h264_nvenc (NVIDIA GPU)": "h264_nvenc",
+            "h264_qsv (Intel GPU)": "h264_qsv",
+            "libx265 (HEVC CPU)": "libx265",
+            "hevc_nvenc (NVIDIA HEVC)": "hevc_nvenc",
+            "mp4v": "mp4v",
+        }
+        return codec_map.get(text, "libx264")
 
     def get_bitrate(self) -> str:
         """
@@ -246,11 +264,18 @@ class VideoView(QWidget):
         Args:
             codec: Название кодека
         """
-        index = self._codec_combo.findText(codec)
+        codec_to_text = {
+            "libx264": "libx264 (CPU)",
+            "h264_nvenc": "h264_nvenc (NVIDIA GPU)",
+            "h264_qsv": "h264_qsv (Intel GPU)",
+            "libx265": "libx265 (HEVC CPU)",
+            "hevc_nvenc": "hevc_nvenc (NVIDIA HEVC)",
+            "mp4v": "mp4v",
+        }
+        text = codec_to_text.get(codec, "libx264 (CPU)")
+        index = self._codec_combo.findText(text)
         if index >= 0:
             self._codec_combo.setCurrentIndex(index)
-        else:
-            self._codec_combo.setEditText(codec)
 
     def set_bitrate(self, bitrate: str) -> None:
         """
