@@ -53,21 +53,22 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path ".tmp" | Out-Null
-          New-Item -ItemType Directory -Force -Path ".pytest-tmp" | Out-Null
+          New-Item -ItemType Directory -Force -Path ".tmp\\pytest\\unit" | Out-Null
+          New-Item -ItemType Directory -Force -Path ".tmp\\pytest\\integration" | Out-Null
           New-Item -ItemType Directory -Force -Path ".pytest-cache" | Out-Null
 
       - name: Run unit tests
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path ".ci-logs" | Out-Null
-          uv run pytest tests/unit/ -v --tb=short --basetemp=.pytest-tmp/unit -p no:cacheprovider 2>&1 `
+          uv run pytest tests/unit/ -v --tb=short --basetemp=.tmp/pytest/unit -p no:cacheprovider 2>&1 `
             | Tee-Object -FilePath ".ci-logs/unit-tests-${{ matrix.python-version }}.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run integration tests
         shell: pwsh
         run: |
-          uv run pytest tests/integration/ -v --tb=short --basetemp=.pytest-tmp/integration -p no:cacheprovider 2>&1 `
+          uv run pytest tests/integration/ -v --tb=short --basetemp=.tmp/pytest/integration -p no:cacheprovider 2>&1 `
             | Tee-Object -FilePath ".ci-logs/integration-tests-${{ matrix.python-version }}.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         continue-on-error: true
