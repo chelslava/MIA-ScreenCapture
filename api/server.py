@@ -6,6 +6,7 @@ REST API сервер на базе Flask для удалённого управ
 Работает в отдельном потоке, чтобы не блокировать GUI.
 """
 
+import logging
 import re
 import threading
 import time
@@ -31,6 +32,13 @@ _REQUEST_ID_HEADER = "X-Request-ID"
 _PYPROJECT_PATH = Path(__file__).resolve().parent.parent / "pyproject.toml"
 _OPERATION_RESULT_TTL_SECONDS = 600.0
 _SERVER_STOP_WAIT_SECONDS = 10.0
+_HIGH_FREQUENCY_PATH_PREFIXES = (
+    "/health",
+    "/api/v1/status",
+    "/api/status",
+    "/api/v1/events",
+    "/api/v1/observability",
+)
 
 
 class APIOperationStore:
@@ -420,7 +428,11 @@ class APIServer:
                     status_code=response.status_code,
                     latency_seconds=latency_seconds,
                 )
-            logger.info(
+            logger.log(
+                self._resolve_access_log_level(
+                    path=request.path,
+                    status_code=response.status_code,
+                ),
                 "API %s %s -> %s (%.2f ms) request_id=%s ip=%s",
                 request.method,
                 request.path,
@@ -432,6 +444,19 @@ class APIServer:
             return response
 
         logger.info("Flask приложение создано")
+
+    @staticmethod
+    def _resolve_access_log_level(path: str, status_code: int) -> int:
+        """Определяет уровень access-лога для снижения I/O overhead."""
+        if status_code >= 500:
+            return logging.ERROR
+        if status_code >= 400:
+            return logging.WARNING
+
+        normalized_path = path or ""
+        if normalized_path.startswith(_HIGH_FREQUENCY_PATH_PREFIXES):
+            return logging.DEBUG
+        return logging.INFO
 
     def set_callback(self, action: str, callback: Callable) -> None:
         """

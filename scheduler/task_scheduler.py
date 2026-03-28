@@ -328,7 +328,8 @@ class TaskScheduler:
         Returns:
             Задача или None если не найдена
         """
-        return self._tasks.get(task_id)
+        with self._lock:
+            return self._tasks.get(task_id)
 
     def get_all_tasks(self) -> list[ScheduleTask]:
         """
@@ -337,11 +338,13 @@ class TaskScheduler:
         Returns:
             Список всех задач
         """
-        return list(self._tasks.values())
+        with self._lock:
+            return list(self._tasks.values())
 
     def get_task_count(self) -> int:
         """Получение общего количества задач."""
-        return len(self._tasks)
+        with self._lock:
+            return len(self._tasks)
 
     def get_upcoming_runs(self, count: int = 5) -> list[dict[str, Any]]:
         """
@@ -541,8 +544,12 @@ class TaskScheduler:
             return
 
         try:
+            with self._lock:
+                tasks_snapshot = [
+                    task.to_dict() for task in self._tasks.values()
+                ]
             data = {
-                "tasks": [task.to_dict() for task in self._tasks.values()],
+                "tasks": tasks_snapshot,
                 "last_updated": datetime.now().isoformat(),
             }
             atomic_write_json(self.persist_path, data)
