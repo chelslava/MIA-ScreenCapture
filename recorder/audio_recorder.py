@@ -20,6 +20,9 @@ from recorder.utils import get_audio_devices, get_platform
 
 logger = get_module_logger(__name__)
 
+_AUDIO_QUEUE_MAX_CHUNKS = 256
+_AUDIO_QUEUE_GET_TIMEOUT_SECONDS = 0.1
+
 
 class AudioState(Enum):
     """Перечисление состояний аудиозаписи."""
@@ -69,8 +72,13 @@ class AudioRecorder:
         # Состояние
         self._state = AudioState.IDLE
         self._lock = threading.Lock()
-        self._audio_queue: queue.Queue = queue.Queue()
+        self._audio_queue: queue.Queue[tuple[bytes, int] | None] = queue.Queue(
+            maxsize=_AUDIO_QUEUE_MAX_CHUNKS
+        )
         self._record_thread: threading.Thread | None = None
+        self._writer_thread: threading.Thread | None = None
+        self._writer_stop_event = threading.Event()
+        self._dropped_chunks = 0
 
         # Информация о записи
         self._output_path: Path | None = None
@@ -186,9 +194,16 @@ class AudioRecorder:
                 self._paused_time = 0
                 self._total_paused = 0
                 self._frames_recorded = 0
+                self._dropped_chunks = 0
+                self._reset_audio_queue()
+                self._writer_stop_event.clear()
 
                 # Запуск потока записи
                 self._state = AudioState.RECORDING
+                self._writer_thread = threading.Thread(
+                    target=self._writer_loop, daemon=True
+                )
+                self._writer_thread.start()
                 self._record_thread = threading.Thread(
                     target=self._record_loop, daemon=True
                 )
@@ -295,6 +310,10 @@ class AudioRecorder:
         if self._record_thread and self._record_thread.is_alive():
             self._record_thread.join(timeout=5)
 
+        self._writer_stop_event.set()
+        if self._writer_thread and self._writer_thread.is_alive():
+            self._writer_thread.join(timeout=5)
+
         self._cleanup()
 
         logger.info(f"Аудиозапись остановлена: {self._output_path}")
@@ -306,12 +325,13 @@ class AudioRecorder:
             import sounddevice as sd
 
             def audio_callback(indata, frames, time_info, status):
+                _ = time_info
+                if status:
+                    logger.warning(f"Проблема аудиозахвата: {status}")
                 if self._state == AudioState.RECORDING:
-                    # Преобразование в байты и запись в WAV
+                    # Callback не должен блокироваться дисковым I/O.
                     audio_data = indata.tobytes()
-                    if self._wave_file:
-                        self._wave_file.writeframes(audio_data)
-                        self._frames_recorded += frames
+                    self._enqueue_audio_chunk(audio_data, int(frames))
 
             # Запуск потоковой передачи
             with sd.InputStream(
@@ -356,9 +376,7 @@ class AudioRecorder:
                     data = self._audio_stream.read(
                         self.config.chunk_size, exception_on_overflow=False
                     )
-                    if self._wave_file:
-                        self._wave_file.writeframes(data)
-                        self._frames_recorded += self.config.chunk_size
+                    self._enqueue_audio_chunk(data, self.config.chunk_size)
 
                 except Exception as e:
                     logger.error(f"Ошибка чтения аудио: {e}")
@@ -372,9 +390,64 @@ class AudioRecorder:
             if self._on_error:
                 self._on_error(str(e))
 
+    def _enqueue_audio_chunk(self, audio_data: bytes, frames: int) -> None:
+        """
+        Неблокирующее помещение аудио-чанка в очередь writer-потока.
+
+        Args:
+            audio_data: Байты PCM чанка.
+            frames: Количество кадров в чанке.
+        """
+        try:
+            self._audio_queue.put_nowait((audio_data, frames))
+        except queue.Full:
+            self._dropped_chunks += 1
+            if self._dropped_chunks == 1 or self._dropped_chunks % 50 == 0:
+                logger.warning(
+                    "Очередь аудио переполнена, пропущено чанков: %s",
+                    self._dropped_chunks,
+                )
+
+    def _writer_loop(self) -> None:
+        """Фоновая запись WAV из очереди audio-чанков."""
+        while True:
+            if self._writer_stop_event.is_set() and self._audio_queue.empty():
+                return
+
+            try:
+                chunk = self._audio_queue.get(
+                    timeout=_AUDIO_QUEUE_GET_TIMEOUT_SECONDS
+                )
+            except queue.Empty:
+                continue
+
+            if chunk is None:
+                continue
+
+            audio_data, frames = chunk
+            try:
+                if self._wave_file is not None:
+                    self._wave_file.writeframes(audio_data)
+                    self._frames_recorded += frames
+            except Exception as e:
+                logger.error(f"Ошибка записи WAV чанка: {e}")
+                if self._on_error:
+                    self._on_error(str(e))
+                self._writer_stop_event.set()
+
+    def _reset_audio_queue(self) -> None:
+        """Очистка очереди аудио перед запуском новой записи."""
+        while not self._audio_queue.empty():
+            try:
+                self._audio_queue.get_nowait()
+            except queue.Empty:
+                break
+
     def _cleanup(self) -> None:
         """Очистка ресурсов."""
         try:
+            self._writer_stop_event.set()
+
             # Закрытие WAV файла
             if self._wave_file:
                 self._wave_file.close()
@@ -393,6 +466,7 @@ class AudioRecorder:
         except Exception as e:
             logger.error(f"Ошибка при очистке аудио: {e}")
 
+        self._writer_thread = None
         self._state = AudioState.IDLE
 
 

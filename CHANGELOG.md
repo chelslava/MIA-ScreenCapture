@@ -42,6 +42,11 @@
   для mutating endpoints.
 - Runtime API-token в `main.py` переведён на постоянное хранилище
   (Credential Manager/env), с миграцией legacy токена из config.
+- Аудиозапись переведена на неблокирующую модель:
+  запись WAV вынесена из callback в отдельный writer-thread
+  с bounded-queue и защитой от переполнения чанков.
+- Для `AudioRecorder` добавлены unit-тесты очереди записи:
+  переполнение буфера и запись чанков из writer-потока.
 
 ## [1.4.3] - 2026-03-28
 

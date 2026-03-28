@@ -11,8 +11,6 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] Вынести запись WAV из audio callback в отдельный writer-thread с
-  bounded-queue для снижения риска xruns под нагрузкой.
 - [ ] Сделать `ConfigManager` потокобезопасным для мутаций `_settings`
   и `recent_recordings`.
 - [ ] Подключить `scheduler.max_concurrent_tasks` к реальному лимиту

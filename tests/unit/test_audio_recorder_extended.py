@@ -477,6 +477,37 @@ class TestAudioRecorderQueue:
         assert hasattr(recorder, "_audio_queue")
         assert isinstance(recorder._audio_queue, queue.Queue)
 
+    def test_enqueue_audio_chunk_drops_on_full_queue(self) -> None:
+        """Проверка безопасного дропа чанка при переполнении очереди."""
+        with patch("recorder.audio_recorder.get_audio_devices"):
+            recorder = AudioRecorder()
+
+        # Заполняем очередь до предела.
+        for _ in range(recorder._audio_queue.maxsize):
+            recorder._audio_queue.put((b"data", 1))
+
+        recorder._enqueue_audio_chunk(b"overflow", 1)
+
+        assert recorder._dropped_chunks == 1
+
+    def test_writer_loop_writes_chunks_from_queue(self) -> None:
+        """Проверка записи WAV данных в отдельном writer-потоке."""
+        with patch("recorder.audio_recorder.get_audio_devices"):
+            recorder = AudioRecorder()
+
+        recorder._wave_file = MagicMock()
+        recorder._audio_queue.put((b"chunk1", 10))
+        recorder._audio_queue.put((b"chunk2", 20))
+        recorder._writer_stop_event.set()
+
+        writer_thread = threading.Thread(target=recorder._writer_loop)
+        writer_thread.start()
+        writer_thread.join(timeout=1.0)
+
+        assert writer_thread.is_alive() is False
+        assert recorder._wave_file.writeframes.call_count == 2
+        assert recorder._frames_recorded == 30
+
 
 class TestAudioRecorderNegative:
     """Негативные тесты для обработки исключительных ситуаций."""
