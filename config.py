@@ -8,6 +8,7 @@
 
 import json
 import threading
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -264,6 +265,7 @@ class ConfigManager:
         """
         self.config_path = config_path or CONFIG_FILE
         self._settings: AppSettings = AppSettings()
+        self._settings_lock = threading.RLock()
         self._save_lock = threading.Lock()
         self._recent_save_timer: threading.Timer | None = None
         self._load()
@@ -276,13 +278,18 @@ class ConfigManager:
                     data = json.load(f)
                 # Валидация через Pydantic
                 validated = AppSettingsSchema.model_validate(data)
-                self._settings = self._dict_to_settings(validated.model_dump())
+                with self._settings_lock:
+                    self._settings = self._dict_to_settings(
+                        validated.model_dump()
+                    )
                 logger.info(f"Конфигурация загружена из {self.config_path}")
             except Exception as e:
                 logger.error(f"Ошибка загрузки конфигурации: {e}")
-                self._settings = AppSettings()
+                with self._settings_lock:
+                    self._settings = AppSettings()
         else:
-            self._settings = AppSettings()
+            with self._settings_lock:
+                self._settings = AppSettings()
             logger.info("Создана конфигурация по умолчанию")
 
     def _dict_to_settings(self, data: dict[str, Any]) -> AppSettings:
@@ -327,11 +334,17 @@ class ConfigManager:
         Returns:
             True если сохранение успешно, False в противном случае
         """
+        try:
+            with self._settings_lock:
+                data = asdict(self._settings)
+            AppSettingsSchema.model_validate(data)
+        except Exception as e:
+            logger.error(f"Ошибка валидации конфигурации перед сохранением: {e}")
+            return False
+
         with self._save_lock:
             self._cancel_recent_save_timer_locked()
             try:
-                data = asdict(self._settings)
-                AppSettingsSchema.model_validate(data)
                 result = atomic_write_json(self.config_path, data)
                 if result:
                     logger.info(f"Конфигурация сохранена в {self.config_path}")
@@ -358,11 +371,17 @@ class ConfigManager:
 
     def _flush_recent_recordings_save(self) -> None:
         """Фоновая запись конфига после debounce окна."""
+        try:
+            with self._settings_lock:
+                data = asdict(self._settings)
+            AppSettingsSchema.model_validate(data)
+        except Exception as e:
+            logger.error(f"Ошибка валидации debounce-конфигурации: {e}")
+            return
+
         with self._save_lock:
             self._recent_save_timer = None
             try:
-                data = asdict(self._settings)
-                AppSettingsSchema.model_validate(data)
                 result = atomic_write_json(self.config_path, data)
                 if result:
                     logger.debug(
@@ -386,7 +405,8 @@ class ConfigManager:
             Кортеж (валидно, список ошибок)
         """
         try:
-            data = asdict(self._settings)
+            with self._settings_lock:
+                data = asdict(self._settings)
             AppSettingsSchema.model_validate(data)
             return True, []
         except Exception as e:
@@ -395,8 +415,24 @@ class ConfigManager:
 
     @property
     def settings(self) -> AppSettings:
-        """Получение текущих настроек."""
-        return self._settings
+        """
+        Получение текущих настроек.
+
+        Возвращается общий объект настроек для обратной совместимости.
+        Для фоновых потоков безопаснее использовать snapshot_settings().
+        """
+        with self._settings_lock:
+            return self._settings
+
+    def snapshot_settings(self) -> AppSettings:
+        """
+        Возвращает снимок настроек для безопасного чтения вне lock.
+
+        Returns:
+            Полная копия текущих настроек.
+        """
+        with self._settings_lock:
+            return deepcopy(self._settings)
 
     def update(self, **kwargs) -> None:
         """
@@ -405,9 +441,10 @@ class ConfigManager:
         Args:
             **kwargs: Настройки для обновления (например, video=VideoSettings())
         """
-        for key, value in kwargs.items():
-            if hasattr(self._settings, key):
-                setattr(self._settings, key, value)
+        with self._settings_lock:
+            for key, value in kwargs.items():
+                if hasattr(self._settings, key):
+                    setattr(self._settings, key, value)
         self.save()
 
     def add_recent_recording(self, path: str, size: int) -> None:
@@ -424,32 +461,34 @@ class ConfigManager:
             "size": size,
         }
 
-        # Удаление дубликатов
-        self._settings.recent_recordings = [
-            r
-            for r in self._settings.recent_recordings
-            if r.get("path") != path
-        ]
+        with self._settings_lock:
+            # Удаление дубликатов
+            self._settings.recent_recordings = [
+                r
+                for r in self._settings.recent_recordings
+                if r.get("path") != path
+            ]
 
-        # Добавление в начало
-        self._settings.recent_recordings.insert(0, recording)
+            # Добавление в начало
+            self._settings.recent_recordings.insert(0, recording)
 
-        # Ограничение размера
-        if (
-            len(self._settings.recent_recordings)
-            > self._settings.max_recent_recordings
-        ):
-            self._settings.recent_recordings = (
-                self._settings.recent_recordings[
-                    : self._settings.max_recent_recordings
-                ]
-            )
+            # Ограничение размера
+            if (
+                len(self._settings.recent_recordings)
+                > self._settings.max_recent_recordings
+            ):
+                self._settings.recent_recordings = (
+                    self._settings.recent_recordings[
+                        : self._settings.max_recent_recordings
+                    ]
+                )
 
         self._save_recent_recordings_debounced()
 
     def clear_recent_recordings(self) -> None:
         """Очистка списка недавних записей."""
-        self._settings.recent_recordings = []
+        with self._settings_lock:
+            self._settings.recent_recordings = []
         self.save()
 
     def get_output_path(self, filename: str | None = None) -> Path:
@@ -462,7 +501,12 @@ class ConfigManager:
         Returns:
             Полный путь к выходному файлу
         """
-        base_path = Path(self._settings.output.default_path)
+        with self._settings_lock:
+            output_path = self._settings.output.default_path
+            filename_template = self._settings.output.filename_template
+            extension = f".{self._settings.video.format}"
+
+        base_path = Path(output_path)
 
         if not base_path.exists():
             base_path = Path.home() / "Videos" / "Recordings"
@@ -470,10 +514,8 @@ class ConfigManager:
 
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            template = self._settings.output.filename_template
-            filename = template.replace("{datetime}", timestamp)
+            filename = filename_template.replace("{datetime}", timestamp)
 
-        extension = f".{self._settings.video.format}"
         if not filename.endswith(extension):
             filename += extension
 
@@ -481,7 +523,8 @@ class ConfigManager:
 
     def reset(self) -> None:
         """Сброс конфигурации к значениям по умолчанию."""
-        self._settings = AppSettings()
+        with self._settings_lock:
+            self._settings = AppSettings()
         self.save()
         logger.info("Конфигурация сброшена к значениям по умолчанию")
 

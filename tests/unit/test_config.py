@@ -6,6 +6,7 @@
 """
 
 import json
+import threading
 from pathlib import Path
 
 from config import (
@@ -347,6 +348,30 @@ class TestConfigManager:
         manager.clear_recent_recordings()
 
         assert manager.settings.recent_recordings == []
+
+    def test_add_recent_recording_thread_safe(self, temp_config_file: Path):
+        """Проверка конкурентного добавления recent-записей."""
+        manager = ConfigManager(temp_config_file)
+        manager.settings.max_recent_recordings = 20
+
+        def worker(start_index: int) -> None:
+            for idx in range(start_index, start_index + 10):
+                manager.add_recent_recording(f"/tmp/video_{idx}.mp4", idx)
+
+        threads = [
+            threading.Thread(target=worker, args=(index * 10,))
+            for index in range(4)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        paths = [
+            entry["path"] for entry in manager.settings.recent_recordings
+        ]
+        assert len(paths) <= manager.settings.max_recent_recordings
+        assert len(paths) == len(set(paths))
 
     def test_get_output_path_default(
         self, temp_config_file: Path, temp_dir: Path, monkeypatch

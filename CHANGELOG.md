@@ -47,6 +47,11 @@
   с bounded-queue и защитой от переполнения чанков.
 - Для `AudioRecorder` добавлены unit-тесты очереди записи:
   переполнение буфера и запись чанков из writer-потока.
+- `ConfigManager` сделан потокобезопасным для внутренних мутаций
+  `_settings/recent_recordings`:
+  - добавлен `RLock` для конкурентных update/save/add_recent_recording;
+  - добавлен безопасный `snapshot_settings()` для фонового чтения;
+  - добавлен unit-тест на конкурентное добавление `recent_recordings`.
 
 ## [1.4.3] - 2026-03-28
 

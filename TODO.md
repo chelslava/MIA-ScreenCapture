@@ -8,15 +8,23 @@
 - [ ] Выполнить ручной 30+ минутный GUI smoke-run API-вкладки с открытым
   окном логов и зафиксировать результат в
   `plans/release-note-v1.4.5-smoke.md`.
+- [ ] Запретить создание невыполнимых scheduler-задач (weekly без дней,
+  interval <= 0) с явной ошибкой в GUI/API/CLI.
 
 ## P1 (следующий приоритет)
 
-- [ ] Сделать `ConfigManager` потокобезопасным для мутаций `_settings`
-  и `recent_recordings`.
 - [ ] Подключить `scheduler.max_concurrent_tasks` к реальному лимиту
   параллельных запусков задач.
 - [ ] Жёстко обрабатывать malformed JSON и ограничить размер тела
   запроса API (`MAX_CONTENT_LENGTH` + 400 вместо 500).
+- [ ] Сделать `APIServer.start()` fail-fast при ошибке bind/старта waitress
+  (без ложного `success`).
+- [ ] Убрать гонку в latency-метриках observability
+  (`get_metrics_snapshot()` только со snapshot под lock).
+- [ ] Нормализовать rate-limit заголовки для всех успешных ответов API,
+  включая tuple-ответы `(body, status)`.
+- [ ] Заменить синтетические тесты `scheduler_tab` на реальные
+  поведенческие Qt-сценарии (create/edit/delete/toggle/validation).
 
 ## P2 (после стабилизации релиза)
 
@@ -35,6 +43,8 @@
 - [ ] Убрать hardcode `threads=4` у waitress и вынести в конфиг.
 - [ ] Оптимизировать расчёт перцентилей latency в observability без
   полной сортировки массива на каждый запрос.
+- [ ] Добавить мягкий таймаут/защиту остановки `TaskScheduler.stop()`
+  при зависших job callback.
 
 ## Правило ведения TODO
 
