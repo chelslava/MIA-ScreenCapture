@@ -1,0 +1,364 @@
+"""
+Вкладка настроек API
+====================
+
+Представление для управления API сервером, его настройками и логами.
+"""
+
+from pathlib import Path
+
+from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtGui import QFontDatabase
+from PyQt6.QtWidgets import (
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
+
+from logger_config import (
+    get_api_log_dir,
+    get_module_logger,
+    open_api_logs_folder,
+)
+
+logger = get_module_logger(__name__)
+
+_LOG_REFRESH_INTERVAL_MS = 1000
+_MAX_LOG_BLOCKS = 5000
+
+
+class ApiSettingsView(QWidget):
+    """Виджет настройки API сервера."""
+
+    apply_requested = pyqtSignal(int, str)
+    start_requested = pyqtSignal()
+    stop_requested = pyqtSignal()
+    restart_requested = pyqtSignal()
+    refresh_requested = pyqtSignal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """
+        Инициализация вкладки API.
+
+        Args:
+            parent: Родительский виджет.
+        """
+        super().__init__(parent)
+        self._current_log_path: Path | None = None
+        self._log_offset = 0
+        self._server_running = False
+
+        self._setup_ui()
+        self._setup_timer()
+        self.refresh_logs()
+
+    def _setup_ui(self) -> None:
+        """Настройка интерфейса вкладки."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        title = QLabel("API сервер")
+        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(title)
+
+        layout.addWidget(self._create_settings_group())
+        layout.addWidget(self._create_controls_group())
+        layout.addWidget(self._create_logs_group())
+
+        layout.addStretch()
+
+    def _create_settings_group(self) -> QGroupBox:
+        """Создание группы настроек сервера."""
+        group = QGroupBox("Настройки сервера")
+        layout = QFormLayout(group)
+
+        self._port_spinbox = QSpinBox()
+        self._port_spinbox.setRange(1, 65535)
+        self._port_spinbox.setValue(5000)
+        layout.addRow("Порт:", self._port_spinbox)
+
+        self._token_edit = QLineEdit()
+        self._token_edit.setPlaceholderText("Введите API токен")
+        self._token_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addRow("Токен:", self._token_edit)
+
+        buttons_layout = QHBoxLayout()
+
+        self._apply_btn = QPushButton("Сохранить настройки")
+        self._apply_btn.clicked.connect(self._on_apply_clicked)
+        buttons_layout.addWidget(self._apply_btn)
+
+        self._open_logs_btn = QPushButton("Открыть папку логов API")
+        self._open_logs_btn.clicked.connect(self._on_open_logs_clicked)
+        buttons_layout.addWidget(self._open_logs_btn)
+
+        layout.addRow(buttons_layout)
+        return group
+
+    def _create_controls_group(self) -> QGroupBox:
+        """Создание группы управления сервером."""
+        group = QGroupBox("Управление сервером")
+        layout = QVBoxLayout(group)
+
+        buttons_layout = QHBoxLayout()
+
+        self._start_btn = QPushButton("Запустить")
+        self._start_btn.clicked.connect(self._on_start_clicked)
+        buttons_layout.addWidget(self._start_btn)
+
+        self._stop_btn = QPushButton("Остановить")
+        self._stop_btn.clicked.connect(self._on_stop_clicked)
+        buttons_layout.addWidget(self._stop_btn)
+
+        self._restart_btn = QPushButton("Перезапустить")
+        self._restart_btn.clicked.connect(self._on_restart_clicked)
+        buttons_layout.addWidget(self._restart_btn)
+
+        layout.addLayout(buttons_layout)
+
+        self._status_label = QLabel("Статус: неизвестно")
+        self._status_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(self._status_label)
+
+        self._server_state_label = QLabel("Сервер не запущен")
+        self._server_state_label.setStyleSheet("color: gray;")
+        layout.addWidget(self._server_state_label)
+
+        self._update_server_controls(False)
+        return group
+
+    def _create_logs_group(self) -> QGroupBox:
+        """Создание группы с логами API."""
+        group = QGroupBox("Логи API")
+        layout = QVBoxLayout(group)
+
+        header_layout = QHBoxLayout()
+
+        self._log_source_label = QLabel("Файл логов: не найден")
+        self._log_source_label.setStyleSheet("color: gray;")
+        header_layout.addWidget(self._log_source_label)
+        header_layout.addStretch()
+
+        self._refresh_btn = QPushButton("Обновить")
+        self._refresh_btn.clicked.connect(self._on_refresh_clicked)
+        header_layout.addWidget(self._refresh_btn)
+
+        layout.addLayout(header_layout)
+
+        self._log_view = QPlainTextEdit()
+        self._log_view.setReadOnly(True)
+        self._log_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self._log_view.setMaximumBlockCount(_MAX_LOG_BLOCKS)
+        self._log_view.setFont(
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        )
+        layout.addWidget(self._log_view)
+
+        self._log_status_label = QLabel("Автообновление включено")
+        self._log_status_label.setStyleSheet("color: gray;")
+        layout.addWidget(self._log_status_label)
+
+        return group
+
+    def _setup_timer(self) -> None:
+        """Настройка таймера обновления логов."""
+        self._log_timer = QTimer(self)
+        self._log_timer.timeout.connect(self.refresh_logs)
+        self._log_timer.start(_LOG_REFRESH_INTERVAL_MS)
+
+    def _on_apply_clicked(self) -> None:
+        """Обработка сохранения настроек."""
+        self.apply_requested.emit(
+            self._port_spinbox.value(),
+            self._token_edit.text().strip(),
+        )
+
+    def _on_start_clicked(self) -> None:
+        """Обработка запуска сервера."""
+        self.start_requested.emit()
+
+    def _on_stop_clicked(self) -> None:
+        """Обработка остановки сервера."""
+        self.stop_requested.emit()
+
+    def _on_restart_clicked(self) -> None:
+        """Обработка перезапуска сервера."""
+        self.restart_requested.emit()
+
+    def _on_refresh_clicked(self) -> None:
+        """Обработка ручного обновления логов."""
+        self.refresh_requested.emit()
+        self.refresh_logs()
+
+    def _on_open_logs_clicked(self) -> None:
+        """Открытие папки с логами API."""
+        open_api_logs_folder()
+
+    def get_settings(self) -> tuple[int, str]:
+        """
+        Получение текущих значений формы.
+
+        Returns:
+            Кортеж (порт, токен).
+        """
+        return self._port_spinbox.value(), self._token_edit.text().strip()
+
+    def set_settings(self, port: int, token: str) -> None:
+        """
+        Установка значений формы.
+
+        Args:
+            port: Порт API сервера.
+            token: API токен.
+        """
+        self._port_spinbox.setValue(port)
+        self._token_edit.setText(token)
+
+    def set_status(self, running: bool, message: str | None = None) -> None:
+        """
+        Обновление отображения статуса сервера.
+
+        Args:
+            running: Признак запущенного сервера.
+            message: Дополнительное сообщение о статусе.
+        """
+        self._server_running = running
+        self._update_server_controls(running)
+
+        if message is None:
+            message = "Сервер запущен" if running else "Сервер остановлен"
+
+        self._status_label.setText(f"Статус: {message}")
+        color = "green" if running else "gray"
+        self._status_label.setStyleSheet(f"font-weight: bold; color: {color};")
+        self._server_state_label.setText(message)
+        self._server_state_label.setStyleSheet(f"color: {color};")
+
+    def set_log_text(self, text: str) -> None:
+        """
+        Полная замена содержимого окна логов.
+
+        Args:
+            text: Текст логов.
+        """
+        self._log_view.setPlainText(text)
+        self._scroll_logs_to_end()
+
+    def append_log_text(self, text: str) -> None:
+        """
+        Добавление текста в окно логов.
+
+        Args:
+            text: Текст для добавления.
+        """
+        if not text:
+            return
+        cleaned_text = text.rstrip("\n")
+        if self._log_view.toPlainText():
+            self._log_view.appendPlainText(cleaned_text)
+        else:
+            self._log_view.setPlainText(cleaned_text)
+        self._scroll_logs_to_end()
+
+    def refresh_logs(self) -> None:
+        """Обновление логов API из файла."""
+        try:
+            log_path = self._resolve_current_log_path()
+            if log_path is None:
+                self._log_source_label.setText("Файл логов: не найден")
+                if not self._log_view.toPlainText():
+                    self._log_view.setPlainText(
+                        "Логи API появятся после запуска сервера."
+                    )
+                return
+
+            self._log_source_label.setText(f"Файл логов: {log_path.name}")
+            if log_path != self._current_log_path:
+                self._current_log_path = log_path
+                self._log_offset = 0
+                self._load_full_log(log_path)
+                return
+
+            self._append_new_log_data(log_path)
+        except Exception as e:
+            logger.error(f"Ошибка обновления логов API: {e}")
+            self._log_status_label.setText(f"Ошибка логов: {e}")
+
+    def _resolve_current_log_path(self) -> Path | None:
+        """Определение актуального файла логов API."""
+        api_log_dir = get_api_log_dir()
+        if not api_log_dir.exists():
+            return None
+
+        log_files = sorted(
+            api_log_dir.glob("api_*.log"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if log_files:
+            return log_files[0]
+
+        return None
+
+    def _load_full_log(self, log_path: Path) -> None:
+        """Загрузка файла логов целиком после смены источника."""
+        if not log_path.exists():
+            self._log_view.setPlainText(
+                "Файл логов пока не создан. Запустите API сервер."
+            )
+            self._log_offset = 0
+            self._scroll_logs_to_end()
+            return
+
+        with open(log_path, "rb") as file:
+            data = file.read()
+
+        text = data.decode("utf-8", errors="replace")
+        self._log_view.setPlainText(text or "Лог-файл пуст.")
+        self._log_offset = len(data)
+        self._scroll_logs_to_end()
+
+    def _append_new_log_data(self, log_path: Path) -> None:
+        """Подгрузка новых строк из файла логов."""
+        if not log_path.exists():
+            return
+
+        size = log_path.stat().st_size
+        if size < self._log_offset:
+            self._load_full_log(log_path)
+            return
+
+        if size == self._log_offset:
+            return
+
+        with open(log_path, "rb") as file:
+            file.seek(self._log_offset)
+            data = file.read()
+
+        if not data:
+            return
+
+        self._log_offset = self._log_offset + len(data)
+        self.append_log_text(data.decode("utf-8", errors="replace"))
+
+    def _update_server_controls(self, running: bool) -> None:
+        """Обновление состояния кнопок управления сервером."""
+        self._start_btn.setEnabled(not running)
+        self._stop_btn.setEnabled(running)
+        self._restart_btn.setEnabled(running)
+
+    def _scroll_logs_to_end(self) -> None:
+        """Прокрутка окна логов к последней строке."""
+        from PyQt6.QtGui import QTextCursor
+
+        cursor = self._log_view.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self._log_view.setTextCursor(cursor)
+        self._log_view.ensureCursorVisible()
