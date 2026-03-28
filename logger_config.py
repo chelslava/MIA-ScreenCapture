@@ -11,8 +11,7 @@ import logging
 import os
 import sys
 from collections.abc import MutableMapping
-from datetime import datetime
-from logging.handlers import TimedRotatingFileHandler
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +38,89 @@ LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 _root_logger: logging.Logger | None = None
-_file_handler: TimedRotatingFileHandler | None = None
-_api_file_handler: TimedRotatingFileHandler | None = None
+_file_handler: logging.Handler | None = None
+_api_file_handler: logging.Handler | None = None
+
+
+def _now() -> datetime:
+    """Возвращает текущее локальное время для логирования."""
+    return datetime.now()
+
+
+class _DailyLogFileHandler(logging.FileHandler):
+    """
+    Обработчик логов с именем файла по текущей дате.
+
+    Формат имени: `<prefix>_YYYY-MM-DD.log`.
+    При смене даты обработчик автоматически открывает новый файл
+    без суффиксов, что упрощает чтение live-логов.
+    """
+
+    def __init__(
+        self,
+        log_dir: Path,
+        prefix: str,
+        backup_days: int,
+        encoding: str = "utf-8",
+    ) -> None:
+        self._log_dir = log_dir
+        self._prefix = prefix
+        self._backup_days = backup_days
+        self._current_date = self._get_date_str()
+        path = self._build_path(self._current_date)
+        super().__init__(path, mode="a", encoding=encoding, delay=False)
+        self._cleanup_old_files()
+
+    def _get_date_str(self) -> str:
+        """Текущая дата в формате `YYYY-MM-DD`."""
+        return _now().strftime("%Y-%m-%d")
+
+    def _build_path(self, date_str: str) -> Path:
+        """Построение пути к файлу лога для указанной даты."""
+        return self._log_dir / f"{self._prefix}_{date_str}.log"
+
+    def _maybe_rollover(self) -> None:
+        """Переключение файла при смене календарной даты."""
+        next_date = self._get_date_str()
+        if next_date == self._current_date:
+            return
+
+        self.acquire()
+        try:
+            if self.stream:
+                self.stream.close()
+                self.stream = None
+
+            self._current_date = next_date
+            self.baseFilename = os.fspath(self._build_path(next_date))
+            self.stream = self._open()
+            self._cleanup_old_files()
+        finally:
+            self.release()
+
+    def _cleanup_old_files(self) -> None:
+        """Удаление старых файлов логов старше `backup_days`."""
+        if self._backup_days <= 0:
+            return
+
+        cutoff_date = (_now() - timedelta(days=self._backup_days)).date()
+        pattern = f"{self._prefix}_*.log"
+        for file_path in self._log_dir.glob(pattern):
+            suffix = file_path.stem.removeprefix(f"{self._prefix}_")
+            try:
+                file_date = datetime.strptime(suffix, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if file_date < cutoff_date:
+                try:
+                    file_path.unlink()
+                except OSError:
+                    continue
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Записывает запись и выполняет rollover по дате при необходимости."""
+        self._maybe_rollover()
+        super().emit(record)
 
 
 class _ApiModuleFilter(logging.Filter):
@@ -82,30 +162,22 @@ def setup_logger(
 
     if log_to_file:
         try:
-            today = datetime.now().strftime("%Y-%m-%d")
-            log_file = LOG_DIR / f"mia_{today}.log"
-
-            _file_handler = TimedRotatingFileHandler(
-                log_file,
-                when="midnight",
-                interval=1,
-                backupCount=backup_days,
+            _file_handler = _DailyLogFileHandler(
+                log_dir=LOG_DIR,
+                prefix="mia",
+                backup_days=backup_days,
                 encoding="utf-8",
             )
-            _file_handler.suffix = "%Y-%m-%d"
             _file_handler.setLevel(logging.DEBUG)
             _file_handler.setFormatter(formatter)
             logger.addHandler(_file_handler)
 
-            api_log_file = API_LOG_DIR / f"api_{today}.log"
-            _api_file_handler = TimedRotatingFileHandler(
-                api_log_file,
-                when="midnight",
-                interval=1,
-                backupCount=backup_days,
+            _api_file_handler = _DailyLogFileHandler(
+                log_dir=API_LOG_DIR,
+                prefix="api",
+                backup_days=backup_days,
                 encoding="utf-8",
             )
-            _api_file_handler.suffix = "%Y-%m-%d"
             _api_file_handler.setLevel(logging.DEBUG)
             _api_file_handler.setFormatter(formatter)
             _api_file_handler.addFilter(_ApiModuleFilter())
