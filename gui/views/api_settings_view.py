@@ -131,7 +131,7 @@ class ApiSettingsView(QWidget):
         self._status_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(self._status_label)
 
-        self._server_state_label = QLabel("Сервер не запущен")
+        self._server_state_label = QLabel("Сервер готов к запуску")
         self._server_state_label.setStyleSheet("color: gray;")
         layout.addWidget(self._server_state_label)
 
@@ -215,7 +215,7 @@ class ApiSettingsView(QWidget):
         token = self._token_edit.text().strip()
         if not token:
             self._status_label.setText(
-                "Статус: токен пуст, копирование отменено"
+                "Статус: токен не задан. Сначала введите и сохраните его."
             )
             self._status_label.setStyleSheet(
                 "font-weight: bold; color: orange;"
@@ -223,8 +223,9 @@ class ApiSettingsView(QWidget):
             return
 
         clipboard = QGuiApplication.clipboard()
+        assert clipboard is not None
         clipboard.setText(token)
-        self._status_label.setText("Статус: токен скопирован в буфер обмена")
+        self._status_label.setText("Статус: токен скопирован в буфер обмена.")
         self._status_label.setStyleSheet("font-weight: bold; color: green;")
 
     def get_settings(self) -> tuple[int, str]:
@@ -307,10 +308,11 @@ class ApiSettingsView(QWidget):
         try:
             log_path = self._resolve_current_log_path()
             if log_path is None:
-                self._log_source_label.setText("Файл логов: не найден")
+                self._log_source_label.setText("Журнал API: файл не найден")
                 if not self._log_view.toPlainText():
                     self._log_view.setPlainText(
-                        "Логи API появятся после запуска сервера."
+                        "Журнал API пока не создан. "
+                        "Запустите сервер, чтобы начать запись."
                     )
                 return
 
@@ -323,8 +325,10 @@ class ApiSettingsView(QWidget):
 
             self._append_new_log_data(log_path)
         except Exception as e:
-            logger.error(f"Ошибка обновления логов API: {e}")
-            self._log_status_label.setText(f"Ошибка логов: {e}")
+            logger.error(f"Не удалось обновить журнал API: {e}")
+            self._log_status_label.setText(
+                f"Не удалось обновить журнал API: {e}"
+            )
 
     def _resolve_current_log_path(self) -> Path | None:
         """Определение актуального файла логов API."""
@@ -346,7 +350,7 @@ class ApiSettingsView(QWidget):
         """Загрузка файла логов целиком после смены источника."""
         if not log_path.exists():
             self._log_view.setPlainText(
-                "Файл логов пока не создан. Запустите API сервер."
+                "Файл журнала API пока не создан. Запустите сервер."
             )
             self._log_offset = 0
             self._scroll_logs_to_end()
@@ -356,7 +360,7 @@ class ApiSettingsView(QWidget):
             data = file.read()
 
         text = data.decode("utf-8", errors="replace")
-        self._log_view.setPlainText(text or "Лог-файл пуст.")
+        self._log_view.setPlainText(text or "Журнал API пуст.")
         self._log_offset = len(data)
         self._scroll_logs_to_end()
 
