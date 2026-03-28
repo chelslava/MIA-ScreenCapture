@@ -19,6 +19,28 @@ if TYPE_CHECKING:
     from PyQt6.QtWidgets import QApplication
 
 import pytest
+from _pytest import pathlib as pytest_pathlib
+from _pytest import tmpdir as pytest_tmpdir
+
+_original_cleanup_dead_symlinks = pytest_pathlib.cleanup_dead_symlinks
+
+
+def _safe_cleanup_dead_symlinks(root: Path) -> None:
+    """
+    Безопасная очистка временных ссылок для Windows окружения.
+
+    На некоторых машинах (в т.ч. CI) удаление basetemp может завершаться
+    `PermissionError` из-за временных блокировок/ACL. Такая ошибка не должна
+    валить весь прогон тестов, если сами тесты завершились.
+    """
+    try:
+        _original_cleanup_dead_symlinks(root)
+    except PermissionError:
+        return
+
+
+pytest_pathlib.cleanup_dead_symlinks = _safe_cleanup_dead_symlinks
+pytest_tmpdir.cleanup_dead_symlinks = _safe_cleanup_dead_symlinks
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent.parent))
