@@ -57,17 +57,28 @@ jobs:
           New-Item -ItemType Directory -Force -Path ".pytest-cache" | Out-Null
 
       - name: Run unit tests
-        run: >
-          uv run pytest tests/unit/ -v --tb=short
-          --basetemp=.pytest-tmp/unit
-          -p no:cacheprovider
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ".ci-logs" | Out-Null
+          uv run pytest tests/unit/ -v --tb=short --basetemp=.pytest-tmp/unit -p no:cacheprovider 2>&1 `
+            | Tee-Object -FilePath ".ci-logs/unit-tests-${{ matrix.python-version }}.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run integration tests
-        run: >
-          uv run pytest tests/integration/ -v --tb=short
-          --basetemp=.pytest-tmp/integration
-          -p no:cacheprovider
+        shell: pwsh
+        run: |
+          uv run pytest tests/integration/ -v --tb=short --basetemp=.pytest-tmp/integration -p no:cacheprovider 2>&1 `
+            | Tee-Object -FilePath ".ci-logs/integration-tests-${{ matrix.python-version }}.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         continue-on-error: true
+
+      - name: Upload pytest logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-logs-${{ matrix.python-version }}
+          path: .ci-logs/*.log
+          if-no-files-found: ignore
 
   quality:
     name: Lint & Type Check (Windows, Python 3.11)
