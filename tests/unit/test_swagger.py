@@ -7,6 +7,13 @@ Unit тесты для Swagger документации
 
 from flask import Flask
 
+from api.schemas import (
+    CreateScheduleRequest,
+    StartRecordingRequest,
+    ToggleScheduleRequest,
+    UpdateConfigRequest,
+    UpdateScheduleRequest,
+)
 from api.swagger import SWAGGER_SPEC, get_swagger_spec, register_swagger_routes
 
 
@@ -421,3 +428,37 @@ class TestSwaggerRequestBodies:
         config_path = SWAGGER_SPEC["paths"]["/api/config"]["put"]
 
         assert "requestBody" in config_path
+
+    def test_request_examples_are_valid_for_pydantic_schemas(self) -> None:
+        """Проверка, что примеры requestBody проходят валидацию схем."""
+        spec = get_swagger_spec()
+
+        start_examples = spec["paths"]["/api/v1/start"]["post"]["requestBody"][
+            "content"
+        ]["application/json"]["examples"]
+        for example in start_examples.values():
+            StartRecordingRequest(**example["value"])
+
+        schedule_examples = spec["paths"]["/api/v1/schedule"]["post"][
+            "requestBody"
+        ]["content"]["application/json"]["examples"]
+        for example in schedule_examples.values():
+            CreateScheduleRequest(**example["value"])
+
+        update_schedule_examples = spec["paths"]["/api/v1/schedule/{task_id}"][
+            "put"
+        ]["requestBody"]["content"]["application/json"]["examples"]
+        for example in update_schedule_examples.values():
+            UpdateScheduleRequest(id="task_123", **example["value"])
+
+        toggle_examples = spec["paths"]["/api/v1/schedule/{task_id}/toggle"][
+            "post"
+        ]["requestBody"]["content"]["application/json"]["examples"]
+        for example in toggle_examples.values():
+            ToggleScheduleRequest(**example["value"])
+
+        config_examples = spec["paths"]["/api/v1/config"]["put"]["requestBody"][
+            "content"
+        ]["application/json"]["examples"]
+        for example in config_examples.values():
+            UpdateConfigRequest(**example["value"])

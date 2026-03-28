@@ -554,6 +554,41 @@ SWAGGER_SPEC: dict[str, Any] = {
                             "schema": {
                                 "$ref": "#/components/schemas/StartRecordingRequest",
                             },
+                            "examples": {
+                                "full_screen": {
+                                    "summary": "Полный экран (валидный минимум)",
+                                    "value": {
+                                        "area": "full",
+                                        "audio": "mic",
+                                        "fps": 30,
+                                        "codec": "libx264",
+                                        "bitrate": "5M",
+                                    },
+                                },
+                                "window_capture": {
+                                    "summary": "Захват окна",
+                                    "value": {
+                                        "area": "window",
+                                        "window_title": "Visual Studio Code",
+                                        "audio": "none",
+                                        "fps": 30,
+                                        "codec": "libx264",
+                                        "bitrate": "3M",
+                                        "duration": 60,
+                                    },
+                                },
+                                "rect_capture": {
+                                    "summary": "Захват области",
+                                    "value": {
+                                        "area": "rect",
+                                        "rect": [100, 100, 1600, 900],
+                                        "audio": "system",
+                                        "fps": 60,
+                                        "codec": "libx264",
+                                        "bitrate": "8M",
+                                    },
+                                },
+                            },
                         },
                     },
                 },
@@ -1113,6 +1148,28 @@ SWAGGER_SPEC: dict[str, Any] = {
                                     "time": {
                                         "type": "string",
                                     },
+                                    "day_of_week": {
+                                        "type": "string",
+                                    },
+                                    "params": {
+                                        "$ref": "#/components/schemas/StartRecordingRequest",
+                                    },
+                                },
+                            },
+                            "examples": {
+                                "rename": {
+                                    "summary": "Переименовать задачу",
+                                    "value": {
+                                        "name": "Новая задача",
+                                    },
+                                },
+                                "update_weekly_time": {
+                                    "summary": "Изменить время и дни",
+                                    "value": {
+                                        "time": "11:30",
+                                        "day_of_week": "0,1,2,3,4",
+                                        "enabled": True,
+                                    },
                                 },
                             },
                         },
@@ -1163,6 +1220,16 @@ SWAGGER_SPEC: dict[str, Any] = {
                                     "enabled": {
                                         "type": "boolean",
                                     },
+                                },
+                            },
+                            "examples": {
+                                "enable": {
+                                    "summary": "Включить задачу",
+                                    "value": {"enabled": True},
+                                },
+                                "disable": {
+                                    "summary": "Выключить задачу",
+                                    "value": {"enabled": False},
                                 },
                             },
                         },
@@ -1309,11 +1376,36 @@ SWAGGER_SPEC: dict[str, Any] = {
                                     "fps": {
                                         "type": "integer",
                                     },
+                                    "codec": {
+                                        "type": "string",
+                                    },
                                     "bitrate": {
                                         "type": "string",
                                     },
-                                    "output_directory": {
+                                    "default_path": {
                                         "type": "string",
+                                    },
+                                    "record_mic": {
+                                        "type": "boolean",
+                                    },
+                                    "record_system": {
+                                        "type": "boolean",
+                                    },
+                                },
+                            },
+                            "examples": {
+                                "video_update": {
+                                    "summary": "Обновить видео-настройки",
+                                    "value": {
+                                        "fps": 60,
+                                        "codec": "libx264",
+                                        "bitrate": "6M",
+                                    },
+                                },
+                                "output_update": {
+                                    "summary": "Обновить путь вывода",
+                                    "value": {
+                                        "default_path": "C:/Videos/Recordings",
                                     },
                                 },
                             },
