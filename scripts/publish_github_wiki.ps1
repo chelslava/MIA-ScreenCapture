@@ -12,9 +12,8 @@ if (Test-Path $dst) {
     Remove-Item -LiteralPath $dst -Recurse -Force
 }
 
-try {
-    git clone $wikiUrl $dst
-} catch {
+git clone $wikiUrl $dst
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $dst -PathType Container)) {
     Write-Error "Не удалось клонировать wiki. Сначала откройте вкладку Wiki в GitHub и создайте первую страницу (Home)."
     exit 1
 }
