@@ -159,16 +159,22 @@ class TaskScheduler:
     различных типов расписания и сохранения задач.
     """
 
-    def __init__(self, persist_path: Path | None = None):
+    def __init__(
+        self,
+        persist_path: Path | None = None,
+        max_concurrent_tasks: int = 3,
+    ):
         """
         Инициализация планировщика задач.
 
         Args:
             persist_path: Путь для сохранения задач (опционально)
+            max_concurrent_tasks: Лимит параллельных задач APScheduler.
         """
         self.persist_path = persist_path
         self._tasks: dict[str, ScheduleTask] = {}
         self._lock = threading.Lock()
+        self._max_concurrent_tasks = max(1, int(max_concurrent_tasks))
 
         # Обратный вызов для выполнения задачи
         self._on_task_execute: Callable | None = None
@@ -176,7 +182,11 @@ class TaskScheduler:
         # Инициализация APScheduler
         self._scheduler = BackgroundScheduler(
             jobstores={"default": MemoryJobStore()},
-            executors={"default": ThreadPoolExecutor(max_workers=3)},
+            executors={
+                "default": ThreadPoolExecutor(
+                    max_workers=self._max_concurrent_tasks
+                )
+            },
             timezone=tzlocal.get_localzone(),
         )
 

@@ -52,6 +52,11 @@
   - добавлен `RLock` для конкурентных update/save/add_recent_recording;
   - добавлен безопасный `snapshot_settings()` для фонового чтения;
   - добавлен unit-тест на конкурентное добавление `recent_recordings`.
+- Планировщик задач теперь применяет
+  `config.scheduler.max_concurrent_tasks` как реальный лимит
+  `ThreadPoolExecutor(max_workers=...)`.
+- Добавлены unit-тесты на применение/нормализацию лимита
+  параллельных задач в `TaskScheduler` и прокидку лимита из `main.py`.
 
 ## [1.4.3] - 2026-03-28
 

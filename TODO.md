@@ -13,8 +13,6 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] Подключить `scheduler.max_concurrent_tasks` к реальному лимиту
-  параллельных запусков задач.
 - [ ] Жёстко обрабатывать malformed JSON и ограничить размер тела
   запроса API (`MAX_CONTENT_LENGTH` + 400 вместо 500).
 - [ ] Сделать `APIServer.start()` fail-fast при ошибке bind/старта waitress

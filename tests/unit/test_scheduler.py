@@ -238,6 +238,28 @@ class TestTaskScheduler:
 
         assert scheduler.persist_path == tasks_file
 
+    def test_init_with_configured_max_concurrent_tasks(self):
+        """Проверка применения лимита параллельных задач."""
+        scheduler = TaskScheduler(max_concurrent_tasks=5)
+        executor = scheduler._scheduler._executors["default"]
+        max_workers = getattr(executor, "_max_workers", None)
+        if max_workers is None:
+            pool = getattr(executor, "_pool", None)
+            max_workers = getattr(pool, "_max_workers", None)
+
+        assert max_workers == 5
+
+    def test_init_with_non_positive_max_concurrent_tasks(self):
+        """Проверка нормализации некорректного лимита задач к 1."""
+        scheduler = TaskScheduler(max_concurrent_tasks=0)
+        executor = scheduler._scheduler._executors["default"]
+        max_workers = getattr(executor, "_max_workers", None)
+        if max_workers is None:
+            pool = getattr(executor, "_pool", None)
+            max_workers = getattr(pool, "_max_workers", None)
+
+        assert max_workers == 1
+
     def test_start_scheduler(self, tasks_file: Path):
         """Проверка запуска планировщика."""
         scheduler = TaskScheduler(persist_path=tasks_file)

@@ -98,6 +98,7 @@ def _build_app(
     port: int = 5000,
     api_key: str | None = None,
     cli_api: dict[str, object] | None = None,
+    scheduler_max_concurrent_tasks: int = 1,
 ) -> tuple[main.VideoRecorderApp, SimpleNamespace]:
     """Создаёт приложение с моками для runtime-тестов API."""
     fake_api = SimpleNamespace(
@@ -107,7 +108,13 @@ def _build_app(
         api_key=api_key,
     )
     fake_config = SimpleNamespace(
-        settings=SimpleNamespace(api=fake_api),
+        settings=SimpleNamespace(
+            api=fake_api,
+            scheduler=SimpleNamespace(
+                max_concurrent_tasks=scheduler_max_concurrent_tasks
+            ),
+        ),
+        config_path="config/config.json",
         save=MagicMock(),
     )
 
@@ -335,3 +342,34 @@ class TestMainApiRuntime:
         _, kwargs = run_on_gui_thread_mock.call_args
         assert kwargs["timeout"] == 60.0
         assert result == stop_result
+
+    def test_start_scheduler_uses_configured_max_concurrency(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Планировщик должен получать лимит параллельных задач из конфига."""
+        app, _ = _build_app(monkeypatch, scheduler_max_concurrent_tasks=4)
+        captured_kwargs: dict[str, object] = {}
+
+        class FakeTaskScheduler:
+            """Заглушка TaskScheduler для проверки параметров старта."""
+
+            def __init__(self, **kwargs: object) -> None:
+                captured_kwargs.update(kwargs)
+
+            def set_task_callback(self, _callback: object) -> None:
+                return None
+
+            def start(self) -> None:
+                return None
+
+            def get_all_tasks(self) -> list[object]:
+                return []
+
+        monkeypatch.setattr(
+            "scheduler.task_scheduler.TaskScheduler", FakeTaskScheduler
+        )
+
+        app._start_scheduler()
+
+        assert captured_kwargs["max_concurrent_tasks"] == 4
+        assert str(captured_kwargs["persist_path"]).endswith("tasks.json")

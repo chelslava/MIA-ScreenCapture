@@ -852,8 +852,12 @@ class VideoRecorderApp:
         # Получение пути сохранения
         config = get_config()
         persist_path = Path(config.config_path).parent / "tasks.json"
+        max_concurrent_tasks = config.settings.scheduler.max_concurrent_tasks
 
-        self._scheduler = TaskScheduler(persist_path=persist_path)
+        self._scheduler = TaskScheduler(
+            persist_path=persist_path,
+            max_concurrent_tasks=max_concurrent_tasks,
+        )
         assert self._scheduler is not None
 
         # Установка обратного вызова выполнения задачи
