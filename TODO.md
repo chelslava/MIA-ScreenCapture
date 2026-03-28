@@ -11,8 +11,6 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] Стабилизировать Windows тестовую среду (`tests/.local_tmp`, temp/cache),
-  чтобы убрать `WinError 5` в локальных и CI-прогонах.
 - [ ] Вынести запись WAV из audio callback в отдельный writer-thread с
   bounded-queue для снижения риска xruns под нагрузкой.
 - [ ] Проверять результат `FFmpegVideoWriter.write()` и аварийно

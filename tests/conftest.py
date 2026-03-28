@@ -6,6 +6,7 @@
 """
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -23,6 +24,8 @@ from _pytest import pathlib as pytest_pathlib
 from _pytest import tmpdir as pytest_tmpdir
 
 _original_cleanup_dead_symlinks = pytest_pathlib.cleanup_dead_symlinks
+_LOCAL_TMP_ROOT = Path(__file__).parent / ".local_tmp"
+_LOCAL_SYSTEM_TMP = _LOCAL_TMP_ROOT / "system"
 
 
 def _safe_cleanup_dead_symlinks(root: Path) -> None:
@@ -41,6 +44,24 @@ def _safe_cleanup_dead_symlinks(root: Path) -> None:
 
 pytest_pathlib.cleanup_dead_symlinks = _safe_cleanup_dead_symlinks
 pytest_tmpdir.cleanup_dead_symlinks = _safe_cleanup_dead_symlinks
+
+
+def _bootstrap_local_tmp_dirs() -> None:
+    """
+    Подготавливает изолированные tmp/cache директории для pytest.
+
+    Это снижает риск `WinError 5` на Windows из-за блокировок в системном
+    temp-каталоге и в корневом `.pytest_cache`.
+    """
+    (_LOCAL_TMP_ROOT / "pytest").mkdir(parents=True, exist_ok=True)
+    (_LOCAL_TMP_ROOT / ".pytest_cache").mkdir(parents=True, exist_ok=True)
+    _LOCAL_SYSTEM_TMP.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("TMP", str(_LOCAL_SYSTEM_TMP))
+    os.environ.setdefault("TEMP", str(_LOCAL_SYSTEM_TMP))
+    os.environ.setdefault("TMPDIR", str(_LOCAL_SYSTEM_TMP))
+
+
+_bootstrap_local_tmp_dirs()
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent.parent))
