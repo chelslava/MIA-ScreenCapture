@@ -20,7 +20,7 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent))
@@ -81,7 +81,7 @@ class _MainThreadExecutor:
         self._obj.execute.connect(
             self._run_callable,
             Qt.ConnectionType.QueuedConnection,
-        )
+        )  # type: ignore[call-arg]
 
     @staticmethod
     def _run_callable(fn: Any) -> None:
@@ -826,7 +826,7 @@ class VideoRecorderApp:
     def _toggle_recording_hotkey(self) -> None:
         """Переключение записи по горячей клавише."""
         if self._main_window:
-            if self._main_window._is_recording():
+            if self._main_window.get_status().get("is_recording", False):
                 self._main_window._stop_recording()
             else:
                 self._main_window._start_recording()
@@ -920,41 +920,58 @@ class VideoRecorderApp:
     def _get_status(self) -> dict[str, Any]:
         """Получение статуса записи."""
         if self._main_window:
-            return self._run_on_gui_thread(
-                lambda: self._main_window.get_status()
+            return cast(
+                dict[str, Any],
+                self._run_on_gui_thread(
+                    lambda: self._main_window.get_status()
+                ),
             )
         return self._recording_service.get_status()
 
     def _start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
         """Запуск записи."""
         if self._main_window:
-            return self._run_on_gui_thread(
-                lambda: self._main_window.start_recording_with_params(params),
-                timeout=20.0,
+            return cast(
+                dict[str, Any],
+                self._run_on_gui_thread(
+                    lambda: self._main_window.start_recording_with_params(
+                        params
+                    ),
+                    timeout=20.0,
+                ),
             )
         return self._recording_service.start_recording(params)
 
     def _stop_recording(self) -> dict[str, Any]:
         """Остановка записи."""
         if self._main_window:
-            return self._run_on_gui_thread(
-                lambda: self._main_window.stop_recording()
+            return cast(
+                dict[str, Any],
+                self._run_on_gui_thread(
+                    lambda: self._main_window.stop_recording()
+                ),
             )
         return self._recording_service.stop_recording()
 
     def _toggle_pause(self) -> dict[str, Any]:
         """Переключение состояния паузы."""
         if self._main_window:
-            return self._run_on_gui_thread(
-                lambda: self._main_window.toggle_pause()
+            return cast(
+                dict[str, Any],
+                self._run_on_gui_thread(
+                    lambda: self._main_window.toggle_pause()
+                ),
             )
         return self._recording_service.toggle_pause()
 
     def _get_recordings(self) -> list:
         """Получение недавних записей."""
         if self._main_window:
-            return self._run_on_gui_thread(
-                lambda: self._main_window.get_recordings()
+            return cast(
+                list[Any],
+                self._run_on_gui_thread(
+                    lambda: self._main_window.get_recordings()
+                ),
             )
         return self._recording_service.get_recordings()
 
@@ -1196,24 +1213,29 @@ class VideoRecorderApp:
                 status = self._main_window.get_status()
                 if status.get("is_recording"):
                     logger.info("Остановка активной записи...")
-                    result = self._main_window.stop_recording()
-                    if result.get("success"):
+                    gui_stop_result = self._main_window.stop_recording()
+                    if gui_stop_result.get("success"):
                         logger.info(
-                            f"Запись сохранена: {result.get('filepath', 'неизвестно')}"
+                            f"Запись сохранена: {gui_stop_result.get('filepath', 'неизвестно')}"
                         )
                     else:
                         logger.error(
                             f"Ошибка при остановке записи: "
-                            f"{result.get('error', 'неизвестная ошибка')}"
+                            f"{gui_stop_result.get('error', 'неизвестная ошибка')}"
                         )
             except Exception as e:
                 logger.error(f"Ошибка при остановке записи: {e}")
         else:
             try:
-                result = self._recording_service.stop_active_recording_if_any()
-                if result is not None and result.get("success"):
+                headless_stop_result: dict[str, Any] | None = (
+                    self._recording_service.stop_active_recording_if_any()
+                )
+                if (
+                    headless_stop_result is not None
+                    and headless_stop_result.get("success")
+                ):
                     logger.info(
-                        f"Запись сохранена: {result.get('filepath', 'неизвестно')}"
+                        f"Запись сохранена: {headless_stop_result.get('filepath', 'неизвестно')}"
                     )
             except Exception as e:
                 logger.error(f"Ошибка при остановке headless записи: {e}")
