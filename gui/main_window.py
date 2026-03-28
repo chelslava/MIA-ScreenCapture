@@ -9,7 +9,9 @@
 import os
 import platform
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -74,6 +76,8 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self._headless = headless
+        self._api_controls: dict[str, Callable[..., Any]] = {}
+        self._api_server: Any | None = None
 
         # Инициализация модели и контроллеров
         self._state = RecordingState()
@@ -94,6 +98,7 @@ class MainWindow(QMainWindow):
         # Загрузка настроек
         self._settings_controller.load_settings()
         self._apply_settings_to_views()
+        self._refresh_api_status()
 
         # Проверка зависимостей
         self._check_dependencies()
@@ -151,6 +156,12 @@ class MainWindow(QMainWindow):
         self._diagnostics_view.recheck_requested.connect(self._run_diagnostics)
         self._diagnostics_view.fix_requested.connect(self._on_diagnostics_fix)
         self.tabs.addTab(self._diagnostics_view, "Диагностика")
+
+        # Вкладка API
+        from gui.views.api_settings_view import ApiSettingsView
+
+        self._api_settings_view = ApiSettingsView()
+        self.tabs.addTab(self._api_settings_view, "API")
 
         # Строка состояния
         self.status_bar = QStatusBar()
@@ -282,6 +293,17 @@ class MainWindow(QMainWindow):
         # Сигналы OutputView
         self._output_view.output_path_changed.connect(
             self._on_output_path_changed
+        )
+
+        # Сигналы ApiSettingsView
+        self._api_settings_view.apply_requested.connect(
+            self._on_api_settings_apply
+        )
+        self._api_settings_view.start_requested.connect(self._on_api_start)
+        self._api_settings_view.stop_requested.connect(self._on_api_stop)
+        self._api_settings_view.restart_requested.connect(self._on_api_restart)
+        self._api_settings_view.refresh_requested.connect(
+            self._refresh_api_status
         )
 
     def _apply_settings_to_views(self) -> None:
@@ -474,6 +496,121 @@ class MainWindow(QMainWindow):
         if self._state.is_recording():
             elapsed = self._recording_controller.elapsed_time
             self.time_label.setText(format_time(elapsed))
+
+    def _invoke_api_control(
+        self,
+        control_name: str,
+        *args: Any,
+    ) -> dict[str, Any] | None:
+        """Вызов обработчика API из главного приложения."""
+        handler = self._api_controls.get(control_name)
+        if handler is None:
+            return None
+
+        try:
+            result = handler(*args)
+        except Exception as e:
+            logger.error(f"Ошибка вызова API control '{control_name}': {e}")
+            self._show_error(str(e))
+            return None
+
+        if isinstance(result, dict):
+            return result
+        return {"success": True, "data": result}
+
+    def _refresh_api_status(self) -> None:
+        """Обновление статуса API на вкладке."""
+        if not hasattr(self, "_api_settings_view"):
+            return
+
+        status = self._invoke_api_control("get_status")
+        if status is None:
+            api_running = False
+            if self._api_server is not None:
+                try:
+                    api_running = self._api_server.is_running()
+                except Exception:
+                    api_running = False
+            message = "Сервер запущен" if api_running else "Сервер остановлен"
+            self._api_settings_view.set_status(api_running, message)
+            return
+
+        configured = status.get("configured", {})
+        port = configured.get("port", status.get("port", 5000))
+        token = configured.get("api_key", "")
+        if not self._api_settings_view.is_editing_settings():
+            self._api_settings_view.set_settings(
+                port=int(port),
+                token=token or "",
+            )
+
+        running = bool(status.get("running", False))
+        if running:
+            message = f"Запущен: {status.get('url', 'http://127.0.0.1')}"
+        else:
+            message = "Сервер остановлен"
+        self._api_settings_view.set_status(running, message)
+
+    def _on_api_settings_apply(self, port: int, token: str) -> None:
+        """Сохранение настроек API из вкладки."""
+        result = self._invoke_api_control(
+            "apply_settings", {"port": port, "token": token}
+        )
+        if result is None:
+            self._show_error("Управление API недоступно")
+            return
+        if result.get("success"):
+            message = "Настройки API сохранены"
+            if result.get("restart_required"):
+                message += ". Нужен перезапуск API сервера"
+            self.status_bar.showMessage(message, 5000)
+            self._refresh_api_status()
+            return
+        self._show_error(
+            result.get("error", "Не удалось сохранить настройки API")
+        )
+
+    def _on_api_start(self) -> None:
+        """Запуск API сервера из вкладки."""
+        result = self._invoke_api_control("start")
+        if result is None:
+            self._show_error("Управление API недоступно")
+            return
+        if result.get("success"):
+            self.status_bar.showMessage("API сервер запущен", 5000)
+            self._refresh_api_status()
+            return
+        self._show_error(
+            result.get("error", "Не удалось запустить API сервер")
+        )
+
+    def _on_api_stop(self) -> None:
+        """Остановка API сервера из вкладки."""
+        result = self._invoke_api_control("stop")
+        if result is None:
+            self._show_error("Управление API недоступно")
+            return
+        if result.get("success"):
+            self.status_bar.showMessage("API сервер остановлен", 5000)
+            self._refresh_api_status()
+            return
+        self._show_error(
+            result.get("error", "Не удалось остановить API сервер")
+        )
+
+    def _on_api_restart(self) -> None:
+        """Перезапуск API сервера из вкладки."""
+        result = self._invoke_api_control("restart")
+        if result is None:
+            self._show_error("Управление API недоступно")
+            return
+        if result.get("success"):
+            self.status_bar.showMessage("API сервер перезапущен", 5000)
+            self._refresh_api_status()
+            return
+        self._show_error(
+            result.get("error", "Не удалось перезапустить API сервер")
+        )
 
     # === Вспомогательные методы ===
 

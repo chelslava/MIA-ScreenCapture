@@ -170,8 +170,13 @@ class ApiSettingsView(QWidget):
     def _setup_timer(self) -> None:
         """Настройка таймера обновления логов."""
         self._log_timer = QTimer(self)
-        self._log_timer.timeout.connect(self.refresh_logs)
+        self._log_timer.timeout.connect(self._on_timer_tick)
         self._log_timer.start(_LOG_REFRESH_INTERVAL_MS)
+
+    def _on_timer_tick(self) -> None:
+        """Периодическое обновление логов и статуса API."""
+        self.refresh_requested.emit()
+        self.refresh_logs()
 
     def _on_apply_clicked(self) -> None:
         """Обработка сохранения настроек."""
@@ -209,6 +214,15 @@ class ApiSettingsView(QWidget):
             Кортеж (порт, токен).
         """
         return self._port_spinbox.value(), self._token_edit.text().strip()
+
+    def is_editing_settings(self) -> bool:
+        """
+        Проверка активного редактирования настроек.
+
+        Returns:
+            True, если фокус находится на полях порта или токена.
+        """
+        return self._port_spinbox.hasFocus() or self._token_edit.hasFocus()
 
     def set_settings(self, port: int, token: str) -> None:
         """

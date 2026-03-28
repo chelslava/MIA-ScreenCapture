@@ -309,6 +309,7 @@ class VideoRecorderApp:
         # Передача ссылки на API сервер в главное окно
         self._main_window._api_server = self._api_server
         self._main_window._api_controls = self.get_api_controls()
+        self._main_window._refresh_api_status()
 
         # Запуск планировщика
         self._start_scheduler()
@@ -561,20 +562,11 @@ class VideoRecorderApp:
             logger.info("API сервер уже запущен")
             return {"success": True, "status": self._get_api_status()}
 
-        if self._api_server is None:
-            self._api_server = APIServer(
-                host=api_config.get("host", "127.0.0.1"),
-                port=api_config.get("port", 5000),
-                api_key=api_config.get("api_key"),
-            )
-        else:
-            self._api_server.host = api_config.get(
-                "host", self._api_server.host
-            )
-            self._api_server.port = api_config.get(
-                "port", self._api_server.port
-            )
-            self._api_server.set_api_key(api_config.get("api_key"))
+        self._api_server = APIServer(
+            host=api_config.get("host", "127.0.0.1"),
+            port=api_config.get("port", 5000),
+            api_key=api_config.get("api_key"),
+        )
 
         assert self._api_server is not None
         resolved_api_key = self._api_server.get_api_key()
@@ -593,6 +585,8 @@ class VideoRecorderApp:
 
         # Запуск сервера
         self._api_server.start()
+        if self._main_window is not None:
+            self._main_window._api_server = self._api_server
         logger.info(f"API сервер запущен на {self._api_server.get_url()}")
         return {"success": True, "status": self._get_api_status()}
 
@@ -714,10 +708,13 @@ class VideoRecorderApp:
             Словарь с результатом операции.
         """
         if self._api_server is None:
-            return {"success": False, "running": False}
+            return {"success": True, "running": False}
 
         self._api_server.stop()
-        return {"success": True, "running": self._api_server.is_running()}
+        self._api_server = None
+        if self._main_window is not None:
+            self._main_window._api_server = None
+        return {"success": True, "running": False}
 
     def _restart_api_server(self) -> dict[str, Any]:
         """
@@ -727,13 +724,7 @@ class VideoRecorderApp:
             Словарь с результатом операции.
         """
         self._stop_api_server()
-        if self._api_server is not None:
-            api_settings = get_config().settings.api
-            self._api_server.host = api_settings.host
-            self._api_server.port = api_settings.port
-            self._api_server.set_api_key(api_settings.api_key)
-        self._start_api_server(force=True)
-        return {"success": True, "status": self._get_api_status()}
+        return self._start_api_server(force=True)
 
     def _open_api_logs_folder(self) -> None:
         """Открытие папки с логами API."""
