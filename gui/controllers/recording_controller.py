@@ -120,8 +120,13 @@ class RecordingController:
 
         try:
             # Инициализация видеозаписи
+            preset = getattr(video, "preset", "medium")
             self._video_recorder = VideoRecorder(
-                fps=video.fps, codec=video.codec, bitrate=video.bitrate
+                fps=video.fps,
+                codec=video.codec,
+                bitrate=video.bitrate,
+                use_ffmpeg=True,
+                preset=preset,
             )
 
             # Построение области захвата

@@ -269,6 +269,8 @@ class VideoRecorder:
         codec: str = "libx264",
         bitrate: str = "2M",
         output_format: str = "mp4",
+        use_ffmpeg: bool = True,
+        preset: str = "medium",
     ):
         """
         Инициализация видеозаписи.
@@ -276,13 +278,17 @@ class VideoRecorder:
         Args:
             fps: Кадров в секунду
             codec: Имя видеокодека
-            bitrate: Целевой битрейт (не используется в OpenCV, для справки)
+            bitrate: Целевой битрейт
             output_format: Выходной формат (mp4, avi)
+            use_ffmpeg: Использовать FFmpeg для прямой записи (быстрее)
+            preset: Preset кодирования (ultrafast, fast, medium, slow)
         """
         self.fps = fps
         self.codec = codec
         self.bitrate = bitrate
         self.output_format = output_format
+        self.use_ffmpeg = use_ffmpeg
+        self.preset = preset
 
         # Состояние
         self._state = RecordingState.IDLE
@@ -294,6 +300,7 @@ class VideoRecorder:
         # Информация о записи
         self._output_path: Path | None = None
         self._video_writer: cv2.VideoWriter | None = None
+        self._ffmpeg_writer = None
         self._capture_area: CaptureArea | None = None
         self._capture_session: _WindowsCaptureSession | None = None
 
@@ -401,18 +408,37 @@ class VideoRecorder:
                 self._capture_lost = False  # Сброс флага потери захвата
 
                 # Инициализация видеозаписи
-                fourcc_code = self.CODEC_MAP.get(self.codec.lower(), "mp4v")
-                fourcc = cv2.VideoWriter_fourcc(*fourcc_code)  # type: ignore[attr-defined]
+                if self.use_ffmpeg:
+                    from recorder.ffmpeg_writer import FFmpegVideoWriter
 
-                self._video_writer = cv2.VideoWriter(
-                    str(self._output_path),
-                    fourcc,
-                    self.fps,
-                    (capture_area.width, capture_area.height),
-                )
+                    self._ffmpeg_writer = FFmpegVideoWriter(
+                        output_path=self._output_path,
+                        width=capture_area.width,
+                        height=capture_area.height,
+                        fps=self.fps,
+                        codec=self.codec,
+                        bitrate=self.bitrate,
+                        preset=self.preset,
+                    )
+                    if not self._ffmpeg_writer.open():
+                        raise RuntimeError(
+                            "Не удалось открыть FFmpeg видеозапись"
+                        )
+                else:
+                    fourcc_code = self.CODEC_MAP.get(
+                        self.codec.lower(), "mp4v"
+                    )
+                    fourcc = cv2.VideoWriter_fourcc(*fourcc_code)
 
-                if not self._video_writer.isOpened():
-                    raise RuntimeError("Не удалось открыть видеозапись")
+                    self._video_writer = cv2.VideoWriter(
+                        str(self._output_path),
+                        fourcc,
+                        self.fps,
+                        (capture_area.width, capture_area.height),
+                    )
+
+                    if not self._video_writer.isOpened():
+                        raise RuntimeError("Не удалось открыть видеозапись")
 
                 # Сброс статистики
                 self._start_time = time.time()
@@ -550,7 +576,11 @@ class VideoRecorder:
                     self._capture_lost = False
 
                     # Запись кадра
-                    if self._video_writer is not None:
+                    if self._ffmpeg_writer is not None:
+                        self._ffmpeg_writer.write(frame)
+                        self._frame_count += 1
+                        self._last_captured_frame = frame
+                    elif self._video_writer is not None:
                         self._video_writer.write(frame)
                         self._frame_count += 1
                         self._last_captured_frame = frame
@@ -591,6 +621,9 @@ class VideoRecorder:
     def _cleanup(self) -> None:
         """Очистка ресурсов."""
         try:
+            if self._ffmpeg_writer is not None:
+                self._ffmpeg_writer.close()
+                self._ffmpeg_writer = None
             if self._video_writer is not None:
                 self._video_writer.release()
                 self._video_writer = None
