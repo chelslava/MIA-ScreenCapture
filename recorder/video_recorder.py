@@ -522,9 +522,10 @@ class VideoRecorder:
     def _capture_loop(self) -> None:
         """Основной цикл захвата в отдельном потоке."""
         frame_interval: float = 1.0 / self.fps
-        last_frame_time: float = 0
+        last_frame_time: float = time.perf_counter()
+        frames_dropped: int = 0
+        max_dropped_warning: int = 100
 
-        # Callback для обработки потери захвата
         def on_capture_lost(message: str) -> None:
             logger.error(f"Capture lost: {message}")
             if self._on_error:
@@ -553,13 +554,15 @@ class VideoRecorder:
                     self._capture_lost = True
                     break
 
-                # Контроль частоты кадров
-                current_time = time.time()
+                # Контроль частоты кадров с высокой точностью
+                current_time = time.perf_counter()
                 elapsed = current_time - last_frame_time
                 if elapsed < frame_interval:
-                    time.sleep(frame_interval - elapsed)
+                    sleep_time = frame_interval - elapsed
+                    if sleep_time > 0.001:
+                        time.sleep(sleep_time * 0.9)
 
-                last_frame_time = float(time.time())
+                last_frame_time = time.perf_counter()
 
                 # Захват кадра
                 try:
