@@ -159,12 +159,40 @@ class VideoRecorderApp:
         Returns:
             Словарь с заголовками, включая API ключ если он установлен.
         """
-        api_key = get_config().settings.api.api_key or os.environ.get(
-            API_KEY_ENV_VAR
+        api_key = (
+            os.environ.get(API_KEY_ENV_VAR)
+            or get_config().settings.api.api_key
         )
         if api_key:
             return {API_KEY_HEADER: api_key}
         return {}
+
+    def _sync_api_key_env(self, api_key: str | None) -> None:
+        """
+        Синхронизация API ключа с переменной окружения.
+
+        Args:
+            api_key: Токен API или None для удаления из окружения.
+        """
+        if api_key is not None and api_key.strip():
+            os.environ[API_KEY_ENV_VAR] = api_key.strip()
+            return
+        os.environ.pop(API_KEY_ENV_VAR, None)
+
+    def _get_effective_api_key(self) -> str | None:
+        """
+        Получение актуального API ключа с приоритетом переменной окружения.
+
+        Returns:
+            API ключ из env или конфигурации.
+        """
+        env_api_key = os.environ.get(API_KEY_ENV_VAR)
+        if env_api_key is not None and env_api_key.strip():
+            return env_api_key.strip()
+        config_api_key = get_config().settings.api.api_key
+        if config_api_key is not None and config_api_key.strip():
+            return config_api_key.strip()
+        return None
 
     def _handle_unauthorized_response(self) -> int:
         """
@@ -567,14 +595,15 @@ class VideoRecorderApp:
             port=api_config.get("port", 5000),
             api_key=api_config.get("api_key"),
         )
+        self._sync_api_key_env(api_config.get("api_key"))
 
         assert self._api_server is not None
         resolved_api_key = self._api_server.get_api_key()
         if resolved_api_key and resolved_api_key != api_config.get("api_key"):
             api_settings = get_config().settings.api
             api_settings.api_key = resolved_api_key
-            os.environ[API_KEY_ENV_VAR] = resolved_api_key
             get_config().save()
+        self._sync_api_key_env(resolved_api_key)
         self._api_server.set_websocket_manager(self._websocket_manager)
 
         # Регистрация маршрутов
@@ -605,14 +634,14 @@ class VideoRecorderApp:
                 "enabled": config_api.enabled,
                 "host": config_api.host,
                 "port": config_api.port,
-                "api_key": config_api.api_key,
+                "api_key": self._get_effective_api_key(),
             }
 
         return {
             "enabled": cli_api.get("enabled", config_api.enabled),
             "host": cli_api.get("host", config_api.host),
             "port": cli_api.get("port", config_api.port),
-            "api_key": config_api.api_key,
+            "api_key": self._get_effective_api_key(),
         }
 
     def _get_api_status(self) -> dict[str, Any]:
@@ -623,6 +652,7 @@ class VideoRecorderApp:
             Словарь со статусом сервера и сохраненными настройками.
         """
         config_api = get_config().settings.api
+        effective_api_key = self._get_effective_api_key()
         runtime_status = (
             self._api_server.get_status()
             if self._api_server is not None
@@ -631,7 +661,7 @@ class VideoRecorderApp:
                 "host": config_api.host,
                 "port": config_api.port,
                 "url": f"http://{config_api.host}:{config_api.port}",
-                "api_key_set": bool(config_api.api_key),
+                "api_key_set": bool(effective_api_key),
             }
         )
 
@@ -639,7 +669,7 @@ class VideoRecorderApp:
             "enabled": config_api.enabled,
             "host": config_api.host,
             "port": config_api.port,
-            "api_key": config_api.api_key,
+            "api_key": effective_api_key,
         }
         runtime_status["log_dir"] = str(get_api_log_dir())
         return runtime_status
@@ -682,10 +712,7 @@ class VideoRecorderApp:
                 updated_fields.append("api_key")
                 if self._api_server is not None:
                     self._api_server.set_api_key(api_key)
-                if api_key is not None:
-                    os.environ[API_KEY_ENV_VAR] = api_key
-                else:
-                    os.environ.pop(API_KEY_ENV_VAR, None)
+                self._sync_api_key_env(api_key)
 
         if "enabled" in data and bool(data["enabled"]) != api_settings.enabled:
             api_settings.enabled = bool(data["enabled"])

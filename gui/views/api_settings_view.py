@@ -8,7 +8,7 @@
 from pathlib import Path
 
 from PyQt6.QtCore import QTimer, pyqtSignal
-from PyQt6.QtGui import QFontDatabase
+from PyQt6.QtGui import QFontDatabase, QGuiApplication
 from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
@@ -94,6 +94,10 @@ class ApiSettingsView(QWidget):
         self._apply_btn = QPushButton("Сохранить настройки")
         self._apply_btn.clicked.connect(self._on_apply_clicked)
         buttons_layout.addWidget(self._apply_btn)
+
+        self._copy_token_btn = QPushButton("Копировать токен")
+        self._copy_token_btn.clicked.connect(self._on_copy_token_clicked)
+        buttons_layout.addWidget(self._copy_token_btn)
 
         self._open_logs_btn = QPushButton("Открыть папку логов API")
         self._open_logs_btn.clicked.connect(self._on_open_logs_clicked)
@@ -205,6 +209,23 @@ class ApiSettingsView(QWidget):
     def _on_open_logs_clicked(self) -> None:
         """Открытие папки с логами API."""
         open_api_logs_folder()
+
+    def _on_copy_token_clicked(self) -> None:
+        """Копирование токена в буфер обмена."""
+        token = self._token_edit.text().strip()
+        if not token:
+            self._status_label.setText(
+                "Статус: токен пуст, копирование отменено"
+            )
+            self._status_label.setStyleSheet(
+                "font-weight: bold; color: orange;"
+            )
+            return
+
+        clipboard = QGuiApplication.clipboard()
+        clipboard.setText(token)
+        self._status_label.setText("Статус: токен скопирован в буфер обмена")
+        self._status_label.setStyleSheet("font-weight: bold; color: green;")
 
     def get_settings(self) -> tuple[int, str]:
         """
