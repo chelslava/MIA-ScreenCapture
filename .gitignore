@@ -70,7 +70,6 @@ venv*/
 .project
 .pydevproject
 .settings/
-.continue/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -142,5 +141,3 @@ uv.lock
 # Ruff
 .ruff_cache/
 
-# Plans and documentation (внутренние документы)
-# plans/
