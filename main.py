@@ -16,7 +16,6 @@ MIA-ScreenCapture - Главная точка входа
 """
 
 import importlib.metadata
-import os
 import sys
 import threading
 from pathlib import Path
@@ -41,7 +40,12 @@ if TYPE_CHECKING:
     from gui.tray_icon import TrayIcon
     from scheduler.task_scheduler import TaskScheduler
 
-from api.auth import API_KEY_ENV_VAR, API_KEY_HEADER
+from api.auth import (
+    API_KEY_ENV_VAR,
+    API_KEY_HEADER,
+    get_stored_api_key,
+    set_stored_api_key,
+)
 from api.websocket import WebSocketManager
 from cli.parser import (
     parse_args,
@@ -163,38 +167,37 @@ class VideoRecorderApp:
         Returns:
             Словарь с заголовками, включая API ключ если он установлен.
         """
-        api_key = (
-            os.environ.get(API_KEY_ENV_VAR)
-            or get_config().settings.api.api_key
-        )
+        api_key = self._get_effective_api_key()
         if api_key:
             return {API_KEY_HEADER: api_key}
         return {}
 
     def _sync_api_key_env(self, api_key: str | None) -> None:
         """
-        Синхронизация API ключа с переменной окружения.
+        Синхронизация API ключа с постоянным хранилищем и env.
 
         Args:
             api_key: Токен API или None для удаления из окружения.
         """
-        if api_key is not None and api_key.strip():
-            os.environ[API_KEY_ENV_VAR] = api_key.strip()
-            return
-        os.environ.pop(API_KEY_ENV_VAR, None)
+        set_stored_api_key(api_key)
 
     def _get_effective_api_key(self) -> str | None:
         """
-        Получение актуального API ключа с приоритетом переменной окружения.
+        Получение актуального API ключа с fallback на legacy config.
 
         Returns:
-            API ключ из env или конфигурации.
+            API ключ из постоянного хранилища/env или legacy конфигурации.
         """
-        env_api_key = os.environ.get(API_KEY_ENV_VAR)
-        if env_api_key is not None and env_api_key.strip():
-            return env_api_key.strip()
+        stored_api_key = get_stored_api_key()
+        if stored_api_key is not None and stored_api_key.strip():
+            return stored_api_key.strip()
+
         config_api_key = get_config().settings.api.api_key
         if config_api_key is not None and config_api_key.strip():
+            # Миграция устаревшего хранения из config в Credential Manager/env.
+            self._sync_api_key_env(config_api_key)
+            get_config().settings.api.api_key = None
+            get_config().save()
             return config_api_key.strip()
         return None
 
@@ -605,7 +608,7 @@ class VideoRecorderApp:
         resolved_api_key = self._api_server.get_api_key()
         if resolved_api_key and resolved_api_key != api_config.get("api_key"):
             api_settings = get_config().settings.api
-            api_settings.api_key = resolved_api_key
+            api_settings.api_key = None
             get_config().save()
         self._sync_api_key_env(resolved_api_key)
         self._api_server.set_websocket_manager(self._websocket_manager)
@@ -711,12 +714,14 @@ class VideoRecorderApp:
         token_value = data.get("token", data.get("api_key"))
         if token_value is not None:
             api_key = str(token_value).strip() or None
-            if api_key != api_settings.api_key:
-                api_settings.api_key = api_key
+            current_api_key = self._get_effective_api_key()
+            if api_key != current_api_key:
                 updated_fields.append("api_key")
                 if self._api_server is not None:
                     self._api_server.set_api_key(api_key)
                 self._sync_api_key_env(api_key)
+            if api_settings.api_key is not None:
+                api_settings.api_key = None
 
         if "enabled" in data and bool(data["enabled"]) != api_settings.enabled:
             api_settings.enabled = bool(data["enabled"])

@@ -11,8 +11,6 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] Перевести хранение API-токена на Windows Credential Manager
-  (с fallback на env), чтобы снизить риск утечки ключа.
 - [ ] Стабилизировать Windows тестовую среду (`tests/.local_tmp`, temp/cache),
   чтобы убрать `WinError 5` в локальных и CI-прогонах.
 - [ ] Вынести запись WAV из audio callback в отдельный writer-thread с

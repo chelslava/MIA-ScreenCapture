@@ -23,7 +23,20 @@ from api.auth import (
     init_api_auth,
     optional_api_key,
     require_api_key,
+    set_stored_api_key,
 )
+
+
+@pytest.fixture(autouse=True)
+def disable_credential_manager(monkeypatch: pytest.MonkeyPatch):
+    """Отключает реальный Credential Manager в unit-тестах."""
+    monkeypatch.setattr(
+        "api.auth._get_api_key_from_credential_manager", lambda: None
+    )
+    monkeypatch.setattr(
+        "api.auth._set_api_key_in_credential_manager",
+        lambda _api_key: False,
+    )
 
 
 class TestGenerateApiKey:
@@ -68,6 +81,45 @@ class TestGetStoredApiKey:
             os.environ.pop(API_KEY_ENV_VAR, None)
             result = get_stored_api_key()
             assert result is None
+
+
+class TestSetStoredApiKey:
+    """Тесты сохранения API ключа в постоянное хранилище."""
+
+    def test_set_stored_api_key_uses_env_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """При недоступном Credential Manager используется env."""
+        monkeypatch.setenv(API_KEY_ENV_VAR, "old-value")
+        set_stored_api_key("new-value")
+        assert os.environ[API_KEY_ENV_VAR] == "new-value"
+
+    def test_set_stored_api_key_clears_env_on_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Пустое значение должно очищать env."""
+        monkeypatch.setenv(API_KEY_ENV_VAR, "old-value")
+        set_stored_api_key("")
+        assert API_KEY_ENV_VAR not in os.environ
+
+    def test_set_stored_api_key_calls_credential_manager(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Проверка вызова Credential Manager при доступности."""
+        calls: list[str | None] = []
+
+        def _store(key: str | None) -> bool:
+            calls.append(key)
+            return True
+
+        monkeypatch.setattr(
+            "api.auth._set_api_key_in_credential_manager",
+            _store,
+        )
+        set_stored_api_key("stored-value")
+
+        assert calls == ["stored-value"]
+        assert os.environ[API_KEY_ENV_VAR] == "stored-value"
 
 
 class TestInitApiAuth:

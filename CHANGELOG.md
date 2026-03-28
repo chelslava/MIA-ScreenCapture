@@ -18,6 +18,8 @@
 - Расширены тесты для идемпотентности:
   `tests/integration/test_api.py::TestAPIIdempotency` и
   `tests/unit/test_api_server.py::TestAPIIdempotencyStore`.
+- Добавлено безопасное хранение API токена в Windows Credential Manager
+  с fallback на переменную окружения `MIA_API_KEY`.
 
 ### Changed
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
@@ -38,6 +40,8 @@
   `ruff check`, `ruff format --check`, `mypy`.
 - Swagger/OpenAPI дополнен заголовком `Idempotency-Key`
   для mutating endpoints.
+- Runtime API-token в `main.py` переведён на постоянное хранилище
+  (Credential Manager/env), с миграцией legacy токена из config.
 
 ## [1.4.3] - 2026-03-28
 

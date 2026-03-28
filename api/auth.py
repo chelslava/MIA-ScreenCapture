@@ -23,6 +23,8 @@ API_KEY_ENV_VAR = "MIA_API_KEY"
 API_KEY_CONFIG_KEY = "api_key"
 API_KEY_LENGTH = 32  # Длина ключа в байтах (256 бит)
 AUTH_DISABLED_CONFIG_KEY = "AUTH_DISABLED"  # Явное отключение аутентификации
+API_KEY_CREDENTIAL_TARGET = "MIA-ScreenCapture/APIKey"
+_CREDENTIAL_USER_NAME = "MIA-ScreenCapture"
 
 
 def generate_api_key() -> str:
@@ -37,12 +39,110 @@ def generate_api_key() -> str:
 
 def get_stored_api_key() -> str | None:
     """
-    Получение сохранённого API ключа из переменных окружения.
+    Получение сохранённого API ключа из Credential Manager или env.
 
     Returns:
         API ключ или None если не установлен
     """
+    credential_key = _get_api_key_from_credential_manager()
+    if credential_key:
+        return credential_key
     return os.environ.get(API_KEY_ENV_VAR)
+
+
+def set_stored_api_key(api_key: str | None) -> None:
+    """
+    Сохранение API ключа в Credential Manager с fallback на env.
+
+    Args:
+        api_key: API ключ или None для удаления.
+    """
+    normalized = api_key.strip() if api_key and api_key.strip() else None
+    stored_in_credential = _set_api_key_in_credential_manager(normalized)
+    if normalized is not None:
+        os.environ[API_KEY_ENV_VAR] = normalized
+        if not stored_in_credential:
+            logger.debug(
+                "Credential Manager недоступен; используется env для API ключа."
+            )
+        return
+    os.environ.pop(API_KEY_ENV_VAR, None)
+
+
+def _load_win32cred_module() -> Any | None:
+    """Безопасная загрузка win32cred модуля только на Windows."""
+    if os.name != "nt":
+        return None
+    try:
+        import win32cred  # type: ignore[import-not-found]
+    except Exception:
+        return None
+    return win32cred
+
+
+def _decode_credential_blob(blob: Any) -> str | None:
+    """Преобразует CredentialBlob в строку API ключа."""
+    if isinstance(blob, bytes):
+        try:
+            return blob.decode("utf-16-le").strip() or None
+        except UnicodeDecodeError:
+            try:
+                return blob.decode("utf-8").strip() or None
+            except UnicodeDecodeError:
+                return None
+    if isinstance(blob, str):
+        return blob.strip() or None
+    return None
+
+
+def _get_api_key_from_credential_manager() -> str | None:
+    """Читает API ключ из Windows Credential Manager."""
+    win32cred = _load_win32cred_module()
+    if win32cred is None:
+        return None
+    try:
+        credential = win32cred.CredRead(
+            API_KEY_CREDENTIAL_TARGET,
+            win32cred.CRED_TYPE_GENERIC,
+            0,
+        )
+    except Exception:
+        return None
+    return _decode_credential_blob(credential.get("CredentialBlob"))
+
+
+def _set_api_key_in_credential_manager(api_key: str | None) -> bool:
+    """Сохраняет или удаляет API ключ в Credential Manager."""
+    win32cred = _load_win32cred_module()
+    if win32cred is None:
+        return False
+
+    if api_key is None:
+        try:
+            win32cred.CredDelete(
+                API_KEY_CREDENTIAL_TARGET,
+                win32cred.CRED_TYPE_GENERIC,
+                0,
+            )
+        except Exception:
+            # Удаление отсутствующего ключа не считается ошибкой.
+            pass
+        return True
+
+    try:
+        win32cred.CredWrite(
+            {
+                "Type": win32cred.CRED_TYPE_GENERIC,
+                "TargetName": API_KEY_CREDENTIAL_TARGET,
+                "UserName": _CREDENTIAL_USER_NAME,
+                "CredentialBlob": api_key,
+                "Persist": win32cred.CRED_PERSIST_LOCAL_MACHINE,
+            },
+            0,
+        )
+    except Exception:
+        return False
+    return True
 
 
 def init_api_auth(app: Flask, api_key: str | None = None) -> str:
@@ -56,6 +156,7 @@ def init_api_auth(app: Flask, api_key: str | None = None) -> str:
     Returns:
         Установленный API ключ
     """
+    generated_key = False
     if api_key is None:
         # Пытаемся получить из переменной окружения
         api_key = get_stored_api_key()
@@ -63,6 +164,7 @@ def init_api_auth(app: Flask, api_key: str | None = None) -> str:
     if api_key is None:
         # Генерируем новый ключ
         api_key = generate_api_key()
+        generated_key = True
         logger.warning(
             f"API ключ не установлен. Сгенерирован новый ключ. "
             f"Установите переменную окружения {API_KEY_ENV_VAR} для постоянного ключа."
@@ -71,6 +173,8 @@ def init_api_auth(app: Flask, api_key: str | None = None) -> str:
 
     # Сохраняем в конфигурации приложения
     app.config[API_KEY_CONFIG_KEY] = api_key
+    if generated_key:
+        set_stored_api_key(api_key)
 
     logger.info("API аутентификация инициализирована")
     return api_key

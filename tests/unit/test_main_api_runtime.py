@@ -2,6 +2,7 @@
 Unit тесты runtime-управления API из main.py.
 """
 
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -114,6 +115,24 @@ def _build_app(
     monkeypatch.setattr(main, "RecordingService", FakeRecordingService)
     monkeypatch.setattr(main, "GUIRecordingBackend", lambda: object())
     monkeypatch.setattr(main, "WebSocketManager", FakeWebSocketManager)
+    stored_key: dict[str, str | None] = {"value": None}
+
+    def _get_stored_key() -> str | None:
+        env_key = os.environ.get("MIA_API_KEY")
+        if env_key is not None and env_key.strip():
+            return env_key.strip()
+        return stored_key["value"]
+
+    def _set_stored_key(value: str | None) -> None:
+        normalized = value.strip() if value and value.strip() else None
+        stored_key["value"] = normalized
+        if normalized is not None:
+            os.environ["MIA_API_KEY"] = normalized
+            return
+        os.environ.pop("MIA_API_KEY", None)
+
+    monkeypatch.setattr(main, "get_stored_api_key", _get_stored_key)
+    monkeypatch.setattr(main, "set_stored_api_key", _set_stored_key)
     FakeApiServer.instances.clear()
 
     app = main.VideoRecorderApp({"mode": "gui", "api": cli_api or {}})
@@ -137,11 +156,13 @@ class TestMainApiRuntime:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """При отсутствии env токен берётся из конфигурации."""
-        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app, fake_config = _build_app(monkeypatch, api_key="config-token")
 
         monkeypatch.delenv("MIA_API_KEY", raising=False)
 
         assert app._get_effective_api_key() == "config-token"
+        assert fake_config.settings.api.api_key is None
+        assert fake_config.save.call_count == 1
 
     def test_start_api_server_skips_when_disabled(
         self, monkeypatch: pytest.MonkeyPatch
@@ -186,7 +207,7 @@ class TestMainApiRuntime:
     def test_start_api_server_stores_generated_key_in_env(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Сгенерированный сервером токен должен попасть в env и конфиг."""
+        """Сгенерированный сервером токен должен попасть в env."""
         app, fake_config = _build_app(monkeypatch, api_key=None)
         monkeypatch.delenv("MIA_API_KEY", raising=False)
         monkeypatch.setattr("api.server.APIServer", FakeApiServer)
@@ -195,10 +216,10 @@ class TestMainApiRuntime:
         result = app._start_api_server(force=True)
 
         assert result["success"] is True
-        assert fake_config.settings.api.api_key == "generated-api-key"
+        assert fake_config.settings.api.api_key is None
         assert fake_config.save.call_count == 1
         assert app._get_effective_api_key() == "generated-api-key"
-        assert main.os.environ["MIA_API_KEY"] == "generated-api-key"
+        assert os.environ["MIA_API_KEY"] == "generated-api-key"
 
     def test_start_api_server_returns_existing_status_when_running(
         self, monkeypatch: pytest.MonkeyPatch
@@ -223,7 +244,7 @@ class TestMainApiRuntime:
     def test_apply_api_settings_updates_env_and_config(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Изменение токена в GUI должно обновлять конфиг и env."""
+        """Изменение токена в GUI должно обновлять хранилище и env."""
         app, fake_config = _build_app(monkeypatch, api_key="old-token")
         server = FakeApiServer(api_key="old-token")
         server._running = True
@@ -239,8 +260,8 @@ class TestMainApiRuntime:
         assert "port" in result["updated_fields"]
         assert "api_key" in result["updated_fields"]
         assert fake_config.settings.api.port == 5051
-        assert fake_config.settings.api.api_key == "new-token"
-        assert main.os.environ["MIA_API_KEY"] == "new-token"
+        assert fake_config.settings.api.api_key is None
+        assert os.environ["MIA_API_KEY"] == "new-token"
         assert server.api_key == "new-token"
         assert server.callbacks == {}
 
@@ -258,7 +279,7 @@ class TestMainApiRuntime:
 
         assert result["success"] is True
         assert fake_config.settings.api.api_key is None
-        assert "MIA_API_KEY" not in main.os.environ
+        assert "MIA_API_KEY" not in os.environ
         assert server.api_key is None
 
     def test_stop_api_server_clears_server_reference(
