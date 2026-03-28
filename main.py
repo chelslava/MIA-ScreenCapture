@@ -274,6 +274,9 @@ class VideoRecorderApp:
         self._tray_icon.show_window_requested.connect(self._show_window)
         self._tray_icon.exit_requested.connect(self._quit_app)
 
+        # Инициализация горячих клавиш
+        self._setup_hotkeys()
+
         # Подключение сигналов окна к трею
         self._main_window.recording_started.connect(
             lambda p: self._tray_icon.on_recording_started(p)  # type: ignore[union-attr]
@@ -589,6 +592,40 @@ class VideoRecorderApp:
         # Обратные вызовы конфигурации
         self._api_server.set_callback("get_config", self._get_config)
         self._api_server.set_callback("update_config", self._update_config)
+
+    def _setup_hotkeys(self) -> None:
+        """Настройка глобальных горячих клавиш."""
+        from gui.hotkeys import GlobalHotkeys, HotkeyAction
+
+        self._hotkeys = GlobalHotkeys()
+
+        if not self._hotkeys.is_available:
+            logger.warning("Горячие клавиши недоступны (pynput не установлен)")
+            return
+
+        self._hotkeys.register(
+            HotkeyAction.TOGGLE_RECORDING,
+            self._toggle_recording_hotkey,
+        )
+        self._hotkeys.register(
+            HotkeyAction.PAUSE_RECORDING,
+            self._pause_recording_hotkey,
+        )
+        self._hotkeys.start()
+        logger.info("Горячие клавиши активированы")
+
+    def _toggle_recording_hotkey(self) -> None:
+        """Переключение записи по горячей клавише."""
+        if self._main_window:
+            if self._main_window._is_recording():
+                self._main_window._stop_recording()
+            else:
+                self._main_window._start_recording()
+
+    def _pause_recording_hotkey(self) -> None:
+        """Пауза записи по горячей клавише."""
+        if self._main_window:
+            self._main_window._toggle_pause()
 
     def _start_scheduler(self) -> None:
         """Запуск планировщика задач."""
@@ -1040,6 +1077,9 @@ class VideoRecorderApp:
             self._stop_active_recording()
             # Сохранение конфигурации
             self._save_config()
+            # Остановка горячих клавиш
+            if hasattr(self, "_hotkeys"):
+                self._hotkeys.stop()
             # Остановка компонентов в обратном порядке
             self._cleanup_scheduler()
             self._cleanup_api_server()
