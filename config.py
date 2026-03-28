@@ -339,7 +339,9 @@ class ConfigManager:
                 data = asdict(self._settings)
             AppSettingsSchema.model_validate(data)
         except Exception as e:
-            logger.error(f"Ошибка валидации конфигурации перед сохранением: {e}")
+            logger.error(
+                f"Ошибка валидации конфигурации перед сохранением: {e}"
+            )
             return False
 
         with self._save_lock:

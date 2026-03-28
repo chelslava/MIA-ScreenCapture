@@ -367,9 +367,7 @@ class TestConfigManager:
         for thread in threads:
             thread.join()
 
-        paths = [
-            entry["path"] for entry in manager.settings.recent_recordings
-        ]
+        paths = [entry["path"] for entry in manager.settings.recent_recordings]
         assert len(paths) <= manager.settings.max_recent_recordings
         assert len(paths) == len(set(paths))
 
