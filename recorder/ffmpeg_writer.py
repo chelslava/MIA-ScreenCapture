@@ -16,6 +16,9 @@ from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
 
+_FFMPEG_CLOSE_TIMEOUT_SECONDS = 180
+_FFMPEG_TERMINATE_GRACE_TIMEOUT_SECONDS = 15
+
 
 class FFmpegVideoWriter:
     """
@@ -155,8 +158,8 @@ class FFmpegVideoWriter:
             ):
                 codec_key = "libx264-fast"
 
-            codec_args = self.CODEC_ARGS.get(
-                codec_key, self.CODEC_ARGS["libx264"]
+            codec_args = list(
+                self.CODEC_ARGS.get(codec_key, self.CODEC_ARGS["libx264"])
             )
 
             if self._preset != "medium" and self._codec.startswith("libx"):
@@ -243,15 +246,21 @@ class FFmpegVideoWriter:
         if self._process is None:
             return True
 
+        process = self._process
+
         try:
             with self._lock:
-                if self._process.stdin:
-                    self._process.stdin.close()
+                if process.stdin:
+                    try:
+                        process.stdin.close()
+                    except Exception:
+                        # Pipe может быть уже закрыт завершившимся процессом.
+                        pass
 
-            self._process.wait(timeout=30)
+            process.wait(timeout=_FFMPEG_CLOSE_TIMEOUT_SECONDS)
 
-            if self._process.returncode != 0:
-                stderr = self._process.stderr.read().decode(
+            if process.returncode != 0:
+                stderr = process.stderr.read().decode(
                     "utf-8", errors="ignore"
                 )
                 logger.error(f"FFmpeg error: {stderr}")
@@ -264,9 +273,35 @@ class FFmpegVideoWriter:
             return True
 
         except subprocess.TimeoutExpired:
-            logger.error("Таймаут ожидания FFmpeg")
-            self._process.kill()
-            return False
+            logger.warning(
+                "Таймаут ожидания FFmpeg при мягком завершении, "
+                "выполняется terminate"
+            )
+            try:
+                process.terminate()
+                process.wait(timeout=_FFMPEG_TERMINATE_GRACE_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                logger.error(
+                    "FFmpeg не завершился после terminate, выполняется kill"
+                )
+                process.kill()
+                return False
+            except Exception as e:
+                logger.error(f"Ошибка terminate FFmpeg: {e}")
+                process.kill()
+                return False
+
+            if process.returncode != 0:
+                stderr = process.stderr.read().decode(
+                    "utf-8", errors="ignore"
+                )
+                logger.error(f"FFmpeg завершён с ошибкой: {stderr}")
+                return False
+            logger.info(
+                "FFmpeg завершился после terminate: "
+                f"{self._output_path} ({self._frame_count} кадров)"
+            )
+            return True
         except Exception as e:
             logger.error(f"Ошибка закрытия FFmpeg: {e}")
             return False

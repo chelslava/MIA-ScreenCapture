@@ -27,6 +27,8 @@ from recorder.utils import (
 
 logger = get_module_logger(__name__)
 
+_CAPTURE_STOP_TIMEOUT_SECONDS = 15
+
 
 class RecordingState(Enum):
     """Перечисление состояний записи."""
@@ -510,7 +512,7 @@ class VideoRecorder:
 
         # Ожидание завершения потока захвата
         if self._capture_thread and self._capture_thread.is_alive():
-            self._capture_thread.join(timeout=5)
+            self._capture_thread.join(timeout=_CAPTURE_STOP_TIMEOUT_SECONDS)
 
         self._cleanup()
 
