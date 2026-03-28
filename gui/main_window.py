@@ -10,6 +10,7 @@ import os
 import platform
 import subprocess
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -913,11 +914,10 @@ class MainWindow(QMainWindow):
             )
 
             # Путь вывода
-            output_path = params.get("output_path")
-            if output_path:
-                output_path = Path(output_path)
-            else:
-                output_path = self._settings_controller.get_output_path()
+            output_path = self._resolve_requested_output_path(
+                params.get("output_path"),
+                video_settings.format,
+            )
 
             # Запуск записи
             success, error_msg = self._recording_controller.start_recording(
@@ -942,6 +942,32 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Ошибка запуска записи: {e}")
             return {"success": False, "error": str(e)}
+
+    def _resolve_requested_output_path(
+        self,
+        requested_output_path: Any,
+        output_format: str,
+    ) -> Path:
+        """Преобразование output_path из API в конечный путь файла."""
+        if requested_output_path is None:
+            return self._settings_controller.get_output_path()
+
+        raw_path = str(requested_output_path).strip()
+        if not raw_path:
+            return self._settings_controller.get_output_path()
+
+        candidate = Path(raw_path)
+        is_dir_hint = raw_path.endswith(("/", "\\"))
+        if is_dir_hint or (candidate.exists() and candidate.is_dir()):
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            extension = output_format.lstrip(".")
+            return candidate / f"recording_{timestamp}.{extension}"
+
+        if candidate.suffix:
+            return candidate
+
+        extension = output_format.lstrip(".")
+        return candidate.with_suffix(f".{extension}")
 
     def stop_recording(self) -> dict:
         """

@@ -184,3 +184,35 @@ class TestRecordingService:
         assert result["success"] is False
         assert len(events) == 1
         assert events[0].payload["error"] == "Запись уже идёт"
+
+    def test_build_output_path_accepts_directory(self) -> None:
+        """При передаче директории должен генерироваться файл внутри неё."""
+        service = RecordingService(backend=FakeBackend())
+        cfg = MagicMock()
+        cfg.settings.video.format = "mp4"
+        cfg.get_output_path.return_value = Path("recording_default.mp4")
+        directory = Path("D:/Recordings")
+
+        with patch("core.recording_service.get_config", return_value=cfg):
+            path = service._build_output_path(
+                {"output_path": "D:/Recordings/"}
+            )
+
+        assert path.parent == directory
+        assert path.suffix == ".mp4"
+
+    def test_build_output_path_adds_extension_for_filename_without_suffix(
+        self,
+    ) -> None:
+        """Если extension не передан, он должен быть добавлен из конфига."""
+        service = RecordingService(backend=FakeBackend())
+        cfg = MagicMock()
+        cfg.settings.video.format = "mkv"
+        cfg.get_output_path.return_value = Path("recording_default.mkv")
+
+        with patch("core.recording_service.get_config", return_value=cfg):
+            path = service._build_output_path(
+                {"output_path": "D:/Recordings/session_01"}
+            )
+
+        assert str(path).endswith("session_01.mkv")

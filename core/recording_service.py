@@ -270,10 +270,27 @@ class RecordingService:
         )
 
     def _build_output_path(self, params: dict[str, Any]) -> Path:
+        config_manager = get_config()
         value = params.get("output_path")
-        if value:
-            return Path(value)
-        return get_config().get_output_path()
+        if not value:
+            return config_manager.get_output_path()
+
+        raw_path = str(value).strip()
+        if not raw_path:
+            return config_manager.get_output_path()
+
+        candidate = Path(raw_path)
+        is_dir_hint = raw_path.endswith(("/", "\\"))
+        if is_dir_hint or (candidate.exists() and candidate.is_dir()):
+            generated_name = config_manager.get_output_path().name
+            return candidate / generated_name
+
+        if candidate.suffix:
+            return candidate
+
+        default_format = str(config_manager.settings.video.format)
+        extension = f".{default_format.lstrip('.')}"
+        return candidate.with_suffix(extension)
 
     def _publish_event(
         self, event_type: RecordingEventType, payload: dict[str, Any]

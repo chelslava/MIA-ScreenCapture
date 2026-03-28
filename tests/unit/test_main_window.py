@@ -325,6 +325,27 @@ class TestMainWindowRecentRecordingsFilter:
         )
 
 
+class TestMainWindowOutputPathFromApi:
+    """Тесты разрешения output_path, пришедшего из API."""
+
+    def test_resolve_requested_output_path_adds_extension(self) -> None:
+        """Путь без расширения должен дополняться форматом видео."""
+        from gui.main_window import MainWindow
+
+        fake_window = MainWindow.__new__(MainWindow)
+        fake_window._settings_controller = type(
+            "_FakeSettingsController",
+            (),
+            {"get_output_path": staticmethod(lambda: Path("default.mp4"))},
+        )()
+
+        result = MainWindow._resolve_requested_output_path(
+            fake_window, "D:/Records/custom_name", "mp4"
+        )
+
+        assert str(result).endswith("custom_name.mp4")
+
+
 class TestMainWindowOutputFilename:
     """Тесты генерации имени выходного файла."""
 
