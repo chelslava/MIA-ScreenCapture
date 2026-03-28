@@ -24,7 +24,7 @@ class TestGetApiHeaders:
 
     def test_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Проверка пустых заголовков без API ключа."""
-        monkeypatch.delenv("MIA_SCREEN_CAPTURE_API_KEY", raising=False)
+        monkeypatch.delenv("MIA_API_KEY", raising=False)
         headers = get_api_headers()
         assert headers == {}
 

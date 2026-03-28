@@ -127,9 +127,9 @@ def _build_app(
         normalized = value.strip() if value and value.strip() else None
         stored_key["value"] = normalized
         if normalized is not None:
-            os.environ["MIA_API_KEY"] = normalized
+            monkeypatch.setenv("MIA_API_KEY", normalized)
             return
-        os.environ.pop("MIA_API_KEY", None)
+        monkeypatch.delenv("MIA_API_KEY", raising=False)
 
     monkeypatch.setattr(main, "get_stored_api_key", _get_stored_key)
     monkeypatch.setattr(main, "set_stored_api_key", _set_stored_key)

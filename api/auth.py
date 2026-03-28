@@ -173,7 +173,11 @@ def init_api_auth(app: Flask, api_key: str | None = None) -> str:
 
     # Сохраняем в конфигурации приложения
     app.config[API_KEY_CONFIG_KEY] = api_key
-    if generated_key:
+    if (
+        generated_key
+        and not app.config.get("TESTING", False)
+        and os.environ.get("PYTEST_CURRENT_TEST") is None
+    ):
         set_stored_api_key(api_key)
 
     logger.info("API аутентификация инициализирована")

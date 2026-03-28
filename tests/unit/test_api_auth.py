@@ -93,6 +93,7 @@ class TestSetStoredApiKey:
         monkeypatch.setenv(API_KEY_ENV_VAR, "old-value")
         set_stored_api_key("new-value")
         assert os.environ[API_KEY_ENV_VAR] == "new-value"
+        monkeypatch.delenv(API_KEY_ENV_VAR, raising=False)
 
     def test_set_stored_api_key_clears_env_on_empty(
         self, monkeypatch: pytest.MonkeyPatch
@@ -120,6 +121,7 @@ class TestSetStoredApiKey:
 
         assert calls == ["stored-value"]
         assert os.environ[API_KEY_ENV_VAR] == "stored-value"
+        monkeypatch.delenv(API_KEY_ENV_VAR, raising=False)
 
 
 class TestInitApiAuth:
