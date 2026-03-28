@@ -11,6 +11,13 @@
   - фильтрация списка по имени файла и дате;
   - кнопка быстрого открытия последней записи;
   - кнопка очистки списка записей.
+- Добавлена поддержка `Idempotency-Key` для write-endpoints API:
+  повтор с тем же ключом и тем же payload возвращает cached-ответ.
+- Добавлено TTL-хранилище идемпотентных результатов API
+  с фоновым cleanup потоком.
+- Расширены тесты для идемпотентности:
+  `tests/integration/test_api.py::TestAPIIdempotency` и
+  `tests/unit/test_api_server.py::TestAPIIdempotencyStore`.
 
 ### Changed
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
@@ -29,6 +36,8 @@
   (`plans/websocket-transport-v1.5.0.md`).
 - Зафиксированы quality gates для затронутых модулей:
   `ruff check`, `ruff format --check`, `mypy`.
+- Swagger/OpenAPI дополнен заголовком `Idempotency-Key`
+  для mutating endpoints.
 
 ## [1.4.3] - 2026-03-28
 

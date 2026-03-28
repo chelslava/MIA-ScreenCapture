@@ -5,12 +5,13 @@
 Определяет REST API эндпоинты для видеозаписи с валидацией через Pydantic.
 """
 
+import hashlib
 import uuid
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
-from flask import g, jsonify, request
+from flask import current_app, g, jsonify, request
 from pydantic import ValidationError
 
 from api.auth import require_api_key
@@ -32,10 +33,13 @@ _ERROR_CODE_BY_STATUS = {
     401: "unauthorized",
     403: "forbidden",
     404: "not_found",
+    409: "conflict",
     429: "rate_limited",
 }
 
 _STOP_OPERATION_WAIT_SECONDS = 0.2
+_IDEMPOTENCY_KEY_HEADER = "Idempotency-Key"
+_IDEMPOTENCY_KEY_MAX_LENGTH = 128
 
 
 def _get_trace_id() -> str:
@@ -164,6 +168,91 @@ def _standardize_error_response(response):
     normalized.status_code = response.status_code
     normalized.headers["X-Request-ID"] = payload["trace_id"]
     return normalized
+
+
+def _build_idempotency_fingerprint() -> str:
+    """Формирует стабильный fingerprint входного запроса для dedup."""
+    payload = request.get_data(cache=True, as_text=False) or b""
+    source = b"|".join(
+        [
+            request.method.encode("utf-8"),
+            request.path.encode("utf-8"),
+            request.query_string or b"",
+            payload,
+        ]
+    )
+    return hashlib.sha256(source).hexdigest()
+
+
+def _idempotency_response(
+    status_code: int,
+    code: str,
+    message: str,
+) -> tuple[Any, int]:
+    """Формирует стандартизированный ответ по конфликту идемпотентности."""
+    return _error_response(status_code, code, message)
+
+
+def _execute_with_idempotency(
+    server: Any,
+    handler: Callable[[], Any],
+) -> Any:
+    """Выполняет write-операцию с учётом Idempotency-Key."""
+    key = request.headers.get(_IDEMPOTENCY_KEY_HEADER, "").strip()
+    if not key:
+        return handler()
+
+    if len(key) > _IDEMPOTENCY_KEY_MAX_LENGTH:
+        return _error_response(
+            400,
+            "validation_error",
+            (
+                f"{_IDEMPOTENCY_KEY_HEADER} не должен превышать "
+                f"{_IDEMPOTENCY_KEY_MAX_LENGTH} символов"
+            ),
+        )
+
+    state = server.begin_idempotency_request(
+        key, _build_idempotency_fingerprint()
+    )
+    state_name = state.get("state")
+    if state_name == "conflict":
+        return _idempotency_response(
+            409,
+            "idempotency_conflict",
+            "Idempotency-Key уже использован для другого запроса",
+        )
+    if state_name == "in_progress":
+        return _idempotency_response(
+            409,
+            "idempotency_in_progress",
+            "Запрос с этим Idempotency-Key уже выполняется",
+        )
+    if state_name == "replay":
+        replay = state.get("response") or {}
+        response = current_app.response_class(
+            replay.get("body_bytes", b""),
+            status=int(replay.get("status_code", 200)),
+            mimetype=str(replay.get("mimetype") or "application/json"),
+        )
+        response.headers["X-Idempotency-Replayed"] = "true"
+        response.headers.setdefault("X-Request-ID", _get_trace_id())
+        return response
+
+    try:
+        result = handler()
+        response = current_app.make_response(result)
+    except Exception:
+        server.abort_idempotency_request(key)
+        raise
+
+    server.complete_idempotency_request(
+        key=key,
+        status_code=response.status_code,
+        body_bytes=response.get_data(),
+        mimetype=response.mimetype,
+    )
+    return response
 
 
 def handle_validation_error(error: ValidationError) -> tuple:
@@ -470,33 +559,36 @@ def register_routes(app, server) -> None:
             JSON с ID записи или ошибкой
         """
         try:
-            data = request.get_json() or {}
 
-            # Валидация входных данных
-            try:
-                validated = StartRecordingRequest(**data)
-            except ValidationError as e:
-                return handle_validation_error(e)
+            def _handler() -> Any:
+                data = request.get_json() or {}
 
-            # Преобразование в словарь для обратного вызова
-            callback_data = validated.model_dump(exclude_none=True)
+                # Валидация входных данных
+                try:
+                    validated = StartRecordingRequest(**data)
+                except ValidationError as e:
+                    return handle_validation_error(e)
 
-            callback = server.get_callback("start")
-            if callback:
-                result = callback(callback_data)
-                if result.get("success"):
-                    return jsonify({"success": True, "data": result})
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": result.get(
-                            "error", "Не удалось начать запись"
-                        ),
-                    }
-                ), 400
+                # Преобразование в словарь для обратного вызова
+                callback_data = validated.model_dump(exclude_none=True)
 
-            return _internal_error_response()
+                callback = server.get_callback("start")
+                if callback:
+                    result = callback(callback_data)
+                    if result.get("success"):
+                        return jsonify({"success": True, "data": result})
+                    return jsonify(
+                        {
+                            "success": False,
+                            "error": result.get(
+                                "error", "Не удалось начать запись"
+                            ),
+                        }
+                    ), 400
 
+                return _internal_error_response()
+
+            return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка начала записи: {e}")
             return _internal_error_response()
@@ -512,8 +604,10 @@ def register_routes(app, server) -> None:
             JSON с результатом
         """
         try:
-            return _stop_operation_response(server)
-
+            return _execute_with_idempotency(
+                server,
+                lambda: _stop_operation_response(server),
+            )
         except Exception as e:
             logger.exception(f"Ошибка остановки записи: {e}")
             return _internal_error_response()
@@ -540,12 +634,15 @@ def register_routes(app, server) -> None:
             JSON с новым состоянием паузы
         """
         try:
-            callback = server.get_callback("pause")
-            if callback:
-                result = callback()
-                return jsonify({"success": True, "data": result})
-            return _internal_error_response()
 
+            def _handler() -> Any:
+                callback = server.get_callback("pause")
+                if callback:
+                    result = callback()
+                    return jsonify({"success": True, "data": result})
+                return _internal_error_response()
+
+            return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка паузы записи: {e}")
             return _internal_error_response()
@@ -659,39 +756,42 @@ def register_routes(app, server) -> None:
             JSON с ID задачи
         """
         try:
-            data = request.get_json() or {}
 
-            # Валидация входных данных
-            try:
-                validated = CreateScheduleRequest(**data)
-            except ValidationError as e:
-                return handle_validation_error(e)
+            def _handler() -> Any:
+                data = request.get_json() or {}
 
-            # Преобразование в словарь для обратного вызова
-            callback_data = validated.model_dump(exclude_none=True)
+                # Валидация входных данных
+                try:
+                    validated = CreateScheduleRequest(**data)
+                except ValidationError as e:
+                    return handle_validation_error(e)
 
-            # Преобразование params если есть
-            if validated.params:
-                callback_data["params"] = validated.params.model_dump(
-                    exclude_none=True
-                )
+                # Преобразование в словарь для обратного вызова
+                callback_data = validated.model_dump(exclude_none=True)
 
-            callback = server.get_callback("create_schedule")
-            if callback:
-                result = callback(callback_data)
-                if result.get("success"):
-                    return jsonify({"success": True, "data": result})
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": result.get(
-                            "error", "Не удалось создать задачу"
-                        ),
-                    }
-                ), 400
+                # Преобразование params если есть
+                if validated.params:
+                    callback_data["params"] = validated.params.model_dump(
+                        exclude_none=True
+                    )
 
-            return _internal_error_response()
+                callback = server.get_callback("create_schedule")
+                if callback:
+                    result = callback(callback_data)
+                    if result.get("success"):
+                        return jsonify({"success": True, "data": result})
+                    return jsonify(
+                        {
+                            "success": False,
+                            "error": result.get(
+                                "error", "Не удалось создать задачу"
+                            ),
+                        }
+                    ), 400
 
+                return _internal_error_response()
+
+            return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка создания расписания: {e}")
             return _internal_error_response()
@@ -710,14 +810,20 @@ def register_routes(app, server) -> None:
             JSON с результатом
         """
         try:
-            callback = server.get_callback("delete_schedule")
-            if callback:
-                result = callback(task_id)
-                return jsonify(
-                    {"success": result.get("success", True), "data": result}
-                )
-            return _internal_error_response()
 
+            def _handler() -> Any:
+                callback = server.get_callback("delete_schedule")
+                if callback:
+                    result = callback(task_id)
+                    return jsonify(
+                        {
+                            "success": result.get("success", True),
+                            "data": result,
+                        }
+                    )
+                return _internal_error_response()
+
+            return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка удаления расписания: {e}")
             return _internal_error_response()
@@ -739,25 +845,31 @@ def register_routes(app, server) -> None:
             JSON с результатом
         """
         try:
-            data = request.get_json() or {}
-            data["id"] = task_id
 
-            # Валидация входных данных
-            try:
-                validated = UpdateScheduleRequest(**data)
-            except ValidationError as e:
-                return handle_validation_error(e)
+            def _handler() -> Any:
+                data = request.get_json() or {}
+                data["id"] = task_id
 
-            callback_data = validated.model_dump(exclude_none=True)
+                # Валидация входных данных
+                try:
+                    validated = UpdateScheduleRequest(**data)
+                except ValidationError as e:
+                    return handle_validation_error(e)
 
-            callback = server.get_callback("update_schedule")
-            if callback:
-                result = callback(callback_data)
-                return jsonify(
-                    {"success": result.get("success", True), "data": result}
-                )
-            return _internal_error_response()
+                callback_data = validated.model_dump(exclude_none=True)
 
+                callback = server.get_callback("update_schedule")
+                if callback:
+                    result = callback(callback_data)
+                    return jsonify(
+                        {
+                            "success": result.get("success", True),
+                            "data": result,
+                        }
+                    )
+                return _internal_error_response()
+
+            return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка обновления расписания: {e}")
             return _internal_error_response()
@@ -779,20 +891,23 @@ def register_routes(app, server) -> None:
             JSON с новым состоянием включения
         """
         try:
-            data = request.get_json() or {}
 
-            # Валидация входных данных
-            try:
-                validated = ToggleScheduleRequest(**data)
-            except ValidationError as e:
-                return handle_validation_error(e)
+            def _handler() -> Any:
+                data = request.get_json() or {}
 
-            callback = server.get_callback("toggle_schedule")
-            if callback:
-                result = callback(task_id, validated.enabled)
-                return jsonify({"success": True, "data": result})
-            return _internal_error_response()
+                # Валидация входных данных
+                try:
+                    validated = ToggleScheduleRequest(**data)
+                except ValidationError as e:
+                    return handle_validation_error(e)
 
+                callback = server.get_callback("toggle_schedule")
+                if callback:
+                    result = callback(task_id, validated.enabled)
+                    return jsonify({"success": True, "data": result})
+                return _internal_error_response()
+
+            return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка переключения расписания: {e}")
             return _internal_error_response()
@@ -871,25 +986,28 @@ def register_routes(app, server) -> None:
             JSON с результатом
         """
         try:
-            data = request.get_json() or {}
 
-            # Валидация входных данных
-            try:
-                validated = UpdateConfigRequest(**data)
-            except ValidationError as e:
-                return handle_validation_error(e)
+            def _handler() -> Any:
+                data = request.get_json() or {}
 
-            callback_data = validated.model_dump(
-                exclude_none=True,
-                exclude={"video", "audio", "output", "app"},
-            )
+                # Валидация входных данных
+                try:
+                    validated = UpdateConfigRequest(**data)
+                except ValidationError as e:
+                    return handle_validation_error(e)
 
-            callback = server.get_callback("update_config")
-            if callback:
-                result = callback(callback_data)
-                return jsonify({"success": True, "data": result})
-            return _internal_error_response()
+                callback_data = validated.model_dump(
+                    exclude_none=True,
+                    exclude={"video", "audio", "output", "app"},
+                )
 
+                callback = server.get_callback("update_config")
+                if callback:
+                    result = callback(callback_data)
+                    return jsonify({"success": True, "data": result})
+                return _internal_error_response()
+
+            return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка обновления конфигурации: {e}")
             return _internal_error_response()

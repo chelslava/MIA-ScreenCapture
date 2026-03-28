@@ -927,6 +927,59 @@ class TestAPIRateLimit:
         assert response.status_code == 200
 
 
+class TestAPIIdempotency:
+    """Тесты идемпотентности write-endpoints."""
+
+    def test_start_replays_response_for_same_key_and_payload(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ) -> None:
+        headers = {"Idempotency-Key": "same-start-key-001"}
+        request_data = {"area": "full", "fps": 30}
+
+        first = client.post(
+            "/api/start",
+            json=request_data,
+            content_type="application/json",
+            headers=headers,
+        )
+        second = client.post(
+            "/api/start",
+            json=request_data,
+            content_type="application/json",
+            headers=headers,
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert second.headers["X-Idempotency-Replayed"] == "true"
+        assert first.get_json() == second.get_json()
+        mock_callbacks["start"].assert_called_once()
+
+    def test_start_returns_conflict_for_same_key_and_other_payload(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ) -> None:
+        headers = {"Idempotency-Key": "same-start-key-002"}
+
+        first = client.post(
+            "/api/start",
+            json={"area": "full", "fps": 30},
+            content_type="application/json",
+            headers=headers,
+        )
+        second = client.post(
+            "/api/start",
+            json={"area": "full", "fps": 60},
+            content_type="application/json",
+            headers=headers,
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 409
+        data = assert_error_contract(second, "idempotency_conflict")
+        assert "другого запроса" in data["error"]["message"]
+        mock_callbacks["start"].assert_called_once()
+
+
 class TestAPIObservability:
     """Тесты request-id и расширенного health payload."""
 

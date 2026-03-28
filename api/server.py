@@ -31,6 +31,8 @@ _VERSION_FALLBACK = "unknown"
 _REQUEST_ID_HEADER = "X-Request-ID"
 _PYPROJECT_PATH = Path(__file__).resolve().parent.parent / "pyproject.toml"
 _OPERATION_RESULT_TTL_SECONDS = 600.0
+_IDEMPOTENCY_RESULT_TTL_SECONDS = 3600.0
+_IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS = 30.0
 _SERVER_STOP_WAIT_SECONDS = 10.0
 _HIGH_FREQUENCY_PATH_PREFIXES = (
     "/health",
@@ -157,6 +159,115 @@ class APIOperationStore:
         for op_id in stale_ids:
             self._operations.pop(op_id, None)
             self._events.pop(op_id, None)
+
+
+class APIIdempotencyStore:
+    """Потокобезопасное TTL-хранилище результатов идемпотентных запросов."""
+
+    def __init__(
+        self,
+        ttl_seconds: float = _IDEMPOTENCY_RESULT_TTL_SECONDS,
+        cleanup_interval_seconds: float = _IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS,
+    ) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._cleanup_interval_seconds = cleanup_interval_seconds
+        self._lock = threading.Lock()
+        self._entries: dict[str, dict[str, Any]] = {}
+        self._stop_event = threading.Event()
+        self._cleanup_thread = threading.Thread(
+            target=self._cleanup_loop,
+            name="api-idempotency-cleanup",
+            daemon=True,
+        )
+        self._cleanup_thread.start()
+
+    def begin(
+        self,
+        key: str,
+        fingerprint: str,
+    ) -> dict[str, Any]:
+        """Регистрирует начало операции или возвращает cached-результат."""
+        now = time.monotonic()
+        with self._lock:
+            self._cleanup_expired_locked(now)
+            entry = self._entries.get(key)
+            if entry is None:
+                self._entries[key] = {
+                    "fingerprint": fingerprint,
+                    "status": "running",
+                    "created_at_monotonic": now,
+                    "updated_at_monotonic": now,
+                    "response": None,
+                }
+                return {"state": "started"}
+
+            if entry["fingerprint"] != fingerprint:
+                return {"state": "conflict"}
+
+            if entry["status"] == "running":
+                return {"state": "in_progress"}
+
+            return {
+                "state": "replay",
+                "response": dict(entry["response"] or {}),
+            }
+
+    def complete(
+        self,
+        key: str,
+        status_code: int,
+        body_bytes: bytes,
+        mimetype: str | None,
+    ) -> None:
+        """Фиксирует итоговый ответ запроса по idempotency key."""
+        now = time.monotonic()
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return
+            if status_code >= 500:
+                # 5xx не кешируем: клиент может безопасно повторить запрос.
+                self._entries.pop(key, None)
+                return
+            entry["status"] = "completed"
+            entry["updated_at_monotonic"] = now
+            entry["response"] = {
+                "status_code": status_code,
+                "body_bytes": body_bytes,
+                "mimetype": mimetype or "application/json",
+            }
+
+    def abort(self, key: str) -> None:
+        """Откатывает in-progress запись после исключения."""
+        with self._lock:
+            self._entries.pop(key, None)
+
+    def get_size(self) -> int:
+        """Возвращает количество активных записей в idempotency store."""
+        with self._lock:
+            self._cleanup_expired_locked(time.monotonic())
+            return len(self._entries)
+
+    def stop(self) -> None:
+        """Останавливает фоновой поток очистки."""
+        self._stop_event.set()
+        self._cleanup_thread.join(timeout=1.0)
+
+    def _cleanup_loop(self) -> None:
+        """Фоновая очистка устаревших записей idempotency store."""
+        while not self._stop_event.wait(self._cleanup_interval_seconds):
+            with self._lock:
+                self._cleanup_expired_locked(time.monotonic())
+
+    def _cleanup_expired_locked(self, now: float) -> None:
+        stale_keys = [
+            key
+            for key, entry in self._entries.items()
+            if (now - float(entry.get("updated_at_monotonic", now)))
+            > self._ttl_seconds
+        ]
+        for key in stale_keys:
+            self._entries.pop(key, None)
 
 
 class APIServerObservability:
@@ -348,6 +459,7 @@ class APIServer:
         self._version = self._load_version()
         self._observability = APIServerObservability()
         self._operations = APIOperationStore()
+        self._idempotency = APIIdempotencyStore()
 
         # Обратные вызовы
         self._callbacks: dict[str, Callable] = {}
@@ -511,6 +623,33 @@ class APIServer:
         """Ожидает завершения фоновой операции."""
         return self._operations.wait(operation_id, timeout)
 
+    def begin_idempotency_request(
+        self,
+        key: str,
+        fingerprint: str,
+    ) -> dict[str, Any]:
+        """Начинает идемпотентный запрос или возвращает cached-результат."""
+        return self._idempotency.begin(key, fingerprint)
+
+    def complete_idempotency_request(
+        self,
+        key: str,
+        status_code: int,
+        body_bytes: bytes,
+        mimetype: str | None,
+    ) -> None:
+        """Сохраняет результат идемпотентного запроса в TTL-хранилище."""
+        self._idempotency.complete(
+            key=key,
+            status_code=status_code,
+            body_bytes=body_bytes,
+            mimetype=mimetype,
+        )
+
+    def abort_idempotency_request(self, key: str) -> None:
+        """Удаляет in-progress запись идемпотентного запроса."""
+        self._idempotency.abort(key)
+
     def start(self) -> bool:
         """
         Запуск API сервера в фоновом потоке.
@@ -577,6 +716,7 @@ class APIServer:
                     _SERVER_STOP_WAIT_SECONDS,
                 )
 
+        self._idempotency.stop()
         logger.info("API сервер остановлен")
 
     def is_running(self) -> bool:
@@ -660,7 +800,9 @@ class APIServer:
 
     def get_observability_metrics(self) -> dict[str, Any]:
         """Возвращает снапшот эксплуатационных метрик API."""
-        return self._observability.get_metrics_snapshot()
+        payload = self._observability.get_metrics_snapshot()
+        payload["idempotency_store_size"] = self._idempotency.get_size()
+        return payload
 
     def get_observability_baseline(self) -> dict[str, Any]:
         """Возвращает baseline SLO по текущим эксплуатационным метрикам."""

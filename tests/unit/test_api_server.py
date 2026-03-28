@@ -14,7 +14,7 @@ import pytest
 import api.server as api_server_module
 from api.auth import init_api_auth
 from api.routes import register_routes
-from api.server import APIServer
+from api.server import APIIdempotencyStore, APIServer
 from api.websocket import WebSocketManager
 
 
@@ -619,3 +619,62 @@ class TestAPIServerOperations:
         assert operation_data["data"]["result"]["filepath"] == (
             "slow-recording.mp4"
         )
+
+
+class TestAPIIdempotencyStore:
+    """Тесты TTL-хранилища идемпотентных операций."""
+
+    def test_replay_for_same_key_and_fingerprint(self) -> None:
+        store = APIIdempotencyStore(
+            ttl_seconds=10.0, cleanup_interval_seconds=5.0
+        )
+        key = "idem-key-1"
+        fingerprint = "fp-1"
+
+        started = store.begin(key, fingerprint)
+        assert started["state"] == "started"
+
+        store.complete(
+            key=key,
+            status_code=200,
+            body_bytes=b'{"success":true}',
+            mimetype="application/json",
+        )
+        replay = store.begin(key, fingerprint)
+
+        assert replay["state"] == "replay"
+        assert replay["response"]["status_code"] == 200
+        assert replay["response"]["body_bytes"] == b'{"success":true}'
+        store.stop()
+
+    def test_conflict_for_same_key_with_other_fingerprint(self) -> None:
+        store = APIIdempotencyStore(
+            ttl_seconds=10.0, cleanup_interval_seconds=5.0
+        )
+        key = "idem-key-2"
+
+        started = store.begin(key, "fp-a")
+        assert started["state"] == "started"
+
+        conflict = store.begin(key, "fp-b")
+        assert conflict["state"] == "conflict"
+        store.stop()
+
+    def test_cleanup_removes_expired_entries(self) -> None:
+        store = APIIdempotencyStore(
+            ttl_seconds=0.01,
+            cleanup_interval_seconds=0.005,
+        )
+        key = "idem-key-3"
+
+        store.begin(key, "fp-cleanup")
+        store.complete(
+            key=key,
+            status_code=200,
+            body_bytes=b'{"ok":true}',
+            mimetype="application/json",
+        )
+        time.sleep(0.05)
+
+        assert store.get_size() == 0
+        store.stop()

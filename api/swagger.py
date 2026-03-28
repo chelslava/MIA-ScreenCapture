@@ -1455,6 +1455,38 @@ def get_swagger_spec() -> dict[str, Any]:
             remapped_paths[path] = path_spec
     spec["paths"] = remapped_paths
 
+    # Добавляем поддержку идемпотентности для write-endpoints.
+    idempotency_header = {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": False,
+        "schema": {
+            "type": "string",
+            "maxLength": 128,
+        },
+        "description": (
+            "Идемпотентный ключ для безопасных ретраев write-запросов. "
+            "Одинаковый ключ + одинаковый payload вернёт cached-ответ."
+        ),
+    }
+    for path_spec in spec.get("paths", {}).values():
+        if not isinstance(path_spec, dict):
+            continue
+        for method_name, operation in path_spec.items():
+            if method_name not in {"post", "put", "patch", "delete"}:
+                continue
+            if not isinstance(operation, dict):
+                continue
+            parameters = operation.setdefault("parameters", [])
+            has_header = any(
+                isinstance(item, dict)
+                and item.get("in") == "header"
+                and item.get("name") == "Idempotency-Key"
+                for item in parameters
+            )
+            if not has_header:
+                parameters.append(deepcopy(idempotency_header))
+
     # Относительный server URL автоматически подхватывает текущий хост/порт.
     spec["servers"] = [
         {
