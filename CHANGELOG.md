@@ -61,6 +61,15 @@
   - malformed JSON теперь возвращает `400 bad_request` вместо `500`;
   - добавлено ограничение размера запроса (`MAX_CONTENT_LENGTH=1 MiB`);
   - oversized payload возвращает `413 payload_too_large`.
+- `APIServer.start()` теперь делает fail-fast проверку bind host/port
+  перед запуском waitress и возвращает `False` при занятом порте.
+- Добавлен unit-тест на fail-fast сценарий старта API при ошибке bind.
+- Устранена гонка в observability latency-метриках:
+  чтение latency samples теперь выполняется под lock.
+- Декоратор `rate_limit` нормализует tuple-ответы через `make_response`
+  и стабильно добавляет `X-RateLimit-*` заголовки.
+- Добавлены unit-тесты на потокобезопасное чтение latency и на
+  `X-RateLimit-*` заголовки для tuple-ответов.
 
 ## [1.4.3] - 2026-03-28
 

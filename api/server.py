@@ -8,6 +8,7 @@ REST API сервер на базе Flask для удалённого управ
 
 import logging
 import re
+import socket
 import threading
 import time
 import uuid
@@ -331,7 +332,8 @@ class APIServerObservability:
         )
 
     def _latency_stats(self) -> dict[str, float | int]:
-        samples = sorted(self._latency_ms)
+        with self._lock:
+            samples = sorted(self._latency_ms)
         if not samples:
             return {
                 "count": 0,
@@ -685,6 +687,7 @@ class APIServer:
                 return False
 
             try:
+                self._validate_bind_address()
                 self._running = True
                 self._server_thread = threading.Thread(
                     target=self._run_server, daemon=True
@@ -698,6 +701,31 @@ class APIServer:
                 logger.error(f"Не удалось запустить API сервер: {e}")
                 self._running = False
                 return False
+
+    def _validate_bind_address(self) -> None:
+        """Проверяет возможность bind host/port до запуска waitress."""
+        address_candidates = socket.getaddrinfo(
+            self.host,
+            self.port,
+            type=socket.SOCK_STREAM,
+        )
+        last_error: OSError | None = None
+
+        for family, socktype, proto, _, sockaddr in address_candidates:
+            test_socket = socket.socket(family, socktype, proto)
+            try:
+                test_socket.bind(sockaddr)
+                return
+            except OSError as e:
+                last_error = e
+            finally:
+                test_socket.close()
+
+        if last_error is not None:
+            raise OSError(
+                f"Невозможно запустить API на {self.host}:{self.port}: "
+                f"{last_error}"
+            ) from last_error
 
     def _run_server(self) -> None:
         """Запуск WSGI сервера."""

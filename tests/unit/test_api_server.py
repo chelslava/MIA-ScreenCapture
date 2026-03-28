@@ -14,7 +14,7 @@ import pytest
 import api.server as api_server_module
 from api.auth import init_api_auth
 from api.routes import register_routes
-from api.server import APIIdempotencyStore, APIServer
+from api.server import APIIdempotencyStore, APIServer, APIServerObservability
 from api.websocket import WebSocketManager
 
 
@@ -167,6 +167,21 @@ class TestAPIServerStartStop:
             result = server.start()
 
         assert result is False
+
+    def test_start_returns_false_if_bind_validation_fails(self) -> None:
+        """Проверка fail-fast при занятом порте или ошибке bind."""
+        server = APIServer(host="127.0.0.1", port=5003)
+
+        with patch.object(
+            server,
+            "_validate_bind_address",
+            side_effect=OSError("Address already in use"),
+        ):
+            result = server.start()
+
+        assert result is False
+        assert server._running is False
+        assert server._server_thread is None
 
     def test_stop_clears_running_flag(self) -> None:
         """Проверка очистки флага running при остановке."""
@@ -539,6 +554,22 @@ class TestAPIServerObservability:
         assert isinstance(data["uptime_seconds"], (int, float))
         assert data["uptime_seconds"] >= 0
         assert data["websocket"]["transport_ready"] is True
+
+    def test_latency_stats_reads_samples_under_lock(self) -> None:
+        """Проверка чтения latency samples под lock."""
+        observability = APIServerObservability()
+
+        class _LockAwareSamples:
+            def __iter__(self):
+                assert observability._lock.locked()
+                return iter([10.0, 20.0, 30.0])
+
+        observability._latency_ms = _LockAwareSamples()  # type: ignore[assignment]
+
+        stats = observability._latency_stats()
+
+        assert stats["count"] == 3
+        assert stats["max_ms"] == 30.0
 
 
 class TestAPIServerOperations:

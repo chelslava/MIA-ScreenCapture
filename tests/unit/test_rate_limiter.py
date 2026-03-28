@@ -6,7 +6,7 @@
 from unittest.mock import patch
 
 import pytest
-from flask import Flask
+from flask import Flask, jsonify
 
 from api.rate_limiter import (
     ClientState,
@@ -334,6 +334,26 @@ class TestRateLimitDecorator:
             # Второй запрос заблокирован
             result = test_endpoint()
             assert result.status_code == 429
+
+    def test_adds_headers_for_tuple_response(self, app):
+        """Проверка добавления X-RateLimit-* для tuple-ответов."""
+        limiter = InMemoryRateLimiter()
+
+        @rate_limit
+        def test_endpoint():
+            return jsonify({"success": True}), 200
+
+        with (
+            app.test_request_context(),
+            patch("api.rate_limiter.get_rate_limiter", return_value=limiter),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.9"),
+        ):
+            response = test_endpoint()
+            assert response.status_code == 200
+            assert "X-RateLimit-Limit-Minute" in response.headers
+            assert "X-RateLimit-Limit-Hour" in response.headers
+            assert "X-RateLimit-Remaining-Minute" in response.headers
+            assert "X-RateLimit-Remaining-Hour" in response.headers
 
 
 class TestInitRateLimiter:

@@ -257,7 +257,9 @@ def _execute_with_idempotency(
     return response
 
 
-def _parse_request_json() -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
+def _parse_request_json() -> tuple[
+    dict[str, Any] | None, tuple[Any, int] | None
+]:
     """Безопасно парсит JSON тело запроса и возвращает ошибку при проблемах."""
     try:
         data = request.get_json(silent=False)

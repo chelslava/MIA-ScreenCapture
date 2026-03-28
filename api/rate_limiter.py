@@ -13,7 +13,7 @@ from functools import wraps
 from threading import Lock
 from typing import Any
 
-from flask import Flask, jsonify, request
+from flask import Flask, current_app, jsonify, request
 
 from logger_config import get_module_logger
 
@@ -371,6 +371,10 @@ def rate_limit(f: Callable) -> Callable:
         # Выполняем функцию и добавляем заголовки с информацией о лимитах
         response = f(*args, **kwargs)
         headers = get_rate_limit_headers()
+        if isinstance(response, tuple):
+            normalized_response = current_app.make_response(response)
+            normalized_response.headers.update(headers)
+            return normalized_response
         if hasattr(response, "headers"):
             response.headers.update(headers)
         return response

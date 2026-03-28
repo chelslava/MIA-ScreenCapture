@@ -13,12 +13,6 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] Сделать `APIServer.start()` fail-fast при ошибке bind/старта waitress
-  (без ложного `success`).
-- [ ] Убрать гонку в latency-метриках observability
-  (`get_metrics_snapshot()` только со snapshot под lock).
-- [ ] Нормализовать rate-limit заголовки для всех успешных ответов API,
-  включая tuple-ответы `(body, status)`.
 - [ ] Заменить синтетические тесты `scheduler_tab` на реальные
   поведенческие Qt-сценарии (create/edit/delete/toggle/validation).
 
