@@ -134,10 +134,15 @@ config.local.*
 secrets.*
 *.secret
 
+# Local runtime configuration (do not commit machine-specific state)
+config/*.json
+!config/*.example.json
+
 # UV package manager
 .uv/
 uv.lock
 
 # Ruff
 .ruff_cache/
+
 
