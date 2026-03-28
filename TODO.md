@@ -13,8 +13,6 @@
 
 - [ ] Вынести запись WAV из audio callback в отдельный writer-thread с
   bounded-queue для снижения риска xruns под нагрузкой.
-- [ ] Проверять результат `FFmpegVideoWriter.write()` и аварийно
-  завершать запись при `False`, чтобы избежать тихой потери кадров.
 - [ ] Сделать `ConfigManager` потокобезопасным для мутаций `_settings`
   и `recent_recordings`.
 - [ ] Подключить `scheduler.max_concurrent_tasks` к реальному лимиту
