@@ -198,8 +198,8 @@ class TestVideoRecorder:
 
     @pytest.fixture
     def recorder(self) -> VideoRecorder:
-        """Создаёт рекордер для тестов."""
-        return VideoRecorder()
+        """Создаёт рекордер для тестов (без FFmpeg для unit тестов)."""
+        return VideoRecorder(use_ffmpeg=False)
 
     def test_init_default(self) -> None:
         """Проверка инициализации с параметрами по умолчанию."""
@@ -381,8 +381,8 @@ class TestVideoRecorderStart:
 
     @pytest.fixture
     def recorder(self) -> VideoRecorder:
-        """Создаёт рекордер для тестов."""
-        return VideoRecorder()
+        """Создаёт рекордер для тестов (без FFmpeg)."""
+        return VideoRecorder(use_ffmpeg=False)
 
     def test_start_from_idle_state(
         self, recorder: VideoRecorder, tmp_path: Path
@@ -459,8 +459,8 @@ class TestVideoRecorderStop:
 
     @pytest.fixture
     def recorder(self) -> VideoRecorder:
-        """Создаёт рекордер для тестов."""
-        return VideoRecorder()
+        """Создаёт рекордер для тестов (без FFmpeg)."""
+        return VideoRecorder(use_ffmpeg=False)
 
     def test_stop_from_recording_state(
         self, recorder: VideoRecorder, tmp_path: Path
