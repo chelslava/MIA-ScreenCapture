@@ -497,7 +497,7 @@ class TestVideoRecorderIntegration:
 
     def test_full_lifecycle_mocked(self, tmp_path: Path) -> None:
         """Проверка полного жизненного цикла записи (с моками)."""
-        recorder = VideoRecorder()
+        recorder = VideoRecorder(use_ffmpeg=False)
         output_path = tmp_path / "lifecycle.mp4"
         capture_area = CaptureArea(type="full", width=1920, height=1080)
 
