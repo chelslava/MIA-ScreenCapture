@@ -529,6 +529,7 @@ class VideoRecorder:
         """Основной цикл захвата в отдельном потоке."""
         frame_interval: float = 1.0 / self.fps
         last_frame_time: float = time.perf_counter()
+        fatal_write_error = False
 
         def on_capture_lost(message: str) -> None:
             logger.error(f"Capture lost: {message}")
@@ -584,7 +585,18 @@ class VideoRecorder:
 
                     # Запись кадра
                     if self._ffmpeg_writer is not None:
-                        self._ffmpeg_writer.write(frame)
+                        write_ok = self._ffmpeg_writer.write(frame)
+                        if not write_ok:
+                            fatal_write_error = True
+                            message = (
+                                "Ошибка записи кадра в FFmpeg. "
+                                "Запись остановлена аварийно."
+                            )
+                            logger.error(message)
+                            if self._on_error:
+                                self._on_error(message)
+                            self._state = RecordingState.STOPPING
+                            break
                         self._frame_count += 1
                         self._last_captured_frame = frame
                     elif self._video_writer is not None:
@@ -616,6 +628,10 @@ class VideoRecorder:
             except Exception:
                 pass
             self._capture_session = None
+
+        if fatal_write_error:
+            self._cleanup()
+            return
 
         # Сигнал завершения
         self._state = RecordingState.IDLE

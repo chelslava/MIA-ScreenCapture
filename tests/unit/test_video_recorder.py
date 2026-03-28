@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from recorder.video_recorder import CaptureArea, RecordingState, VideoRecorder
@@ -374,6 +375,52 @@ class TestVideoRecorder:
 
         # Время должно быть около 7 секунд (10 - 3 паузы)
         assert 6.9 < elapsed < 7.1
+
+    def test_capture_loop_stops_on_ffmpeg_write_failure(self) -> None:
+        """Проверка аварийной остановки при ошибке записи кадра FFmpeg."""
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(type="full", width=32, height=32)
+        recorder._ffmpeg_writer = MagicMock()
+        recorder._ffmpeg_writer.write.return_value = False
+
+        error_callback = MagicMock()
+        recorder.set_callbacks(on_error=error_callback)
+
+        class MockSession:
+            """Простейший mock с одним кадром для цикла захвата."""
+
+            def __init__(self) -> None:
+                self.is_capture_lost = False
+                self._read_count = 0
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                if self._read_count == 0:
+                    self._read_count += 1
+                    return np.zeros((32, 32, 3), dtype=np.uint8)
+                return None
+
+            def stop(self) -> None:
+                return
+
+        mock_session = MockSession()
+        with (
+            patch(
+                "recorder.video_recorder._WindowsCaptureSession",
+                return_value=mock_session,
+            ),
+            patch.object(recorder, "_cleanup") as mock_cleanup,
+        ):
+            recorder._capture_loop()
+
+        assert recorder.frame_count == 0
+        assert recorder.state == RecordingState.STOPPING
+        mock_cleanup.assert_called_once()
+        error_callback.assert_called_once()
 
 
 class TestVideoRecorderStart:
