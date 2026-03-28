@@ -13,6 +13,7 @@ from typing import Any
 
 from flask import current_app, g, jsonify, request
 from pydantic import ValidationError
+from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from api.auth import require_api_key
 from api.rate_limiter import rate_limit
@@ -34,6 +35,7 @@ _ERROR_CODE_BY_STATUS = {
     403: "forbidden",
     404: "not_found",
     409: "conflict",
+    413: "payload_too_large",
     429: "rate_limited",
 }
 
@@ -253,6 +255,47 @@ def _execute_with_idempotency(
         mimetype=response.mimetype,
     )
     return response
+
+
+def _parse_request_json() -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
+    """Безопасно парсит JSON тело запроса и возвращает ошибку при проблемах."""
+    try:
+        data = request.get_json(silent=False)
+    except RequestEntityTooLarge:
+        return (
+            None,
+            _error_response(
+                413,
+                "payload_too_large",
+                "Слишком большой запрос",
+            ),
+        )
+    except BadRequest:
+        raw_payload = request.get_data(cache=True, as_text=False) or b""
+        if not raw_payload:
+            return {}, None
+        return (
+            None,
+            _error_response(
+                400,
+                "bad_request",
+                "Некорректный JSON в теле запроса",
+            ),
+        )
+
+    if data is None:
+        return {}, None
+
+    if not isinstance(data, dict):
+        return (
+            None,
+            _error_response(
+                400,
+                "validation_error",
+                "Тело запроса должно быть JSON-объектом",
+            ),
+        )
+    return data, None
 
 
 def handle_validation_error(error: ValidationError) -> tuple:
@@ -561,7 +604,10 @@ def register_routes(app, server) -> None:
         try:
 
             def _handler() -> Any:
-                data = request.get_json() or {}
+                data, parse_error = _parse_request_json()
+                if parse_error is not None:
+                    return parse_error
+                assert data is not None
 
                 # Валидация входных данных
                 try:
@@ -758,7 +804,10 @@ def register_routes(app, server) -> None:
         try:
 
             def _handler() -> Any:
-                data = request.get_json() or {}
+                data, parse_error = _parse_request_json()
+                if parse_error is not None:
+                    return parse_error
+                assert data is not None
 
                 # Валидация входных данных
                 try:
@@ -847,7 +896,10 @@ def register_routes(app, server) -> None:
         try:
 
             def _handler() -> Any:
-                data = request.get_json() or {}
+                data, parse_error = _parse_request_json()
+                if parse_error is not None:
+                    return parse_error
+                assert data is not None
                 data["id"] = task_id
 
                 # Валидация входных данных
@@ -893,7 +945,10 @@ def register_routes(app, server) -> None:
         try:
 
             def _handler() -> Any:
-                data = request.get_json() or {}
+                data, parse_error = _parse_request_json()
+                if parse_error is not None:
+                    return parse_error
+                assert data is not None
 
                 # Валидация входных данных
                 try:
@@ -988,7 +1043,10 @@ def register_routes(app, server) -> None:
         try:
 
             def _handler() -> Any:
-                data = request.get_json() or {}
+                data, parse_error = _parse_request_json()
+                if parse_error is not None:
+                    return parse_error
+                assert data is not None
 
                 # Валидация входных данных
                 try:

@@ -21,6 +21,7 @@ import psutil
 from flask import Flask, g, jsonify, request
 from flask_cors import CORS
 from waitress.server import create_server
+from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from api.auth import API_KEY_CONFIG_KEY
 from logger_config import get_module_logger
@@ -34,6 +35,7 @@ _OPERATION_RESULT_TTL_SECONDS = 600.0
 _IDEMPOTENCY_RESULT_TTL_SECONDS = 3600.0
 _IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS = 30.0
 _SERVER_STOP_WAIT_SECONDS = 10.0
+_MAX_REQUEST_BODY_BYTES = 1024 * 1024
 _HIGH_FREQUENCY_PATH_PREFIXES = (
     "/health",
     "/api/v1/status",
@@ -475,6 +477,7 @@ class APIServer:
 
         self.app = Flask(__name__)
         CORS(self.app)
+        self.app.config["MAX_CONTENT_LENGTH"] = _MAX_REQUEST_BODY_BYTES
 
         # Инициализация API аутентификации
         self.api_key = init_api_auth(self.app, self.api_key)
@@ -504,6 +507,25 @@ class APIServer:
         @self.app.errorhandler(500)
         def server_error(e):
             return jsonify({"error": "Внутренняя ошибка сервера"}), 500
+
+        @self.app.errorhandler(BadRequest)
+        def bad_request(e):
+            return jsonify({"error": "Некорректный JSON в теле запроса"}), 400
+
+        @self.app.errorhandler(RequestEntityTooLarge)
+        def payload_too_large(e):
+            max_size = int(self.app.config.get("MAX_CONTENT_LENGTH", 0))
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "Слишком большой запрос. "
+                            f"Максимальный размер: {max_size} байт"
+                        )
+                    }
+                ),
+                413,
+            )
 
         @self.app.errorhandler(Exception)
         def handle_exception(e):

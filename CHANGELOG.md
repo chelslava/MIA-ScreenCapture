@@ -57,6 +57,10 @@
   `ThreadPoolExecutor(max_workers=...)`.
 - Добавлены unit-тесты на применение/нормализацию лимита
   параллельных задач в `TaskScheduler` и прокидку лимита из `main.py`.
+- API обработка входного JSON ужесточена:
+  - malformed JSON теперь возвращает `400 bad_request` вместо `500`;
+  - добавлено ограничение размера запроса (`MAX_CONTENT_LENGTH=1 MiB`);
+  - oversized payload возвращает `413 payload_too_large`.
 
 ## [1.4.3] - 2026-03-28
 

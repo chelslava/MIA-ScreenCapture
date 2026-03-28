@@ -715,14 +715,26 @@ class TestAPIErrorHandling:
 
     def test_invalid_json(self, client: FlaskClient):
         """Проверка обработки некорректного JSON."""
-        # Flask возвращает 500 при ошибке парсинга JSON
         response = client.post(
             "/api/start", data="invalid json", content_type="application/json"
         )
 
-        # API возвращает 500 при ошибке парсинга JSON
-        assert response.status_code == 500
-        data = assert_error_contract(response, "internal_error")
+        assert response.status_code == 400
+        data = assert_error_contract(response, "bad_request")
+        assert data["error"]["message"] == "Некорректный JSON в теле запроса"
+        assert isinstance(data["error"]["message"], str)
+
+    def test_payload_too_large_returns_413(self, client: FlaskClient):
+        """Проверка защиты от слишком большого JSON тела запроса."""
+        oversized_payload = {"data": "x" * (1024 * 1024 + 1000)}
+        response = client.post(
+            "/api/start",
+            json=oversized_payload,
+            content_type="application/json",
+        )
+
+        assert response.status_code == 413
+        data = assert_error_contract(response, "payload_too_large")
         assert isinstance(data["error"]["message"], str)
 
     def test_legacy_error_payload_does_not_leak_internal_fields(

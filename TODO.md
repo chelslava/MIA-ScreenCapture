@@ -13,8 +13,6 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] Жёстко обрабатывать malformed JSON и ограничить размер тела
-  запроса API (`MAX_CONTENT_LENGTH` + 400 вместо 500).
 - [ ] Сделать `APIServer.start()` fail-fast при ошибке bind/старта waitress
   (без ложного `success`).
 - [ ] Убрать гонку в latency-метриках observability
