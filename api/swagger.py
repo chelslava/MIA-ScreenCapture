@@ -5,6 +5,7 @@
 Предоставляет OpenAPI/Swagger спецификацию для REST API.
 """
 
+from copy import deepcopy
 from typing import Any
 
 # OpenAPI спецификация для API MIA-ScreenCapture
@@ -1301,7 +1302,27 @@ def get_swagger_spec() -> dict[str, Any]:
     Returns:
         Копия словаря с OpenAPI спецификацией
     """
-    return SWAGGER_SPEC.copy()
+    spec = deepcopy(SWAGGER_SPEC)
+
+    # В спецификации используем versioned API как основной контракт.
+    # Это убирает путаницу между legacy /api/* и актуальным /api/v1/*.
+    remapped_paths: dict[str, Any] = {}
+    for path, path_spec in spec.get("paths", {}).items():
+        if path.startswith("/api/") and not path.startswith("/api/v1/"):
+            remapped_paths[f"/api/v1/{path.removeprefix('/api/')}"] = path_spec
+        else:
+            remapped_paths[path] = path_spec
+    spec["paths"] = remapped_paths
+
+    # Относительный server URL автоматически подхватывает текущий хост/порт.
+    spec["servers"] = [
+        {
+            "url": "/",
+            "description": "Текущий API сервер",
+        }
+    ]
+
+    return spec
 
 
 def register_swagger_routes(app: Any) -> None:
@@ -1311,12 +1332,20 @@ def register_swagger_routes(app: Any) -> None:
     Args:
         app: Экземпляр Flask приложения
     """
-    from flask import jsonify
+    from flask import jsonify, request
 
     @app.route("/api/swagger.json", methods=["GET"])
     def get_swagger_json() -> Any:
         """Возвращает OpenAPI спецификацию в формате JSON."""
-        return jsonify(SWAGGER_SPEC)
+        spec = get_swagger_spec()
+        # Для удобства в UI показываем абсолютный URL текущего хоста/порта.
+        spec["servers"] = [
+            {
+                "url": request.host_url.rstrip("/"),
+                "description": "Текущий API сервер",
+            }
+        ]
+        return jsonify(spec)
 
     @app.route("/api/docs", methods=["GET"])
     def swagger_ui() -> Any:
@@ -1346,6 +1375,9 @@ def register_swagger_routes(app: Any) -> None:
                 ],
                 layout: "StandaloneLayout",
                 deepLinking: true,
+                persistAuthorization: true,
+                displayRequestDuration: true,
+                tryItOutEnabled: true,
                 displayOperationId: false,
                 defaultModelsExpandDepth: 1,
                 defaultModelExpandDepth: 1,
