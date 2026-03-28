@@ -390,6 +390,18 @@ class TestSettingsController:
             str(path), 1024000
         )
 
+    def test_clear_recent_recordings(
+        self, controller: SettingsController, mock_config: MagicMock
+    ) -> None:
+        """Проверка очистки списка недавних записей."""
+        path = Path("/path/to/video.mp4")
+        controller.state.add_recent_recording(path, 1024000)
+
+        controller.clear_recent_recordings()
+
+        assert controller.state.recent_recordings == []
+        mock_config.clear_recent_recordings.assert_called_once()
+
     def test_get_output_path_with_custom_path(
         self, controller: SettingsController
     ) -> None:

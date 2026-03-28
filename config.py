@@ -403,6 +403,11 @@ class ConfigManager:
 
         self.save()
 
+    def clear_recent_recordings(self) -> None:
+        """Очистка списка недавних записей."""
+        self._settings.recent_recordings = []
+        self.save()
+
     def get_output_path(self, filename: str | None = None) -> Path:
         """
         Получение пути вывода для записи.

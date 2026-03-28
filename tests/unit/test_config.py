@@ -339,6 +339,15 @@ class TestConfigManager:
             == "/path/video_9.mp4"
         )
 
+    def test_clear_recent_recordings(self, temp_config_file: Path):
+        """Проверка очистки списка недавних записей."""
+        manager = ConfigManager(temp_config_file)
+        manager.add_recent_recording("/path/to/video.mp4", 1024)
+
+        manager.clear_recent_recordings()
+
+        assert manager.settings.recent_recordings == []
+
     def test_get_output_path_default(
         self, temp_config_file: Path, temp_dir: Path, monkeypatch
     ):

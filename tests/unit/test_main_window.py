@@ -294,6 +294,37 @@ class TestMainWindowRecentRecordings:
         assert state.recent_recordings[1].path == Path("/tmp/first.mp4")
 
 
+class TestMainWindowRecentRecordingsFilter:
+    """Тесты фильтрации списка последних записей."""
+
+    @pytest.mark.parametrize(
+        "filename,date_text,filter_text,expected",
+        [
+            ("capture_2026-03-28.mp4", "2026-03-28", "", True),
+            ("capture_2026-03-28.mp4", "2026-03-28", "capture", True),
+            ("capture_2026-03-28.mp4", "2026-03-28", "2026-03", True),
+            ("capture_2026-03-28.mp4", "2026-03-28", "CAPTURE", True),
+            ("capture_2026-03-28.mp4", "2026-03-28", "audio", False),
+        ],
+    )
+    def test_recording_matches_filter(
+        self,
+        filename: str,
+        date_text: str,
+        filter_text: str,
+        expected: bool,
+    ) -> None:
+        """Фильтр должен работать без учета регистра."""
+        from gui.main_window import MainWindow
+
+        assert (
+            MainWindow._recording_matches_filter(
+                filename, date_text, filter_text
+            )
+            is expected
+        )
+
+
 class TestMainWindowOutputFilename:
     """Тесты генерации имени выходного файла."""
 

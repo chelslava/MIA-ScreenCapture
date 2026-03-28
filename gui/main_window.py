@@ -17,6 +17,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -247,12 +248,31 @@ class MainWindow(QMainWindow):
         group = QGroupBox("Последние записи")
         group_layout = QVBoxLayout(group)
 
+        filter_layout = QHBoxLayout()
+        self._recordings_filter_input = QLineEdit()
+        self._recordings_filter_input.setPlaceholderText(
+            "Фильтр по имени файла"
+        )
+        self._recordings_filter_input.textChanged.connect(
+            lambda _text: self._refresh_recent_recordings()
+        )
+        filter_layout.addWidget(self._recordings_filter_input)
+
+        clear_filter_btn = QPushButton("Сбросить")
+        clear_filter_btn.clicked.connect(self._clear_recordings_filter)
+        filter_layout.addWidget(clear_filter_btn)
+        group_layout.addLayout(filter_layout)
+
         self.recordings_list = QListWidget()
         self.recordings_list.itemDoubleClicked.connect(self._open_recording)
         group_layout.addWidget(self.recordings_list)
 
         # Кнопки
         btn_layout = QHBoxLayout()
+
+        open_latest_btn = QPushButton("Открыть последний")
+        open_latest_btn.clicked.connect(self._open_latest_recording)
+        btn_layout.addWidget(open_latest_btn)
 
         open_folder_btn = QPushButton("Открыть папку")
         open_folder_btn.clicked.connect(self._open_recording_folder)
@@ -261,6 +281,10 @@ class MainWindow(QMainWindow):
         open_file_btn = QPushButton("Открыть файл")
         open_file_btn.clicked.connect(self._open_selected_recording)
         btn_layout.addWidget(open_file_btn)
+
+        clear_list_btn = QPushButton("Очистить список")
+        clear_list_btn.clicked.connect(self._clear_recent_recordings)
+        btn_layout.addWidget(clear_list_btn)
 
         group_layout.addLayout(btn_layout)
 
@@ -321,12 +345,40 @@ class MainWindow(QMainWindow):
     def _refresh_recent_recordings(self) -> None:
         """Обновление списка недавних записей."""
         self.recordings_list.clear()
+        filter_text = self._normalized_recordings_filter()
         for rec in self._state.recent_recordings:
-            if rec.path.exists():
-                item_text = f"{rec.path.name} - {format_filesize(rec.size)} - {rec.date}"
-                item = QListWidgetItem(item_text)
-                item.setData(Qt.ItemDataRole.UserRole, str(rec.path))
-                self.recordings_list.addItem(item)
+            if not rec.path.exists():
+                continue
+            if not self._recording_matches_filter(
+                rec.path.name, rec.date, filter_text
+            ):
+                continue
+            item_text = (
+                f"{rec.path.name} - {format_filesize(rec.size)} - {rec.date}"
+            )
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.ItemDataRole.UserRole, str(rec.path))
+            self.recordings_list.addItem(item)
+
+    def _clear_recordings_filter(self) -> None:
+        """Сброс фильтра списка недавних записей."""
+        self._recordings_filter_input.setText("")
+        self._refresh_recent_recordings()
+
+    def _normalized_recordings_filter(self) -> str:
+        """Нормализация текста фильтра для сравнения."""
+        return self._recordings_filter_input.text().strip().lower()
+
+    @staticmethod
+    def _recording_matches_filter(
+        filename: str, date_text: str, filter_text: str
+    ) -> bool:
+        """Проверка попадания записи под фильтр."""
+        normalized_filter = filter_text.strip().lower()
+        if not normalized_filter:
+            return True
+        haystack = f"{filename.lower()} {date_text.lower()}"
+        return normalized_filter in haystack
 
     # === Обработчики сигналов от представлений ===
 
@@ -625,6 +677,18 @@ class MainWindow(QMainWindow):
         item = self.recordings_list.currentItem()
         if item:
             self._open_recording(item)
+
+    def _open_latest_recording(self) -> None:
+        """Открытие самой свежей записи из списка."""
+        item = self.recordings_list.item(0)
+        if item:
+            self._open_recording(item)
+
+    def _clear_recent_recordings(self) -> None:
+        """Очистка списка последних записей."""
+        self._settings_controller.clear_recent_recordings()
+        self._refresh_recent_recordings()
+        self.status_bar.showMessage("Список последних записей очищен", 5000)
 
     def _open_recording_folder(self) -> None:
         """Открытие папки с выбранной записью."""

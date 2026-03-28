@@ -195,6 +195,11 @@ class SettingsController:
         self._state.add_recent_recording(path, size)
         self._config.add_recent_recording(str(path), size)
 
+    def clear_recent_recordings(self) -> None:
+        """Очистить недавние записи в модели и конфигурации."""
+        self._state.recent_recordings.clear()
+        self._config.clear_recent_recordings()
+
     def get_output_path(self) -> Path:
         """
         Получить путь к выходному файлу.
