@@ -369,9 +369,7 @@ class ConfigManager:
                         "Конфигурация сохранена (debounce recent_recordings)"
                     )
             except Exception as e:
-                logger.error(
-                    f"Ошибка debounce-сохранения конфигурации: {e}"
-                )
+                logger.error(f"Ошибка debounce-сохранения конфигурации: {e}")
 
     def _cancel_recent_save_timer_locked(self) -> None:
         """Отменяет отложенный таймер сохранения под захваченным lock."""

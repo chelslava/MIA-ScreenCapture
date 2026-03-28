@@ -457,8 +457,8 @@ class TestSwaggerRequestBodies:
         for example in toggle_examples.values():
             ToggleScheduleRequest(**example["value"])
 
-        config_examples = spec["paths"]["/api/v1/config"]["put"]["requestBody"][
-            "content"
-        ]["application/json"]["examples"]
+        config_examples = spec["paths"]["/api/v1/config"]["put"][
+            "requestBody"
+        ]["content"]["application/json"]["examples"]
         for example in config_examples.values():
             UpdateConfigRequest(**example["value"])
