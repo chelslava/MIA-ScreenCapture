@@ -2,6 +2,8 @@ param(
     [string]$Repo = "chelslava/MIA-ScreenCapture"
 )
 
+$ErrorActionPreference = "Stop"
+
 $wikiUrl = "https://github.com/$Repo.wiki.git"
 $src = Join-Path $PSScriptRoot "..\docs\wiki"
 $dst = Join-Path $PSScriptRoot "..\wiki_repo"
@@ -14,7 +16,7 @@ try {
     git clone $wikiUrl $dst
 } catch {
     Write-Error "Не удалось клонировать wiki. Сначала откройте вкладку Wiki в GitHub и создайте первую страницу (Home)."
-    throw
+    exit 1
 }
 
 Copy-Item "$src\*.md" $dst -Force
@@ -25,7 +27,7 @@ try {
     git diff --cached --quiet
     if ($LASTEXITCODE -ne 0) {
         git commit -m "Обновить wiki документацию"
-        git push origin master
+        git push origin HEAD:master
     } else {
         Write-Host "Изменений нет"
     }
