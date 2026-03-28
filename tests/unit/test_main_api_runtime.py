@@ -295,3 +295,22 @@ class TestMainApiRuntime:
         stop_mock.assert_called_once()
         start_mock.assert_called_once_with(force=True)
         assert result == {"success": True, "status": {"running": True}}
+
+    def test_stop_recording_uses_extended_gui_timeout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Остановка записи через API должна ждать дольше 10 секунд."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        stop_result = {"success": True, "filepath": "out.mp4"}
+        app._main_window = SimpleNamespace(
+            stop_recording=MagicMock(return_value=stop_result)
+        )
+        run_on_gui_thread_mock = MagicMock(return_value=stop_result)
+        app._run_on_gui_thread = run_on_gui_thread_mock
+
+        result = app._stop_recording()
+
+        run_on_gui_thread_mock.assert_called_once()
+        _, kwargs = run_on_gui_thread_mock.call_args
+        assert kwargs["timeout"] == 60.0
+        assert result == stop_result

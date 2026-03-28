@@ -67,6 +67,10 @@ from recorder.utils import (
 
 logger = get_module_logger(__name__)
 
+_GUI_DEFAULT_TIMEOUT_SECONDS = 10.0
+_GUI_START_TIMEOUT_SECONDS = 20.0
+_GUI_STOP_TIMEOUT_SECONDS = 60.0
+
 
 class _MainThreadExecutor:
     """Выполнение callables в главном потоке Qt из фоновых потоков."""
@@ -907,7 +911,11 @@ class VideoRecorderApp:
 
     # Реализации обратных вызовов API
 
-    def _run_on_gui_thread(self, fn: Any, timeout: float = 10.0) -> Any:
+    def _run_on_gui_thread(
+        self,
+        fn: Any,
+        timeout: float = _GUI_DEFAULT_TIMEOUT_SECONDS,
+    ) -> Any:
         """Безопасный синхронный вызов функции в GUI-потоке."""
         if not self._main_window:
             return fn()
@@ -937,7 +945,7 @@ class VideoRecorderApp:
                     lambda: self._main_window.start_recording_with_params(
                         params
                     ),
-                    timeout=20.0,
+                    timeout=_GUI_START_TIMEOUT_SECONDS,
                 ),
             )
         return self._recording_service.start_recording(params)
@@ -948,7 +956,8 @@ class VideoRecorderApp:
             return cast(
                 dict[str, Any],
                 self._run_on_gui_thread(
-                    lambda: self._main_window.stop_recording()
+                    lambda: self._main_window.stop_recording(),
+                    timeout=_GUI_STOP_TIMEOUT_SECONDS,
                 ),
             )
         return self._recording_service.stop_recording()
