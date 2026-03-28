@@ -360,10 +360,10 @@ class APIServer:
     def _run_server(self) -> None:
         """Запуск WSGI сервера."""
         try:
-            # Создаём управляемый waitress сервер, чтобы корректно остановить его через stop().
+            # Создаём управляемый waitress сервер, который начинает
+            # принимать соединения сразу после запуска run().
             self._wsgi_server = create_server(
                 self.app,
-                _start=False,
                 host=self.host,
                 port=self.port,
                 threads=4,
