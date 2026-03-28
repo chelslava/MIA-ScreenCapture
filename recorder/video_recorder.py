@@ -523,8 +523,6 @@ class VideoRecorder:
         """Основной цикл захвата в отдельном потоке."""
         frame_interval: float = 1.0 / self.fps
         last_frame_time: float = time.perf_counter()
-        frames_dropped: int = 0
-        max_dropped_warning: int = 100
 
         def on_capture_lost(message: str) -> None:
             logger.error(f"Capture lost: {message}")

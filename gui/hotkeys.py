@@ -129,7 +129,7 @@ class GlobalHotkeys:
                             logger.error(f"Ошибка в callback: {e}")
 
                 self._listener = keyboard.GlobalHotKeys(
-                    {k: lambda k=k: on_activate(k) for k in hotkey_map.keys()}
+                    {k: lambda k=k: on_activate(k) for k in hotkey_map}
                 )
                 self._listener.start()
                 self._running = True
