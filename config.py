@@ -114,6 +114,17 @@ class APISettingsSchema(BaseModel):
     enabled: bool = Field(default=True)
     host: str = Field(default="127.0.0.1")
     port: int = Field(default=5000, ge=1, le=65535)
+    api_key: str | None = Field(default=None)
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def validate_api_key(cls, value: Any) -> str | None:
+        """Нормализует токен API."""
+        if value is None:
+            return None
+
+        api_key = str(value).strip()
+        return api_key or None
 
 
 class SchedulerSettingsSchema(BaseModel):
@@ -203,6 +214,7 @@ class APISettings:
     enabled: bool = True
     host: str = "127.0.0.1"
     port: int = 5000
+    api_key: str | None = None
 
 
 @dataclass

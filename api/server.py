@@ -21,6 +21,7 @@ from flask import Flask, g, jsonify, request
 from flask_cors import CORS
 from waitress.server import create_server
 
+from api.auth import API_KEY_CONFIG_KEY
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -191,16 +192,23 @@ class APIServer:
     - Управления запланированными задачами
     """
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 5000):
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 5000,
+        api_key: str | None = None,
+    ):
         """
         Инициализация API сервера.
 
         Args:
             host: Адрес хоста для привязки
             port: Номер порта для прослушивания
+            api_key: Токен API для аутентификации
         """
         self.host = host
         self.port = port
+        self.api_key = api_key.strip() if api_key and api_key.strip() else None
 
         # Flask приложение
         self.app: Flask | None = None
@@ -228,7 +236,7 @@ class APIServer:
         CORS(self.app)
 
         # Инициализация API аутентификации
-        init_api_auth(self.app)
+        self.api_key = init_api_auth(self.app, self.api_key)
         # Инициализация rate limiter (применяется декораторами в routes.py)
         init_rate_limiter(self.app)
 
@@ -390,6 +398,40 @@ class APIServer:
     def get_url(self) -> str:
         """Получение URL сервера."""
         return f"http://{self.host}:{self.port}"
+
+    def get_status(self) -> dict[str, Any]:
+        """
+        Получение статуса API сервера.
+
+        Returns:
+            Словарь со статусом, адресом и информацией об аутентификации.
+        """
+        return {
+            "running": self._running,
+            "host": self.host,
+            "port": self.port,
+            "url": self.get_url(),
+            "api_key": self.get_api_key(),
+            "api_key_set": bool(self.get_api_key()),
+        }
+
+    def set_api_key(self, api_key: str | None) -> None:
+        """
+        Обновление API ключа в памяти и активном Flask приложении.
+
+        Args:
+            api_key: Новый API ключ или None.
+        """
+        normalized_key = (
+            api_key.strip() if api_key and api_key.strip() else None
+        )
+        self.api_key = normalized_key
+
+        if self.app is not None:
+            if normalized_key is not None:
+                self.app.config[API_KEY_CONFIG_KEY] = normalized_key
+            else:
+                self.app.config.pop(API_KEY_CONFIG_KEY, None)
 
     def get_api_key(self) -> str | None:
         """

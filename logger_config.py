@@ -8,6 +8,7 @@
 
 import atexit
 import logging
+import os
 import sys
 from collections.abc import MutableMapping
 from datetime import datetime
@@ -31,12 +32,23 @@ def get_log_dir() -> Path:
 
 
 LOG_DIR = get_log_dir()
+API_LOG_DIR = LOG_DIR / "api"
+API_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 _root_logger: logging.Logger | None = None
 _file_handler: TimedRotatingFileHandler | None = None
+_api_file_handler: TimedRotatingFileHandler | None = None
+
+
+class _ApiModuleFilter(logging.Filter):
+    """Фильтр логов только для модулей API."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        normalized_path = record.pathname.replace("\\", "/").lower()
+        return "/api/" in normalized_path
 
 
 def setup_logger(
@@ -59,7 +71,7 @@ def setup_logger(
     Returns:
         Настроенный экземпляр логгера
     """
-    global _root_logger, _file_handler
+    global _api_file_handler, _root_logger, _file_handler
 
     logger = logging.getLogger(name)
     logger.setLevel(level)
@@ -84,6 +96,20 @@ def setup_logger(
             _file_handler.setLevel(logging.DEBUG)
             _file_handler.setFormatter(formatter)
             logger.addHandler(_file_handler)
+
+            api_log_file = API_LOG_DIR / f"api_{today}.log"
+            _api_file_handler = TimedRotatingFileHandler(
+                api_log_file,
+                when="midnight",
+                interval=1,
+                backupCount=backup_days,
+                encoding="utf-8",
+            )
+            _api_file_handler.suffix = "%Y-%m-%d"
+            _api_file_handler.setLevel(logging.DEBUG)
+            _api_file_handler.setFormatter(formatter)
+            _api_file_handler.addFilter(_ApiModuleFilter())
+            logger.addHandler(_api_file_handler)
         except Exception as e:
             print(
                 f"Предупреждение: Не удалось создать файл логов: {e}",
@@ -105,9 +131,11 @@ def setup_logger(
 
 def _cleanup_handlers() -> None:
     """Очистка обработчиков при выходе."""
-    global _root_logger, _file_handler
+    global _api_file_handler, _root_logger, _file_handler
     if _file_handler:
         _file_handler.close()
+    if _api_file_handler:
+        _api_file_handler.close()
     if _root_logger:
         for handler in _root_logger.handlers[:]:
             handler.close()
@@ -193,3 +221,24 @@ def open_logs_folder() -> None:
             subprocess.run(["open", str(log_dir)])
         else:
             subprocess.run(["xdg-open", str(log_dir)])
+
+
+def get_api_log_dir() -> Path:
+    """Получение директории для логов API."""
+    API_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    return API_LOG_DIR
+
+
+def open_api_logs_folder() -> None:
+    """Открытие папки с логами API в проводнике."""
+    import subprocess
+
+    api_log_dir = get_api_log_dir()
+
+    if api_log_dir.exists():
+        if sys.platform == "win32":
+            os.startfile(str(api_log_dir))
+        elif sys.platform == "darwin":
+            subprocess.run(["open", str(api_log_dir)])
+        else:
+            subprocess.run(["xdg-open", str(api_log_dir)])
