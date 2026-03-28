@@ -6,7 +6,6 @@
 windows-capture (Windows Graphics Capture API) и OpenCV.
 """
 
-import queue
 import threading
 import time
 from collections.abc import Callable
@@ -295,9 +294,7 @@ class VideoRecorder:
         # Состояние
         self._state = RecordingState.IDLE
         self._lock = threading.Lock()
-        self._frame_queue: queue.Queue = queue.Queue(maxsize=100)
         self._capture_thread: threading.Thread | None = None
-        self._write_thread: threading.Thread | None = None
 
         # Информация о записи
         self._output_path: Path | None = None

@@ -351,21 +351,15 @@ class TestVideoRecorderCodecSelection:
         assert VideoRecorder.CODEC_MAP["avc1"] == "H264"
 
 
-class TestVideoRecorderFrameQueue:
-    """Тесты очереди кадров."""
+class TestVideoRecorderFrameStorage:
+    """Тесты хранения последнего захваченного кадра."""
 
-    def test_frame_queue_exists(self) -> None:
-        """Проверка существования очереди кадров."""
+    def test_last_captured_frame_exists(self) -> None:
+        """Проверка наличия буфера последнего кадра."""
         recorder = VideoRecorder()
 
-        assert hasattr(recorder, "_frame_queue")
-        assert recorder._frame_queue.maxsize == 100
-
-    def test_frame_queue_empty_initially(self) -> None:
-        """Проверка пустой очереди при инициализации."""
-        recorder = VideoRecorder()
-
-        assert recorder._frame_queue.empty()
+        assert hasattr(recorder, "_last_captured_frame")
+        assert recorder._last_captured_frame is None
 
 
 class TestVideoRecorderThreading:
@@ -376,12 +370,6 @@ class TestVideoRecorderThreading:
         recorder = VideoRecorder()
 
         assert recorder._capture_thread is None
-
-    def test_write_thread_none_initially(self) -> None:
-        """Проверка отсутствия потока записи при инициализации."""
-        recorder = VideoRecorder()
-
-        assert recorder._write_thread is None
 
     def test_lock_exists(self) -> None:
         """Проверка существования блокировки."""
