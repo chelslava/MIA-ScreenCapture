@@ -239,13 +239,24 @@ class RecordingController:
             self._state.resume_recording()
 
         # Остановка видео
+        video_stopped = True
         if self._video_recorder:
-            self._video_recorder.stop()
+            video_stopped = self._video_recorder.stop()
 
         # Остановка аудио
         has_audio = self._audio_recorder is not None
         if self._audio_recorder:
             self._audio_recorder.stop()
+
+        if not video_stopped:
+            logger.error(
+                "Остановка видео завершилась с ошибкой, "
+                "финализация записи пропущена"
+            )
+            if self._encoder:
+                self._encoder.cancel()
+            self._state.stop_recording()
+            return None
 
         # Финализация (объединение видео и аудио)
         output_path = None

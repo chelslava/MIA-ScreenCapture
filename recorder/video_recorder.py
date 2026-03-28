@@ -514,7 +514,14 @@ class VideoRecorder:
         if self._capture_thread and self._capture_thread.is_alive():
             self._capture_thread.join(timeout=_CAPTURE_STOP_TIMEOUT_SECONDS)
 
-        self._cleanup()
+        cleanup_ok = self._cleanup()
+
+        if not cleanup_ok:
+            logger.error(
+                "Запись остановлена с ошибками финализации контейнера: %s",
+                self._output_path,
+            )
+            return False
 
         logger.info(
             f"Запись остановлена: {self._output_path}, кадров: {self._frame_count}"
@@ -621,11 +628,17 @@ class VideoRecorder:
         """Проверка, был ли потерян захват."""
         return getattr(self, "_capture_lost", False)
 
-    def _cleanup(self) -> None:
-        """Очистка ресурсов."""
+    def _cleanup(self) -> bool:
+        """Очистка ресурсов.
+
+        Returns:
+            True, если все критичные ресурсы закрыты корректно.
+        """
+        success = True
         try:
             if self._ffmpeg_writer is not None:
-                self._ffmpeg_writer.close()
+                ffmpeg_closed = self._ffmpeg_writer.close()
+                success = success and ffmpeg_closed
                 self._ffmpeg_writer = None
             if self._video_writer is not None:
                 self._video_writer.release()
@@ -636,8 +649,10 @@ class VideoRecorder:
 
         except Exception as e:
             logger.error(f"Ошибка при очистке: {e}")
+            success = False
 
         self._state = RecordingState.IDLE
+        return success
 
     def get_preview_frame(self) -> np.ndarray | None:
         """

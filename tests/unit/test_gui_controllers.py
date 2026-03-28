@@ -229,6 +229,25 @@ class TestRecordingController:
 
         assert result is None
 
+    def test_stop_recording_skips_finalize_when_video_stop_failed(
+        self, controller: RecordingController
+    ) -> None:
+        """Если остановка видео неуспешна, финализация не должна запускаться."""
+        controller.state.status = RecordingStatus.RECORDING
+        controller.state.current_output = Path("/output/test.mp4")
+
+        controller._video_recorder = MagicMock()
+        controller._video_recorder.stop.return_value = False
+        controller._audio_recorder = None
+        controller._encoder = MagicMock()
+
+        result = controller.stop_recording()
+
+        assert result is None
+        controller._encoder.cancel.assert_called_once()
+        controller._encoder.finalize.assert_not_called()
+        assert controller.state.status == RecordingStatus.IDLE
+
     def test_cancel_recording(self, controller: RecordingController) -> None:
         """Проверка отмены записи."""
         controller.state.status = RecordingStatus.RECORDING

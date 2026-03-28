@@ -196,7 +196,9 @@ class FFmpegVideoWriter:
                 cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
+                # Важно: stderr не должен копиться в PIPE без чтения,
+                # иначе ffmpeg может заблокироваться при заполнении буфера.
+                stderr=subprocess.DEVNULL,
             )
 
             self._start_time = time.time()
@@ -260,10 +262,11 @@ class FFmpegVideoWriter:
             process.wait(timeout=_FFMPEG_CLOSE_TIMEOUT_SECONDS)
 
             if process.returncode != 0:
-                stderr = process.stderr.read().decode(
-                    "utf-8", errors="ignore"
+                logger.error(
+                    "FFmpeg завершился с кодом %s при записи %s",
+                    process.returncode,
+                    self._output_path,
                 )
-                logger.error(f"FFmpeg error: {stderr}")
                 return False
 
             logger.info(
@@ -292,10 +295,11 @@ class FFmpegVideoWriter:
                 return False
 
             if process.returncode != 0:
-                stderr = process.stderr.read().decode(
-                    "utf-8", errors="ignore"
+                logger.error(
+                    "FFmpeg завершён с кодом %s после terminate (%s)",
+                    process.returncode,
+                    self._output_path,
                 )
-                logger.error(f"FFmpeg завершён с ошибкой: {stderr}")
                 return False
             logger.info(
                 "FFmpeg завершился после terminate: "
