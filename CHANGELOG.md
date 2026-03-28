@@ -5,7 +5,7 @@
 ### Planned for 1.4.5
 - Длинный smoke-run API-вкладки (30+ минут) и финальная стабилизация
   live-логов.
-- Подготовка технического дизайна WebSocket transport для `v1.5.0`.
+- Финальная ручная проверка полуночной ротации API логов.
 
 ### Added
 - Улучшен UX блока `Последние записи`:
@@ -16,6 +16,12 @@
 ### Changed
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
 - Расширены unit-тесты для фильтра записей и очистки списка.
+- Выполнен headless smoke-run API runtime: `start/stop/restart`, смена порта
+  и токена, восстановление логов после truncate.
+- Подготовлен технический дизайн WebSocket transport для `v1.5.0`
+  (`plans/websocket-transport-v1.5.0.md`).
+- Зафиксированы quality gates для затронутых модулей:
+  `ruff check`, `ruff format --check`, `mypy`.
 
 ## [1.4.3] - 2026-03-28
 
