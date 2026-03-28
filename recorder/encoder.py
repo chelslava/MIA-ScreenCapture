@@ -19,6 +19,7 @@ from logger_config import get_module_logger
 from recorder.utils import check_ffmpeg, get_ffmpeg_path
 
 logger = get_module_logger(__name__)
+_FFMPEG_ERROR_TAIL_BYTES = 16 * 1024
 
 
 @dataclass
@@ -148,17 +149,10 @@ class Encoder:
             ]
 
             logger.info(f"Запуск FFmpeg: {' '.join(cmd)}")
-
-            # Запуск FFmpeg
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=3600,  # Таймаут 1 час
-            )
+            result = self._run_ffmpeg_long_process(cmd, timeout=3600)
 
             if result.returncode != 0:
-                error_msg = result.stderr or "Неизвестная ошибка FFmpeg"
+                error_msg = result.stderr_tail or "Неизвестная ошибка FFmpeg"
                 logger.error(f"Ошибка FFmpeg: {error_msg}")
                 return False, error_msg
 
@@ -237,18 +231,79 @@ class Encoder:
             ]
 
             logger.info(f"Кодирование видео: {' '.join(cmd)}")
-
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=3600
-            )
+            result = self._run_ffmpeg_long_process(cmd, timeout=3600)
 
             if result.returncode != 0:
-                return False, result.stderr or "Неизвестная ошибка FFmpeg"
+                return (
+                    False,
+                    result.stderr_tail or "Неизвестная ошибка FFmpeg",
+                )
 
             return True, None
 
         except Exception as e:
             return False, str(e)
+
+    @dataclass
+    class _FFmpegProcessResult:
+        returncode: int
+        stderr_tail: str | None
+
+    def _read_file_tail(self, path: Path, max_bytes: int) -> str:
+        """Читает хвост текстового файла безопасно по размеру."""
+        if not path.exists():
+            return ""
+        with open(path, "rb") as file:
+            file.seek(0, 2)
+            size = file.tell()
+            offset = max(0, size - max_bytes)
+            file.seek(offset)
+            data = file.read()
+        return data.decode("utf-8", errors="replace").strip()
+
+    def _run_ffmpeg_long_process(
+        self, cmd: list[str], timeout: int
+    ) -> _FFmpegProcessResult:
+        """
+        Выполняет долгий FFmpeg-процесс без накопления stderr в памяти.
+
+        stderr пишется во временный файл, а при ошибке возвращается только
+        ограниченный хвост.
+        """
+        stderr_temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix="ffmpeg_stderr_",
+                suffix=".log",
+                delete=False,
+            ) as stderr_file:
+                stderr_temp_path = Path(stderr_file.name)
+                process = subprocess.run(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=stderr_file,
+                    timeout=timeout,
+                )
+            stderr_tail = None
+            if process.returncode != 0 and stderr_temp_path is not None:
+                stderr_tail = self._read_file_tail(
+                    stderr_temp_path,
+                    max_bytes=_FFMPEG_ERROR_TAIL_BYTES,
+                )
+            return self._FFmpegProcessResult(
+                returncode=process.returncode,
+                stderr_tail=stderr_tail,
+            )
+        finally:
+            if stderr_temp_path is not None:
+                try:
+                    stderr_temp_path.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.debug(
+                        "Не удалось удалить временный stderr лог %s: %s",
+                        stderr_temp_path,
+                        e,
+                    )
 
     def get_video_info(self, video_path: Path) -> dict[str, Any] | None:
         """
