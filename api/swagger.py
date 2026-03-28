@@ -395,7 +395,7 @@ SWAGGER_SPEC: dict[str, Any] = {
                         "minimum": 0,
                         "description": "Минуты (для trigger=interval)",
                     },
-                    "cron": {
+                    "cron_expression": {
                         "type": "string",
                         "example": "0 10 * * 1-5",
                         "description": "Cron выражение (для trigger=cron)",
@@ -949,6 +949,55 @@ SWAGGER_SPEC: dict[str, Any] = {
                         "application/json": {
                             "schema": {
                                 "$ref": "#/components/schemas/CreateScheduleRequest",
+                            },
+                            "examples": {
+                                "once": {
+                                    "summary": "Разовый запуск",
+                                    "value": {
+                                        "name": "Разовая запись",
+                                        "trigger": "once",
+                                        "datetime": "2026-04-01T10:00:00+03:00",
+                                        "params": {},
+                                    },
+                                },
+                                "daily": {
+                                    "summary": "Ежедневно",
+                                    "value": {
+                                        "name": "Ежедневная запись",
+                                        "trigger": "daily",
+                                        "time": "10:00",
+                                        "params": {},
+                                    },
+                                },
+                                "weekly": {
+                                    "summary": "По будням",
+                                    "value": {
+                                        "name": "Запись по будням",
+                                        "trigger": "weekly",
+                                        "time": "10:00",
+                                        "day_of_week": "0,1,2,3,4",
+                                        "params": {},
+                                    },
+                                },
+                                "interval": {
+                                    "summary": "Интервал",
+                                    "value": {
+                                        "name": "Запись каждые 30 минут",
+                                        "trigger": "interval",
+                                        "hours": 0,
+                                        "minutes": 30,
+                                        "params": {},
+                                    },
+                                },
+                                "cron": {
+                                    "summary": "Cron",
+                                    "value": {
+                                        "name": "Cron запись",
+                                        "trigger": "cron",
+                                        "cron_expression": "0 10 * * 1-5",
+                                        "params": {},
+                                    },
+                                },
                             },
                         },
                     },

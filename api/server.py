@@ -289,13 +289,25 @@ class APIServer:
                 g.request_id = request_id
             response.headers[_REQUEST_ID_HEADER] = request_id
             started_at = getattr(g, "request_started_at", None)
+            latency_ms = 0.0
             if isinstance(started_at, float):
+                latency_seconds = max(0.0, time.monotonic() - started_at)
+                latency_ms = latency_seconds * 1000.0
                 self._observability.request_finished(
                     method=request.method,
                     path=request.path,
                     status_code=response.status_code,
-                    latency_seconds=max(0.0, time.monotonic() - started_at),
+                    latency_seconds=latency_seconds,
                 )
+            logger.info(
+                "API %s %s -> %s (%.2f ms) request_id=%s ip=%s",
+                request.method,
+                request.path,
+                response.status_code,
+                latency_ms,
+                request_id,
+                request.remote_addr,
+            )
             return response
 
         logger.info("Flask приложение создано")
