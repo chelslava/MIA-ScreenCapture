@@ -7,6 +7,7 @@
 """
 
 import json
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from logger_config import get_module_logger
 from utils import atomic_write_json
 
 logger = get_module_logger(__name__)
+_RECENT_RECORDINGS_SAVE_DEBOUNCE_SECONDS = 0.75
 
 
 # ============================================================================
@@ -262,6 +264,8 @@ class ConfigManager:
         """
         self.config_path = config_path or CONFIG_FILE
         self._settings: AppSettings = AppSettings()
+        self._save_lock = threading.Lock()
+        self._recent_save_timer: threading.Timer | None = None
         self._load()
 
     def _load(self) -> None:
@@ -323,16 +327,58 @@ class ConfigManager:
         Returns:
             True если сохранение успешно, False в противном случае
         """
-        try:
-            data = asdict(self._settings)
-            AppSettingsSchema.model_validate(data)
-            result = atomic_write_json(self.config_path, data)
-            if result:
-                logger.info(f"Конфигурация сохранена в {self.config_path}")
-            return result
-        except Exception as e:
-            logger.error(f"Ошибка сохранения конфигурации: {e}")
-            return False
+        with self._save_lock:
+            self._cancel_recent_save_timer_locked()
+            try:
+                data = asdict(self._settings)
+                AppSettingsSchema.model_validate(data)
+                result = atomic_write_json(self.config_path, data)
+                if result:
+                    logger.info(f"Конфигурация сохранена в {self.config_path}")
+                return result
+            except Exception as e:
+                logger.error(f"Ошибка сохранения конфигурации: {e}")
+                return False
+
+    def _save_recent_recordings_debounced(self) -> None:
+        """
+        Планирует отложенное сохранение конфига для hot-path recent записей.
+
+        Несколько быстрых обновлений recent списка объединяются в один I/O.
+        """
+        with self._save_lock:
+            self._cancel_recent_save_timer_locked()
+            timer = threading.Timer(
+                _RECENT_RECORDINGS_SAVE_DEBOUNCE_SECONDS,
+                self._flush_recent_recordings_save,
+            )
+            timer.daemon = True
+            self._recent_save_timer = timer
+            timer.start()
+
+    def _flush_recent_recordings_save(self) -> None:
+        """Фоновая запись конфига после debounce окна."""
+        with self._save_lock:
+            self._recent_save_timer = None
+            try:
+                data = asdict(self._settings)
+                AppSettingsSchema.model_validate(data)
+                result = atomic_write_json(self.config_path, data)
+                if result:
+                    logger.debug(
+                        "Конфигурация сохранена (debounce recent_recordings)"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Ошибка debounce-сохранения конфигурации: {e}"
+                )
+
+    def _cancel_recent_save_timer_locked(self) -> None:
+        """Отменяет отложенный таймер сохранения под захваченным lock."""
+        if self._recent_save_timer is None:
+            return
+        self._recent_save_timer.cancel()
+        self._recent_save_timer = None
 
     def validate_settings(self) -> tuple[bool, list[str]]:
         """
@@ -401,7 +447,7 @@ class ConfigManager:
                 ]
             )
 
-        self.save()
+        self._save_recent_recordings_debounced()
 
     def clear_recent_recordings(self) -> None:
         """Очистка списка недавних записей."""

@@ -9,6 +9,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -423,3 +424,68 @@ class TestConfigThreadSafety:
 
         assert len(results) == 10
         assert all(r == 30 for r in results)
+
+
+class TestConfigDebounceSave:
+    """Тесты debounce-сохранения recent_recordings."""
+
+    def test_add_recent_recording_reschedules_timer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Проверка переустановки таймера при частых обновлениях."""
+        from config import ConfigManager
+
+        created_timers: list[Any] = []
+
+        class FakeTimer:
+            """Таймер-заглушка для проверки debounce логики."""
+
+            def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+                self.cancelled = False
+                self.daemon = False
+                created_timers.append(self)
+
+            def start(self) -> None:
+                """Запуск таймера-заглушки."""
+
+            def cancel(self) -> None:
+                """Отмена таймера-заглушки."""
+                self.cancelled = True
+
+        monkeypatch.setattr("config.threading.Timer", FakeTimer)
+        manager = ConfigManager(Path("config/nonexistent_debounce_test.json"))
+
+        manager.add_recent_recording("a.mp4", 100)
+        first_timer = manager._recent_save_timer
+        manager.add_recent_recording("b.mp4", 200)
+
+        assert len(created_timers) == 2
+        assert first_timer is created_timers[0]
+        assert created_timers[0].cancelled is True
+        assert manager._recent_save_timer is created_timers[1]
+
+    def test_save_cancels_pending_debounce_timer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Проверка отмены отложенного сохранения перед обычным save()."""
+        from config import ConfigManager
+
+        class FakeTimer:
+            """Таймер-заглушка для проверки отмены."""
+
+            def __init__(self) -> None:
+                self.cancelled = False
+
+            def cancel(self) -> None:
+                """Отмена таймера-заглушки."""
+                self.cancelled = True
+
+        manager = ConfigManager(Path("config/nonexistent_debounce_test.json"))
+        fake_timer = FakeTimer()
+        manager._recent_save_timer = fake_timer
+
+        monkeypatch.setattr("config.atomic_write_json", lambda *_a, **_k: True)
+
+        assert manager.save() is True
+        assert fake_timer.cancelled is True
+        assert manager._recent_save_timer is None
