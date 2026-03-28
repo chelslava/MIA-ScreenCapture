@@ -112,6 +112,7 @@ class _FakeGuiApplication:
 @pytest.fixture
 def api_view_environment(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> types.SimpleNamespace:
     """Подготовка среды для тестов ApiSettingsView."""
 
@@ -180,7 +181,7 @@ def api_view_environment(
         lambda: None,
     )
 
-    log_dir = Path.cwd() / ".test-api-logs" / "api"
+    log_dir = tmp_path / "api"
     monkeypatch.setattr(
         api_settings_view,
         "get_api_log_dir",
@@ -268,3 +269,25 @@ def test_set_status_updates_controls(
     assert view._start_btn.isEnabled() is True
     assert view._stop_btn.isEnabled() is False
     assert view._restart_btn.isEnabled() is False
+
+
+def test_refresh_logs_reload_after_file_truncate(
+    qapp,
+    api_view_environment: types.SimpleNamespace,
+) -> None:
+    """После ротации/обнуления файла журнал перечитывается заново."""
+
+    view = api_settings_view.ApiSettingsView()
+    log_dir = api_view_environment.log_dir
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "api_2026-03-28.log"
+    log_file.write_text("line-1\nline-2\n", encoding="utf-8")
+
+    view.refresh_logs()
+    assert "line-2" in view._log_view.toPlainText()
+
+    # Имитируем ротацию: новый файл меньше предыдущего оффсета.
+    log_file.write_text("new-line\n", encoding="utf-8")
+
+    view.refresh_logs()
+    assert view._log_view.toPlainText().strip() == "new-line"
