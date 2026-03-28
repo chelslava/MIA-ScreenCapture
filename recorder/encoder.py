@@ -290,6 +290,10 @@ class Encoder:
                     stderr_temp_path,
                     max_bytes=_FFMPEG_ERROR_TAIL_BYTES,
                 )
+                if not stderr_tail:
+                    process_stderr = getattr(process, "stderr", None)
+                    if isinstance(process_stderr, str):
+                        stderr_tail = process_stderr.strip() or None
             return self._FFmpegProcessResult(
                 returncode=process.returncode,
                 stderr_tail=stderr_tail,
