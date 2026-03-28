@@ -29,6 +29,126 @@ logger = get_module_logger(__name__)
 _VERSION_FALLBACK = "unknown"
 _REQUEST_ID_HEADER = "X-Request-ID"
 _PYPROJECT_PATH = Path(__file__).resolve().parent.parent / "pyproject.toml"
+_OPERATION_RESULT_TTL_SECONDS = 600.0
+_SERVER_STOP_WAIT_SECONDS = 10.0
+
+
+class APIOperationStore:
+    """Потокобезопасное хранилище фоновых операций API."""
+
+    def __init__(self, ttl_seconds: float = _OPERATION_RESULT_TTL_SECONDS):
+        self._ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+        self._operations: dict[str, dict[str, Any]] = {}
+        self._events: dict[str, threading.Event] = {}
+
+    def submit(
+        self,
+        operation_type: str,
+        runner: Callable[[], Any],
+    ) -> dict[str, Any]:
+        """Запускает фоновую операцию и возвращает её snapshot."""
+        operation_id = uuid.uuid4().hex
+        now_iso = datetime.now(UTC).isoformat()
+        operation = {
+            "id": operation_id,
+            "type": operation_type,
+            "status": "running",
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "completed_at": None,
+            "result": None,
+            "error": None,
+        }
+        done_event = threading.Event()
+
+        with self._lock:
+            self._cleanup_expired_locked()
+            self._operations[operation_id] = operation
+            self._events[operation_id] = done_event
+
+        thread = threading.Thread(
+            target=self._run_operation,
+            args=(operation_id, runner),
+            daemon=True,
+            name=f"api-op-{operation_type}",
+        )
+        thread.start()
+        return self.get(operation_id) or operation
+
+    def _run_operation(
+        self,
+        operation_id: str,
+        runner: Callable[[], Any],
+    ) -> None:
+        """Выполняет операцию и сохраняет результат."""
+        try:
+            result = runner()
+            self._complete(operation_id, status="succeeded", result=result)
+        except Exception as e:
+            self._complete(operation_id, status="failed", error=str(e))
+
+    def _complete(
+        self,
+        operation_id: str,
+        status: str,
+        result: Any | None = None,
+        error: str | None = None,
+    ) -> None:
+        now_iso = datetime.now(UTC).isoformat()
+        with self._lock:
+            operation = self._operations.get(operation_id)
+            if operation is None:
+                return
+            operation["status"] = status
+            operation["updated_at"] = now_iso
+            operation["completed_at"] = now_iso
+            operation["result"] = result
+            operation["error"] = error
+            done_event = self._events.get(operation_id)
+            if done_event is not None:
+                done_event.set()
+
+    def get(self, operation_id: str) -> dict[str, Any] | None:
+        """Возвращает snapshot операции по id."""
+        with self._lock:
+            self._cleanup_expired_locked()
+            operation = self._operations.get(operation_id)
+            if operation is None:
+                return None
+            return dict(operation)
+
+    def wait(
+        self,
+        operation_id: str,
+        timeout: float,
+    ) -> dict[str, Any] | None:
+        """Ожидает завершение операции ограниченное время."""
+        with self._lock:
+            event = self._events.get(operation_id)
+        if event is None:
+            return self.get(operation_id)
+        event.wait(timeout=timeout)
+        return self.get(operation_id)
+
+    def _cleanup_expired_locked(self) -> None:
+        now = datetime.now(UTC).timestamp()
+        stale_ids: list[str] = []
+        for op_id, op in self._operations.items():
+            completed_at = op.get("completed_at")
+            if completed_at is None:
+                continue
+            try:
+                completed_dt = datetime.fromisoformat(completed_at)
+                age = now - completed_dt.timestamp()
+            except Exception:
+                age = self._ttl_seconds + 1
+            if age > self._ttl_seconds:
+                stale_ids.append(op_id)
+
+        for op_id in stale_ids:
+            self._operations.pop(op_id, None)
+            self._events.pop(op_id, None)
 
 
 class APIServerObservability:
@@ -219,6 +339,7 @@ class APIServer:
         self._start_time = time.monotonic()
         self._version = self._load_version()
         self._observability = APIServerObservability()
+        self._operations = APIOperationStore()
 
         # Обратные вызовы
         self._callbacks: dict[str, Callable] = {}
@@ -342,6 +463,29 @@ class APIServer:
         """Возвращает менеджер real-time уведомлений."""
         return self._websocket_manager
 
+    def submit_background_operation(
+        self,
+        operation_type: str,
+        runner: Callable[[], Any],
+    ) -> dict[str, Any]:
+        """Запускает фоновую операцию API."""
+        return self._operations.submit(operation_type, runner)
+
+    def get_background_operation(
+        self,
+        operation_id: str,
+    ) -> dict[str, Any] | None:
+        """Возвращает состояние фоновой операции."""
+        return self._operations.get(operation_id)
+
+    def wait_for_background_operation(
+        self,
+        operation_id: str,
+        timeout: float,
+    ) -> dict[str, Any] | None:
+        """Ожидает завершения фоновой операции."""
+        return self._operations.wait(operation_id, timeout)
+
     def start(self) -> bool:
         """
         Запуск API сервера в фоновом потоке.
@@ -390,16 +534,23 @@ class APIServer:
 
     def stop(self) -> None:
         """Остановка API сервера."""
+        server_thread: threading.Thread | None
         with self._lock:
             self._running = False
+            server_thread = self._server_thread
             if self._wsgi_server is not None:
                 try:
                     self._wsgi_server.close()
                 except Exception as e:
                     logger.warning(f"Ошибка закрытия API сервера: {e}")
 
-        if self._server_thread and self._server_thread.is_alive():
-            self._server_thread.join(timeout=3)
+        if server_thread and server_thread.is_alive():
+            server_thread.join(timeout=_SERVER_STOP_WAIT_SECONDS)
+            if server_thread.is_alive():
+                logger.warning(
+                    "Поток API сервера не завершился за %.1f секунд",
+                    _SERVER_STOP_WAIT_SECONDS,
+                )
 
         logger.info("API сервер остановлен")
 

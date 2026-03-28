@@ -6,10 +6,12 @@ Unit тесты для API сервера
 """
 
 import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import api.server as api_server_module
 from api.auth import init_api_auth
 from api.routes import register_routes
 from api.server import APIServer
@@ -175,6 +177,49 @@ class TestAPIServerStartStop:
 
         server.stop()
 
+        assert server._running is False
+
+    def test_stop_waits_for_server_thread_shutdown(self) -> None:
+        """Проверка ожидания завершения потока при остановке."""
+        server = APIServer(host="127.0.0.1", port=5008)
+        wsgi_server = MagicMock()
+        server_thread = MagicMock()
+        server_thread.is_alive.side_effect = [True, False]
+        server._wsgi_server = wsgi_server
+        server._server_thread = server_thread
+        server._running = True
+
+        with patch.object(api_server_module.logger, "warning") as warning:
+            server.stop()
+
+        wsgi_server.close.assert_called_once()
+        server_thread.join.assert_called_once_with(
+            timeout=api_server_module._SERVER_STOP_WAIT_SECONDS
+        )
+        warning.assert_not_called()
+        assert server._running is False
+
+    def test_stop_logs_warning_when_thread_timeout_expires(self) -> None:
+        """Проверка логирования при таймауте завершения потока."""
+        server = APIServer(host="127.0.0.1", port=5009)
+        wsgi_server = MagicMock()
+        server_thread = MagicMock()
+        server_thread.is_alive.side_effect = [True, True]
+        server._wsgi_server = wsgi_server
+        server._server_thread = server_thread
+        server._running = True
+
+        with patch.object(api_server_module.logger, "warning") as warning:
+            server.stop()
+
+        wsgi_server.close.assert_called_once()
+        server_thread.join.assert_called_once_with(
+            timeout=api_server_module._SERVER_STOP_WAIT_SECONDS
+        )
+        warning.assert_any_call(
+            "Поток API сервера не завершился за %.1f секунд",
+            api_server_module._SERVER_STOP_WAIT_SECONDS,
+        )
         assert server._running is False
 
     def test_is_running_returns_correct_state(self) -> None:
@@ -494,3 +539,83 @@ class TestAPIServerObservability:
         assert isinstance(data["uptime_seconds"], (int, float))
         assert data["uptime_seconds"] >= 0
         assert data["websocket"]["transport_ready"] is True
+
+
+class TestAPIServerOperations:
+    """Тесты фоновых операций API."""
+
+    def _make_client(self, stop_callback):
+        server = APIServer()
+        init_api_auth(server.app, api_key="test-api-key")
+        server.set_websocket_manager(WebSocketManager())
+        server.set_callback(
+            "status",
+            MagicMock(
+                return_value={
+                    "is_recording": False,
+                    "is_paused": False,
+                    "elapsed_time": 0,
+                    "current_file": None,
+                }
+            ),
+        )
+        server.set_callback("stop", stop_callback)
+        register_routes(server.app, server)
+        server.app.config["TESTING"] = True
+        client = server.app.test_client()
+        client.environ_base["HTTP_X_API_KEY"] = "test-api-key"
+        return client
+
+    def test_stop_returns_200_for_fast_operation(self) -> None:
+        client = self._make_client(
+            lambda: {
+                "success": True,
+                "filepath": "recording.mp4",
+            }
+        )
+
+        response = client.post("/api/v1/stop")
+        data = response.get_json()
+
+        assert response.status_code == 200
+        assert data["success"] is True
+        assert data["data"]["filepath"] == "recording.mp4"
+        assert data["data"]["operation_id"]
+        assert data["data"]["status"] == "succeeded"
+
+    def test_stop_returns_202_for_slow_operation_and_status_endpoint(
+        self,
+    ) -> None:
+        def slow_stop():
+            time.sleep(0.35)
+            return {
+                "success": True,
+                "filepath": "slow-recording.mp4",
+            }
+
+        client = self._make_client(slow_stop)
+
+        response = client.post("/api/v1/stop")
+        data = response.get_json()
+
+        assert response.status_code == 202
+        assert data["success"] is True
+        assert data["data"]["operation_id"]
+        assert data["data"]["status"] == "running"
+
+        operation_id = data["data"]["operation_id"]
+        operation_data = None
+        for _ in range(20):
+            status_response = client.get(f"/api/v1/operations/{operation_id}")
+            operation_data = status_response.get_json()
+            if operation_data["data"]["status"] != "running":
+                break
+            time.sleep(0.05)
+
+        assert operation_data is not None
+        assert operation_data["success"] is True
+        assert operation_data["data"]["operation_id"] == operation_id
+        assert operation_data["data"]["status"] == "succeeded"
+        assert operation_data["data"]["result"]["filepath"] == (
+            "slow-recording.mp4"
+        )

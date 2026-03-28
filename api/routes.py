@@ -35,6 +35,8 @@ _ERROR_CODE_BY_STATUS = {
     429: "rate_limited",
 }
 
+_STOP_OPERATION_WAIT_SECONDS = 0.2
+
 
 def _get_trace_id() -> str:
     """Возвращает trace_id из контекста запроса или создаёт новый."""
@@ -187,6 +189,97 @@ def handle_validation_error(error: ValidationError) -> tuple:
         "Ошибка валидации данных",
         errors,
     )
+
+
+def _serialize_operation(operation: dict[str, Any]) -> dict[str, Any]:
+    """Преобразует внутреннее представление операции в API payload."""
+    payload = {
+        "operation_id": operation.get("id"),
+        "type": operation.get("type"),
+        "status": operation.get("status"),
+        "created_at": operation.get("created_at"),
+        "updated_at": operation.get("updated_at"),
+        "completed_at": operation.get("completed_at"),
+    }
+    if operation.get("result") is not None:
+        payload["result"] = operation.get("result")
+    if operation.get("error") is not None:
+        payload["error"] = operation.get("error")
+    return payload
+
+
+def _background_operation_status_response(
+    operation: dict[str, Any] | None,
+) -> tuple[Any, int]:
+    """Формирует ответ с состоянием фоновой операции."""
+    if operation is None:
+        return _error_response(
+            404,
+            "not_found",
+            "Операция не найдена",
+        )
+    return jsonify(
+        {
+            "success": True,
+            "data": _serialize_operation(operation),
+        }
+    ), 200
+
+
+def _stop_operation_response(
+    server: Any,
+) -> tuple[Any, int]:
+    """Запускает остановку записи и возвращает синхронный или фоновой ответ."""
+    callback = server.get_callback("stop")
+    if callback is None:
+        return _internal_error_response()
+
+    operation = server.submit_background_operation("stop", callback)
+    operation_id = operation.get("id")
+    if not operation_id:
+        return _internal_error_response()
+
+    completed = server.wait_for_background_operation(
+        operation_id,
+        _STOP_OPERATION_WAIT_SECONDS,
+    )
+    if completed is None:
+        return _error_response(
+            500,
+            "internal_error",
+            "Не удалось отследить состояние операции",
+        )
+
+    if completed.get("status") == "running":
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "data": _serialize_operation(completed),
+                }
+            ),
+            202,
+        )
+
+    if completed.get("status") == "failed":
+        return _error_response(
+            500,
+            "internal_error",
+            str(completed.get("error") or "Не удалось остановить запись"),
+        )
+
+    result = completed.get("result")
+    if isinstance(result, dict):
+        payload_data = dict(result)
+    elif result is None:
+        payload_data = {}
+    else:
+        payload_data = {"value": result}
+    payload_data["operation_id"] = completed.get("id")
+    payload_data["status"] = completed.get("status")
+    return jsonify(
+        {"success": payload_data.get("success", True), "data": payload_data}
+    ), 200
 
 
 # TODO: Декораторы api_endpoint и api_callback подготовлены для рефакторинга
@@ -419,16 +512,21 @@ def register_routes(app, server) -> None:
             JSON с результатом
         """
         try:
-            callback = server.get_callback("stop")
-            if callback:
-                result = callback()
-                return jsonify(
-                    {"success": result.get("success", True), "data": result}
-                )
-            return _internal_error_response()
+            return _stop_operation_response(server)
 
         except Exception as e:
             logger.exception(f"Ошибка остановки записи: {e}")
+            return _internal_error_response()
+
+    @api_v1.route("operations/<operation_id>", methods=["GET"])
+    @require_api_key
+    def get_operation_status(operation_id: str):
+        """Получение статуса фоновой операции."""
+        try:
+            operation = server.get_background_operation(operation_id)
+            return _background_operation_status_response(operation)
+        except Exception as e:
+            logger.exception(f"Ошибка получения статуса операции: {e}")
             return _internal_error_response()
 
     @api_v1.route("pause", methods=["POST"])
