@@ -8,7 +8,9 @@
 import subprocess
 import threading
 import time
+from collections import deque
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -18,6 +20,7 @@ logger = get_module_logger(__name__)
 
 _FFMPEG_CLOSE_TIMEOUT_SECONDS = 180
 _FFMPEG_TERMINATE_GRACE_TIMEOUT_SECONDS = 15
+_FFMPEG_STDERR_TAIL_LINES = 50
 
 
 class FFmpegVideoWriter:
@@ -120,6 +123,8 @@ class FFmpegVideoWriter:
         self._lock = threading.Lock()
         self._frame_count = 0
         self._start_time = 0.0
+        self._stderr_tail: deque[str] = deque(maxlen=_FFMPEG_STDERR_TAIL_LINES)
+        self._stderr_reader: threading.Thread | None = None
 
     @property
     def frame_count(self) -> int:
@@ -196,10 +201,15 @@ class FFmpegVideoWriter:
                 cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
-                # Важно: stderr не должен копиться в PIPE без чтения,
-                # иначе ffmpeg может заблокироваться при заполнении буфера.
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
             )
+
+            self._stderr_tail.clear()
+            self._start_stderr_reader(self._process.stderr)
 
             self._start_time = time.time()
             self._frame_count = 0
@@ -267,6 +277,7 @@ class FFmpegVideoWriter:
                     process.returncode,
                     self._output_path,
                 )
+                self._log_stderr_tail("ошибочное завершение")
                 return False
 
             logger.info(
@@ -288,10 +299,12 @@ class FFmpegVideoWriter:
                     "FFmpeg не завершился после terminate, выполняется kill"
                 )
                 process.kill()
+                self._log_stderr_tail("таймаут завершения")
                 return False
             except Exception as e:
                 logger.error(f"Ошибка terminate FFmpeg: {e}")
                 process.kill()
+                self._log_stderr_tail("ошибка terminate")
                 return False
 
             if process.returncode != 0:
@@ -300,6 +313,7 @@ class FFmpegVideoWriter:
                     process.returncode,
                     self._output_path,
                 )
+                self._log_stderr_tail("ошибочное завершение после terminate")
                 return False
             logger.info(
                 "FFmpeg завершился после terminate: "
@@ -311,6 +325,69 @@ class FFmpegVideoWriter:
             return False
         finally:
             self._process = None
+
+    def _start_stderr_reader(self, stream: Any | None) -> None:
+        """
+        Запуск фонового чтения stderr.
+
+        Args:
+            stream: Поток stderr процесса FFmpeg.
+        """
+        if stream is None:
+            return
+
+        reader = threading.Thread(
+            target=self._read_stderr,
+            args=(stream,),
+            daemon=True,
+            name="ffmpeg-stderr-reader",
+        )
+        self._stderr_reader = reader
+        reader.start()
+
+    def _read_stderr(self, stream: Any) -> None:
+        """
+        Чтение stderr FFmpeg в фоновом потоке.
+
+        Args:
+            stream: Поток stderr процесса FFmpeg.
+        """
+        try:
+            while True:
+                line = stream.readline()
+                if not line:
+                    break
+
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8", errors="replace")
+
+                cleaned_line = line.rstrip("\r\n")
+                with self._lock:
+                    self._stderr_tail.append(cleaned_line)
+        except Exception as e:
+            logger.debug(f"Ошибка чтения stderr FFmpeg: {e}")
+
+    def _log_stderr_tail(self, reason: str) -> None:
+        """
+        Логирование хвоста stderr при ошибочном завершении.
+
+        Args:
+            reason: Причина логирования.
+        """
+        with self._lock:
+            tail_lines = list(self._stderr_tail)
+
+        if not tail_lines:
+            logger.error("FFmpeg stderr пуст после %s", reason)
+            return
+
+        tail_text = "\n".join(tail_lines[-_FFMPEG_STDERR_TAIL_LINES:])
+        logger.error(
+            "FFmpeg stderr tail после %s (последние %s строк):\n%s",
+            reason,
+            len(tail_lines),
+            tail_text,
+        )
 
     def __enter__(self) -> "FFmpegVideoWriter":
         """Context manager entry."""
