@@ -73,7 +73,7 @@ class Encoder:
                 "FFmpeg не найден! Пожалуйста, установите FFmpeg и добавьте в PATH. "
                 "Скачать: https://ffmpeg.org/download.html"
             )
-        return available
+        return bool(available)
 
     def _get_ffprobe_path(self) -> str | None:
         """Получение пути к исполняемому файлу ffprobe."""

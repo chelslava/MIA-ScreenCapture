@@ -52,6 +52,9 @@
 - Блокирующий integration-step в CI расширен:
   добавлены `tests/integration/test_recording_flow.py` и
   `tests/integration/test_scheduler_integration.py`.
+- Блокирующий `mypy`-scope в CI расширен на
+  `api/schemas.py`, `gui/models/recording_state.py`,
+  `recorder/encoder.py`.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного
