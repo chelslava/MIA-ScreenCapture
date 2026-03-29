@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### Changed
+- `main.py` делегирует API runtime-операции в отдельный менеджер
+  `core/api_runtime_manager.py` для снижения связности и подготовки
+  дальнейшей декомпозиции `VideoRecorderApp`.
+- Убраны silent-except ветки в runtime-коде:
+  `scheduler/task_scheduler.py`, `recorder/video_recorder.py`,
+  `gui/hotkeys.py`; вместо подавления ошибок добавлено логирование.
+- Усилена остановка видеозаписи:
+  `VideoRecorder.stop()` теперь выполняет более детерминированный
+  shutdown потока захвата (`stop session -> join(timeout) -> cleanup`)
+  с явной диагностикой таймаутов.
+- В `ApiRuntimeManager` чтение API-ключа сделано без побочных эффектов;
+  миграция legacy ключа из config вынесена в явный шаг при старте API.
+- Загрузка `.env` в `main.py` переведена из import-time side effect в
+  явный bootstrap-шаг `_load_environment()` внутри `main()`.
+
+### Tests
+- Добавлены/обновлены unit-тесты устойчивости:
+  `tests/unit/test_hotkeys.py`,
+  `tests/unit/test_scheduler.py`,
+  `tests/unit/test_video_recorder.py`,
+  `tests/unit/test_main_api_runtime.py`.
+- Добавлены unit-тесты entrypoint-bootstrap логики:
+  `tests/unit/test_main_entrypoint.py`.
+
 ### Planned for 1.5.0
 - Формирование scope следующего релиза после стабилизации `1.4.5`.
 

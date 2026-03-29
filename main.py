@@ -27,13 +27,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Загрузка .env файла ДО любых импортов, использующих переменные окружения
 from dotenv import load_dotenv
 
-env_path = Path(__file__).parent / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
-else:
-    # .env не обязателен, переменные могут быть заданы в окружении
-    pass
-
 if TYPE_CHECKING:
     from api.server import APIServer
     from gui.main_window import MainWindow
@@ -68,6 +61,13 @@ logger = get_module_logger(__name__)
 _GUI_DEFAULT_TIMEOUT_SECONDS = 10.0
 _GUI_START_TIMEOUT_SECONDS = 20.0
 _GUI_STOP_TIMEOUT_SECONDS = 60.0
+
+
+def _load_environment() -> None:
+    """Загружает переменные окружения из `.env` при наличии файла."""
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
 
 
 class _MainThreadExecutor:
@@ -1167,6 +1167,9 @@ def main() -> int:
     Returns:
         Код выхода
     """
+    # Явная bootstrap-загрузка переменных окружения.
+    _load_environment()
+
     # Разбор аргументов командной строки
     config = parse_args()
 

@@ -27,17 +27,12 @@
 
 ## P1 (важно, если успеваем до code freeze)
 
-- [x] Убрать `except ...: pass` в runtime-коде
-  (`scheduler/task_scheduler.py`, `recorder/video_recorder.py`,
-  `gui/hotkeys.py`) и заменить на логирование + контролируемый fallback.
 - [ ] Вынести слой сервисов для FFmpeg-пайплайна:
   отдельные `ProcessSupervisor`, `FinalizeService`, `RecoveryPolicy`.
 - [ ] Ввести bounded executor для фоновых API-операций
   (лимит очереди + политика отказа + метрики saturation).
 - [ ] Рефакторинг `TaskScheduler`:
   отделить `storage`, `trigger-builder`, `execution engine`.
-- [ ] Убрать «скрытые» side effects при старте приложения:
-  централизовать инициализацию env/API ключа и запись в Credential Manager.
 - [ ] Ввести единый `RequestContext` (`trace_id`, `request_id`, `client_ip`)
   и проброс в бизнес-логи.
 - [ ] Стандартизовать исключения слоя домена
