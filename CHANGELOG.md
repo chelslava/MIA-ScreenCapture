@@ -28,6 +28,9 @@
   с quality gates, smoke evidence и проверкой артефактов.
 - Добавлены автопроверки консистентности версии между
   `pyproject.toml`, `README.md`, `/health` и `/api/swagger.json`.
+- Подготовлен регрессионный сценарий API-вкладки GUI
+  (`plans/gui-api-tab-regression-v1.4.5.md`) для `start/stop/restart`
+  при открытом live-логе.
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
 - Расширены unit-тесты для фильтра записей и очистки списка.
 - Выполнен headless smoke-run API runtime: `start/stop/restart`, смена порта
