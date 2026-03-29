@@ -20,12 +20,10 @@ import tzlocal
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.date import DateTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 
 from logger_config import get_module_logger
 from scheduler.task_storage import TaskStorage
+from scheduler.trigger_builder import create_trigger
 
 logger = get_module_logger(__name__)
 _TIME_OF_DAY_PATTERN = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
@@ -511,36 +509,7 @@ class TaskScheduler:
         Returns:
             Триггер APScheduler
         """
-        if task.schedule_type == ScheduleType.ONCE:
-            if task.start_time:
-                return DateTrigger(run_date=task.start_time)
-
-        elif task.schedule_type == ScheduleType.DAILY:
-            if task.time_of_day:
-                hour, minute = self._parse_time_of_day(task.time_of_day)
-                return CronTrigger(hour=hour, minute=minute)
-
-        elif task.schedule_type == ScheduleType.WEEKLY:
-            if task.time_of_day and task.days_of_week:
-                hour, minute = self._parse_time_of_day(task.time_of_day)
-                return CronTrigger(
-                    hour=hour,
-                    minute=minute,
-                    day_of_week=",".join(str(d) for d in task.days_of_week),
-                )
-
-        elif task.schedule_type == ScheduleType.INTERVAL:
-            return IntervalTrigger(
-                weeks=0,
-                days=0,
-                hours=task.interval_hours or 0,
-                minutes=task.interval_minutes or 0,
-            )
-
-        elif task.schedule_type == ScheduleType.CRON and task.cron_expression:
-            return CronTrigger.from_crontab(task.cron_expression)
-
-        return None
+        return create_trigger(task, self._parse_time_of_day)
 
     def _validate_task_schedule(
         self, task: ScheduleTask

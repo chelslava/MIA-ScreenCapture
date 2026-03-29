@@ -25,8 +25,9 @@
   и метриками saturation в observability payload.
 - Начат декомпозиционный рефакторинг `TaskScheduler`:
   storage-слой вынесен в отдельный модуль `scheduler/task_storage.py`,
-  а `_load_tasks/_save_tasks` в `TaskScheduler` переведены на тонкие
-  обёртки над новым storage API.
+  trigger-builder вынесен в `scheduler/trigger_builder.py`,
+  а `_load_tasks/_save_tasks` и `_create_trigger` в `TaskScheduler`
+  переведены на тонкие обёртки над выделенными слоями.
 
 ### Tests
 - Добавлены/обновлены unit-тесты устойчивости:
@@ -42,6 +43,8 @@
   `tests/unit/test_api_server.py::TestAPIOperationStore`.
 - Добавлены unit-тесты storage-слоя scheduler:
   `tests/unit/test_task_storage.py`.
+- Добавлены unit-тесты trigger-builder scheduler:
+  `tests/unit/test_trigger_builder.py`.
 
 ### Planned for 1.5.0
 - Формирование scope следующего релиза после стабилизации `1.4.5`.
