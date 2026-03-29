@@ -8,6 +8,7 @@
 
 import contextlib
 import json
+import re
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -28,6 +29,7 @@ from logger_config import get_module_logger
 from utils import atomic_write_json
 
 logger = get_module_logger(__name__)
+_TIME_OF_DAY_PATTERN = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
 class ScheduleType(Enum):
@@ -253,7 +255,14 @@ class TaskScheduler:
             self._tasks[task.id] = task
 
             if task.enabled and self._scheduler.running:
-                self._schedule_job(task)
+                if not self._schedule_job(task):
+                    del self._tasks[task.id]
+                    logger.warning(
+                        "Добавление задачи %s отменено: не удалось "
+                        "запланировать задачу",
+                        task.id,
+                    )
+                    return False
 
         self._save_tasks()
         logger.info(f"Задача добавлена: {task.id} ({task.name})")
@@ -284,6 +293,7 @@ class TaskScheduler:
                 return False
 
             # Удаление старой задачи
+            previous_task = self._tasks[task.id]
             self._unschedule_job(task.id)
 
             # Обновление задачи
@@ -291,7 +301,16 @@ class TaskScheduler:
 
             # Перепланирование если включена
             if task.enabled and self._scheduler.running:
-                self._schedule_job(task)
+                if not self._schedule_job(task):
+                    self._tasks[task.id] = previous_task
+                    if previous_task.enabled and self._scheduler.running:
+                        self._schedule_job(previous_task)
+                    logger.warning(
+                        "Обновление задачи %s отменено: не удалось "
+                        "запланировать обновлённую задачу",
+                        task.id,
+                    )
+                    return False
 
         self._save_tasks()
         logger.info(f"Задача обновлена: {task.id}")
@@ -337,7 +356,13 @@ class TaskScheduler:
             task.enabled = enabled
 
             if enabled:
-                self._schedule_job(task)
+                if not self._schedule_job(task):
+                    task.enabled = False
+                    logger.warning(
+                        "Не удалось включить задачу %s: ошибка планирования",
+                        task_id,
+                    )
+                    return False
             else:
                 self._unschedule_job(task_id)
 
@@ -424,7 +449,7 @@ class TaskScheduler:
 
         return upcoming[:count]
 
-    def _schedule_job(self, task: ScheduleTask) -> None:
+    def _schedule_job(self, task: ScheduleTask) -> bool:
         """
         Планирование задачи в APScheduler.
 
@@ -445,14 +470,20 @@ class TaskScheduler:
                 # Обновление next_run
                 job = self._scheduler.get_job(task.id)
                 if job:
-                    task.next_run = job.next_run_time
+                    task.next_run = getattr(job, "next_run_time", None)
 
                 logger.debug(
-                    f"Задача запланирована: {task.id}, следующий запуск: {task.next_run}"
+                    "Задача запланирована: %s, следующий запуск: %s",
+                    task.id,
+                    task.next_run,
                 )
+                return True
 
         except Exception as e:
             logger.error(f"Ошибка планирования задачи {task.id}: {e}")
+            return False
+
+        return False
 
     def _unschedule_job(self, task_id: str) -> None:
         """
@@ -480,12 +511,12 @@ class TaskScheduler:
 
         elif task.schedule_type == ScheduleType.DAILY:
             if task.time_of_day:
-                hour, minute = map(int, task.time_of_day.split(":"))
+                hour, minute = self._parse_time_of_day(task.time_of_day)
                 return CronTrigger(hour=hour, minute=minute)
 
         elif task.schedule_type == ScheduleType.WEEKLY:
             if task.time_of_day and task.days_of_week:
-                hour, minute = map(int, task.time_of_day.split(":"))
+                hour, minute = self._parse_time_of_day(task.time_of_day)
                 return CronTrigger(
                     hour=hour,
                     minute=minute,
@@ -510,6 +541,16 @@ class TaskScheduler:
     ) -> tuple[bool, str | None]:
         """Проверяет только критичные невыполнимые сценарии расписания."""
         if task.schedule_type == ScheduleType.WEEKLY:
+            if task.time_of_day is None:
+                return (
+                    False,
+                    "Для weekly задачи требуется time_of_day в формате HH:MM",
+                )
+            if not self._is_valid_time_of_day(task.time_of_day):
+                return (
+                    False,
+                    f"Некорректный формат time_of_day: {task.time_of_day}",
+                )
             if not task.days_of_week:
                 return (
                     False,
@@ -520,6 +561,18 @@ class TaskScheduler:
                 return (
                     False,
                     f"Недопустимые дни недели: {invalid_days}",
+                )
+
+        if task.schedule_type == ScheduleType.DAILY:
+            if task.time_of_day is None:
+                return (
+                    False,
+                    "Для daily задачи требуется time_of_day в формате HH:MM",
+                )
+            if not self._is_valid_time_of_day(task.time_of_day):
+                return (
+                    False,
+                    f"Некорректный формат time_of_day: {task.time_of_day}",
                 )
 
         if task.schedule_type == ScheduleType.INTERVAL:
@@ -654,6 +707,13 @@ class TaskScheduler:
             task.time_of_day = data.get(
                 "time", data.get("time_of_day", "12:00")
             )
+            if task.time_of_day is None or not self._is_valid_time_of_day(
+                task.time_of_day
+            ):
+                raise ValueError(
+                    "time_of_day должен быть в формате HH:MM "
+                    "в диапазоне 00:00..23:59"
+                )
             if schedule_type == ScheduleType.WEEKLY:
                 days_value = data.get(
                     "day_of_week", data.get("days_of_week", "0,1,2,3,4")
@@ -677,6 +737,20 @@ class TaskScheduler:
             task.cron_expression = data.get("cron_expression")
 
         return task
+
+    def _is_valid_time_of_day(self, value: str) -> bool:
+        """Проверяет формат времени HH:MM в 24-часовом диапазоне."""
+        return _TIME_OF_DAY_PATTERN.fullmatch(value) is not None
+
+    def _parse_time_of_day(self, value: str) -> tuple[int, int]:
+        """Преобразует строку HH:MM в часы и минуты с валидацией."""
+        match = _TIME_OF_DAY_PATTERN.fullmatch(value)
+        if not match:
+            raise ValueError(
+                "time_of_day должен быть в формате HH:MM "
+                "в диапазоне 00:00..23:59"
+            )
+        return int(match.group(1)), int(match.group(2))
 
     def _extract_trigger_type(self, data: dict[str, Any]) -> str:
         """Извлекает тип расписания из API/GUІ payload."""

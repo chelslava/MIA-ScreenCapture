@@ -328,6 +328,25 @@ class TestTaskScheduler:
         assert task.schedule_type == ScheduleType.DAILY
         assert task.time_of_day == "09:00"
 
+    def test_create_task_from_dict_daily_rejects_invalid_time(
+        self, tasks_file: Path
+    ):
+        """Проверка валидации некорректного time_of_day."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+
+        data = {
+            "name": "Invalid Daily",
+            "trigger": "daily",
+            "time": "24:00",
+            "params": {"area_type": "full"},
+        }
+
+        try:
+            scheduler.create_task_from_dict(data)
+            assert False, "Ожидался ValueError для некорректного времени"
+        except ValueError as exc:
+            assert "time_of_day" in str(exc)
+
     def test_create_task_from_dict_weekly(self, tasks_file: Path):
         """Проверка создания еженедельной задачи из словаря."""
         scheduler = TaskScheduler(persist_path=tasks_file)
@@ -489,6 +508,44 @@ class TestTaskScheduler:
         assert result is False
         assert scheduler.get_task("invalid-interval") is None
 
+    def test_add_task_rejects_daily_invalid_time(self, tasks_file: Path):
+        """Daily задача с некорректным временем должна отклоняться."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        task = ScheduleTask(
+            id="invalid-daily-time",
+            name="Invalid Daily Time",
+            schedule_type=ScheduleType.DAILY,
+            params=RecordingParams(),
+            time_of_day="99:10",
+        )
+
+        result = scheduler.add_task(task)
+
+        assert result is False
+        assert scheduler.get_task("invalid-daily-time") is None
+
+    def test_add_task_rolls_back_on_schedule_failure(self, tasks_file: Path):
+        """При ошибке планирования add_task должен откатываться."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            task = ScheduleTask(
+                id="rollback-add",
+                name="Rollback Add",
+                schedule_type=ScheduleType.DAILY,
+                params=RecordingParams(),
+                time_of_day="10:00",
+                enabled=True,
+            )
+
+            scheduler._schedule_job = lambda _: False
+            result = scheduler.add_task(task)
+
+            assert result is False
+            assert scheduler.get_task("rollback-add") is None
+        finally:
+            scheduler.stop()
+
     def test_remove_task(self, tasks_file: Path):
         """Проверка удаления задачи."""
         scheduler = TaskScheduler(persist_path=tasks_file)
@@ -533,6 +590,7 @@ class TestTaskScheduler:
             name="Updated Name",
             schedule_type=ScheduleType.DAILY,
             params=RecordingParams(fps=60),
+            time_of_day="10:00",
         )
 
         result = scheduler.update_task(updated_task)
@@ -541,6 +599,43 @@ class TestTaskScheduler:
         assert scheduler._tasks["to-update"].name == "Updated Name"
         assert scheduler._tasks["to-update"].params.fps == 60
 
+    def test_update_task_rolls_back_on_schedule_failure(
+        self, tasks_file: Path
+    ):
+        """При ошибке планирования update_task откатывает изменения."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            original_task = ScheduleTask(
+                id="update-rollback",
+                name="Original Name",
+                schedule_type=ScheduleType.DAILY,
+                params=RecordingParams(fps=30),
+                time_of_day="09:00",
+                enabled=False,
+            )
+            assert scheduler.add_task(original_task) is True
+
+            updated_task = ScheduleTask(
+                id="update-rollback",
+                name="Updated Name",
+                schedule_type=ScheduleType.DAILY,
+                params=RecordingParams(fps=60),
+                time_of_day="10:00",
+                enabled=True,
+            )
+
+            scheduler._schedule_job = lambda _: False
+            result = scheduler.update_task(updated_task)
+
+            assert result is False
+            task_after_update = scheduler.get_task("update-rollback")
+            assert task_after_update is not None
+            assert task_after_update.name == "Original Name"
+            assert task_after_update.params.fps == 30
+        finally:
+            scheduler.stop()
+
     def test_enable_task(self, tasks_file: Path):
         """Проверка включения/выключения задачи."""
         scheduler = TaskScheduler(persist_path=tasks_file)
@@ -548,8 +643,9 @@ class TestTaskScheduler:
         task = ScheduleTask(
             id="toggle-test",
             name="Toggle Test",
-            schedule_type=ScheduleType.ONCE,
+            schedule_type=ScheduleType.DAILY,
             params=RecordingParams(),
+            time_of_day="11:00",
             enabled=True,
         )
 
@@ -583,6 +679,7 @@ class TestTaskScheduler:
             name="Task 2",
             schedule_type=ScheduleType.DAILY,
             params=RecordingParams(),
+            time_of_day="09:00",
         )
 
         scheduler.add_task(task1)
