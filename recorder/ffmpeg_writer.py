@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 
 from logger_config import get_module_logger
+from recorder.utils import get_ffmpeg_path
 
 logger = get_module_logger(__name__)
 
@@ -118,6 +119,7 @@ class FFmpegVideoWriter:
         self._bitrate = bitrate
         self._preset = preset
         self._pixel_format = pixel_format
+        self._ffmpeg_path = get_ffmpeg_path()
 
         self._process: subprocess.Popen | None = None
         self._lock = threading.Lock()
@@ -151,6 +153,11 @@ class FFmpegVideoWriter:
             True если успешно открыто
         """
         try:
+            ffmpeg_bin = self._ffmpeg_path
+            if ffmpeg_bin is None:
+                logger.error("FFmpeg не найден")
+                return False
+
             self._output_path.parent.mkdir(parents=True, exist_ok=True)
 
             codec_key = self._codec
@@ -173,7 +180,7 @@ class FFmpegVideoWriter:
                         codec_args[i + 1] = self._preset
 
             cmd = [
-                "ffmpeg",
+                ffmpeg_bin,
                 "-y",
                 "-f",
                 "rawvideo",

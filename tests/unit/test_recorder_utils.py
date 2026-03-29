@@ -18,7 +18,9 @@ from recorder.utils import (
     get_all_monitors,
     get_audio_devices,
     get_available_windows,
+    get_executable_path,
     get_ffmpeg_path,
+    get_ffprobe_path,
     get_platform,
     get_screen_size,
     get_unique_filename,
@@ -54,9 +56,11 @@ class TestGetPlatform:
 class TestCheckFFmpeg:
     """Тесты для функции check_ffmpeg."""
 
+    @patch("recorder.utils.get_ffmpeg_path")
     @patch("subprocess.run")
-    def test_ffmpeg_available(self, mock_run):
+    def test_ffmpeg_available(self, mock_run, mock_get_path):
         """Проверка доступности FFmpeg."""
+        mock_get_path.return_value = r"C:\Tools\ffmpeg\bin\ffmpeg.exe"
         mock_run.return_value = MagicMock(
             returncode=0, stdout="ffmpeg version 5.0\nCopyright (c) 2000-2022"
         )
@@ -65,22 +69,32 @@ class TestCheckFFmpeg:
 
         assert available is True
         assert version == "5.0"
+        mock_run.assert_called_once_with(
+            [r"C:\Tools\ffmpeg\bin\ffmpeg.exe", "-version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
 
+    @patch("recorder.utils.get_ffmpeg_path")
     @patch("subprocess.run")
-    def test_ffmpeg_not_found(self, mock_run):
+    def test_ffmpeg_not_found(self, mock_run, mock_get_path):
         """Проверка отсутствия FFmpeg."""
-        mock_run.side_effect = FileNotFoundError()
+        mock_get_path.return_value = None
 
         available, version = check_ffmpeg()
 
         assert available is False
         assert version is None
+        mock_run.assert_not_called()
 
+    @patch("recorder.utils.get_ffmpeg_path")
     @patch("subprocess.run")
-    def test_ffmpeg_timeout(self, mock_run):
+    def test_ffmpeg_timeout(self, mock_run, mock_get_path):
         """Проверка таймаута при проверке FFmpeg."""
+        mock_get_path.return_value = r"C:\Tools\ffmpeg\bin\ffmpeg.exe"
         mock_run.side_effect = subprocess.TimeoutExpired(
-            cmd="ffmpeg", timeout=10
+            cmd=r"C:\Tools\ffmpeg\bin\ffmpeg.exe", timeout=10
         )
 
         available, version = check_ffmpeg()
@@ -88,9 +102,11 @@ class TestCheckFFmpeg:
         assert available is False
         assert version is None
 
+    @patch("recorder.utils.get_ffmpeg_path")
     @patch("subprocess.run")
-    def test_ffmpeg_unexpected_error(self, mock_run):
+    def test_ffmpeg_unexpected_error(self, mock_run, mock_get_path):
         """Проверка неожиданной ошибки при проверке FFmpeg."""
+        mock_get_path.return_value = r"C:\Tools\ffmpeg\bin\ffmpeg.exe"
         mock_run.side_effect = RuntimeError("Unexpected error")
 
         available, version = check_ffmpeg()
@@ -105,11 +121,13 @@ class TestGetFFmpegPath:
     @patch("shutil.which")
     def test_ffmpeg_path_found(self, mock_which):
         """Проверка нахождения пути к FFmpeg."""
-        mock_which.return_value = "/usr/bin/ffmpeg"
+        mock_which.return_value = "ffmpeg.exe"
 
         path = get_ffmpeg_path()
 
-        assert path == "/usr/bin/ffmpeg"
+        assert path is not None
+        assert Path(path).is_absolute()
+        assert Path(path).name == "ffmpeg.exe"
 
     @patch("shutil.which")
     def test_ffmpeg_path_not_found(self, mock_which):
@@ -119,6 +137,45 @@ class TestGetFFmpegPath:
         path = get_ffmpeg_path()
 
         assert path is None
+
+
+class TestGetFFprobePath:
+    """Тесты для функции get_ffprobe_path."""
+
+    @patch("shutil.which")
+    def test_ffprobe_path_found(self, mock_which):
+        """Проверка нахождения пути к FFprobe."""
+        mock_which.return_value = "ffprobe.exe"
+
+        path = get_ffprobe_path()
+
+        assert path is not None
+        assert Path(path).is_absolute()
+        assert Path(path).name == "ffprobe.exe"
+
+    @patch("shutil.which")
+    def test_ffprobe_path_not_found(self, mock_which):
+        """Проверка отсутствия пути к FFprobe."""
+        mock_which.return_value = None
+
+        path = get_ffprobe_path()
+
+        assert path is None
+
+
+class TestGetExecutablePath:
+    """Тесты для общей функции get_executable_path."""
+
+    @patch("shutil.which")
+    def test_executable_path_found(self, mock_which):
+        """Проверка нормализации пути к исполняемому файлу."""
+        mock_which.return_value = "tool.exe"
+
+        path = get_executable_path("tool")
+
+        assert path is not None
+        assert Path(path).is_absolute()
+        assert Path(path).name == "tool.exe"
 
 
 class TestGetAvailableWindows:

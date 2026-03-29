@@ -5,6 +5,7 @@
 REST API сервер на базе Flask для удалённого управления рекордером.
 Работает в отдельном потоке, чтобы не блокировать GUI.
 """
+# mypy: disable-error-code=import-untyped
 
 import logging
 import re
@@ -21,7 +22,7 @@ from typing import Any
 import psutil
 from flask import Flask, g, jsonify, request
 from flask_cors import CORS
-from waitress.server import create_server  # type: ignore[import-untyped]
+from waitress.server import create_server
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from api.auth import API_KEY_CONFIG_KEY
@@ -37,6 +38,15 @@ _IDEMPOTENCY_RESULT_TTL_SECONDS = 3600.0
 _IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS = 30.0
 _SERVER_STOP_WAIT_SECONDS = 10.0
 _MAX_REQUEST_BODY_BYTES = 1024 * 1024
+_CORS_ALLOWED_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+_CORS_ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+_CORS_ALLOWED_HEADERS = [
+    "Authorization",
+    "Content-Type",
+    "Idempotency-Key",
+    "X-API-Key",
+    _REQUEST_ID_HEADER,
+]
 _HIGH_FREQUENCY_PATH_PREFIXES = (
     "/health",
     "/api/v1/status",
@@ -481,7 +491,15 @@ class APIServer:
         from api.rate_limiter import init_rate_limiter
 
         self.app = Flask(__name__)
-        CORS(self.app)
+        CORS(
+            self.app,
+            origins=[_CORS_ALLOWED_ORIGIN_REGEX],
+            methods=_CORS_ALLOWED_METHODS,
+            allow_headers=_CORS_ALLOWED_HEADERS,
+            expose_headers=[_REQUEST_ID_HEADER],
+            supports_credentials=False,
+            vary_header=True,
+        )
         self.app.config["MAX_CONTENT_LENGTH"] = _MAX_REQUEST_BODY_BYTES
 
         # Инициализация API аутентификации
@@ -825,7 +843,8 @@ class APIServer:
         """
         from api.auth import get_api_key
 
-        return get_api_key(self.app)
+        value = get_api_key(self.app)
+        return value if isinstance(value, str) else None
 
     def _load_version(self) -> str:
         """Читает версию из pyproject.toml или возвращает fallback."""

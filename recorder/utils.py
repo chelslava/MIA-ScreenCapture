@@ -42,9 +42,17 @@ def check_ffmpeg() -> tuple[bool, str | None]:
     Returns:
         Кортеж (доступен, строка_версии)
     """
+    ffmpeg_path = get_ffmpeg_path()
+    if ffmpeg_path is None:
+        logger.warning("FFmpeg не найден в PATH")
+        return False, None
+
     try:
         result = subprocess.run(
-            ["ffmpeg", "-version"], capture_output=True, text=True, timeout=10
+            [ffmpeg_path, "-version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0:
             # Извлечение версии из первой строки
@@ -57,7 +65,7 @@ def check_ffmpeg() -> tuple[bool, str | None]:
             logger.info(f"FFmpeg найден: версия {version}")
             return True, version
     except FileNotFoundError:
-        logger.warning("FFmpeg не найден в PATH")
+        logger.warning(f"FFmpeg не найден по пути: {ffmpeg_path}")
     except subprocess.TimeoutExpired:
         logger.error("Таймаут проверки версии FFmpeg")
     except Exception as e:
@@ -66,14 +74,40 @@ def check_ffmpeg() -> tuple[bool, str | None]:
     return False, None
 
 
+def get_executable_path(executable_name: str) -> str | None:
+    """
+    Получение абсолютного пути к исполняемому файлу.
+
+    Args:
+        executable_name: Имя исполняемого файла для поиска.
+
+    Returns:
+        Абсолютный путь к исполняемому файлу или None, если он не найден.
+    """
+    executable_path = shutil.which(executable_name)
+    if executable_path is None:
+        return None
+    return str(Path(executable_path).resolve(strict=False))
+
+
 def get_ffmpeg_path() -> str | None:
     """
     Получение пути к исполняемому файлу FFmpeg.
 
     Returns:
-        Путь к FFmpeg или None если не найден
+        Абсолютный путь к FFmpeg или None, если он не найден.
     """
-    return shutil.which("ffmpeg")
+    return get_executable_path("ffmpeg")
+
+
+def get_ffprobe_path() -> str | None:
+    """
+    Получение пути к исполняемому файлу FFprobe.
+
+    Returns:
+        Абсолютный путь к FFprobe или None, если он не найден.
+    """
+    return get_executable_path("ffprobe")
 
 
 def get_available_windows() -> list[dict[str, Any]]:

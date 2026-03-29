@@ -134,3 +134,80 @@ class TestAPIServerLifecycle:
         assert api_server.is_running() is False
         assert api_server._server_thread is None
         create_server_mock.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("origin", "expected_allowed_origin"),
+        [
+            ("http://localhost:3000", "http://localhost:3000"),
+            ("http://127.0.0.1:8080", "http://127.0.0.1:8080"),
+            ("https://localhost", "https://localhost"),
+            ("https://evil.example", None),
+        ],
+    )
+    def test_cors_actual_request_origin_filtering(
+        self,
+        api_server: APIServer,
+        origin: str,
+        expected_allowed_origin: str | None,
+    ) -> None:
+        """Проверяет CORS-заголовки для actual request по allowlist."""
+        assert api_server.app is not None
+        client = api_server.app.test_client()
+
+        response = client.get("/health", headers={"Origin": origin})
+
+        assert response.status_code == 200
+        assert (
+            response.headers.get("Access-Control-Allow-Origin")
+            == expected_allowed_origin
+        )
+
+    def test_cors_preflight_allows_localhost_origin(
+        self,
+        api_server: APIServer,
+    ) -> None:
+        """Проверяет CORS preflight для разрешённого localhost origin."""
+        assert api_server.app is not None
+        client = api_server.app.test_client()
+
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "Content-Type,X-Request-ID",
+            },
+        )
+
+        assert response.status_code == 200
+        assert (
+            response.headers.get("Access-Control-Allow-Origin")
+            == "http://localhost:3000"
+        )
+        assert "GET" in response.headers.get(
+            "Access-Control-Allow-Methods", ""
+        )
+        allow_headers = response.headers.get(
+            "Access-Control-Allow-Headers", ""
+        )
+        assert "Content-Type" in allow_headers
+        assert "X-Request-ID" in allow_headers
+
+    def test_cors_preflight_rejects_untrusted_origin(
+        self,
+        api_server: APIServer,
+    ) -> None:
+        """Проверяет отсутствие CORS-доступа для чужого origin."""
+        assert api_server.app is not None
+        client = api_server.app.test_client()
+
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "https://evil.example",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+        assert response.status_code == 200
+        assert "Access-Control-Allow-Origin" not in response.headers

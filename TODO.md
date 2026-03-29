@@ -11,19 +11,10 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] [Security] Ограничить CORS-политику: заменить
-  `CORS(self.app)` на allowlist (`origins`, `methods`,
-  `allowed_headers`) с тестами preflight/actual request
-  для разрешенного и запрещенного origin
-  (`api/server.py`, `tests/integration/test_api_server_lifecycle.py`).
 - [ ] [Stability] Закрывать и дожидаться stderr-reader
   потока FFmpeg в `close()`/cleanup, покрыть тестом
   многократный start/stop без утечек потоков
   (`recorder/ffmpeg_writer.py`, `tests/unit/test_ffmpeg_writer.py`).
-- [ ] [Security] Использовать абсолютный путь к FFmpeg/FFprobe
-  во всех subprocess-вызовах вместо литерала `ffmpeg`
-  (`recorder/encoder.py`, `recorder/ffmpeg_writer.py`,
-  `recorder/utils.py`).
 - [ ] [Tests] Устранить нестабильность
   `tests/unit/test_config_extended.py::TestConfigSave::test_save_creates_directory`
   из-за `PermissionError (WinError 5)` при работе с временными

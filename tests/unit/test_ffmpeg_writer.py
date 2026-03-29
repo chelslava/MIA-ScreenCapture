@@ -55,6 +55,11 @@ def _setup_open_mocks(
         "Thread",
         _ImmediateThread,
     )
+    monkeypatch.setattr(
+        ffmpeg_writer_module,
+        "get_ffmpeg_path",
+        MagicMock(return_value=r"C:\Tools\ffmpeg\bin\ffmpeg.exe"),
+    )
 
     process = _make_process(stderr_text, returncode)
     monkeypatch.setattr(
@@ -91,13 +96,41 @@ class TestFFmpegVideoWriterDiagnostics:
         assert process.stdin is not None
         assert list(writer._stderr_tail) == ["line2", "line3", "line4"]
 
+        popen_args = ffmpeg_writer_module.subprocess.Popen.call_args.args
         popen_kwargs = ffmpeg_writer_module.subprocess.Popen.call_args.kwargs
+        assert popen_args[0][0] == r"C:\Tools\ffmpeg\bin\ffmpeg.exe"
         assert popen_kwargs["stderr"] == subprocess.PIPE
         assert popen_kwargs["stdout"] == subprocess.DEVNULL
         assert popen_kwargs["text"] is True
         assert popen_kwargs["encoding"] == "utf-8"
         assert popen_kwargs["errors"] == "replace"
         assert popen_kwargs["bufsize"] == 1
+
+    def test_open_fails_without_ffmpeg_path(
+        self,
+        monkeypatch,
+    ) -> None:
+        """Открытие должно завершаться ошибкой без пути к FFmpeg."""
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_ffmpeg_path",
+            MagicMock(return_value=None),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            MagicMock(),
+        )
+
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=1920,
+            height=1080,
+            fps=30,
+        )
+
+        assert writer.open() is False
+        ffmpeg_writer_module.subprocess.Popen.assert_not_called()
 
     def test_close_logs_stderr_tail_on_error(
         self,

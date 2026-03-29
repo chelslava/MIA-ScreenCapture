@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from logger_config import get_module_logger
-from recorder.utils import check_ffmpeg, get_ffmpeg_path
+from recorder.utils import check_ffmpeg, get_ffmpeg_path, get_ffprobe_path
 
 logger = get_module_logger(__name__)
 _FFMPEG_ERROR_TAIL_BYTES = 16 * 1024
@@ -55,7 +55,7 @@ class Encoder:
         """
         self.settings = settings or EncodingSettings()
         self._ffmpeg_path = get_ffmpeg_path()
-        self._ffprobe_path = self._get_ffprobe_path()
+        self._ffprobe_path = get_ffprobe_path()
 
         # Проверка доступности FFmpeg
         self._check_ffmpeg()
@@ -67,17 +67,13 @@ class Encoder:
         Returns:
             True если FFmpeg доступен
         """
-        available, version = check_ffmpeg()
+        available, _version = check_ffmpeg()
         if not available:
             logger.error(
                 "FFmpeg не найден! Пожалуйста, установите FFmpeg и добавьте в PATH. "
                 "Скачать: https://ffmpeg.org/download.html"
             )
         return bool(available)
-
-    def _get_ffprobe_path(self) -> str | None:
-        """Получение пути к исполняемому файлу ffprobe."""
-        return shutil.which("ffprobe")
 
     @property
     def is_available(self) -> bool:
@@ -122,9 +118,13 @@ class Encoder:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
+            ffmpeg_bin = self._ffmpeg_path
+            if ffmpeg_bin is None:
+                return False, "FFmpeg недоступен"
+
             # Формирование команды FFmpeg
             cmd = [
-                "ffmpeg",
+                ffmpeg_bin,
                 "-y",  # Перезапись вывода
                 "-i",
                 str(video_path),  # Видеовход
@@ -212,8 +212,12 @@ class Encoder:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
+            ffmpeg_bin = self._ffmpeg_path
+            if ffmpeg_bin is None:
+                return False, "FFmpeg недоступен"
+
             cmd = [
-                "ffmpeg",
+                ffmpeg_bin,
                 "-y",
                 "-i",
                 str(input_path),
@@ -320,7 +324,11 @@ class Encoder:
             Словарь с информацией о видео или None при ошибке
         """
         try:
-            ffprobe_bin = self._ffprobe_path or "ffprobe"
+            ffprobe_bin = self._ffprobe_path
+            if ffprobe_bin is None:
+                logger.warning("FFprobe недоступен")
+                return None
+
             cmd = [
                 ffprobe_bin,
                 "-v",
@@ -382,8 +390,12 @@ class Encoder:
             return False, "FFmpeg недоступен"
 
         try:
+            ffmpeg_bin = self._ffmpeg_path
+            if ffmpeg_bin is None:
+                return False, "FFmpeg недоступен"
+
             cmd = [
-                "ffmpeg",
+                ffmpeg_bin,
                 "-y",
                 "-i",
                 str(video_path),
@@ -423,8 +435,12 @@ class Encoder:
             return False, "FFmpeg недоступен"
 
         try:
+            ffmpeg_bin = self._ffmpeg_path
+            if ffmpeg_bin is None:
+                return False, "FFmpeg недоступен"
+
             cmd = [
-                "ffmpeg",
+                ffmpeg_bin,
                 "-y",
                 "-ss",
                 str(timestamp),

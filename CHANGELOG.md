@@ -108,6 +108,14 @@
 - Удалён неиспользуемый техдолг в `api/routes.py`:
   убраны мёртвые декораторы `api_endpoint` и `api_callback`
   вместе с устаревшим TODO-комментарием.
+- CORS-политика API ограничена allowlist для localhost/127.0.0.1
+  с явными `methods`/`allowed_headers`;
+  добавлены интеграционные тесты preflight и actual-request
+  для разрешённых и запрещённых origin.
+- Запуски `ffmpeg`/`ffprobe` переведены на абсолютные пути
+  через единый резолвер executable в `recorder/utils.py`;
+  обновлены unit-тесты для `recorder/utils.py` и
+  `recorder/ffmpeg_writer.py`.
 - Усилена устойчивость `TaskScheduler`:
   `add_task`/`update_task`/`enable_task` теперь откатывают изменения
   при ошибке планирования, а `time_of_day` валидируется в формате
