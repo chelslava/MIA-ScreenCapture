@@ -8,7 +8,6 @@
 import hashlib
 import uuid
 from collections.abc import Callable
-from functools import wraps
 from typing import Any
 
 from flask import current_app, g, jsonify, request
@@ -414,122 +413,6 @@ def _stop_operation_response(
     return jsonify(
         {"success": payload_data.get("success", True), "data": payload_data}
     ), 200
-
-
-# TODO: Декораторы api_endpoint и api_callback подготовлены для рефакторинга
-# обработки API запросов. Применить к endpoints после завершения текущих изменений.
-
-
-def api_endpoint(
-    callback_name: str,
-    error_message: str = "Ошибка выполнения запроса",
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """
-    Декоратор для стандартизации обработки API запросов.
-
-    Автоматически обрабатывает:
-    - Получение callback из server
-    - Обработку ValidationError
-    - Логирование ошибок
-    - Форматирование ответов
-
-    Args:
-        callback_name: Имя callback для получения из server
-        error_message: Сообщение об ошибке для логирования
-
-    Returns:
-        Декоратор для функции-обработчика
-
-    Example:
-        @api_v1.route("status", methods=["GET"])
-        @require_api_key
-        @api_endpoint("status", "Ошибка получения статуса")
-        def get_status(callback):
-            return callback()
-    """
-
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            try:
-                # Получаем server из замыкания (передаётся через kwargs)
-                server_instance = kwargs.get("server")
-                if not server_instance:
-                    # Пытаемся получить из первого аргумента
-                    # (для функций внутри register_routes)
-                    return func(*args, **kwargs)
-
-                callback = server_instance.get_callback(callback_name)
-                if not callback:
-                    return _internal_error_response()
-
-                # Передаём callback в функцию
-                return func(*args, callback=callback, **kwargs)
-
-            except ValidationError as e:
-                return handle_validation_error(e)
-            except Exception as e:
-                logger.exception(f"{error_message}: {e}")
-                return _internal_error_response()
-
-        return wrapper
-
-    return decorator
-
-
-def api_callback(
-    callback_name: str,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """
-    Упрощённый декоратор для endpoints, которые просто вызывают callback.
-
-    Для простых endpoints без дополнительной логики.
-
-    Args:
-        callback_name: Имя callback для получения из server
-
-    Note:
-        Требует установки g.server в before_request middleware.
-        См. register_routes для примера установки.
-
-    Example:
-        @api_v1.route("status", methods=["GET"])
-        @require_api_key
-        @api_callback("status")
-        def get_status():
-            pass  # callback будет вызван автоматически
-    """
-
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Извлекаем server из контекста Flask (глобальная переменная)
-            from flask import g
-
-            server_instance = getattr(g, "server", None)
-            if not server_instance:
-                logger.error(
-                    "g.server не установлен. Добавьте @app.before_request "
-                    "для установки g.server"
-                )
-                return _internal_error_response()
-
-            callback = server_instance.get_callback(callback_name)
-            if not callback:
-                return _internal_error_response()
-
-            try:
-                result = callback()
-                return jsonify({"success": True, "data": result})
-            except ValidationError as e:
-                return handle_validation_error(e)
-            except Exception as e:
-                logger.exception(f"Ошибка в {callback_name}: {e}")
-                return _internal_error_response()
-
-        return wrapper
-
-    return decorator
 
 
 def register_routes(app, server) -> None:

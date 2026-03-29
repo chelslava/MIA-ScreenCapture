@@ -105,6 +105,9 @@
 - `.gitignore` дополнен правилами для
   `.tmp_pytest_runs/`, `.pytest_local_tmp/`, `.codex_tmp/`
   чтобы локальные служебные файлы не попадали в рабочий набор.
+- Удалён неиспользуемый техдолг в `api/routes.py`:
+  убраны мёртвые декораторы `api_endpoint` и `api_callback`
+  вместе с устаревшим TODO-комментарием.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного

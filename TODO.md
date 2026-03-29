@@ -301,6 +301,28 @@
   либо внедрить неиспользуемые декораторы (`api_endpoint`,
   `api_callback`), либо удалить мертвый код и комментарий `TODO`.
 
+## Новые задачи от 2026-03-29 (итерация 3)
+
+- [ ] [P1][Scheduler] Сделать `add_task()`/`update_task()`
+  атомарными: при ошибке `_schedule_job()` возвращать ошибку
+  и откатывать `enabled`/изменения задачи
+  (`scheduler/task_scheduler.py`).
+- [ ] [P1][Scheduler] Валидация `time_of_day` (`HH:MM`)
+  до вызова APScheduler: диапазон `00:00..23:59`
+  и тесты для `24:00`, `09:77`, `abc`
+  (`scheduler/task_scheduler.py`, `tests/unit/test_scheduler.py`).
+- [ ] [P1][API] Сделать lifecycle idempotency-store корректным
+  при цикле `stop -> start`: пересоздание store/cleanup-thread
+  и тест `start/stop/start` (`api/server.py`,
+  `tests/unit/test_api_server.py`).
+- [ ] [P2][API] Ограничить конкуренцию фоновых API-операций:
+  bounded `ThreadPoolExecutor` + лимит очереди
+  и политика отказа (`api/server.py`).
+- [ ] [P2][API] Добавить guard от запуска API без маршрутов
+  (проверка ключевых routes в `start()` или
+  явная регистрация в `APIServer`)
+  (`api/server.py`, `main.py`, `api/routes.py`).
+
 ## Правило ведения TODO
 
 - Закрытые задачи удаляем из файла, не оставляем в виде `[x]`.
