@@ -33,6 +33,12 @@
   (`MIAError` и наследники) и маппинг в HTTP/GUI ответы.
 - [ ] Зафиксировать детерминированный shutdown потоков/процессов записи:
   единый протокол `stop -> join(timeout) -> force cleanup`.
+- [ ] Протащить `request_id/trace_id` в фоновые API-операции
+  и связанные бизнес-логи для end-to-end корреляции.
+- [ ] Оптимизировать `WebSocketManager.get_recent_events()`:
+  убрать полное копирование буфера при каждом запросе.
+- [ ] Вынести request lifecycle middleware (`before/after_request`)
+  в отдельный слой, отделив от bootstrap-кода `APIServer`.
 
 ## P2 (после стабилизации P0/P1)
 
@@ -46,6 +52,9 @@
   с timeline удаления и тестами обратной совместимости.
 - [ ] Разделить DTO API и внутренние доменные модели записи через
   adapter-layer между `api/*` и `core/*`.
+- [ ] Добавить benchmark-suite для hot-path API
+  (`/health`, `/api/v1/status`, recent events, idempotency replay)
+  с базовой линией и порогом регрессии.
 
 ## Рефакторинг-Стандарты `v1.4.6`
 

@@ -80,6 +80,10 @@ def _install_stop_operation_stubs(
     def submit_background_operation(
         operation_type: str,
         runner: Callable[[], Any],
+        *,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+        client_ip: str | None = None,
     ) -> dict[str, Any]:
         result = runner()
         operation = {
@@ -88,6 +92,9 @@ def _install_stop_operation_stubs(
             "status": "succeeded",
             "result": result,
             "error": None,
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "client_ip": client_ip,
         }
         operation_state["operation"] = operation
         return dict(operation)
@@ -321,6 +328,9 @@ class TestStopRecordingRoute:
         assert data["data"]["status"] == "succeeded"
         assert data["data"]["output_path"] == "C:\\videos\\recording.mp4"
         assert data["data"]["duration"] == 12.5
+        assert data["data"]["request_id"] == request_id
+        assert data["data"]["trace_id"] == request_id
+        assert data["data"]["client_ip"] == "127.0.0.1"
 
         recording_callbacks["stop"].assert_called_once_with()
         recording_server.submit_background_operation.assert_called_once()

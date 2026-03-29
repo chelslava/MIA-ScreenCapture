@@ -332,6 +332,12 @@ def _serialize_operation(operation: dict[str, Any]) -> dict[str, Any]:
         payload["result"] = operation.get("result")
     if operation.get("error") is not None:
         payload["error"] = operation.get("error")
+    if operation.get("request_id") is not None:
+        payload["request_id"] = operation.get("request_id")
+    if operation.get("trace_id") is not None:
+        payload["trace_id"] = operation.get("trace_id")
+    if operation.get("client_ip") is not None:
+        payload["client_ip"] = operation.get("client_ip")
     return payload
 
 
@@ -357,11 +363,18 @@ def _stop_operation_response(
     server: Any,
 ) -> tuple[Any, int]:
     """Запускает остановку записи и возвращает синхронный или фоновой ответ."""
+    request_context = ensure_request_context()
     callback = server.get_callback("stop")
     if callback is None:
         return _internal_error_response()
 
-    operation = server.submit_background_operation("stop", callback)
+    operation = server.submit_background_operation(
+        "stop",
+        callback,
+        request_id=request_context.request_id,
+        trace_id=request_context.trace_id,
+        client_ip=request_context.client_ip,
+    )
     operation_id = operation.get("id")
     if not operation_id:
         return _internal_error_response()
@@ -404,6 +417,12 @@ def _stop_operation_response(
         payload_data = {"value": result}
     payload_data["operation_id"] = completed.get("id")
     payload_data["status"] = completed.get("status")
+    if completed.get("request_id") is not None:
+        payload_data["request_id"] = completed.get("request_id")
+    if completed.get("trace_id") is not None:
+        payload_data["trace_id"] = completed.get("trace_id")
+    if completed.get("client_ip") is not None:
+        payload_data["client_ip"] = completed.get("client_ip")
     return jsonify(
         {"success": payload_data.get("success", True), "data": payload_data}
     ), 200

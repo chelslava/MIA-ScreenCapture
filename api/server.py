@@ -138,6 +138,10 @@ class APIOperationStore:
         self,
         operation_type: str,
         runner: Callable[[], Any],
+        *,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+        client_ip: str | None = None,
     ) -> dict[str, Any]:
         """Запускает фоновую операцию и возвращает её snapshot."""
         if self._stopped:
@@ -164,6 +168,9 @@ class APIOperationStore:
             "completed_at": None,
             "result": None,
             "error": None,
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "client_ip": client_ip,
         }
         done_event = threading.Event()
 
@@ -284,6 +291,9 @@ class APIOperationStore:
             "completed_at": now_iso,
             "result": None,
             "error": error_message,
+            "request_id": None,
+            "trace_id": None,
+            "client_ip": None,
         }
         with self._lock:
             self._cleanup_expired_locked()
@@ -818,9 +828,19 @@ class APIServer:
         self,
         operation_type: str,
         runner: Callable[[], Any],
+        *,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+        client_ip: str | None = None,
     ) -> dict[str, Any]:
         """Запускает фоновую операцию API."""
-        return self._operations.submit(operation_type, runner)
+        return self._operations.submit(
+            operation_type,
+            runner,
+            request_id=request_id,
+            trace_id=trace_id,
+            client_ip=client_ip,
+        )
 
     def get_background_operation(
         self,

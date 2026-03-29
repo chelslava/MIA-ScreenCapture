@@ -20,6 +20,9 @@
 - Введён единый `RequestContext` (`request_id`, `trace_id`, `client_ip`)
   для API; контекст теперь формируется централизованно и используется
   в middleware сервера и нормализации API-ответов.
+- Для фоновой API-операции `stop` добавлен явный проброс
+  `request_id/trace_id/client_ip` в operation metadata и ответы
+  `/api/v1/stop` + `/api/v1/operations/{id}` для сквозной корреляции.
 - Для фоновых API-операций внедрён bounded executor
   (`workers + queue capacity`) с политикой отказа при переполнении
   и метриками saturation в observability payload.
@@ -40,6 +43,9 @@
   `tests/unit/test_main_entrypoint.py`.
 - Добавлены unit-тесты request-контекста:
   `tests/unit/test_request_context.py`.
+- Обновлены интеграционные тесты записи
+  `tests/integration/test_api_recording_routes.py` для проверки
+  request-context полей в payload операции остановки.
 - Добавлены unit-тесты bounded executor операций API:
   `tests/unit/test_api_server.py::TestAPIOperationStore`.
 - Добавлены unit-тесты storage-слоя scheduler:
