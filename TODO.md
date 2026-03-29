@@ -11,16 +11,8 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] Добавить интеграционные тесты API-контроллера:
-  lifecycle сервера, health/metrics, обработка исключений в routes/server.
-- [ ] Добавить тесты маршрутов записи (`start/stop/pause`) с
-  happy-path и negative-сценариями (валидация, права, контракты ошибок).
-- [ ] Добавить тесты пайплайна `recorder/encoder.py`:
-  построение FFmpeg-команд, сбои subprocess, cleanup ресурсов.
-- [ ] Добавить тесты state-machine `recorder/video_recorder.py`:
-  переходы start/stop/pause и восстановление после исключений.
-- [ ] Добавить тесты выбора/fallback аудиоустройства в
-  `recorder/audio_recorder.py`.
+- [ ] Зафиксировать стабильный локальный сценарий запуска unit-тестов
+  `recorder/*` в sandbox-среде без `PermissionError` по `tmp_path`.
 
 ## P2 (после стабилизации релиза)
 

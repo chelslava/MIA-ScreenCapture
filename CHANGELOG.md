@@ -83,6 +83,15 @@
   - `TaskDialog` валидирует weekly/interval перед `accept()`.
 - Добавлены unit-тесты для backend/UI-валидации scheduler-задач
   (`tests/unit/test_scheduler.py`, `tests/unit/test_scheduler_tab.py`).
+- Добавлены интеграционные тесты API:
+  - lifecycle сервера (`tests/integration/test_api_server_lifecycle.py`);
+  - health/observability (`tests/integration/test_api_health_metrics.py`);
+  - обработка внутренних ошибок (`tests/integration/test_api_error_handling.py`);
+  - маршруты записи `start/stop/pause`
+    (`tests/integration/test_api_recording_routes.py`).
+- Добавлены unit-тесты устойчивости рекордера:
+  `tests/unit/test_encoder.py`, `tests/unit/test_video_recorder.py`,
+  `tests/unit/test_audio_recorder.py`.
 
 ## [1.4.3] - 2026-03-28
 

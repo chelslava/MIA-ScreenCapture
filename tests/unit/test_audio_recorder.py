@@ -11,7 +11,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recorder.audio_recorder import AudioConfig, AudioRecorder, AudioState
+from recorder.audio_recorder import (
+    AudioConfig,
+    AudioRecorder,
+    AudioState,
+    SystemAudioRecorder,
+)
 
 
 class TestAudioConfig:
@@ -536,3 +541,136 @@ class TestAudioRecorderGetDevices:
         assert devices[0]["name"] == "Microphone 1"
         assert devices[0]["channels"] == 2
         assert devices[0]["sample_rate"] == 44100
+
+
+class TestAudioRecorderBackendFallback:
+    """Тесты выбора backend'ов аудиозаписи."""
+
+    @pytest.fixture
+    def recorder(self) -> AudioRecorder:
+        """Создаёт рекордер для тестов."""
+        return AudioRecorder()
+
+    def test_init_audio_raises_when_backends_missing(
+        self, recorder: AudioRecorder
+    ) -> None:
+        """Проверка ошибки при отсутствии sounddevice и pyaudio."""
+        with patch.dict(
+            "sys.modules",
+            {"sounddevice": None, "pyaudio": None},
+        ):
+            with pytest.raises(
+                RuntimeError, match="Ни sounddevice, ни pyaudio недоступны"
+            ):
+                recorder._init_audio()
+
+
+class TestSystemAudioRecorderSelection:
+    """Тесты выбора системного аудиоустройства."""
+
+    def test_windows_system_audio_selects_loopback_device(self) -> None:
+        """Проверка выбора loopback-устройства на Windows."""
+        mock_sd = MagicMock()
+        mock_sd.query_devices.return_value = [
+            {
+                "name": "Speakers",
+                "max_input_channels": 0,
+                "max_output_channels": 2,
+                "default_samplerate": 44100,
+            },
+            {
+                "name": "Stereo Mix",
+                "max_input_channels": 2,
+                "max_output_channels": 0,
+                "default_samplerate": 44100,
+            },
+        ]
+
+        with (
+            patch(
+                "recorder.audio_recorder.get_platform", return_value="windows"
+            ),
+            patch.dict("sys.modules", {"sounddevice": mock_sd}),
+        ):
+            recorder = SystemAudioRecorder()
+            recorder._init_audio()
+
+        assert recorder.config.device_index == 1
+
+    def test_windows_system_audio_falls_back_to_default_input(self) -> None:
+        """Проверка fallback на обычный вход, если loopback не найден."""
+        mock_sd = MagicMock()
+        mock_sd.query_devices.return_value = [
+            {
+                "name": "Speakers",
+                "max_input_channels": 0,
+                "max_output_channels": 2,
+                "default_samplerate": 44100,
+            }
+        ]
+
+        with (
+            patch(
+                "recorder.audio_recorder.get_platform", return_value="windows"
+            ),
+            patch.dict("sys.modules", {"sounddevice": mock_sd}),
+        ):
+            recorder = SystemAudioRecorder()
+            with patch.object(AudioRecorder, "_init_audio") as mock_base_init:
+                recorder._init_audio()
+
+        mock_base_init.assert_called_once()
+        assert recorder.config.device_index is None
+
+    def test_linux_system_audio_selects_monitor_device(self) -> None:
+        """Проверка выбора monitor-устройства на Linux."""
+        mock_sd = MagicMock()
+        mock_sd.query_devices.return_value = [
+            {
+                "name": "Output",
+                "max_input_channels": 0,
+                "max_output_channels": 2,
+                "default_samplerate": 44100,
+            },
+            {
+                "name": "PulseAudio Monitor",
+                "max_input_channels": 2,
+                "max_output_channels": 0,
+                "default_samplerate": 44100,
+            },
+        ]
+
+        with (
+            patch(
+                "recorder.audio_recorder.get_platform", return_value="linux"
+            ),
+            patch.dict("sys.modules", {"sounddevice": mock_sd}),
+        ):
+            recorder = SystemAudioRecorder()
+            recorder._init_audio()
+
+        assert recorder.config.device_index == 1
+
+    def test_macos_system_audio_requires_virtual_device(self) -> None:
+        """Проверка ошибки при отсутствии виртуального устройства на macOS."""
+        mock_sd = MagicMock()
+        mock_sd.query_devices.return_value = [
+            {
+                "name": "Built-in Output",
+                "max_input_channels": 0,
+                "max_output_channels": 2,
+                "default_samplerate": 44100,
+            }
+        ]
+
+        with (
+            patch(
+                "recorder.audio_recorder.get_platform", return_value="darwin"
+            ),
+            patch.dict("sys.modules", {"sounddevice": mock_sd}),
+        ):
+            recorder = SystemAudioRecorder()
+            with pytest.raises(
+                RuntimeError, match="Виртуальное аудиоустройство"
+            ):
+                recorder._init_audio()

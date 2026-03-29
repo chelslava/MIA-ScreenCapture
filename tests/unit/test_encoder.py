@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recorder.encoder import Encoder, EncodingSettings
+from recorder.encoder import Encoder, EncodingSettings, RecordingEncoder
 
 
 class TestEncodingSettings:
@@ -602,3 +602,193 @@ class TestEncoderAdditionalMethods:
         assert "-map" in cmd
         assert "-shortest" in cmd
         assert str(output_path) in cmd
+
+
+class TestEncoderProcessCleanup:
+    """Тесты обработки stderr и очистки временных файлов."""
+
+    @pytest.fixture
+    def encoder(self) -> Encoder:
+        """Создаёт кодировщик с замоканным FFmpeg."""
+        with patch.object(Encoder, "_check_ffmpeg", return_value=True):
+            return Encoder()
+
+    def test_run_ffmpeg_long_process_reads_stderr_tail(
+        self, encoder: Encoder, tmp_path: Path
+    ) -> None:
+        """Проверка чтения хвоста stderr и удаления временного файла."""
+        stderr_path = tmp_path / "ffmpeg_stderr.log"
+
+        def fake_temp_file(*args, **kwargs):
+            _ = args, kwargs
+            return open(stderr_path, "w+b")
+
+        def fake_run(cmd, stdout, stderr, timeout):
+            _ = cmd, stdout, timeout
+            stderr.write(b"line 1\nline 2\n")
+            stderr.flush()
+            return MagicMock(returncode=1, stderr="")
+
+        with (
+            patch(
+                "recorder.encoder.tempfile.NamedTemporaryFile",
+                side_effect=fake_temp_file,
+            ),
+            patch("recorder.encoder.subprocess.run", side_effect=fake_run),
+        ):
+            result = encoder._run_ffmpeg_long_process(["ffmpeg"], timeout=1)
+
+        assert result.returncode == 1
+        assert result.stderr_tail is not None
+        assert "line 2" in result.stderr_tail
+        assert not stderr_path.exists()
+
+    def test_run_ffmpeg_long_process_uses_process_stderr_when_log_empty(
+        self, encoder: Encoder, tmp_path: Path
+    ) -> None:
+        """Проверка fallback на stderr процесса при пустом файле лога."""
+        stderr_path = tmp_path / "ffmpeg_stderr.log"
+
+        def fake_temp_file(*args, **kwargs):
+            _ = args, kwargs
+            return open(stderr_path, "w+b")
+
+        def fake_run(cmd, stdout, stderr, timeout):
+            _ = cmd, stdout, stderr, timeout
+            return MagicMock(returncode=1, stderr="  process error  ")
+
+        with (
+            patch(
+                "recorder.encoder.tempfile.NamedTemporaryFile",
+                side_effect=fake_temp_file,
+            ),
+            patch("recorder.encoder.subprocess.run", side_effect=fake_run),
+        ):
+            result = encoder._run_ffmpeg_long_process(["ffmpeg"], timeout=1)
+
+        assert result.returncode == 1
+        assert result.stderr_tail == "process error"
+        assert not stderr_path.exists()
+
+
+class TestRecordingEncoder:
+    """Тесты высокоуровневого кодировщика записи."""
+
+    def test_setup_creates_temp_paths(self, tmp_path: Path) -> None:
+        """Проверка создания временных путей записи."""
+        temp_dir = tmp_path / "recorder_123"
+        temp_dir.mkdir()
+        output_path = tmp_path / "output.mp4"
+
+        with (
+            patch("recorder.encoder.Encoder", return_value=MagicMock()),
+            patch(
+                "recorder.encoder.tempfile.mkdtemp",
+                return_value=str(temp_dir),
+            ),
+        ):
+            encoder = RecordingEncoder(output_path)
+            temp_video, temp_audio = encoder.setup()
+
+        assert encoder._temp_dir == temp_dir
+        assert temp_video == temp_dir / "video_temp.mp4"
+        assert temp_audio == temp_dir / "audio_temp.wav"
+
+    def test_finalize_merges_video_and_audio_and_cleans_up(
+        self, tmp_path: Path
+    ) -> None:
+        """Проверка объединения видео и аудио с очисткой временной папки."""
+        temp_dir = tmp_path / "recorder_456"
+        temp_dir.mkdir()
+        output_path = tmp_path / "output.mp4"
+        merge_result = (True, None)
+        mock_encoder = MagicMock()
+        mock_encoder.merge_video_audio.return_value = merge_result
+
+        with (
+            patch("recorder.encoder.Encoder", return_value=mock_encoder),
+            patch(
+                "recorder.encoder.tempfile.mkdtemp",
+                return_value=str(temp_dir),
+            ),
+        ):
+            recording_encoder = RecordingEncoder(output_path)
+            temp_video, temp_audio = recording_encoder.setup()
+            temp_video.write_bytes(b"video")
+            temp_audio.write_bytes(b"audio")
+
+            result = recording_encoder.finalize(has_audio=True)
+
+        assert result == merge_result
+        mock_encoder.merge_video_audio.assert_called_once_with(
+            temp_video,
+            temp_audio,
+            output_path,
+            keep_originals=False,
+            progress_callback=None,
+        )
+        assert not temp_dir.exists()
+        assert recording_encoder._temp_dir is None
+        assert recording_encoder._temp_video is None
+        assert recording_encoder._temp_audio is None
+
+    def test_finalize_uses_encode_video_without_audio(
+        self, tmp_path: Path
+    ) -> None:
+        """Проверка перекодирования без аудиодорожки."""
+        temp_dir = tmp_path / "recorder_789"
+        temp_dir.mkdir()
+        output_path = tmp_path / "output.mp4"
+        mock_encoder = MagicMock()
+        mock_encoder.encode_video.return_value = (True, None)
+
+        with (
+            patch("recorder.encoder.Encoder", return_value=mock_encoder),
+            patch(
+                "recorder.encoder.tempfile.mkdtemp",
+                return_value=str(temp_dir),
+            ),
+        ):
+            recording_encoder = RecordingEncoder(output_path)
+            temp_video, _ = recording_encoder.setup()
+            temp_video.write_bytes(b"video")
+
+            result = recording_encoder.finalize(has_audio=False)
+
+        assert result == (True, None)
+        mock_encoder.encode_video.assert_called_once_with(
+            temp_video,
+            output_path,
+            progress_callback=None,
+        )
+        assert not temp_dir.exists()
+
+    def test_cleanup_handles_rmtree_error(self, tmp_path: Path) -> None:
+        """Проверка безопасной очистки при ошибке удаления каталога."""
+        temp_dir = tmp_path / "recorder_999"
+        temp_dir.mkdir()
+        with patch("recorder.encoder.Encoder", return_value=MagicMock()):
+            recording_encoder = RecordingEncoder(tmp_path / "output.mp4")
+            recording_encoder._temp_dir = temp_dir
+            recording_encoder._temp_video = temp_dir / "video_temp.mp4"
+            recording_encoder._temp_audio = temp_dir / "audio_temp.wav"
+
+        with patch(
+            "recorder.encoder.shutil.rmtree",
+            side_effect=OSError("cleanup failed"),
+        ):
+            recording_encoder._cleanup()
+
+        assert recording_encoder._temp_dir is None
+        assert recording_encoder._temp_video is None
+        assert recording_encoder._temp_audio is None
+
+    def test_cancel_calls_cleanup(self, tmp_path: Path) -> None:
+        """Проверка отмены записи через очистку временных файлов."""
+        with patch("recorder.encoder.Encoder", return_value=MagicMock()):
+            recording_encoder = RecordingEncoder(tmp_path / "output.mp4")
+
+        with patch.object(recording_encoder, "_cleanup") as mock_cleanup:
+            recording_encoder.cancel()
+
+        mock_cleanup.assert_called_once()

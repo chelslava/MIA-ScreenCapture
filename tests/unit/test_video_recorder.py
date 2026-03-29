@@ -568,3 +568,123 @@ class TestVideoRecorderIntegration:
                 recorder._write_thread = None
                 with patch.object(recorder, "_cleanup"):
                     assert recorder.stop() is True
+
+
+class TestVideoRecorderErrorHandling:
+    """Тесты ошибок и восстановления видеозаписи."""
+
+    @pytest.fixture
+    def recorder(self) -> VideoRecorder:
+        """Создаёт рекордер для тестов."""
+        return VideoRecorder(use_ffmpeg=False)
+
+    def test_start_rejects_non_windows_platform(
+        self, recorder: VideoRecorder, tmp_path: Path
+    ) -> None:
+        """Проверка отказа запуска вне Windows."""
+        error_callback = MagicMock()
+        recorder.set_callbacks(on_error=error_callback)
+        capture_area = CaptureArea(type="full", width=1920, height=1080)
+
+        with patch(
+            "recorder.video_recorder.get_platform", return_value="linux"
+        ):
+            result = recorder.start(tmp_path / "video.mp4", capture_area)
+
+        assert result is False
+        assert recorder.state == RecordingState.IDLE
+        error_callback.assert_called_once()
+        assert "Windows" in error_callback.call_args.args[0]
+
+    def test_start_resets_capture_lost_flag(
+        self, recorder: VideoRecorder, tmp_path: Path
+    ) -> None:
+        """Проверка сброса флага потери захвата при новом старте."""
+        recorder._capture_lost = True
+        capture_area = CaptureArea(type="full", width=1280, height=720)
+
+        with (
+            patch(
+                "recorder.video_recorder.get_platform", return_value="windows"
+            ),
+            patch("recorder.video_recorder.cv2.VideoWriter"),
+            patch.object(recorder, "_capture_loop"),
+        ):
+            result = recorder.start(tmp_path / "video.mp4", capture_area)
+
+        assert result is True
+        assert recorder.is_capture_lost is False
+
+    def test_start_cleans_up_when_ffmpeg_writer_fails_to_open(
+        self, tmp_path: Path
+    ) -> None:
+        """Проверка очистки при ошибке открытия FFmpeg writer."""
+        recorder = VideoRecorder(use_ffmpeg=True)
+        error_callback = MagicMock()
+        recorder.set_callbacks(on_error=error_callback)
+        capture_area = CaptureArea(type="full", width=1280, height=720)
+        mock_writer = MagicMock()
+        mock_writer.open.return_value = False
+
+        with (
+            patch(
+                "recorder.video_recorder.get_platform", return_value="windows"
+            ),
+            patch(
+                "recorder.ffmpeg_writer.FFmpegVideoWriter",
+                return_value=mock_writer,
+            ),
+            patch.object(recorder, "_cleanup") as mock_cleanup,
+        ):
+            result = recorder.start(tmp_path / "video.mp4", capture_area)
+
+        assert result is False
+        mock_cleanup.assert_called_once()
+        error_callback.assert_called_once()
+        assert (
+            "Не удалось открыть FFmpeg видеозапись"
+            in (error_callback.call_args.args[0])
+        )
+
+    def test_capture_loop_marks_capture_lost(self) -> None:
+        """Проверка фиксации потери захвата в основном цикле."""
+        recorder = VideoRecorder(use_ffmpeg=False)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(type="full", width=32, height=32)
+
+        class MockSession:
+            """Простейшая сессия, сразу сообщающая о потере захвата."""
+
+            is_capture_lost = True
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                raise AssertionError("read_frame вызываться не должен")
+
+            def stop(self) -> None:
+                return
+
+        with patch(
+            "recorder.video_recorder._WindowsCaptureSession",
+            return_value=MockSession(),
+        ):
+            recorder._capture_loop()
+
+        assert recorder.is_capture_lost is True
+        assert recorder.state == RecordingState.IDLE
+
+    def test_stop_returns_false_when_cleanup_fails(
+        self, recorder: VideoRecorder, tmp_path: Path
+    ) -> None:
+        """Проверка реакции stop на неуспешную очистку."""
+        recorder._state = RecordingState.RECORDING
+        recorder._output_path = tmp_path / "video.mp4"
+
+        with patch.object(recorder, "_cleanup", return_value=False):
+            result = recorder.stop()
+
+        assert result is False
+        assert recorder.state == RecordingState.STOPPING
