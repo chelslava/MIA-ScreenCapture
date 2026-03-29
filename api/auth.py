@@ -25,6 +25,9 @@ API_KEY_LENGTH = 32  # Длина ключа в байтах (256 бит)
 AUTH_DISABLED_CONFIG_KEY = "AUTH_DISABLED"  # Явное отключение аутентификации
 API_KEY_CREDENTIAL_TARGET = "MIA-ScreenCapture/APIKey"
 _CREDENTIAL_USER_NAME = "MIA-ScreenCapture"
+_API_KEY_MASK_PREFIX_LENGTH = 4
+_API_KEY_MASK_SUFFIX_LENGTH = 4
+_API_KEY_MASK_FILL = "****"
 
 
 def generate_api_key() -> str:
@@ -93,6 +96,24 @@ def _decode_credential_blob(blob: Any) -> str | None:
     if isinstance(blob, str):
         return blob.strip() or None
     return None
+
+
+def _mask_api_key(api_key: str | None) -> str | None:
+    """Маскирует API ключ для безопасного отображения."""
+    normalized_key = api_key.strip() if api_key and api_key.strip() else None
+    if normalized_key is None:
+        return None
+
+    if len(normalized_key) <= (
+        _API_KEY_MASK_PREFIX_LENGTH + _API_KEY_MASK_SUFFIX_LENGTH
+    ):
+        return "*" * len(normalized_key)
+
+    return (
+        f"{normalized_key[:_API_KEY_MASK_PREFIX_LENGTH]}"
+        f"{_API_KEY_MASK_FILL}"
+        f"{normalized_key[-_API_KEY_MASK_SUFFIX_LENGTH:]}"
+    )
 
 
 def _get_api_key_from_credential_manager() -> str | None:
@@ -304,30 +325,27 @@ def optional_api_key(f: Callable) -> Callable:
 
 def get_api_key(app: Flask | None = None) -> str | None:
     """
-    Получение текущего API ключа из конфигурации.
+    Получение текущего API ключа из конфигурации в маскированном виде.
 
     Args:
         app: Flask приложение (если None, используется current_app)
 
     Returns:
-        API ключ или None если не установлен
+        Маскированный API ключ или None если не установлен
     """
     if app is None:
         try:
             config_value = current_app.config.get(API_KEY_CONFIG_KEY)
-            return (
-                str(config_value).strip()
-                if config_value is not None and str(config_value).strip()
-                else None
-            )
         except RuntimeError:
             # Вне контекста приложения
-            return get_stored_api_key()
+            return _mask_api_key(get_stored_api_key())
+        return _mask_api_key(
+            str(config_value) if config_value is not None else None
+        )
+
     config_value = app.config.get(API_KEY_CONFIG_KEY)
-    return (
-        str(config_value).strip()
-        if config_value is not None and str(config_value).strip()
-        else None
+    return _mask_api_key(
+        str(config_value) if config_value is not None else None
     )
 
 

@@ -492,21 +492,21 @@ class TestGetApiKey:
     """Тесты для функции get_api_key."""
 
     def test_get_api_key_from_app_config(self):
-        """Проверка получения ключа из конфигурации приложения."""
+        """Проверка маскирования ключа из конфигурации приложения."""
         app = Flask(__name__)
         test_key = "test-key-from-config"
         app.config[API_KEY_CONFIG_KEY] = test_key
 
         result = get_api_key(app)
 
-        assert result == test_key
+        assert result == "test****nfig"
 
     def test_get_api_key_from_env_when_no_app(self):
-        """Проверка получения ключа из переменной окружения при отсутствии app."""
+        """Проверка маскирования ключа из переменной окружения."""
         test_key = "env-api-key"
         with patch.dict(os.environ, {API_KEY_ENV_VAR: test_key}):
             result = get_api_key()  # Без app
-            assert result == test_key
+            assert result == "env-****-key"
 
     def test_get_api_key_returns_none_when_not_set(self):
         """Проверка возврата None когда ключ не установлен."""
@@ -515,23 +515,41 @@ class TestGetApiKey:
             result = get_api_key()
             assert result is None
 
+    def test_get_api_key_masks_short_value(self):
+        """Проверка маскирования короткого ключа."""
+        app = Flask(__name__)
+        app.config[API_KEY_CONFIG_KEY] = "short"
+
+        result = get_api_key(app)
+
+        assert result == "*****"
+
+    def test_get_api_key_returns_none_for_empty_value(self):
+        """Проверка обработки пустого ключа."""
+        app = Flask(__name__)
+        app.config[API_KEY_CONFIG_KEY] = ""
+
+        result = get_api_key(app)
+
+        assert result is None
+
     def test_get_api_key_with_current_app_context(self):
-        """Проверка получения ключа через current_app context."""
+        """Проверка маскирования ключа через current_app context."""
         app = Flask(__name__)
         test_key = "context-api-key"
         app.config[API_KEY_CONFIG_KEY] = test_key
 
         with app.app_context():
             result = get_api_key()
-            assert result == test_key
+            assert result == "cont****-key"
 
     def test_get_api_key_runtime_error_fallback_to_env(self):
-        """Проверка fallback на переменную окружения при RuntimeError."""
+        """Проверка маскирования fallback на переменную окружения."""
         test_key = "fallback-env-key"
         with patch.dict(os.environ, {API_KEY_ENV_VAR: test_key}):
             # Вызываем без app и без контекста - должен быть fallback на env
             result = get_api_key()
-            assert result == test_key
+            assert result == "fall****-key"
 
 
 class TestAPIServerGetApiKey:
@@ -547,7 +565,7 @@ class TestAPIServerGetApiKey:
             server = APIServer()
             result = server.get_api_key()
 
-            assert result == test_key
+            assert result == "serv****-key"
 
     def test_server_get_api_key_returns_none_when_not_set(self):
         """Проверка что метод возвращает None если ключ не установлен."""
