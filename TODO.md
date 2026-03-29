@@ -29,8 +29,6 @@
 
 - [ ] Вынести слой сервисов для FFmpeg-пайплайна:
   отдельные `ProcessSupervisor`, `FinalizeService`, `RecoveryPolicy`.
-- [ ] Рефакторинг `TaskScheduler`:
-  отделить `storage`, `trigger-builder`, `execution engine`.
 - [ ] Стандартизовать исключения слоя домена
   (`MIAError` и наследники) и маппинг в HTTP/GUI ответы.
 - [ ] Зафиксировать детерминированный shutdown потоков/процессов записи:

@@ -22,6 +22,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from logger_config import get_module_logger
+from scheduler.execution_engine import SchedulerExecutionEngine
 from scheduler.task_storage import TaskStorage
 from scheduler.trigger_builder import create_trigger
 
@@ -190,6 +191,13 @@ class TaskScheduler:
                 )
             },
             timezone=tzlocal.get_localzone(),
+        )
+        self._execution_engine = SchedulerExecutionEngine(
+            lock=self._lock,
+            tasks=self._tasks,
+            scheduler=self._scheduler,
+            save_tasks=self._save_tasks,
+            get_on_task_execute=lambda: self._on_task_execute,
         )
 
         # Загрузка сохранённых задач
@@ -567,34 +575,7 @@ class TaskScheduler:
         Args:
             task_id: ID задачи для выполнения
         """
-        # Получение задачи с блокировкой для thread-safety
-        with self._lock:
-            task = self._tasks.get(task_id)
-            if not task:
-                logger.warning(f"Задача {task_id} не найдена для выполнения")
-                return
-
-            logger.info(
-                f"Выполнение запланированной задачи: {task_id} ({task.name})"
-            )
-
-            # Обновление отслеживания выполнения
-            task.last_run = datetime.now()
-            task.run_count += 1
-
-            # Обновление next_run для повторяющихся задач
-            job = self._scheduler.get_job(task_id)
-            if job:
-                task.next_run = job.next_run_time
-
-        self._save_tasks()
-
-        # Выполнение обратного вызова вне блокировки
-        if self._on_task_execute:
-            try:
-                self._on_task_execute(task.params)
-            except Exception as e:
-                logger.error(f"Ошибка выполнения обратного вызова задачи: {e}")
+        self._execution_engine.execute(task_id)
 
     def _load_tasks(self) -> None:
         """Загрузка задач из файла сохранения."""

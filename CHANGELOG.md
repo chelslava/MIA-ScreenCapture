@@ -26,8 +26,9 @@
 - Начат декомпозиционный рефакторинг `TaskScheduler`:
   storage-слой вынесен в отдельный модуль `scheduler/task_storage.py`,
   trigger-builder вынесен в `scheduler/trigger_builder.py`,
-  а `_load_tasks/_save_tasks` и `_create_trigger` в `TaskScheduler`
-  переведены на тонкие обёртки над выделенными слоями.
+  execution-engine вынесен в `scheduler/execution_engine.py`,
+  а `_load_tasks/_save_tasks`, `_create_trigger` и `_execute_task`
+  в `TaskScheduler` переведены на тонкие обёртки над выделенными слоями.
 
 ### Tests
 - Добавлены/обновлены unit-тесты устойчивости:
@@ -45,6 +46,8 @@
   `tests/unit/test_task_storage.py`.
 - Добавлены unit-тесты trigger-builder scheduler:
   `tests/unit/test_trigger_builder.py`.
+- Добавлены unit-тесты execution-engine scheduler:
+  `tests/unit/test_execution_engine.py`.
 
 ### Planned for 1.5.0
 - Формирование scope следующего релиза после стабилизации `1.4.5`.
