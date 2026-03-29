@@ -82,6 +82,12 @@ class TestGetStoredApiKey:
             result = get_stored_api_key()
             assert result is None
 
+    def test_get_ignores_masked_env_value(self):
+        """Маскированное значение в env не должно использоваться."""
+        with patch.dict(os.environ, {API_KEY_ENV_VAR: "test****1234"}):
+            result = get_stored_api_key()
+            assert result is None
+
 
 class TestSetStoredApiKey:
     """Тесты сохранения API ключа в постоянное хранилище."""
@@ -122,6 +128,14 @@ class TestSetStoredApiKey:
         assert calls == ["stored-value"]
         assert os.environ[API_KEY_ENV_VAR] == "stored-value"
         monkeypatch.delenv(API_KEY_ENV_VAR, raising=False)
+
+    def test_set_stored_api_key_rejects_masked_value(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Маскированный ключ должен очищать хранилище и env."""
+        monkeypatch.setenv(API_KEY_ENV_VAR, "old-value")
+        set_stored_api_key("test****1234")
+        assert API_KEY_ENV_VAR not in os.environ
 
 
 class TestInitApiAuth:

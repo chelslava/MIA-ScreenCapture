@@ -22,9 +22,9 @@
 
 ## 3. API/GUI smoke evidence
 
-- [ ] Выполнен 30+ минутный smoke-run API-вкладки GUI.
+- [x] Выполнен 30+ минутный smoke-run API-вкладки GUI.
 - [ ] Проверены сценарии `start/stop/restart` при открытом live-логе.
-- [ ] Результат smoke-run зафиксирован в
+- [x] Результат smoke-run зафиксирован в
   `plans/release-note-v1.4.5-smoke.md`.
 
 ## 4. Release-артефакты

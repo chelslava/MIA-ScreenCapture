@@ -30,6 +30,21 @@ _API_KEY_MASK_SUFFIX_LENGTH = 4
 _API_KEY_MASK_FILL = "****"
 
 
+def _is_masked_api_key(api_key: str | None) -> bool:
+    """Проверяет, является ли значение маскированным токеном."""
+    if api_key is None:
+        return False
+
+    normalized = api_key.strip()
+    if not normalized:
+        return False
+
+    if set(normalized) == {"*"}:
+        return True
+
+    return _API_KEY_MASK_FILL in normalized
+
+
 def generate_api_key() -> str:
     """
     Генерация криптографически безопасного API ключа.
@@ -49,8 +64,23 @@ def get_stored_api_key() -> str | None:
     """
     credential_key = _get_api_key_from_credential_manager()
     if credential_key:
-        return credential_key
-    return os.environ.get(API_KEY_ENV_VAR)
+        if _is_masked_api_key(credential_key):
+            logger.warning(
+                "В Credential Manager обнаружен маскированный API ключ; "
+                "значение будет проигнорировано."
+            )
+        else:
+            return credential_key
+
+    env_value = os.environ.get(API_KEY_ENV_VAR)
+    if _is_masked_api_key(env_value):
+        logger.warning(
+            "В переменной окружения обнаружен маскированный API ключ; "
+            "значение будет проигнорировано."
+        )
+        return None
+
+    return env_value
 
 
 def set_stored_api_key(api_key: str | None) -> None:
@@ -61,6 +91,12 @@ def set_stored_api_key(api_key: str | None) -> None:
         api_key: API ключ или None для удаления.
     """
     normalized = api_key.strip() if api_key and api_key.strip() else None
+    if _is_masked_api_key(normalized):
+        logger.warning(
+            "Попытка сохранить маскированный API ключ отклонена; "
+            "ключ будет очищен."
+        )
+        normalized = None
     stored_in_credential = _set_api_key_in_credential_manager(normalized)
     if normalized is not None:
         os.environ[API_KEY_ENV_VAR] = normalized

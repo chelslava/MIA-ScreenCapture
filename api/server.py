@@ -8,6 +8,7 @@ REST API сервер на базе Flask для удалённого управ
 # mypy: disable-error-code=import-untyped
 
 import logging
+import os
 import re
 import socket
 import threading
@@ -54,6 +55,54 @@ _HIGH_FREQUENCY_PATH_PREFIXES = (
     "/api/v1/events",
     "/api/v1/observability",
 )
+_WAITRESS_SHUTDOWN_PATCH_LOCK = threading.Lock()
+_WAITRESS_SHUTDOWN_PATCHED = False
+
+
+def _patch_waitress_shutdown_for_windows() -> None:
+    """
+    Применяет workaround для shutdown waitress на Windows.
+
+    При гонке закрытия trigger-сокета waitress может выбрасывать
+    ``OSError: [WinError 10038]`` во внутренних worker-потоках.
+    Ошибка не влияет на обработку запросов, но засоряет лог.
+    """
+    global _WAITRESS_SHUTDOWN_PATCHED
+
+    if os.name != "nt":
+        return
+
+    with _WAITRESS_SHUTDOWN_PATCH_LOCK:
+        if _WAITRESS_SHUTDOWN_PATCHED:
+            return
+
+        try:
+            from waitress import trigger as waitress_trigger
+        except Exception as e:
+            logger.debug(
+                "Не удалось применить workaround shutdown waitress: %s",
+                e,
+            )
+            return
+
+        original_pull = waitress_trigger.trigger._physical_pull
+        if getattr(original_pull, "_mia_safe_shutdown", False):
+            _WAITRESS_SHUTDOWN_PATCHED = True
+            return
+
+        def _safe_physical_pull(self: Any) -> None:
+            try:
+                original_pull(self)
+            except OSError as e:
+                win_error = getattr(e, "winerror", None)
+                if win_error == 10038 and getattr(self, "_closed", False):
+                    return
+                raise
+
+        _safe_physical_pull._mia_safe_shutdown = True
+        waitress_trigger.trigger._physical_pull = _safe_physical_pull
+        _WAITRESS_SHUTDOWN_PATCHED = True
+        logger.debug("Применён Windows workaround для shutdown waitress.")
 
 
 class APIOperationStore:
@@ -471,6 +520,7 @@ class APIServer:
         self.port = port
         self.server_threads = max(1, int(server_threads))
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
+        _patch_waitress_shutdown_for_windows()
 
         # Flask приложение
         self.app: Flask | None = None
@@ -781,14 +831,19 @@ class APIServer:
     def stop(self) -> None:
         """Остановка API сервера."""
         server_thread: threading.Thread | None
+        wsgi_server: Any | None
         with self._lock:
             self._running = False
             server_thread = self._server_thread
-            if self._wsgi_server is not None:
-                try:
-                    self._wsgi_server.close()
-                except Exception as e:
-                    logger.warning(f"Ошибка закрытия API сервера: {e}")
+            wsgi_server = self._wsgi_server
+            self._server_thread = None
+            self._wsgi_server = None
+
+        if wsgi_server is not None:
+            try:
+                wsgi_server.close()
+            except Exception as e:
+                logger.warning(f"Ошибка закрытия API сервера: {e}")
 
         if server_thread and server_thread.is_alive():
             server_thread.join(timeout=_SERVER_STOP_WAIT_SECONDS)
@@ -854,6 +909,21 @@ class APIServer:
 
         value = get_api_key(self.app)
         return value if isinstance(value, str) else None
+
+    def get_runtime_api_key(self) -> str | None:
+        """
+        Получение реального (не маскированного) API ключа runtime.
+
+        Returns:
+            Исходный API ключ или None если не установлен.
+        """
+        if self.app is not None:
+            value = self.app.config.get(API_KEY_CONFIG_KEY)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        if isinstance(self.api_key, str) and self.api_key.strip():
+            return self.api_key.strip()
+        return None
 
     def _load_version(self) -> str:
         """Читает версию из pyproject.toml или возвращает fallback."""

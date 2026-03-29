@@ -606,7 +606,7 @@ class VideoRecorderApp:
         self._sync_api_key_env(api_config.get("api_key"))
 
         assert self._api_server is not None
-        resolved_api_key = self._api_server.get_api_key()
+        resolved_api_key = self._api_server.get_runtime_api_key()
         if resolved_api_key and resolved_api_key != api_config.get("api_key"):
             api_settings = get_config().settings.api
             api_settings.api_key = None

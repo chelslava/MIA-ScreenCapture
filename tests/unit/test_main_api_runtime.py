@@ -88,8 +88,23 @@ class FakeApiServer:
             return self.api_key
         return "generated-api-key"
 
+    def get_runtime_api_key(self) -> str | None:
+        return self.get_api_key()
+
     def set_api_key(self, api_key: str | None) -> None:
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
+
+
+class MaskedApiServer(FakeApiServer):
+    """Фейковый сервер, возвращающий маскированный ключ для UI."""
+
+    def get_api_key(self) -> str | None:
+        if self.api_key is None:
+            return None
+        return "****"
+
+    def get_runtime_api_key(self) -> str | None:
+        return self.api_key
 
 
 def _build_app(
@@ -232,6 +247,20 @@ class TestMainApiRuntime:
         assert fake_config.save.call_count == 1
         assert app._get_effective_api_key() == "generated-api-key"
         assert os.environ["MIA_API_KEY"] == "generated-api-key"
+
+    def test_start_api_server_uses_runtime_key_for_env_sync(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """При синхронизации должен использоваться немаскированный ключ."""
+        app, _ = _build_app(monkeypatch, api_key="test1234")
+        monkeypatch.delenv("MIA_API_KEY", raising=False)
+        monkeypatch.setattr("api.server.APIServer", MaskedApiServer)
+        monkeypatch.setattr("api.routes.register_routes", lambda *args: None)
+
+        result = app._start_api_server(force=True)
+
+        assert result["success"] is True
+        assert os.environ["MIA_API_KEY"] == "test1234"
 
     def test_start_api_server_returns_existing_status_when_running(
         self, monkeypatch: pytest.MonkeyPatch
