@@ -597,6 +597,7 @@ class TestTaskSchedulerEdgeCases:
             schedule_type=ScheduleType.WEEKLY,
             params=RecordingParams(),
             time_of_day="10:00",
+            days_of_week=[1],
         )
 
         scheduler_with_callback.add_task(task1)
