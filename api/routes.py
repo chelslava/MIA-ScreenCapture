@@ -45,7 +45,7 @@ _IDEMPOTENCY_KEY_MAX_LENGTH = 128
 
 def _get_trace_id() -> str:
     """Возвращает trace_id из контекста запроса или создаёт новый."""
-    return ensure_request_context().trace_id
+    return str(ensure_request_context().trace_id)
 
 
 def _standard_error_payload(
