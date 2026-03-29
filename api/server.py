@@ -86,9 +86,6 @@ def _patch_waitress_shutdown_for_windows() -> None:
             return
 
         original_pull = waitress_trigger.trigger._physical_pull
-        if getattr(original_pull, "_mia_safe_shutdown", False):
-            _WAITRESS_SHUTDOWN_PATCHED = True
-            return
 
         def _safe_physical_pull(self: Any) -> None:
             try:
@@ -99,7 +96,6 @@ def _patch_waitress_shutdown_for_windows() -> None:
                     return
                 raise
 
-        _safe_physical_pull._mia_safe_shutdown = True
         waitress_trigger.trigger._physical_pull = _safe_physical_pull
         _WAITRESS_SHUTDOWN_PATCHED = True
         logger.debug("Применён Windows workaround для shutdown waitress.")
@@ -836,8 +832,6 @@ class APIServer:
             self._running = False
             server_thread = self._server_thread
             wsgi_server = self._wsgi_server
-            self._server_thread = None
-            self._wsgi_server = None
 
         if wsgi_server is not None:
             try:
