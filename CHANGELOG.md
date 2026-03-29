@@ -55,6 +55,10 @@
 - Блокирующий `mypy`-scope в CI расширен на
   `api/schemas.py`, `gui/models/recording_state.py`,
   `recorder/encoder.py`.
+- Блокирующий `mypy`-scope в CI расширен на
+  `api/routes.py`, `api/websocket.py`,
+  `gui/notifications.py`, `gui/tray_icon.py`,
+  `recorder/ffmpeg_writer.py`.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного
