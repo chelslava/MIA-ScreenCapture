@@ -7,6 +7,7 @@
 
 from collections.abc import Callable
 from enum import Enum
+from typing import Any
 
 from logger_config import get_module_logger
 
@@ -49,7 +50,7 @@ class GlobalHotkeys:
         """Инициализация менеджера горячих клавиш."""
         self._hotkeys: dict[HotkeyAction, str] = {}
         self._callbacks: dict[HotkeyAction, Callable] = {}
-        self._listener = None
+        self._listener: Any | None = None
         self._running = False
 
         if PYNPUT_AVAILABLE:
@@ -128,10 +129,11 @@ class GlobalHotkeys:
                         except Exception as e:
                             logger.error(f"Ошибка в callback: {e}")
 
-                self._listener = keyboard.GlobalHotKeys(
+                listener = keyboard.GlobalHotKeys(
                     {k: lambda k=k: on_activate(k) for k in hotkey_map}
                 )
-                self._listener.start()
+                listener.start()
+                self._listener = listener
                 self._running = True
                 logger.info("Горячие клавиши активированы")
                 return True

@@ -65,6 +65,12 @@
 - `get_api_key()` в `api/auth.py` теперь возвращает маскированный ключ
   для безопасного отображения; добавлены unit-тесты маскирования
   (длинный/короткий/пустой ключ).
+- Устранены точечные type-замечания для `mypy` в
+  `gui/hotkeys.py`, `gui/scheduler_tab.py`,
+  `recorder/audio_recorder.py`.
+- Блокирующий `mypy`-scope в CI расширен на
+  `gui/hotkeys.py`, `gui/scheduler_tab.py`,
+  `recorder/audio_recorder.py`, `recorder/utils.py`.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного

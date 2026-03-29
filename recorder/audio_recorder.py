@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from logger_config import get_module_logger
 from recorder.utils import get_audio_devices, get_platform
@@ -138,7 +139,7 @@ class AudioRecorder:
         self._on_error = on_error
 
     @staticmethod
-    def get_available_devices() -> list[dict]:
+    def get_available_devices() -> list[dict[str, Any]]:
         """
         Получение списка доступных устройств ввода аудио.
 
