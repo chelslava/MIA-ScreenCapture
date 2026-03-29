@@ -31,6 +31,8 @@
 - Подготовлен регрессионный сценарий API-вкладки GUI
   (`plans/gui-api-tab-regression-v1.4.5.md`) для `start/stop/restart`
   при открытом live-логе.
+- В `release.yml` добавлен smoke-test собранного Windows EXE:
+  запуск в `--headless`, проверка `/health`, корректная остановка процесса.
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
 - Расширены unit-тесты для фильтра записей и очистки списка.
 - Выполнен headless smoke-run API runtime: `start/stop/restart`, смена порта
