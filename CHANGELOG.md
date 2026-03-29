@@ -98,6 +98,13 @@
   `gui/controllers/recording_controller.py`.
 - Блокирующий `mypy`-scope в CI расширен на
   `recorder/video_recorder.py`.
+- Для предрелизной стабильности `mypy` добавлены исключения
+  служебных runtime/tmp-директорий
+  (`tmp_pytest_run*`, `.tmp_pytest_runs`,
+  `.pytest_local_tmp`, `.codex_tmp`, `tests/.local_tmp`).
+- `.gitignore` дополнен правилами для
+  `.tmp_pytest_runs/`, `.pytest_local_tmp/`, `.codex_tmp/`
+  чтобы локальные служебные файлы не попадали в рабочий набор.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного

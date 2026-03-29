@@ -283,6 +283,24 @@
   (`api/server.py`, `api/routes.py`,
   `tests/integration/test_api_error_handling.py`).
 
+## Новые задачи от 2026-03-29 (итерация 2)
+
+- [ ] [P1][Tests] Устранить нестабильность
+  `tests/unit/test_config_extended.py::TestConfigSave::test_save_creates_directory`
+  из-за `PermissionError (WinError 5)` при работе с временными
+  каталогами (`tests/conftest.py`, `tests/unit/test_config_extended.py`).
+- [ ] [P1][Tooling] Сделать `uv run mypy .` воспроизводимым:
+  исключить runtime/tmp-директории (`tmp_pytest_run*`,
+  `.tmp_pytest_runs`, `.pytest_local_tmp`, `.codex_tmp`)
+  через конфигурацию и проверить в CI-подобном запуске
+  (`pyproject.toml`, `.gitignore`).
+- [ ] [P2][Testing] Снять полный `skip` с `tests/unit/test_gui_views.py`
+  или вынести эти тесты в отдельный job с `pytest-qt`
+  и реальным PyQt6-окружением.
+- [ ] [P3][Code Quality] Закрыть техдолг в `api/routes.py`:
+  либо внедрить неиспользуемые декораторы (`api_endpoint`,
+  `api_callback`), либо удалить мертвый код и комментарий `TODO`.
+
 ## Правило ведения TODO
 
 - Закрытые задачи удаляем из файла, не оставляем в виде `[x]`.

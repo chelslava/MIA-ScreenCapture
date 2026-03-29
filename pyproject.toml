@@ -164,6 +164,7 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 show_error_codes = true
 show_column_numbers = true
+exclude = '(^tmp_pytest_run.*|^\.tmp_pytest_runs/|^\.pytest_local_tmp/|^\.codex_tmp/|^tests/\.local_tmp/)'
 
 # Модули с полными type hints
 [[tool.mypy.overrides]]
