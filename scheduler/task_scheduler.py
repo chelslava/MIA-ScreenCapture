@@ -7,7 +7,6 @@
 """
 
 import contextlib
-import json
 import re
 import threading
 from collections.abc import Callable
@@ -26,7 +25,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from logger_config import get_module_logger
-from utils import atomic_write_json
+from scheduler.task_storage import TaskStorage
 
 logger = get_module_logger(__name__)
 _TIME_OF_DAY_PATTERN = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
@@ -174,6 +173,9 @@ class TaskScheduler:
             max_concurrent_tasks: Лимит параллельных задач APScheduler.
         """
         self.persist_path = persist_path
+        self._storage = (
+            TaskStorage(persist_path) if persist_path is not None else None
+        )
         self._tasks: dict[str, ScheduleTask] = {}
         self._lock = threading.Lock()
         self._max_concurrent_tasks = max(1, int(max_concurrent_tasks))
@@ -193,7 +195,7 @@ class TaskScheduler:
         )
 
         # Загрузка сохранённых задач
-        if self.persist_path:
+        if self._storage is not None:
             self._load_tasks()
 
     def start(self) -> None:
@@ -627,14 +629,11 @@ class TaskScheduler:
 
     def _load_tasks(self) -> None:
         """Загрузка задач из файла сохранения."""
-        if not self.persist_path or not self.persist_path.exists():
+        if self._storage is None:
             return
 
         try:
-            with open(self.persist_path, encoding="utf-8") as f:
-                data = json.load(f)
-
-            for task_data in data.get("tasks", []):
+            for task_data in self._storage.load_tasks_payload():
                 try:
                     task = ScheduleTask.from_dict(task_data)
                     self._tasks[task.id] = task
@@ -642,7 +641,9 @@ class TaskScheduler:
                     logger.error(f"Ошибка загрузки задачи: {e}")
 
             logger.info(
-                f"Загружено {len(self._tasks)} задач из {self.persist_path}"
+                "Загружено %s задач из %s",
+                len(self._tasks),
+                self._storage.persist_path,
             )
 
         except Exception as e:
@@ -650,7 +651,7 @@ class TaskScheduler:
 
     def _save_tasks(self) -> None:
         """Сохранение задач в файл."""
-        if not self.persist_path:
+        if self._storage is None:
             return
 
         try:
@@ -658,11 +659,7 @@ class TaskScheduler:
                 tasks_snapshot = [
                     task.to_dict() for task in self._tasks.values()
                 ]
-            data = {
-                "tasks": tasks_snapshot,
-                "last_updated": datetime.now().isoformat(),
-            }
-            atomic_write_json(self.persist_path, data)
+            self._storage.save_tasks_payload(tasks_snapshot)
         except Exception as e:
             logger.error(f"Ошибка сохранения задач: {e}")
 
