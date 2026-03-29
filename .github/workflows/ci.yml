@@ -74,6 +74,7 @@ jobs:
             tests/integration/test_api_error_handling.py `
             tests/integration/test_api_recording_routes.py `
             tests/integration/test_api.py `
+            tests/integration/test_api_extended.py `
             -v --tb=short --basetemp=tests/.local_tmp/pytest/integration 2>&1 `
             | Tee-Object -FilePath ".ci-logs/integration-tests-${{ matrix.python-version }}.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

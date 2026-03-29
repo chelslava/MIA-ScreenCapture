@@ -17,6 +17,19 @@
 - Порт API:
 - API токен:
 
+### Быстрый запуск авто-прогона
+
+```bash
+uv run python scripts/api_smoke_run.py \
+  --base-url http://127.0.0.1:5010 \
+  --api-key <TOKEN> \
+  --duration-minutes 30 \
+  --interval-seconds 15
+```
+
+Скрипт отправляет циклические `GET /health`, `GET /api/v1/status`,
+`GET /api/v1/config` и дописывает итоговый блок в этот файл.
+
 ## Чеклист
 
 - [ ] Запущен GUI (`uv run python main.py --gui`).

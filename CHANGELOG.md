@@ -44,6 +44,12 @@
   остановка записи теперь ожидает завершение без `TimeoutError`.
 - Обновлён unit-тест runtime API (`tests/unit/test_main_api_runtime.py`)
   для проверки сценария stop без таймаута GUI.
+- Блокирующий integration-step в CI расширен:
+  добавлен `tests/integration/test_api_extended.py`.
+- Интеграционные тесты `tests/integration/test_api_extended.py`
+  мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
+- Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного
+  smoke-прогона API и автодобавления отчёта в release-note.
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
 - Расширены unit-тесты для фильтра записей и очистки списка.
 - Выполнен headless smoke-run API runtime: `start/stop/restart`, смена порта
