@@ -33,6 +33,10 @@
   при открытом live-логе.
 - В `release.yml` добавлен smoke-test собранного Windows EXE:
   запуск в `--headless`, проверка `/health`, корректная остановка процесса.
+- Блокирующий integration-step в CI расширен:
+  добавлен `tests/integration/test_api.py`.
+- Интеграционные тесты `tests/integration/test_api.py` приведены
+  к актуальному v1-контракту (`/api/v1/*`) и стабилизированы по rate-limit.
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
 - Расширены unit-тесты для фильтра записей и очистки списка.
 - Выполнен headless smoke-run API runtime: `start/stop/restart`, смена порта
