@@ -479,34 +479,14 @@ def _register_legacy_routes(
         return pause_recording()
 
 
-def register_routes(app, server) -> None:
-    """
-    Регистрация всех маршрутов API с Flask приложением.
 
-    Args:
-        app: Экземпляр Flask приложения
-        server: Экземпляр APIServer для обратных вызовов
-    """
-    from api.swagger import register_swagger_routes
-
-    # Регистрация Swagger документации
-    register_swagger_routes(app)
-    _register_request_hooks(app, server)
-
-    # Создаём Blueprint для API v1
-    from flask import Blueprint
-
-    api_v1 = Blueprint("api_v1", __name__, url_prefix="/api/v1")
+def _register_status_routes(api_v1: Any, server: Any) -> Callable[[], Any]:
+    """Регистрирует маршруты состояния API."""
 
     @api_v1.route("/status", methods=["GET"])
     @require_api_key
-    def get_status():
-        """
-        Получение текущего статуса записи.
-
-        Returns:
-            JSON с информацией о статусе записи
-        """
+    def get_status() -> Any:
+        """Получение текущего статуса записи."""
         try:
             callback = server.get_callback("status")
             if callback:
@@ -517,27 +497,31 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения статуса: {e}")
             return _internal_error_response()
 
+    @api_v1.route("operations/<operation_id>", methods=["GET"])
+    @require_api_key
+    def get_operation_status(operation_id: str) -> Any:
+        """Получение статуса фоновой операции."""
+        try:
+            operation = server.get_background_operation(operation_id)
+            return _background_operation_status_response(operation)
+        except Exception as e:
+            logger.exception(f"Ошибка получения статуса операции: {e}")
+            return _internal_error_response()
+
+    return get_status
+
+
+def _register_recording_routes(
+    api_v1: Any,
+    server: Any,
+) -> tuple[Callable[[], Any], Callable[[], Any], Callable[[], Any]]:
+    """Регистрирует маршруты управления записью."""
+
     @api_v1.route("/start", methods=["POST"])
     @rate_limit
     @require_api_key
-    def start_recording():
-        """
-        Начало новой записи.
-
-        Тело запроса (JSON):
-            - area: "full" | "window" | "rect"
-            - window_title: str (опционально, для режима окна)
-            - rect: [x1, y1, x2, y2] (опционально, для режима прямоугольника)
-            - audio: "mic" | "system" | "none" | "both"
-            - output_path: str (опционально)
-            - fps: int (опционально, 1-120)
-            - codec: str (опционально)
-            - bitrate: str (опционально, формат: 2M, 5000K)
-            - duration: int (опционально, секунды)
-
-        Returns:
-            JSON с ID записи или ошибкой
-        """
+    def start_recording() -> Any:
+        """Начало новой записи."""
         try:
 
             def _handler() -> Any:
@@ -546,13 +530,11 @@ def register_routes(app, server) -> None:
                     return parse_error
                 assert data is not None
 
-                # Валидация входных данных
                 try:
                     validated = StartRecordingRequest(**data)
                 except ValidationError as e:
                     return handle_validation_error(e)
 
-                # Преобразование в словарь для обратного вызова
                 callback_data = validated.model_dump(exclude_none=True)
 
                 callback = server.get_callback("start")
@@ -579,13 +561,8 @@ def register_routes(app, server) -> None:
     @api_v1.route("stop", methods=["POST"])
     @rate_limit
     @require_api_key
-    def stop_recording():
-        """
-        Остановка текущей записи.
-
-        Returns:
-            JSON с результатом
-        """
+    def stop_recording() -> Any:
+        """Остановка текущей записи."""
         try:
             return _execute_with_idempotency(
                 server,
@@ -595,27 +572,11 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка остановки записи: {e}")
             return _internal_error_response()
 
-    @api_v1.route("operations/<operation_id>", methods=["GET"])
-    @require_api_key
-    def get_operation_status(operation_id: str):
-        """Получение статуса фоновой операции."""
-        try:
-            operation = server.get_background_operation(operation_id)
-            return _background_operation_status_response(operation)
-        except Exception as e:
-            logger.exception(f"Ошибка получения статуса операции: {e}")
-            return _internal_error_response()
-
     @api_v1.route("pause", methods=["POST"])
     @rate_limit
     @require_api_key
-    def pause_recording():
-        """
-        Пауза или возобновление текущей записи.
-
-        Returns:
-            JSON с новым состоянием паузы
-        """
+    def pause_recording() -> Any:
+        """Пауза или возобновление текущей записи."""
         try:
 
             def _handler() -> Any:
@@ -632,13 +593,8 @@ def register_routes(app, server) -> None:
 
     @api_v1.route("recordings", methods=["GET"])
     @require_api_key
-    def get_recordings():
-        """
-        Получение списка недавних записей.
-
-        Returns:
-            JSON со списком записей
-        """
+    def get_recordings() -> Any:
+        """Получение списка недавних записей."""
         try:
             callback = server.get_callback("recordings")
             if callback:
@@ -652,13 +608,8 @@ def register_routes(app, server) -> None:
 
     @api_v1.route("events/recent", methods=["GET"])
     @require_api_key
-    def get_recent_events():
-        """
-        Получение недавних real-time событий записи.
-
-        Query параметры:
-            - limit: int (1..500), опционально, по умолчанию 50
-        """
+    def get_recent_events() -> Any:
+        """Получение недавних real-time событий записи."""
         try:
             limit_raw = request.args.get("limit", "50")
             try:
@@ -682,7 +633,7 @@ def register_routes(app, server) -> None:
 
     @api_v1.route("events/stats", methods=["GET"])
     @require_api_key
-    def get_events_stats():
+    def get_events_stats() -> Any:
         """Получение статистики real-time event-менеджера."""
         try:
             manager = server.get_websocket_manager()
@@ -698,15 +649,16 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения статистики событий: {e}")
             return _internal_error_response()
 
+    return start_recording, stop_recording, pause_recording
+
+
+def _register_schedule_routes(api_v1: Any, server: Any) -> None:
+    """Регистрирует маршруты планировщика."""
+
     @api_v1.route("schedule", methods=["GET"])
     @require_api_key
-    def get_schedule():
-        """
-        Получение списка запланированных задач.
-
-        Returns:
-            JSON со списком задач
-        """
+    def get_schedule() -> Any:
+        """Получение списка запланированных задач."""
         try:
             callback = server.get_callback("get_schedule")
             if callback:
@@ -721,23 +673,8 @@ def register_routes(app, server) -> None:
     @api_v1.route("schedule", methods=["POST"])
     @rate_limit
     @require_api_key
-    def create_schedule():
-        """
-        Создание новой запланированной задачи.
-
-        Тело запроса (JSON):
-            - name: str (название задачи)
-            - trigger: "once" | "daily" | "weekly" | "interval"
-            - datetime: str (формат ISO, для once)
-            - time: str "HH:MM" (для daily/weekly)
-            - day_of_week: str "0,1,2,3,4" (для weekly, 0=Понедельник)
-            - hours: int (для interval)
-            - minutes: int (для interval)
-            - params: { параметры записи }
-
-        Returns:
-            JSON с ID задачи
-        """
+    def create_schedule() -> Any:
+        """Создание новой запланированной задачи."""
         try:
 
             def _handler() -> Any:
@@ -746,16 +683,13 @@ def register_routes(app, server) -> None:
                     return parse_error
                 assert data is not None
 
-                # Валидация входных данных
                 try:
                     validated = CreateScheduleRequest(**data)
                 except ValidationError as e:
                     return handle_validation_error(e)
 
-                # Преобразование в словарь для обратного вызова
                 callback_data = validated.model_dump(exclude_none=True)
 
-                # Преобразование params если есть
                 if validated.params:
                     callback_data["params"] = validated.params.model_dump(
                         exclude_none=True
@@ -785,16 +719,8 @@ def register_routes(app, server) -> None:
     @api_v1.route("schedule/<task_id>", methods=["DELETE"])
     @rate_limit
     @require_api_key
-    def delete_schedule(task_id: str):
-        """
-        Удаление запланированной задачи.
-
-        Args:
-            task_id: ID задачи для удаления
-
-        Returns:
-            JSON с результатом
-        """
+    def delete_schedule(task_id: str) -> Any:
+        """Удаление запланированной задачи."""
         try:
 
             def _handler() -> Any:
@@ -817,19 +743,8 @@ def register_routes(app, server) -> None:
     @api_v1.route("schedule/<task_id>", methods=["PUT"])
     @rate_limit
     @require_api_key
-    def update_schedule(task_id: str):
-        """
-        Обновление запланированной задачи.
-
-        Args:
-            task_id: ID задачи для обновления
-
-        Тело запроса (JSON):
-            Поля задачи для обновления
-
-        Returns:
-            JSON с результатом
-        """
+    def update_schedule(task_id: str) -> Any:
+        """Обновление запланированной задачи."""
         try:
 
             def _handler() -> Any:
@@ -839,7 +754,6 @@ def register_routes(app, server) -> None:
                 assert data is not None
                 data["id"] = task_id
 
-                # Валидация входных данных
                 try:
                     validated = UpdateScheduleRequest(**data)
                 except ValidationError as e:
@@ -866,19 +780,8 @@ def register_routes(app, server) -> None:
     @api_v1.route("schedule/<task_id>/toggle", methods=["POST"])
     @rate_limit
     @require_api_key
-    def toggle_schedule(task_id: str):
-        """
-        Включение или отключение запланированной задачи.
-
-        Args:
-            task_id: ID задачи для переключения
-
-        Тело запроса (JSON):
-            - enabled: bool
-
-        Returns:
-            JSON с новым состоянием включения
-        """
+    def toggle_schedule(task_id: str) -> Any:
+        """Включение или отключение запланированной задачи."""
         try:
 
             def _handler() -> Any:
@@ -887,7 +790,6 @@ def register_routes(app, server) -> None:
                     return parse_error
                 assert data is not None
 
-                # Валидация входных данных
                 try:
                     validated = ToggleScheduleRequest(**data)
                 except ValidationError as e:
@@ -904,15 +806,14 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка переключения расписания: {e}")
             return _internal_error_response()
 
+
+def _register_resource_routes(api_v1: Any, server: Any) -> None:
+    """Регистрирует маршруты ресурсов окружения."""
+
     @api_v1.route("devices", methods=["GET"])
     @require_api_key
-    def get_devices():
-        """
-        Получение доступных аудиоустройств.
-
-        Returns:
-            JSON со списком устройств ввода/вывода
-        """
+    def get_devices() -> Any:
+        """Получение доступных аудиоустройств."""
         try:
             callback = server.get_callback("devices")
             if callback:
@@ -926,13 +827,8 @@ def register_routes(app, server) -> None:
 
     @api_v1.route("windows", methods=["GET"])
     @require_api_key
-    def get_windows():
-        """
-        Получение доступных окон для захвата.
-
-        Returns:
-            JSON со списком окон
-        """
+    def get_windows() -> Any:
+        """Получение доступных окон для захвата."""
         try:
             callback = server.get_callback("windows")
             if callback:
@@ -944,15 +840,14 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка получения окон: {e}")
             return _internal_error_response()
 
+
+def _register_config_routes(api_v1: Any, server: Any) -> None:
+    """Регистрирует маршруты конфигурации."""
+
     @api_v1.route("config", methods=["GET"])
     @require_api_key
-    def get_config():
-        """
-        Получение текущей конфигурации.
-
-        Returns:
-            JSON с конфигурацией
-        """
+    def get_config() -> Any:
+        """Получение текущей конфигурации."""
         try:
             callback = server.get_callback("get_config")
             if callback:
@@ -967,16 +862,8 @@ def register_routes(app, server) -> None:
     @api_v1.route("config", methods=["PUT"])
     @rate_limit
     @require_api_key
-    def update_config():
-        """
-        Обновление конфигурации.
-
-        Тело запроса (JSON):
-            Поля конфигурации для обновления
-
-        Returns:
-            JSON с результатом
-        """
+    def update_config() -> Any:
+        """Обновление конфигурации."""
         try:
 
             def _handler() -> Any:
@@ -985,7 +872,6 @@ def register_routes(app, server) -> None:
                     return parse_error
                 assert data is not None
 
-                # Валидация входных данных
                 try:
                     validated = UpdateConfigRequest(**data)
                 except ValidationError as e:
@@ -1007,11 +893,13 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка обновления конфигурации: {e}")
             return _internal_error_response()
 
-    _register_health_route(app, server)
+
+def _register_observability_routes(api_v1: Any, server: Any) -> None:
+    """Регистрирует маршруты observability."""
 
     @api_v1.route("observability/metrics", methods=["GET"])
     @require_api_key
-    def get_observability_metrics():
+    def get_observability_metrics() -> Any:
         """Получение эксплуатационных метрик API."""
         try:
             return jsonify(
@@ -1026,7 +914,7 @@ def register_routes(app, server) -> None:
 
     @api_v1.route("observability/baseline", methods=["GET"])
     @require_api_key
-    def get_observability_baseline():
+    def get_observability_baseline() -> Any:
         """Получение baseline SLO по эксплуатационным метрикам."""
         try:
             return jsonify(
@@ -1038,6 +926,35 @@ def register_routes(app, server) -> None:
         except Exception as e:
             logger.exception(f"Ошибка получения observability baseline: {e}")
             return _internal_error_response()
+
+
+def register_routes(app, server) -> None:
+    """
+    Регистрация всех маршрутов API с Flask приложением.
+
+    Args:
+        app: Экземпляр Flask приложения
+        server: Экземпляр APIServer для обратных вызовов
+    """
+    from api.swagger import register_swagger_routes
+
+    # Регистрация Swagger документации
+    register_swagger_routes(app)
+    _register_request_hooks(app, server)
+
+    # Создаём Blueprint для API v1
+    from flask import Blueprint
+
+    api_v1 = Blueprint("api_v1", __name__, url_prefix="/api/v1")
+    _register_health_route(app, server)
+    get_status = _register_status_routes(api_v1, server)
+    start_recording, stop_recording, pause_recording = (
+        _register_recording_routes(api_v1, server)
+    )
+    _register_schedule_routes(api_v1, server)
+    _register_resource_routes(api_v1, server)
+    _register_config_routes(api_v1, server)
+    _register_observability_routes(api_v1, server)
 
     # Регистрация Blueprint
     app.register_blueprint(api_v1)
