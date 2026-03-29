@@ -37,6 +37,7 @@
   добавлен `tests/integration/test_api.py`.
 - Интеграционные тесты `tests/integration/test_api.py` приведены
   к актуальному v1-контракту (`/api/v1/*`) и стабилизированы по rate-limit.
+- Блокирующий `mypy`-scope в CI расширен на `api/swagger.py`.
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
 - Расширены unit-тесты для фильтра записей и очистки списка.
 - Выполнен headless smoke-run API runtime: `start/stop/restart`, смена порта
