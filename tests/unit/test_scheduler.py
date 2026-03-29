@@ -455,6 +455,40 @@ class TestTaskScheduler:
         assert result is False
         assert scheduler._tasks["duplicate"].name == "Task 1"
 
+    def test_add_task_rejects_weekly_without_days(self, tasks_file: Path):
+        """Weekly задача без дней должна отклоняться."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        task = ScheduleTask(
+            id="invalid-weekly",
+            name="Invalid Weekly",
+            schedule_type=ScheduleType.WEEKLY,
+            params=RecordingParams(),
+            time_of_day="10:00",
+            days_of_week=[],
+        )
+
+        result = scheduler.add_task(task)
+
+        assert result is False
+        assert scheduler.get_task("invalid-weekly") is None
+
+    def test_add_task_rejects_interval_zero(self, tasks_file: Path):
+        """Interval задача с нулевым интервалом должна отклоняться."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        task = ScheduleTask(
+            id="invalid-interval",
+            name="Invalid Interval",
+            schedule_type=ScheduleType.INTERVAL,
+            params=RecordingParams(),
+            interval_hours=0,
+            interval_minutes=0,
+        )
+
+        result = scheduler.add_task(task)
+
+        assert result is False
+        assert scheduler.get_task("invalid-interval") is None
+
     def test_remove_task(self, tasks_file: Path):
         """Проверка удаления задачи."""
         scheduler = TaskScheduler(persist_path=tasks_file)

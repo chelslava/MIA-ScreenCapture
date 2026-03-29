@@ -293,3 +293,45 @@ def test_task_dialog_get_task_data_for_weekly() -> None:
     assert data["schedule_type"] == ScheduleType.WEEKLY
     assert data["time_of_day"] == "08:45"
     assert data["days_of_week"] == [0, 2, 4]
+
+
+def test_task_dialog_accept_rejects_weekly_without_days(monkeypatch) -> None:
+    """Диалог блокирует weekly без выбранных дней."""
+    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog.type_combo = SimpleNamespace(currentIndex=lambda: 2)
+    dialog.day_checks = [SimpleNamespace(isChecked=lambda: False)] * 7
+    dialog.interval_hours = SimpleNamespace(value=lambda: 1)
+    dialog.interval_minutes = SimpleNamespace(value=lambda: 0)
+
+    warning_calls: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(
+        scheduler_tab.QMessageBox,
+        "warning",
+        lambda *args: warning_calls.append(args),
+    )
+
+    dialog.accept()
+
+    assert len(warning_calls) == 1
+    assert "еженедельной" in str(warning_calls[0][2]).lower()
+
+
+def test_task_dialog_accept_rejects_zero_interval(monkeypatch) -> None:
+    """Диалог блокирует interval с нулевым интервалом."""
+    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog.type_combo = SimpleNamespace(currentIndex=lambda: 3)
+    dialog.day_checks = [SimpleNamespace(isChecked=lambda: True)] * 7
+    dialog.interval_hours = SimpleNamespace(value=lambda: 0)
+    dialog.interval_minutes = SimpleNamespace(value=lambda: 0)
+
+    warning_calls: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(
+        scheduler_tab.QMessageBox,
+        "warning",
+        lambda *args: warning_calls.append(args),
+    )
+
+    dialog.accept()
+
+    assert len(warning_calls) == 1
+    assert "интервал" in str(warning_calls[0][2]).lower()

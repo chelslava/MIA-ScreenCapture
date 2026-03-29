@@ -243,6 +243,13 @@ class TaskScheduler:
                 logger.warning(f"Задача {task.id} уже существует")
                 return False
 
+            is_valid, validation_error = self._validate_task_schedule(task)
+            if not is_valid:
+                logger.warning(
+                    "Задача %s отклонена: %s", task.id, validation_error
+                )
+                return False
+
             self._tasks[task.id] = task
 
             if task.enabled and self._scheduler.running:
@@ -265,6 +272,15 @@ class TaskScheduler:
         with self._lock:
             if task.id not in self._tasks:
                 logger.warning(f"Задача {task.id} не найдена")
+                return False
+
+            is_valid, validation_error = self._validate_task_schedule(task)
+            if not is_valid:
+                logger.warning(
+                    "Обновление задачи %s отклонено: %s",
+                    task.id,
+                    validation_error,
+                )
                 return False
 
             # Удаление старой задачи
@@ -488,6 +504,57 @@ class TaskScheduler:
             return CronTrigger.from_crontab(task.cron_expression)
 
         return None
+
+    def _validate_task_schedule(
+        self, task: ScheduleTask
+    ) -> tuple[bool, str | None]:
+        """Проверяет, что задача может быть корректно запланирована."""
+        if task.schedule_type == ScheduleType.ONCE:
+            if task.start_time is None:
+                return False, "Для разовой задачи требуется start_time"
+            return True, None
+
+        if task.schedule_type == ScheduleType.DAILY:
+            if not task.time_of_day:
+                return False, "Для ежедневной задачи требуется time_of_day"
+            return True, None
+
+        if task.schedule_type == ScheduleType.WEEKLY:
+            if not task.time_of_day:
+                return False, "Для weekly задачи требуется time_of_day"
+            if not task.days_of_week:
+                return (
+                    False,
+                    "Для weekly задачи нужен минимум один день недели",
+                )
+            invalid_days = [d for d in task.days_of_week if d < 0 or d > 6]
+            if invalid_days:
+                return (
+                    False,
+                    f"Недопустимые дни недели: {invalid_days}",
+                )
+            return True, None
+
+        if task.schedule_type == ScheduleType.INTERVAL:
+            hours = task.interval_hours or 0
+            minutes = task.interval_minutes or 0
+            if hours <= 0 and minutes <= 0:
+                return (
+                    False,
+                    "Для interval задачи нужен интервал больше 0",
+                )
+            return True, None
+
+        if task.schedule_type == ScheduleType.CRON:
+            if not task.cron_expression:
+                return False, "Для cron задачи требуется cron_expression"
+            try:
+                CronTrigger.from_crontab(task.cron_expression)
+            except Exception as e:
+                return False, f"Некорректный cron_expression: {e}"
+            return True, None
+
+        return False, "Неизвестный тип расписания"
 
     def _execute_task(self, task_id: str) -> None:
         """

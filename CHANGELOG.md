@@ -78,6 +78,11 @@
   в `APIServer`/`main.py`.
 - Добавлены unit-тесты на применение `server_threads` в runtime
   и при создании waitress-сервера.
+- Добавлена защита от невыполнимых scheduler-задач:
+  - `TaskScheduler` отклоняет weekly без дней и interval с нулевым шагом;
+  - `TaskDialog` валидирует weekly/interval перед `accept()`.
+- Добавлены unit-тесты для backend/UI-валидации scheduler-задач
+  (`tests/unit/test_scheduler.py`, `tests/unit/test_scheduler_tab.py`).
 
 ## [1.4.3] - 2026-03-28
 

@@ -363,6 +363,38 @@ class TaskDialog(QDialog):
 
         return data
 
+    def accept(self) -> None:
+        """
+        Валидирует данные формы перед закрытием диалога.
+
+        Блокирует сохранение заведомо невыполнимых сценариев:
+        - weekly без выбранных дней;
+        - interval с нулевым интервалом.
+        """
+        schedule_type_index = self.type_combo.currentIndex()
+        if schedule_type_index == 2:  # Еженедельная
+            selected_days = [c for c in self.day_checks if c.isChecked()]
+            if not selected_days:
+                QMessageBox.warning(
+                    self,
+                    "Некорректное расписание",
+                    "Для еженедельной задачи выберите хотя бы один день.",
+                )
+                return
+
+        if schedule_type_index == 3:  # Интервал
+            hours = self.interval_hours.value()
+            minutes = self.interval_minutes.value()
+            if hours <= 0 and minutes <= 0:
+                QMessageBox.warning(
+                    self,
+                    "Некорректное расписание",
+                    "Интервал должен быть больше нуля.",
+                )
+                return
+
+        super().accept()
+
 
 class SchedulerTab(QWidget):
     """Виджет вкладки для управления запланированными задачами."""
