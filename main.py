@@ -73,7 +73,6 @@ logger = get_module_logger(__name__)
 
 _GUI_DEFAULT_TIMEOUT_SECONDS = 10.0
 _GUI_START_TIMEOUT_SECONDS = 20.0
-_GUI_STOP_TIMEOUT_SECONDS = 60.0
 
 
 class _MainThreadExecutor:
@@ -95,7 +94,7 @@ class _MainThreadExecutor:
     def _run_callable(fn: Any) -> None:
         fn()
 
-    def run_sync(self, fn: Any, timeout: float = 10.0) -> Any:
+    def run_sync(self, fn: Any, timeout: float | None = 10.0) -> Any:
         done = threading.Event()
         result: dict[str, Any] = {}
 
@@ -937,7 +936,7 @@ class VideoRecorderApp:
     def _run_on_gui_thread(
         self,
         fn: Any,
-        timeout: float = _GUI_DEFAULT_TIMEOUT_SECONDS,
+        timeout: float | None = _GUI_DEFAULT_TIMEOUT_SECONDS,
     ) -> Any:
         """Безопасный синхронный вызов функции в GUI-потоке."""
         if not self._main_window:
@@ -976,13 +975,45 @@ class VideoRecorderApp:
     def _stop_recording(self) -> dict[str, Any]:
         """Остановка записи."""
         if self._main_window:
-            return cast(
-                dict[str, Any],
-                self._run_on_gui_thread(
-                    lambda: self._main_window.stop_recording(),
-                    timeout=_GUI_STOP_TIMEOUT_SECONDS,
-                ),
-            )
+            try:
+                return cast(
+                    dict[str, Any],
+                    self._run_on_gui_thread(
+                        lambda: self._main_window.stop_recording(),
+                        timeout=_GUI_STOP_TIMEOUT_SECONDS,
+                    ),
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Таймаут остановки записи в GUI-потоке (%.1f c). "
+                    "Пробуем резервную остановку через сервис.",
+                    _GUI_STOP_TIMEOUT_SECONDS,
+                )
+                try:
+                    fallback_result = self._recording_service.stop_recording()
+                except Exception as e:
+                    logger.exception(
+                        "Резервная остановка после таймаута GUI завершилась "
+                        "ошибкой: %s",
+                        e,
+                    )
+                    return {
+                        "success": False,
+                        "error": (
+                            "Остановка записи превысила таймаут GUI-потока, "
+                            "резервная остановка не удалась"
+                        ),
+                    }
+
+                if fallback_result.get("success"):
+                    fallback_result.setdefault(
+                        "warning",
+                        (
+                            "Остановка завершена через резервный путь после "
+                            "таймаута GUI-потока"
+                        ),
+                    )
+                return cast(dict[str, Any], fallback_result)
         return self._recording_service.stop_recording()
 
     def _toggle_pause(self) -> dict[str, Any]:

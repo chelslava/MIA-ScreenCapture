@@ -38,6 +38,10 @@
 - Интеграционные тесты `tests/integration/test_api.py` приведены
   к актуальному v1-контракту (`/api/v1/*`) и стабилизированы по rate-limit.
 - Блокирующий `mypy`-scope в CI расширен на `api/swagger.py`.
+- Убрано искусственное ограничение таймаута GUI для API `stop`:
+  остановка записи теперь ожидает завершение без `TimeoutError`.
+- Обновлён unit-тест runtime API (`tests/unit/test_main_api_runtime.py`)
+  для проверки сценария stop без таймаута GUI.
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
 - Расширены unit-тесты для фильтра записей и очистки списка.
 - Выполнен headless smoke-run API runtime: `start/stop/restart`, смена порта
