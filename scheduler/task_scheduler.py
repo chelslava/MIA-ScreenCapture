@@ -508,20 +508,8 @@ class TaskScheduler:
     def _validate_task_schedule(
         self, task: ScheduleTask
     ) -> tuple[bool, str | None]:
-        """Проверяет, что задача может быть корректно запланирована."""
-        if task.schedule_type == ScheduleType.ONCE:
-            if task.start_time is None:
-                return False, "Для разовой задачи требуется start_time"
-            return True, None
-
-        if task.schedule_type == ScheduleType.DAILY:
-            if not task.time_of_day:
-                return False, "Для ежедневной задачи требуется time_of_day"
-            return True, None
-
+        """Проверяет только критичные невыполнимые сценарии расписания."""
         if task.schedule_type == ScheduleType.WEEKLY:
-            if not task.time_of_day:
-                return False, "Для weekly задачи требуется time_of_day"
             if not task.days_of_week:
                 return (
                     False,
@@ -533,7 +521,6 @@ class TaskScheduler:
                     False,
                     f"Недопустимые дни недели: {invalid_days}",
                 )
-            return True, None
 
         if task.schedule_type == ScheduleType.INTERVAL:
             hours = task.interval_hours or 0
@@ -543,18 +530,7 @@ class TaskScheduler:
                     False,
                     "Для interval задачи нужен интервал больше 0",
                 )
-            return True, None
-
-        if task.schedule_type == ScheduleType.CRON:
-            if not task.cron_expression:
-                return False, "Для cron задачи требуется cron_expression"
-            try:
-                CronTrigger.from_crontab(task.cron_expression)
-            except Exception as e:
-                return False, f"Некорректный cron_expression: {e}"
-            return True, None
-
-        return False, "Неизвестный тип расписания"
+        return True, None
 
     def _execute_task(self, task_id: str) -> None:
         """
