@@ -115,8 +115,10 @@ def _remove_local_temp_dir(temp_dir: Path) -> None:
             break
         except OSError:
             if attempt == 9:
-                raise
+                # Не валим тесты из-за блокировки файлов в teardown на Windows.
+                return
             time.sleep(0.05 * (attempt + 1))
+
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent.parent))
