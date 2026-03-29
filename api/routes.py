@@ -479,7 +479,6 @@ def _register_legacy_routes(
         return pause_recording()
 
 
-
 def _register_status_routes(api_v1: Any, server: Any) -> Callable[[], Any]:
     """Регистрирует маршруты состояния API."""
 
