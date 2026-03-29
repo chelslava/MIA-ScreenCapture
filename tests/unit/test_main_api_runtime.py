@@ -231,6 +231,36 @@ class TestMainApiRuntime:
             app._api_server.app, app._api_server
         )
 
+    def test_start_api_server_registers_expected_callbacks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """При старте API должны регистрироваться все runtime callbacks."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        monkeypatch.setenv("MIA_API_KEY", "env-token")
+        monkeypatch.setattr("api.server.APIServer", FakeApiServer)
+        monkeypatch.setattr("api.routes.register_routes", lambda *args: None)
+
+        result = app._start_api_server(force=True)
+
+        assert result["success"] is True
+        assert isinstance(app._api_server, FakeApiServer)
+        assert set(app._api_server.callbacks.keys()) == {
+            "status",
+            "start",
+            "stop",
+            "pause",
+            "recordings",
+            "get_schedule",
+            "create_schedule",
+            "delete_schedule",
+            "update_schedule",
+            "toggle_schedule",
+            "devices",
+            "windows",
+            "get_config",
+            "update_config",
+        }
+
     def test_start_api_server_stores_generated_key_in_env(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -373,6 +403,51 @@ class TestMainApiRuntime:
         stop_mock.assert_called_once()
         start_mock.assert_called_once_with(force=True)
         assert result == {"success": True, "status": {"running": True}}
+
+    def test_get_api_controls_returns_expected_actions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GUI должен получать полный набор API-контролов."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+
+        start_mock = MagicMock(return_value={"success": True})
+        stop_mock = MagicMock(return_value={"success": True})
+        restart_mock = MagicMock(return_value={"success": True})
+        apply_settings_mock = MagicMock(return_value={"success": True})
+        get_status_mock = MagicMock(return_value={"success": True})
+        open_logs_mock = MagicMock()
+
+        app._start_api_server = start_mock
+        app._stop_api_server = stop_mock
+        app._restart_api_server = restart_mock
+        app._apply_api_settings = apply_settings_mock
+        app._get_api_status = get_status_mock
+        app._open_api_logs_folder = open_logs_mock
+
+        controls = app.get_api_controls()
+
+        assert set(controls.keys()) == {
+            "get_status",
+            "apply_settings",
+            "start",
+            "stop",
+            "restart",
+            "open_logs",
+        }
+
+        controls["get_status"]()
+        controls["apply_settings"]({"port": 5011})
+        controls["start"]()
+        controls["stop"]()
+        controls["restart"]()
+        controls["open_logs"]()
+
+        get_status_mock.assert_called_once_with()
+        apply_settings_mock.assert_called_once_with({"port": 5011})
+        start_mock.assert_called_once_with(force=True)
+        stop_mock.assert_called_once_with()
+        restart_mock.assert_called_once_with()
+        open_logs_mock.assert_called_once_with()
 
     def test_stop_recording_uses_extended_gui_timeout(
         self, monkeypatch: pytest.MonkeyPatch

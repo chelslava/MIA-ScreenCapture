@@ -1,273 +1,70 @@
-# TODO: Краткосрочные Задачи До `v1.4.5`
+# TODO: Рефакторинг-План До `v1.4.6`
 
-> Обновлено: 2026-03-29
-> Статус: активный список до ближайшего релиза
+> Обновлено: 2026-03-29  
+> Фокус релиза: устойчивый рефакторинг без регрессий поведения
 
-## P0 (обязательно до релиза)
+## P0 (обязательно в `v1.4.6`)
 
-- Актуальных P0-задач перед релизом `v1.4.5` не осталось.
+- [ ] Разбить `main.py:VideoRecorderApp` на координирующие компоненты:
+  `ApiRuntimeCoordinator`, `GuiRuntimeCoordinator`,
+  `RecordingRuntimeCoordinator` с явными зонами ответственности.
+- [ ] Декомпозировать `api/routes.py:register_routes()` на группы роутов
+  (`status`, `recording`, `config`, `schedule`, `observability`)
+  и убрать единый «монолитный» регистратор.
+- [ ] Вынести lifecycle API-сервера в отдельный stateful-менеджер
+  (`created -> starting -> running -> stopping -> stopped`) и закрыть
+  гонки `start/stop/restart` на Windows.
+- [ ] Устранить дубли модели состояния записи:
+  `gui.models.recording_state` -> единый источник истины в `core`.
+- [ ] Ввести транзакционное обновление конфигурации:
+  `load -> validate -> apply -> persist` без частичных записей.
+- [ ] Провести контрактный рефакторинг API ошибок:
+  единый формат, стабильные `error.code`, без смешения `data/error`.
+- [ ] Закрыть технический долг по типизации для рефакторинга:
+  добавить strict-проверку `mypy` для модулей, затронутых в этом релизе.
+- [ ] Добавить «защитные» тесты рефакторинга:
+  snapshot/contract tests для API и интеграционные smoke-тесты lifecycle.
 
-## P1 (следующий приоритет)
+## P1 (важно, если успеваем до code freeze)
 
-## P2 (после стабилизации релиза)
+- [ ] Вынести слой сервисов для FFmpeg-пайплайна:
+  отдельные `ProcessSupervisor`, `FinalizeService`, `RecoveryPolicy`.
+- [ ] Ввести bounded executor для фоновых API-операций
+  (лимит очереди + политика отказа + метрики saturation).
+- [ ] Рефакторинг `TaskScheduler`:
+  отделить `storage`, `trigger-builder`, `execution engine`.
+- [ ] Убрать «скрытые» side effects при старте приложения:
+  централизовать инициализацию env/API ключа и запись в Credential Manager.
+- [ ] Ввести единый `RequestContext` (`trace_id`, `request_id`, `client_ip`)
+  и проброс в бизнес-логи.
+- [ ] Стандартизовать исключения слоя домена
+  (`MIAError` и наследники) и маппинг в HTTP/GUI ответы.
 
-- [ ] Реализовать асинхронную очередь GUI-команд для API (`start/stop/pause`)
-  вместо прямых вызовов GUI-потока.
-- [ ] Добавить watchdog для FFmpeg pipeline с чистым восстановлением
-  после зависания/ошибок финализации.
-- [ ] Добавить ring-buffer для live-логов вкладки API, чтобы избежать лагов
-  UI при burst-логировании.
-- [ ] Перевести access-логи API в JSON-формат (`trace_id`, `request_id`,
-  `latency_ms`, `status`) для ускорения диагностики.
-- [ ] Перевести длительности рекордера на monotonic clock вместо
-  `time.time()`, чтобы устранить ошибки при смене системного времени.
-- [ ] Добавить debounce/батчинг для `_save_tasks()` в scheduler, чтобы
-  снизить лишний дисковый I/O.
-- [ ] Оптимизировать расчёт перцентилей latency в observability без
-  полной сортировки массива на каждый запрос.
-- [ ] Добавить мягкий таймаут/защиту остановки `TaskScheduler.stop()`
-  при зависших job callback.
-- [ ] Добавить release-gate по observability baseline
-  (`p95`, `error_rate`, `rss_mb`) перед публикацией релиза.
-- [ ] [Perf] Убрать полное копирование deque в
-  `get_recent_events()` и возвращать последние N событий
-  без `list(self._events)` на каждый запрос
-  (`api/websocket.py`, `tests/unit/test_websocket.py`).
-- [ ] [Stability] Сделать `setup_logger()` идемпотентным
-  по `atexit` и handler lifecycle
-  (`logger_config.py`, `tests/unit/test_logger_config.py`).
-- [ ] [Security] Нормализовать `X-Request-ID`:
-  whitelist символов и лимит длины (например 64),
-  при нарушении генерировать новый ID
-  (`api/server.py`, `api/routes.py`,
-  `tests/integration/test_api_error_handling.py`).
-- [ ] [Testing] Снять полный `skip` с `tests/unit/test_gui_views.py`
-  или вынести эти тесты в отдельный job с `pytest-qt`
-  и реальным PyQt6-окружением.
-- [ ] [API] Ограничить конкуренцию фоновых API-операций:
-  bounded `ThreadPoolExecutor` + лимит очереди
-  и политика отказа (`api/server.py`).
-- [ ] [API] Добавить guard от запуска API без маршрутов
-  (проверка ключевых routes в `start()` или
-  явная регистрация в `APIServer`)
-  (`api/server.py`, `main.py`, `api/routes.py`).
+## P2 (после стабилизации P0/P1)
 
-### Security (безопасность)
+- [ ] Ввести ring-buffer для live-логов GUI и ограничение памяти
+  для долгих сессий.
+- [ ] Оптимизировать observability-метрики:
+  перцентили без полной сортировки на каждый запрос.
+- [ ] Перевести критичные тайминги записи на `time.monotonic()`
+  с единым util-слоем времени.
+- [ ] Ввести deprecation-политику для legacy API routes
+  с timeline удаления и тестами обратной совместимости.
 
-- [ ] Добавить валидацию IP-заголовков в `rate_limiter.py`
-  (`X-Forwarded-For`, `X-Real-IP`) — защита от IP spoofing.
-- [ ] Валидация path traversal в `config.py:409-418` для `default_path`.
-- [ ] Установить ограничительные права доступа для `config/` и `logs/`
-  директорий (только для текущего пользователя).
-- [ ] Добавить лимит максимального значения `bitrate` в `schemas.py:44-47`
-  для защиты от DoS через завышенные параметры.
-- [ ] Экранировать спецсимволы в PowerShell toast скрипте
-  `gui/notifications.py:89-108` — защита от injection.
-- [ ] Валидация координат `rect` в `schemas.py:33-37` — ограничить
-  максимальные размеры экрана.
-- [ ] Добавить лимит `duration` в `schemas.py:47-53` — защита от исчерпания
-  диска через бесконечную запись.
-- [ ] Валидация `output_path` на недопустимые символы и зарезервированные
-  имена Windows (CON, PRN, NUL) в `api/schemas.py`.
-- [ ] Audit logging для изменений API key в `api/auth.py`.
+## Рефакторинг-Стандарты `v1.4.6`
 
-### Stability (стабильность)
+- [ ] Не менять внешние API-контракты без явной миграции и changelog entry.
+- [ ] Каждый рефакторинг-коммит должен сопровождаться тестом,
+  который доказывает сохранение поведения.
+- [ ] Запрет на «большие смешанные» PR:
+  одна архитектурная цель на один логический набор изменений.
+- [ ] Для новых модулей: обязательные docstring, type hints,
+  явные зависимости через конструктор.
 
-- [ ] Добавить проверку свободного места на диске перед началом записи.
-- [ ] Обработка потери capture-сессии с попыткой переподключения
-  в `video_recorder.py:197-210`.
-- [ ] Очистка operation store в `api/server.py` по таймеру,
-  а не только при `get()` — избежать memory leak.
-- [ ] Добавить синхронизацию `pause/resume` с capture thread
-  в `video_recorder.py:476-478` — устранить race condition.
-- [ ] Использовать `threading.Event.wait()` вместо busy-wait
-  в headless режиме `main.py:373-380`.
-- [ ] Устранить потенциальный deadlock между `_settings_lock` и `_save_lock`
-  в `config.py:270-271`.
-- [ ] Не держать `self._lock` во время `join()` capture thread
-  в `video_recorder.py:384-386,504-508`.
-- [ ] Логировать context в `core/event_bus.py:96-99` — какой handler упал.
-- [ ] Добавить метрики dropped audio chunks в `recorder/audio_recorder.py`
-  для мониторинга.
-- [ ] Очищать metrics counters (`_status_counts`, `_method_counts`,
-  `_path_counts`) в `api/server.py` — избежать unbounded growth.
-- [ ] Обработка disconnect аудиоустройства во время записи
-  в `recorder/audio_recorder.py:224-243`.
-- [ ] Логировать fallback на primary monitor при неверном `monitor_index`
-  в `video_recorder.py:61-67`.
-- [ ] Добавить состояние `ERROR` в `RecordingStatus` для failed recordings
-  в `core/recording_state.py:17-22`.
-- [ ] Валидация `task.next_run` в будущем при scheduling
-  в `scheduler/task_scheduler.py:447-448`.
-- [ ] Проверка длины пути `get_output_path()` против Windows MAX_PATH
-  в `config.py:498-526`.
+## Release Gates для `v1.4.6`
 
-### Performance (производительность)
-
-- [ ] Кэширование `get_available_windows()` и `get_audio_devices()` с TTL
-  для снижения системных вызовов.
-- [ ] Убрать лишнюю копию массива `np.array(bgr, copy=True)`
-  в `video_recorder.py:193-195` — использовать buffer protocol.
-- [ ] Вынести захардкоженные таймауты в конфигурацию:
-  `capture_stop_timeout`, `audio_queue_max_chunks`,
-  `audio_queue_get_timeout`, FFmpeg-таймауты.
-- [ ] Ограничить `ThreadPoolExecutor` queue в `api/server.py:186-189`
-  для предотвращения memory growth.
-- [ ] Добавить upper bound для rate limiter client cleanup interval
-  в `api/rate_limiter.py:113-143`.
-
-### Code Quality (качество кода)
-
-- [ ] Вынести magic numbers в константы:
-  `video_recorder.py:567` (0.9), `main_window.py:109` (100ms timer),
-  `tray_icon.py:200` (500ms animation), `core/lifecycle.py:245` (30s timeout).
-- [ ] Разбить `main.py:VideoRecorderApp` на отдельные классы
-  (SRP violation — 50+ методов).
-- [ ] Разбить `api/routes.py:535-1143` `register_routes()` на группы:
-  `_register_status_routes()`, `_register_recording_routes()`,
-  `_register_schedule_routes()`.
-- [ ] Разбить `gui/scheduler_tab.py:67-210` `TaskDialog._setup_ui()`
-  на подсекции.
-- [ ] Устранить циклическую зависимость `gui.models.recording_state`
-  -> `core.recording_state`.
-- [ ] Документировать state machine transitions для `RecordingStatus`
-  и предотвратить невалидные переходы (например, `IDLE -> PAUSED`).
-
-### Error Handling (обработка ошибок)
-
-- [ ] Заменить `except Exception: pass` на логирование в:
-  `api/auth.py:78,109,127,143`, `video_recorder.py:243,628`,
-  `ffmpeg_writer.py:268`, `hotkeys.py:151`, `notifications.py:136,151`.
-- [ ] Возвращать копию `recent_recordings` в `gui/models/recording_state.py`
-  вместо прямой ссылки.
-- [ ] Не терять user config при ошибке парсинга в `config.py:297-330`
-  — логировать и валидировать поля по отдельности.
-- [ ] Добавить версионирование конфига для миграции при смене схемы
-  в `config.py:275-295`.
-- [ ] Проверка на пустые `rect_coords` в `gui/main_window.py:433-451`.
-- [ ] Валидация пустых путей в `recorder/encoder.py:111-119`.
-
-### Logging (логирование)
-
-- [ ] Добавить debug logging для device selection в
-  `recorder/audio_recorder.py:222-262`.
-- [ ] Изменить FFmpeg not found с `warning` на `error`
-  в `main.py:232-235`.
-- [ ] Добавить `trace_id` в business logic logs в `api/routes.py`.
-- [ ] Добавить session/recording ID для корреляции логов
-  в `core/recording_service.py`.
-- [ ] Timing metrics для task execution в
-  `scheduler/task_scheduler.py:535-569`.
-
-### API Design (дизайн API)
-
-- [ ] Добавить error codes для business logic errors:
-  `recording_already_active`, `scheduler_unavailable`, `ffmpeg_not_found`.
-- [ ] Добавить error codes для auth: `AUTH_MISSING_KEY`, `AUTH_INVALID_KEY`.
-- [ ] Унифицировать response format: `data` vs `error` ключи
-  в `api/routes.py:628-635`.
-- [ ] Добавить пагинацию для `get_recordings()`, `get_recent_events()`,
-  `get_schedule()` — защита от больших ответов.
-- [ ] Покрыть `_ERROR_CODE_BY_STATUS` все коды: 500, 502, 503
-  в `api/routes.py:32-40`.
-- [ ] Mark legacy routes как deprecated с timeline
-  в `api/routes.py:1116-1142`.
-
-### Platform (платформенные особенности)
-
-- [ ] DPI scaling для screen geometry в `gui/main_window.py:122-131`
-  и `video_recorder.py:54-78`.
-- [ ] Обработка локализованных имён аудиоустройств (не только "loopback")
-  в `recorder/audio_recorder.py:509-517`.
-- [ ] Уточнить сообщение об ошибке для `monitor_index`
-  в `video_recorder.py:152-154` (0-based vs 1-based).
-
-### Dependencies (зависимости)
-
-- [ ] Добавить upper bounds для критичных зависимостей:
-  `pydantic`, `flask`, `PyQt6`, `windows-capture`.
-
-### Observability (наблюдаемость)
-
-- [ ] Prometheus/OpenMetrics metrics export endpoint.
-- [ ] Histogram buckets для latency tracking.
-- [ ] Recording duration metrics.
-- [ ] Disk space metrics в observability.
-- [ ] Health check расширить: FFmpeg availability, audio devices,
-  output directory permissions.
-- [ ] Liveness vs readiness probe distinction.
-- [ ] OpenTelemetry tracing для API calls и recording operations.
-
-### UX (пользовательский опыт)
-
-- [ ] Показывать предупреждение пользователю если FFmpeg не найден
-  в `main.py:230-235`.
-- [ ] Логировать fallback при window not found
-  в `video_recorder.py:103-106`.
-- [ ] Добавить progress indicator при финализации видео
-  в `gui/main_window.py:476-486`.
-- [ ] Визуальный индикатор paused state (цвет/иконка)
-  в `gui/main_window.py:488-495`.
-- [ ] Сброс состояния кнопок при ошибке stop
-  в `gui/main_window.py:476-486`.
-- [ ] Добавить tooltips для capture modes, preset, audio modes
-  в GUI views.
-- [ ] Confirmation dialog для clear recent recordings
-  в `gui/main_window.py:688-692`.
-- [ ] Предупреждение об активной записи при выходе в tray icon.
-- [ ] Улучшить error messages — добавить диагностическую информацию
-  вместо generic сообщений.
-
-### CLI (командная строка)
-
-- [ ] Валидация cron expression syntax для `--schedule`
-  в `cli/parser.py:221-227`.
-- [ ] Различные exit codes по типу ошибки:
-  2 (invalid args), 3 (connection), 4 (auth), 5 (not found).
-- [ ] Добавить `--dry-run` для проверки параметров без выполнения.
-- [ ] Расширить help text с примерами для `--window`, `--monitor`.
-
-### Accessibility (доступность)
-
-- [ ] Добавить `accessibleName`/`accessibleDescription` для widgets.
-- [ ] Text alternative для tray icon state (color-blind users).
-- [ ] Keyboard navigation для `TaskDialog`.
-- [ ] High contrast theme support.
-
-### Testing (покрытие тестами)
-
-- [ ] Тесты для `core/recording_service.py` (unit).
-- [ ] Тесты для `api/websocket.py` event handling.
-- [ ] Тесты edge cases: multi-monitor disconnect, audio device hot-plug,
-  disk full, rapid start/stop.
-- [ ] Integration tests для WebSocket real-time events.
-- [ ] Тесты FFmpeg writer failure scenarios.
-- [ ] Тесты scheduler persistence после restart.
-- [ ] Тесты concurrent recording requests.
-- [ ] Тесты rate limiter edge cases.
-- [ ] GUI unit tests для `TaskDialog` validation.
-
-### Legacy Cleanup (очистка legacy)
-
-- [ ] Deprecate `gui/models/recording_state.py` — использовать прямой
-  импорт из `core.recording_state`.
-- [ ] Deprecate `CaptureType`/`AudioType` aliases в
-  `core/recording_types.py:42-43`.
-- [ ] Рассмотреть удаление `_record_loop_pyaudio()` fallback
-  в `recorder/audio_recorder.py:364-391`.
-
-## P3 (функциональные улучшения)
-
-- [ ] Реализовать реальный WebSocket транспорт вместо заглушки
-  в `api/websocket.py`.
-- [ ] Механизм backup/restore конфигурации.
-- [ ] Восстановление записи после краша приложения.
-- [ ] Batch операции в API (`start/stop/status` для нескольких задач).
-- [ ] Диалог горячих клавиш в GUI.
-- [ ] Абстрагировать общую логику `pause/resume/stop`
-  из `video_recorder` и `audio_recorder` — устранить дублирование.
-
-## Правило ведения TODO
-
-- Закрытые задачи удаляем из файла, не оставляем в виде `[x]`.
-- Незакрытые задачи переносим в новый TODO ближайшего релиза.
+- [ ] Все P0 задачи закрыты и удалены из этого файла.
+- [ ] `CI` полностью зелёный на `main` минимум в двух последовательных прогонах.
+- [ ] Ручной regression checklist для GUI/API выполнен и приложен в `plans/`.
+- [ ] Обновлены `CHANGELOG.md`, `plans/release-preflight-v1.4.6.md`,
+  релизные заметки и wiki.

@@ -415,20 +415,8 @@ def _stop_operation_response(
     ), 200
 
 
-def register_routes(app, server) -> None:
-    """
-    Регистрация всех маршрутов API с Flask приложением.
-
-    Args:
-        app: Экземпляр Flask приложения
-        server: Экземпляр APIServer для обратных вызовов
-    """
-    from flask import g
-
-    from api.swagger import register_swagger_routes
-
-    # Регистрация Swagger документации
-    register_swagger_routes(app)
+def _register_request_hooks(app: Any, server: Any) -> None:
+    """Регистрирует before/after request hooks API."""
 
     @app.before_request
     def set_server_context() -> None:
@@ -437,9 +425,73 @@ def register_routes(app, server) -> None:
         g.request_id = _get_trace_id()
 
     @app.after_request
-    def standardize_error_responses(response):
+    def standardize_error_responses(response: Any) -> Any:
         """Приведение legacy error payload к единому контракту."""
         return _standardize_error_response(response)
+
+
+def _register_health_route(app: Any, server: Any) -> None:
+    """Регистрирует endpoint проверки здоровья."""
+
+    @app.route("/health", methods=["GET"])
+    def health_check() -> Any:
+        """Эндпоинт проверки здоровья."""
+        response = jsonify(server._get_health_payload())
+        response.headers["X-Request-ID"] = _get_trace_id()
+        return response
+
+
+def _register_legacy_routes(
+    app: Any,
+    *,
+    get_status: Callable[[], Any],
+    start_recording: Callable[[], Any],
+    stop_recording: Callable[[], Any],
+    pause_recording: Callable[[], Any],
+) -> None:
+    """Регистрирует legacy API routes для обратной совместимости."""
+
+    @app.route("/api/status", methods=["GET"])
+    @require_api_key
+    def legacy_get_status() -> Any:
+        """Legacy endpoint для обратной совместимости."""
+        return get_status()
+
+    @app.route("/api/start", methods=["POST"])
+    @rate_limit
+    @require_api_key
+    def legacy_start_recording() -> Any:
+        """Legacy endpoint для обратной совместимости."""
+        return start_recording()
+
+    @app.route("/api/stop", methods=["POST"])
+    @rate_limit
+    @require_api_key
+    def legacy_stop_recording() -> Any:
+        """Legacy endpoint для обратной совместимости."""
+        return stop_recording()
+
+    @app.route("/api/pause", methods=["POST"])
+    @rate_limit
+    @require_api_key
+    def legacy_toggle_pause() -> Any:
+        """Legacy endpoint для обратной совместимости."""
+        return pause_recording()
+
+
+def register_routes(app, server) -> None:
+    """
+    Регистрация всех маршрутов API с Flask приложением.
+
+    Args:
+        app: Экземпляр Flask приложения
+        server: Экземпляр APIServer для обратных вызовов
+    """
+    from api.swagger import register_swagger_routes
+
+    # Регистрация Swagger документации
+    register_swagger_routes(app)
+    _register_request_hooks(app, server)
 
     # Создаём Blueprint для API v1
     from flask import Blueprint
@@ -955,12 +1007,7 @@ def register_routes(app, server) -> None:
             logger.exception(f"Ошибка обновления конфигурации: {e}")
             return _internal_error_response()
 
-    @app.route("/health", methods=["GET"])
-    def health_check():
-        """Эндпоинт проверки здоровья."""
-        response = jsonify(server._get_health_payload())
-        response.headers["X-Request-ID"] = _get_trace_id()
-        return response
+    _register_health_route(app, server)
 
     @api_v1.route("observability/metrics", methods=["GET"])
     @require_api_key
@@ -995,32 +1042,12 @@ def register_routes(app, server) -> None:
     # Регистрация Blueprint
     app.register_blueprint(api_v1)
 
-    # Legacy routes для обратной совместимости (перенаправляют на /api/v1/*)
-    @app.route("/api/status", methods=["GET"])
-    @require_api_key
-    def legacy_get_status():
-        """Legacy endpoint для обратной совместимости."""
-        return get_status()
-
-    @app.route("/api/start", methods=["POST"])
-    @rate_limit
-    @require_api_key
-    def legacy_start_recording():
-        """Legacy endpoint для обратной совместимости."""
-        return start_recording()
-
-    @app.route("/api/stop", methods=["POST"])
-    @rate_limit
-    @require_api_key
-    def legacy_stop_recording():
-        """Legacy endpoint для обратной совместимости."""
-        return stop_recording()
-
-    @app.route("/api/pause", methods=["POST"])
-    @rate_limit
-    @require_api_key
-    def legacy_toggle_pause():
-        """Legacy endpoint для обратной совместимости."""
-        return pause_recording()
+    _register_legacy_routes(
+        app,
+        get_status=get_status,
+        start_recording=start_recording,
+        stop_recording=stop_recording,
+        pause_recording=pause_recording,
+    )
 
     logger.info("Маршруты API зарегистрированы (v1 + legacy)")
