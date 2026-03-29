@@ -29,8 +29,6 @@
 
 - [ ] Вынести слой сервисов для FFmpeg-пайплайна:
   отдельные `ProcessSupervisor`, `FinalizeService`, `RecoveryPolicy`.
-- [ ] Ввести bounded executor для фоновых API-операций
-  (лимит очереди + политика отказа + метрики saturation).
 - [ ] Рефакторинг `TaskScheduler`:
   отделить `storage`, `trigger-builder`, `execution engine`.
 - [ ] Стандартизовать исключения слоя домена

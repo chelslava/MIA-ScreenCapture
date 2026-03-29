@@ -16,6 +16,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,8 @@ _PYPROJECT_PATH = Path(__file__).resolve().parent.parent / "pyproject.toml"
 _OPERATION_RESULT_TTL_SECONDS = 600.0
 _IDEMPOTENCY_RESULT_TTL_SECONDS = 3600.0
 _IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS = 30.0
+_API_OPERATION_MAX_WORKERS = 2
+_API_OPERATION_QUEUE_SIZE = 16
 _SERVER_STOP_WAIT_SECONDS = 10.0
 _MAX_REQUEST_BODY_BYTES = 1024 * 1024
 _CORS_ALLOWED_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
@@ -105,11 +108,31 @@ def _patch_waitress_shutdown_for_windows() -> None:
 class APIOperationStore:
     """Потокобезопасное хранилище фоновых операций API."""
 
-    def __init__(self, ttl_seconds: float = _OPERATION_RESULT_TTL_SECONDS):
+    def __init__(
+        self,
+        ttl_seconds: float = _OPERATION_RESULT_TTL_SECONDS,
+        max_workers: int = _API_OPERATION_MAX_WORKERS,
+        max_queue_size: int = _API_OPERATION_QUEUE_SIZE,
+    ):
         self._ttl_seconds = ttl_seconds
+        self._max_workers = max(1, int(max_workers))
+        self._max_queue_size = max(0, int(max_queue_size))
+        self._max_inflight = self._max_workers + self._max_queue_size
         self._lock = threading.Lock()
         self._operations: dict[str, dict[str, Any]] = {}
         self._events: dict[str, threading.Event] = {}
+        self._inflight_semaphore = threading.Semaphore(self._max_inflight)
+        self._executor = ThreadPoolExecutor(
+            max_workers=self._max_workers,
+            thread_name_prefix="api-op-worker",
+        )
+        self._submitted_total = 0
+        self._completed_total = 0
+        self._failed_total = 0
+        self._rejected_total = 0
+        self._inflight_current = 0
+        self._max_inflight_seen = 0
+        self._stopped = False
 
     def submit(
         self,
@@ -117,6 +140,19 @@ class APIOperationStore:
         runner: Callable[[], Any],
     ) -> dict[str, Any]:
         """Запускает фоновую операцию и возвращает её snapshot."""
+        if self._stopped:
+            return self._build_rejected_operation(
+                operation_type,
+                "Операции API недоступны: executor остановлен",
+            )
+
+        acquired = self._inflight_semaphore.acquire(blocking=False)
+        if not acquired:
+            return self._build_rejected_operation(
+                operation_type,
+                "Очередь фоновых операций API переполнена",
+            )
+
         operation_id = uuid.uuid4().hex
         now_iso = datetime.now(UTC).isoformat()
         operation = {
@@ -135,14 +171,21 @@ class APIOperationStore:
             self._cleanup_expired_locked()
             self._operations[operation_id] = operation
             self._events[operation_id] = done_event
+            self._submitted_total += 1
+            self._inflight_current += 1
+            self._max_inflight_seen = max(
+                self._max_inflight_seen, self._inflight_current
+            )
 
-        thread = threading.Thread(
-            target=self._run_operation,
-            args=(operation_id, runner),
-            daemon=True,
-            name=f"api-op-{operation_type}",
-        )
-        thread.start()
+        try:
+            self._executor.submit(self._run_operation, operation_id, runner)
+        except Exception as e:
+            self._release_inflight_slot()
+            self._complete(
+                operation_id,
+                status="failed",
+                error=f"Не удалось поставить операцию в очередь: {e}",
+            )
         return self.get(operation_id) or operation
 
     def _run_operation(
@@ -156,6 +199,8 @@ class APIOperationStore:
             self._complete(operation_id, status="succeeded", result=result)
         except Exception as e:
             self._complete(operation_id, status="failed", error=str(e))
+        finally:
+            self._release_inflight_slot()
 
     def _complete(
         self,
@@ -174,6 +219,10 @@ class APIOperationStore:
             operation["completed_at"] = now_iso
             operation["result"] = result
             operation["error"] = error
+            if status == "succeeded":
+                self._completed_total += 1
+            elif status == "failed":
+                self._failed_total += 1
             done_event = self._events.get(operation_id)
             if done_event is not None:
                 done_event.set()
@@ -218,6 +267,74 @@ class APIOperationStore:
         for op_id in stale_ids:
             self._operations.pop(op_id, None)
             self._events.pop(op_id, None)
+
+    def _build_rejected_operation(
+        self,
+        operation_type: str,
+        error_message: str,
+    ) -> dict[str, Any]:
+        operation_id = uuid.uuid4().hex
+        now_iso = datetime.now(UTC).isoformat()
+        operation = {
+            "id": operation_id,
+            "type": operation_type,
+            "status": "failed",
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "completed_at": now_iso,
+            "result": None,
+            "error": error_message,
+        }
+        with self._lock:
+            self._cleanup_expired_locked()
+            self._operations[operation_id] = operation
+            done_event = threading.Event()
+            done_event.set()
+            self._events[operation_id] = done_event
+            self._rejected_total += 1
+            self._failed_total += 1
+        return dict(operation)
+
+    def _release_inflight_slot(self) -> None:
+        with self._lock:
+            if self._inflight_current > 0:
+                self._inflight_current -= 1
+        self._inflight_semaphore.release()
+
+    def get_metrics_snapshot(self) -> dict[str, int | float]:
+        """Возвращает метрики saturation bounded executor-а операций."""
+        with self._lock:
+            inflight = self._inflight_current
+            queued = max(0, inflight - self._max_workers)
+            saturation = (
+                float(inflight) / float(self._max_inflight)
+                if self._max_inflight > 0
+                else 0.0
+            )
+            return {
+                "workers": self._max_workers,
+                "queue_capacity": self._max_queue_size,
+                "max_inflight_capacity": self._max_inflight,
+                "inflight": inflight,
+                "queued": queued,
+                "submitted_total": self._submitted_total,
+                "completed_total": self._completed_total,
+                "failed_total": self._failed_total,
+                "rejected_total": self._rejected_total,
+                "max_inflight_seen": self._max_inflight_seen,
+                "saturation_ratio": round(saturation, 4),
+            }
+
+    def stop(self) -> None:
+        """Останавливает executor фоновых операций."""
+        with self._lock:
+            self._stopped = True
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def is_running(self) -> bool:
+        """Проверяет, что bounded executor ещё принимает задачи."""
+        with self._lock:
+            return not self._stopped
 
 
 class APIIdempotencyStore:
@@ -761,6 +878,8 @@ class APIServer:
 
             if not self._idempotency.is_running():
                 self._idempotency = APIIdempotencyStore()
+            if not self._operations.is_running():
+                self._operations = APIOperationStore()
 
             try:
                 self._validate_bind_address()
@@ -846,6 +965,7 @@ class APIServer:
                 )
 
         self._idempotency.stop()
+        self._operations.stop()
         logger.info("API сервер остановлен")
 
     def is_running(self) -> bool:
@@ -947,6 +1067,9 @@ class APIServer:
         """Возвращает снапшот эксплуатационных метрик API."""
         payload = self._observability.get_metrics_snapshot()
         payload["idempotency_store_size"] = self._idempotency.get_size()
+        payload["background_operations"] = (
+            self._operations.get_metrics_snapshot()
+        )
         return payload
 
     def get_observability_baseline(self) -> dict[str, Any]:

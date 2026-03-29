@@ -14,7 +14,12 @@ import pytest
 import api.server as api_server_module
 from api.auth import init_api_auth
 from api.routes import register_routes
-from api.server import APIIdempotencyStore, APIServer, APIServerObservability
+from api.server import (
+    APIIdempotencyStore,
+    APIOperationStore,
+    APIServer,
+    APIServerObservability,
+)
 from api.websocket import WebSocketManager
 
 
@@ -278,6 +283,24 @@ class TestAPIServerStartStop:
 
         assert server._idempotency is not first_store
         assert server._idempotency.is_running() is True
+        server.stop()
+
+    def test_start_recreates_operation_store_after_stop(self) -> None:
+        """Проверка пересоздания operation store после stop -> start."""
+        server = APIServer(host="127.0.0.1", port=5011)
+        first_store = server._operations
+
+        with patch.object(server, "_run_server"):
+            assert server.start() is True
+
+        server.stop()
+        assert first_store.is_running() is False
+
+        with patch.object(server, "_run_server"):
+            assert server.start() is True
+
+        assert server._operations is not first_store
+        assert server._operations.is_running() is True
         server.stop()
 
     def test_thread_is_daemon(self) -> None:
@@ -740,4 +763,34 @@ class TestAPIIdempotencyStore:
         time.sleep(0.05)
 
         assert store.get_size() == 0
+        store.stop()
+
+
+class TestAPIOperationStore:
+    """Тесты bounded executor для фоновых операций API."""
+
+    def test_rejects_operation_when_queue_is_full(self) -> None:
+        """При переполнении очереди операция должна отклоняться."""
+        store = APIOperationStore(max_workers=1, max_queue_size=0)
+        release_event = threading.Event()
+
+        def slow_runner() -> dict[str, bool]:
+            release_event.wait(timeout=1.0)
+            return {"success": True}
+
+        first = store.submit("slow", slow_runner)
+        second = store.submit("slow", slow_runner)
+
+        assert first["status"] == "running"
+        assert second["status"] == "failed"
+        assert "переполнена" in str(second.get("error", "")).lower()
+
+        metrics = store.get_metrics_snapshot()
+        assert metrics["rejected_total"] == 1
+        assert metrics["inflight"] == 1
+
+        release_event.set()
+        completed = store.wait(str(first["id"]), timeout=1.5)
+        assert completed is not None
+        assert completed["status"] == "succeeded"
         store.stop()
