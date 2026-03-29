@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import asdict
+from itertools import islice
 from threading import Lock
 from typing import Any
 
@@ -68,7 +69,13 @@ class WebSocketManager:
         """Возвращает последние события (по умолчанию до 50)."""
         safe_limit = max(1, min(limit, 500))
         with self._lock:
-            return list(self._events)[-safe_limit:]
+            total_events = len(self._events)
+            if safe_limit >= total_events:
+                return list(self._events)
+            # Читаем только хвост буфера без полного копирования deque.
+            latest = list(islice(reversed(self._events), safe_limit))
+            latest.reverse()
+            return latest
 
     def get_stats(self) -> dict[str, Any]:
         """Возвращает статистику менеджера уведомлений."""

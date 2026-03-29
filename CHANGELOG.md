@@ -23,6 +23,9 @@
 - Для фоновой API-операции `stop` добавлен явный проброс
   `request_id/trace_id/client_ip` в operation metadata и ответы
   `/api/v1/stop` + `/api/v1/operations/{id}` для сквозной корреляции.
+- Оптимизирован `WebSocketManager.get_recent_events()`:
+  чтение последних событий теперь выполняется по хвосту `deque`
+  без полного копирования буфера на каждый запрос.
 - Для фоновых API-операций внедрён bounded executor
   (`workers + queue capacity`) с политикой отказа при переполнении
   и метриками saturation в observability payload.
