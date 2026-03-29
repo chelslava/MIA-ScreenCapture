@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from api.auth import require_api_key
+from api.error_mapping import map_exception_to_api_error
 from api.rate_limiter import rate_limit
 from api.request_context import ensure_request_context
 from api.schemas import (
@@ -86,6 +87,17 @@ def _internal_error_response() -> tuple:
         500,
         "internal_error",
         "Внутренняя ошибка сервера",
+    )
+
+
+def _exception_response(error: Exception) -> tuple[Any, int]:
+    """Преобразует исключение в стандартизированный API-ответ."""
+    mapped = map_exception_to_api_error(error)
+    return _error_response(
+        mapped.status_code,
+        mapped.code,
+        mapped.message,
+        mapped.details,
     )
 
 
@@ -507,7 +519,7 @@ def _register_status_routes(api_v1: Any, server: Any) -> Any:
             return _internal_error_response()
         except Exception as e:
             logger.exception(f"Ошибка получения статуса: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("operations/<operation_id>", methods=["GET"])
     @require_api_key
@@ -518,7 +530,7 @@ def _register_status_routes(api_v1: Any, server: Any) -> Any:
             return _background_operation_status_response(operation)
         except Exception as e:
             logger.exception(f"Ошибка получения статуса операции: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     return get_status
 
@@ -568,7 +580,7 @@ def _register_recording_routes(
             return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка начала записи: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("stop", methods=["POST"])
     @rate_limit
@@ -582,7 +594,7 @@ def _register_recording_routes(
             )
         except Exception as e:
             logger.exception(f"Ошибка остановки записи: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("pause", methods=["POST"])
     @rate_limit
@@ -601,7 +613,7 @@ def _register_recording_routes(
             return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка паузы записи: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("recordings", methods=["GET"])
     @require_api_key
@@ -616,7 +628,7 @@ def _register_recording_routes(
 
         except Exception as e:
             logger.exception(f"Ошибка получения записей: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("events/recent", methods=["GET"])
     @require_api_key
@@ -641,7 +653,7 @@ def _register_recording_routes(
             return jsonify({"success": True, "data": events})
         except Exception as e:
             logger.exception(f"Ошибка получения событий: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("events/stats", methods=["GET"])
     @require_api_key
@@ -659,7 +671,7 @@ def _register_recording_routes(
             return jsonify({"success": True, "data": manager.get_stats()})
         except Exception as e:
             logger.exception(f"Ошибка получения статистики событий: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     return start_recording, stop_recording, pause_recording
 
@@ -680,7 +692,7 @@ def _register_schedule_routes(api_v1: Any, server: Any) -> None:
 
         except Exception as e:
             logger.exception(f"Ошибка получения расписания: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("schedule", methods=["POST"])
     @rate_limit
@@ -726,7 +738,7 @@ def _register_schedule_routes(api_v1: Any, server: Any) -> None:
             return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка создания расписания: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("schedule/<task_id>", methods=["DELETE"])
     @rate_limit
@@ -750,7 +762,7 @@ def _register_schedule_routes(api_v1: Any, server: Any) -> None:
             return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка удаления расписания: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("schedule/<task_id>", methods=["PUT"])
     @rate_limit
@@ -787,7 +799,7 @@ def _register_schedule_routes(api_v1: Any, server: Any) -> None:
             return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка обновления расписания: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("schedule/<task_id>/toggle", methods=["POST"])
     @rate_limit
@@ -816,7 +828,7 @@ def _register_schedule_routes(api_v1: Any, server: Any) -> None:
             return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка переключения расписания: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
 
 def _register_resource_routes(api_v1: Any, server: Any) -> None:
@@ -835,7 +847,7 @@ def _register_resource_routes(api_v1: Any, server: Any) -> None:
 
         except Exception as e:
             logger.exception(f"Ошибка получения устройств: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("windows", methods=["GET"])
     @require_api_key
@@ -850,7 +862,7 @@ def _register_resource_routes(api_v1: Any, server: Any) -> None:
 
         except Exception as e:
             logger.exception(f"Ошибка получения окон: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
 
 def _register_config_routes(api_v1: Any, server: Any) -> None:
@@ -869,7 +881,7 @@ def _register_config_routes(api_v1: Any, server: Any) -> None:
 
         except Exception as e:
             logger.exception(f"Ошибка получения конфигурации: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("config", methods=["PUT"])
     @rate_limit
@@ -903,7 +915,7 @@ def _register_config_routes(api_v1: Any, server: Any) -> None:
             return _execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка обновления конфигурации: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
 
 def _register_observability_routes(api_v1: Any, server: Any) -> None:
@@ -922,7 +934,7 @@ def _register_observability_routes(api_v1: Any, server: Any) -> None:
             )
         except Exception as e:
             logger.exception(f"Ошибка получения observability metrics: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
     @api_v1.route("observability/baseline", methods=["GET"])
     @require_api_key
@@ -937,7 +949,7 @@ def _register_observability_routes(api_v1: Any, server: Any) -> None:
             )
         except Exception as e:
             logger.exception(f"Ошибка получения observability baseline: {e}")
-            return _internal_error_response()
+            return _exception_response(e)
 
 
 def register_routes(app, server) -> None:

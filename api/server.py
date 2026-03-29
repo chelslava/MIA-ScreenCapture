@@ -28,6 +28,7 @@ from waitress.server import create_server
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from api.auth import API_KEY_CONFIG_KEY
+from api.error_mapping import map_exception_to_api_error
 from api.request_context import ensure_request_context
 from logger_config import get_module_logger
 
@@ -705,15 +706,51 @@ class APIServer:
         # Регистрация обработчиков ошибок
         @self.app.errorhandler(404)
         def not_found(e):
-            return jsonify({"error": "Не найдено"}), 404
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": {
+                            "code": "not_found",
+                            "message": "Не найдено",
+                            "details": None,
+                        },
+                    }
+                ),
+                404,
+            )
 
         @self.app.errorhandler(500)
         def server_error(e):
-            return jsonify({"error": "Внутренняя ошибка сервера"}), 500
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": {
+                            "code": "internal_error",
+                            "message": "Внутренняя ошибка сервера",
+                            "details": None,
+                        },
+                    }
+                ),
+                500,
+            )
 
         @self.app.errorhandler(BadRequest)
         def bad_request(e):
-            return jsonify({"error": "Некорректный JSON в теле запроса"}), 400
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": {
+                            "code": "bad_request",
+                            "message": "Некорректный JSON в теле запроса",
+                            "details": None,
+                        },
+                    }
+                ),
+                400,
+            )
 
         @self.app.errorhandler(RequestEntityTooLarge)
         def payload_too_large(e):
@@ -722,10 +759,15 @@ class APIServer:
             return (
                 jsonify(
                     {
-                        "error": (
-                            "Слишком большой запрос. "
-                            f"Максимальный размер: {max_size} байт"
-                        )
+                        "success": False,
+                        "error": {
+                            "code": "payload_too_large",
+                            "message": (
+                                "Слишком большой запрос. "
+                                f"Максимальный размер: {max_size} байт"
+                            ),
+                            "details": None,
+                        },
                     }
                 ),
                 413,
@@ -734,7 +776,20 @@ class APIServer:
         @self.app.errorhandler(Exception)
         def handle_exception(e):
             logger.exception(f"Ошибка API: {e}")
-            return jsonify({"error": "Внутренняя ошибка сервера"}), 500
+            mapped = map_exception_to_api_error(e)
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": {
+                            "code": mapped.code,
+                            "message": mapped.message,
+                            "details": mapped.details,
+                        },
+                    }
+                ),
+                mapped.status_code,
+            )
 
         @self.app.before_request
         def assign_request_id() -> Any | None:

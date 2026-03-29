@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Changed
+- Добавлен единый маппинг исключений доменного слоя в API-контракт:
+  `api/error_mapping.py` нормализует `MIAError` и связанные исключения
+  в `(status_code, error.code, message, details)`.
+- В `api/routes.py` обработка `except Exception` переведена
+  на централизованный `_exception_response(...)`, чтобы доменные ошибки
+  возвращались в стандартизированном JSON-формате.
+- Обработчики исключений в `api/server.py` приведены к единому контракту
+  ошибки (`success/error/details`) без legacy-формата строкового `error`.
 - `main.py` делегирует API runtime-операции в отдельный менеджер
   `core/api_runtime_manager.py` для снижения связности и подготовки
   дальнейшей декомпозиции `VideoRecorderApp`.
@@ -35,8 +43,17 @@
   execution-engine вынесен в `scheduler/execution_engine.py`,
   а `_load_tasks/_save_tasks`, `_create_trigger` и `_execute_task`
   в `TaskScheduler` переведены на тонкие обёртки над выделенными слоями.
+- Добавлен централизованный маппинг доменных исключений
+  (`MIAError` и наследники) в стабильный API-контракт ошибок
+  через `api/error_mapping.py`; роуты `api/routes.py` теперь
+  используют этот маппинг вместо универсального fallback `500`.
 
 ### Tests
+- Добавлены unit-тесты маппинга исключений:
+  `tests/unit/test_api_error_mapping.py`.
+- Расширены интеграционные проверки обработки ошибок:
+  `tests/integration/test_api_error_handling.py` теперь покрывает
+  доменные исключения (`RecordingNotActiveError`, `ConfigurationError`).
 - Добавлены/обновлены unit-тесты устойчивости:
   `tests/unit/test_hotkeys.py`,
   `tests/unit/test_scheduler.py`,
@@ -57,6 +74,12 @@
   `tests/unit/test_trigger_builder.py`.
 - Добавлены unit-тесты execution-engine scheduler:
   `tests/unit/test_execution_engine.py`.
+- Добавлены unit-тесты маппинга исключений API:
+  `tests/unit/test_api_error_mapping.py`.
+- Расширены интеграционные тесты API-ошибок:
+  `tests/integration/test_api_error_handling.py`
+  (маппинг `ValueError -> 400 validation_error`,
+  `RecordingStateError -> 409 conflict`).
 
 ### Planned for 1.5.0
 - Формирование scope следующего релиза после стабилизации `1.4.5`.

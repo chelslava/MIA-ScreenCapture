@@ -12,6 +12,11 @@ from flask.testing import FlaskClient
 from api.routes import register_routes
 from api.server import APIServer
 from api.websocket import WebSocketManager
+from exceptions import (
+    ConfigurationError,
+    RecordingNotActiveError,
+    RecordingStateError,
+)
 
 TEST_API_KEY = "test-api-key-for-integration-tests-12345"
 
@@ -124,6 +129,105 @@ class TestAPIErrorHandling:
         assert response.status_code == 500
         data = _assert_internal_error_contract(response)
         assert data["error"]["message"] == "Внутренняя ошибка сервера"
+
+    def test_start_maps_recording_not_active_error(
+        self,
+        api_server: APIServer,
+    ) -> None:
+        """Проверяет маппинг доменной ошибки записи в ответ API."""
+        api_server.set_callback(
+            "start",
+            MagicMock(
+                side_effect=RecordingNotActiveError("Нет активной записи")
+            ),
+        )
+        client = _make_client(api_server)
+
+        response = client.post(
+            "/api/start",
+            json={},
+            headers={"X-Request-ID": "start-recording-state-001"},
+        )
+
+        assert response.status_code == 409
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["trace_id"] == "start-recording-state-001"
+        assert data["error"]["code"] == "conflict"
+        assert data["error"]["message"] == "Нет активной записи"
+
+    def test_config_maps_configuration_error(
+        self,
+        api_server: APIServer,
+    ) -> None:
+        """Проверяет маппинг ошибки конфигурации в ответ API."""
+        api_server.set_callback(
+            "get_config",
+            MagicMock(side_effect=ConfigurationError("Конфиг повреждён")),
+        )
+        client = _make_client(api_server)
+
+        response = client.get(
+            "/api/v1/config",
+            headers={"X-Request-ID": "config-error-001"},
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["trace_id"] == "config-error-001"
+        assert data["error"]["code"] == "configuration_error"
+        assert data["error"]["message"] == "Конфиг повреждён"
+
+    def test_start_returns_validation_error_when_callback_raises_value_error(
+        self,
+        api_server: APIServer,
+    ) -> None:
+        """Проверяет маппинг ValueError в 400 validation_error."""
+        api_server.set_callback(
+            "start",
+            MagicMock(side_effect=ValueError("fps должен быть положительным")),
+        )
+        client = _make_client(api_server)
+
+        response = client.post(
+            "/api/start",
+            json={},
+            headers={"X-Request-ID": "start-value-error-001"},
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"]["code"] == "validation_error"
+        assert data["error"]["message"] == "fps должен быть положительным"
+        assert data["trace_id"] == "start-value-error-001"
+
+    def test_start_returns_conflict_when_callback_raises_domain_error(
+        self,
+        api_server: APIServer,
+    ) -> None:
+        """Проверяет маппинг доменной ошибки состояния в 409 conflict."""
+        api_server.set_callback(
+            "start",
+            MagicMock(
+                side_effect=RecordingStateError("Запись уже выполняется")
+            ),
+        )
+        client = _make_client(api_server)
+
+        response = client.post(
+            "/api/start",
+            json={},
+            headers={"X-Request-ID": "start-conflict-001"},
+        )
+
+        assert response.status_code == 409
+        data = response.get_json()
+        assert data["success"] is False
+        assert data["error"]["code"] == "conflict"
+        assert data["error"]["message"] == "Запись уже выполняется"
+        assert data["trace_id"] == "start-conflict-001"
 
     def test_metrics_returns_internal_error_when_collection_fails(
         self,
