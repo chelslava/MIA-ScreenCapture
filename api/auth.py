@@ -74,7 +74,7 @@ def _load_win32cred_module() -> Any | None:
     if os.name != "nt":
         return None
     try:
-        import win32cred  # type: ignore[import-not-found]
+        import win32cred
     except Exception:
         return None
     return win32cred
@@ -314,11 +314,21 @@ def get_api_key(app: Flask | None = None) -> str | None:
     """
     if app is None:
         try:
-            return current_app.config.get(API_KEY_CONFIG_KEY)
+            config_value = current_app.config.get(API_KEY_CONFIG_KEY)
+            return (
+                str(config_value).strip()
+                if config_value is not None and str(config_value).strip()
+                else None
+            )
         except RuntimeError:
             # Вне контекста приложения
             return get_stored_api_key()
-    return app.config.get(API_KEY_CONFIG_KEY)
+    config_value = app.config.get(API_KEY_CONFIG_KEY)
+    return (
+        str(config_value).strip()
+        if config_value is not None and str(config_value).strip()
+        else None
+    )
 
 
 def check_api_key(provided_key: str, app: Flask | None = None) -> bool:

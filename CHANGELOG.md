@@ -38,6 +38,8 @@
 - Интеграционные тесты `tests/integration/test_api.py` приведены
   к актуальному v1-контракту (`/api/v1/*`) и стабилизированы по rate-limit.
 - Блокирующий `mypy`-scope в CI расширен на `api/swagger.py`.
+- Блокирующий `mypy`-scope в CI расширен на `api/auth.py`;
+  устранены типовые проблемы в модуле аутентификации.
 - Убрано искусственное ограничение таймаута GUI для API `stop`:
   остановка записи теперь ожидает завершение без `TimeoutError`.
 - Обновлён unit-тест runtime API (`tests/unit/test_main_api_runtime.py`)

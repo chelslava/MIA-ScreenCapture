@@ -125,7 +125,7 @@ jobs:
         run: uv run ruff format --check .
 
       - name: MyPy check
-        run: uv run mypy exceptions.py core/recording_types.py api/swagger.py --ignore-missing-imports --follow-imports=skip
+        run: uv run mypy exceptions.py core/recording_types.py api/swagger.py api/auth.py --ignore-missing-imports --follow-imports=skip
 
   coverage:
     name: Coverage Report
