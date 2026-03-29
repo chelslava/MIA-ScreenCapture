@@ -74,24 +74,16 @@ class _ApiRuntimeAppProtocol(Protocol):
     def _get_schedule(self, *args: Any, **kwargs: Any) -> Any:
         """Возвращает расписание."""
 
-    def _create_schedule(
-        self, *args: Any, **kwargs: Any
-    ) -> Any:
+    def _create_schedule(self, *args: Any, **kwargs: Any) -> Any:
         """Создаёт задачу расписания."""
 
-    def _delete_schedule(
-        self, *args: Any, **kwargs: Any
-    ) -> Any:
+    def _delete_schedule(self, *args: Any, **kwargs: Any) -> Any:
         """Удаляет задачу расписания."""
 
-    def _update_schedule(
-        self, *args: Any, **kwargs: Any
-    ) -> Any:
+    def _update_schedule(self, *args: Any, **kwargs: Any) -> Any:
         """Обновляет задачу расписания."""
 
-    def _toggle_schedule(
-        self, *args: Any, **kwargs: Any
-    ) -> Any:
+    def _toggle_schedule(self, *args: Any, **kwargs: Any) -> Any:
         """Переключает задачу расписания."""
 
     def _get_devices(self, *args: Any, **kwargs: Any) -> Any:
