@@ -30,7 +30,9 @@ def _load_version_from_pyproject() -> str:
     pyproject_text = (PROJECT_ROOT / "pyproject.toml").read_text(
         encoding="utf-8",
     )
-    match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject_text, re.MULTILINE)
+    match = re.search(
+        r'^version\s*=\s*"([^"]+)"', pyproject_text, re.MULTILINE
+    )
     if match is None:
         raise AssertionError("Не удалось прочитать версию из pyproject.toml")
     return match.group(1)
@@ -517,7 +519,9 @@ class TestVersionConsistency:
         """Проверяет версию в /health и /api/swagger.json."""
         expected_version = _load_version_from_pyproject()
 
-        server = APIServer(host="127.0.0.1", port=5014, api_key="test-version-key")
+        server = APIServer(
+            host="127.0.0.1", port=5014, api_key="test-version-key"
+        )
         server.set_callback(
             "status",
             MagicMock(
@@ -539,4 +543,6 @@ class TestVersionConsistency:
         assert health_response.status_code == 200
         assert swagger_response.status_code == 200
         assert health_response.get_json()["version"] == expected_version
-        assert swagger_response.get_json()["info"]["version"] == expected_version
+        assert (
+            swagger_response.get_json()["info"]["version"] == expected_version
+        )

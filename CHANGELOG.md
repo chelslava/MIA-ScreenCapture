@@ -46,6 +46,8 @@
   `ruff check`, `ruff format --check`, `mypy`.
 - Swagger/OpenAPI дополнен заголовком `Idempotency-Key`
   для mutating endpoints.
+- Добавлены автопроверки консистентности версии в `tests/unit/test_swagger.py`:
+  синхронизация `pyproject.toml`, `README.md`, Swagger и runtime `/health`.
 - Runtime API-token в `main.py` переведён на постоянное хранилище
   (Credential Manager/env), с миграцией legacy токена из config.
 - Аудиозапись переведена на неблокирующую модель:
