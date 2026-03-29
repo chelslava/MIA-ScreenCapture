@@ -17,6 +17,9 @@
   миграция legacy ключа из config вынесена в явный шаг при старте API.
 - Загрузка `.env` в `main.py` переведена из import-time side effect в
   явный bootstrap-шаг `_load_environment()` внутри `main()`.
+- Введён единый `RequestContext` (`request_id`, `trace_id`, `client_ip`)
+  для API; контекст теперь формируется централизованно и используется
+  в middleware сервера и нормализации API-ответов.
 
 ### Tests
 - Добавлены/обновлены unit-тесты устойчивости:
@@ -26,6 +29,8 @@
   `tests/unit/test_main_api_runtime.py`.
 - Добавлены unit-тесты entrypoint-bootstrap логики:
   `tests/unit/test_main_entrypoint.py`.
+- Добавлены unit-тесты request-контекста:
+  `tests/unit/test_request_context.py`.
 
 ### Planned for 1.5.0
 - Формирование scope следующего релиза после стабилизации `1.4.5`.

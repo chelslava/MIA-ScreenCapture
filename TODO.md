@@ -33,8 +33,6 @@
   (лимит очереди + политика отказа + метрики saturation).
 - [ ] Рефакторинг `TaskScheduler`:
   отделить `storage`, `trigger-builder`, `execution engine`.
-- [ ] Ввести единый `RequestContext` (`trace_id`, `request_id`, `client_ip`)
-  и проброс в бизнес-логи.
 - [ ] Стандартизовать исключения слоя домена
   (`MIAError` и наследники) и маппинг в HTTP/GUI ответы.
 - [ ] Зафиксировать детерминированный shutdown потоков/процессов записи:
@@ -42,8 +40,6 @@
 
 ## P2 (после стабилизации P0/P1)
 
-- [ ] Исключить служебные pytest temp-каталоги из `mypy` прогона
-  (`tmp_pytest_run*`, `.tmp_pytest_runs`, `tests/.local_tmp`).
 - [ ] Ввести ring-buffer для live-логов GUI и ограничение памяти
   для долгих сессий.
 - [ ] Оптимизировать observability-метрики:

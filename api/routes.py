@@ -6,7 +6,6 @@
 """
 
 import hashlib
-import uuid
 from collections.abc import Callable
 from typing import Any
 
@@ -16,6 +15,7 @@ from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from api.auth import require_api_key
 from api.rate_limiter import rate_limit
+from api.request_context import ensure_request_context
 from api.schemas import (
     CreateScheduleRequest,
     StartRecordingRequest,
@@ -45,13 +45,7 @@ _IDEMPOTENCY_KEY_MAX_LENGTH = 128
 
 def _get_trace_id() -> str:
     """Возвращает trace_id из контекста запроса или создаёт новый."""
-    trace_id = getattr(g, "trace_id", None)
-    if trace_id:
-        return str(trace_id)
-
-    trace_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
-    g.trace_id = trace_id
-    return str(trace_id)
+    return ensure_request_context().trace_id
 
 
 def _standard_error_payload(
@@ -422,7 +416,7 @@ def _register_request_hooks(app: Any, server: Any) -> None:
     def set_server_context() -> None:
         """Установка server в контекст запроса для декораторов."""
         g.server = server
-        g.request_id = _get_trace_id()
+        g.request_id = ensure_request_context().request_id
 
     @app.after_request
     def standardize_error_responses(response: Any) -> Any:

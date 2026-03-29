@@ -27,6 +27,7 @@ from waitress.server import create_server
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from api.auth import API_KEY_CONFIG_KEY
+from api.request_context import ensure_request_context
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -610,10 +611,10 @@ class APIServer:
 
         @self.app.before_request
         def assign_request_id() -> Any | None:
-            request_id = request.headers.get(_REQUEST_ID_HEADER, "").strip()
-            if not request_id:
-                request_id = uuid.uuid4().hex
-            g.request_id = request_id
+            request_context = ensure_request_context()
+            g.request_id = request_context.request_id
+            g.trace_id = request_context.trace_id
+            g.client_ip = request_context.client_ip
             g.request_started_at = time.monotonic()
             self._observability.request_started()
 
@@ -623,11 +624,8 @@ class APIServer:
 
         @self.app.after_request
         def add_request_id_header(response):
-            request_id = getattr(g, "request_id", None)
-            if not request_id:
-                request_id = uuid.uuid4().hex
-                g.request_id = request_id
-            response.headers[_REQUEST_ID_HEADER] = request_id
+            request_context = ensure_request_context()
+            response.headers[_REQUEST_ID_HEADER] = request_context.request_id
             started_at = getattr(g, "request_started_at", None)
             latency_ms = 0.0
             if isinstance(started_at, float):
@@ -649,8 +647,8 @@ class APIServer:
                 request.path,
                 response.status_code,
                 latency_ms,
-                request_id,
-                request.remote_addr,
+                request_context.request_id,
+                request_context.client_ip,
             )
             return response
 
