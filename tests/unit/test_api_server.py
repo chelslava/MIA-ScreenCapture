@@ -262,6 +262,24 @@ class TestAPIServerStartStop:
         assert server._server_thread is not None
         assert isinstance(server._server_thread, threading.Thread)
 
+    def test_start_recreates_idempotency_store_after_stop(self) -> None:
+        """Проверка пересоздания idempotency store после stop -> start."""
+        server = APIServer(host="127.0.0.1", port=5010)
+        first_store = server._idempotency
+
+        with patch.object(server, "_run_server"):
+            assert server.start() is True
+
+        server.stop()
+        assert first_store.is_running() is False
+
+        with patch.object(server, "_run_server"):
+            assert server.start() is True
+
+        assert server._idempotency is not first_store
+        assert server._idempotency.is_running() is True
+        server.stop()
+
     def test_thread_is_daemon(self) -> None:
         """Проверка что поток является daemon."""
         server = APIServer(host="127.0.0.1", port=5007)

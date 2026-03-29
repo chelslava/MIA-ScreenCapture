@@ -131,7 +131,10 @@ class TestEncoderInit:
                 "recorder.encoder.get_ffmpeg_path",
                 return_value="/usr/bin/ffmpeg",
             ):
-                with patch("shutil.which", return_value="/usr/bin/ffprobe"):
+                with patch(
+                    "recorder.encoder.get_ffprobe_path",
+                    return_value="/usr/bin/ffprobe",
+                ):
                     encoder = Encoder()
 
         assert encoder._ffprobe_path == "/usr/bin/ffprobe"
@@ -350,7 +353,10 @@ class TestEncoderGetVideoInfo:
                 "recorder.encoder.get_ffmpeg_path",
                 return_value="/usr/bin/ffmpeg",
             ):
-                with patch("shutil.which", return_value="/usr/bin/ffprobe"):
+                with patch(
+                    "recorder.encoder.get_ffprobe_path",
+                    return_value="/usr/bin/ffprobe",
+                ):
                     encoder = Encoder()
 
         mock_result = MagicMock()
@@ -372,7 +378,10 @@ class TestEncoderGetVideoInfo:
                 "recorder.encoder.get_ffmpeg_path",
                 return_value="/usr/bin/ffmpeg",
             ):
-                with patch("shutil.which", return_value="/usr/bin/ffprobe"):
+                with patch(
+                    "recorder.encoder.get_ffprobe_path",
+                    return_value="/usr/bin/ffprobe",
+                ):
                     encoder = Encoder()
 
         with patch("pathlib.Path.exists", return_value=False):
@@ -389,7 +398,10 @@ class TestEncoderGetVideoInfo:
                 "recorder.encoder.get_ffmpeg_path",
                 return_value="/usr/bin/ffmpeg",
             ):
-                with patch("shutil.which", return_value=None):
+                with patch(
+                    "recorder.encoder.get_ffprobe_path",
+                    return_value=None,
+                ):
                     encoder = Encoder()
 
         info = encoder.get_video_info(Path("/tmp/video.mp4"))

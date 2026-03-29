@@ -116,6 +116,13 @@
   через единый резолвер executable в `recorder/utils.py`;
   обновлены unit-тесты для `recorder/utils.py` и
   `recorder/ffmpeg_writer.py`.
+- Жизненный цикл `idempotency store` в API исправлен для
+  сценария `stop -> start`: при повторном старте сервер
+  пересоздаёт хранилище и cleanup-thread;
+  добавлен unit-тест `start/stop/start`.
+- Стабилизирован `tests/unit/test_config_extended.py::TestConfigSave::test_save_creates_directory`
+  (Windows): тест переведён на `tmp_path`, устранён флейк
+  с `PermissionError (WinError 5)` при cleanup.
 - Усилена устойчивость `TaskScheduler`:
   `add_task`/`update_task`/`enable_task` теперь откатывают изменения
   при ошибке планирования, а `time_of_day` валидируется в формате

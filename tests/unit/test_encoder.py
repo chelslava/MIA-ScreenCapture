@@ -56,9 +56,11 @@ class TestEncoder:
         """Мокает проверку FFmpeg."""
         with patch("recorder.encoder.check_ffmpeg") as mock_check:
             with patch("recorder.encoder.get_ffmpeg_path") as mock_path:
-                mock_check.return_value = (True, "6.0")
-                mock_path.return_value = "/usr/bin/ffmpeg"
-                yield
+                with patch("recorder.encoder.get_ffprobe_path") as mock_probe:
+                    mock_check.return_value = (True, "6.0")
+                    mock_path.return_value = "/usr/bin/ffmpeg"
+                    mock_probe.return_value = "/usr/bin/ffprobe"
+                    yield
 
     @pytest.fixture
     def encoder(self, mock_ffmpeg: None) -> Encoder:
@@ -395,9 +397,11 @@ class TestEncoderAdditionalMethods:
         """Мокает проверку FFmpeg."""
         with patch("recorder.encoder.check_ffmpeg") as mock_check:
             with patch("recorder.encoder.get_ffmpeg_path") as mock_path:
-                mock_check.return_value = (True, "6.0")
-                mock_path.return_value = "/usr/bin/ffmpeg"
-                yield
+                with patch("recorder.encoder.get_ffprobe_path") as mock_probe:
+                    mock_check.return_value = (True, "6.0")
+                    mock_path.return_value = "/usr/bin/ffmpeg"
+                    mock_probe.return_value = "/usr/bin/ffprobe"
+                    yield
 
     @pytest.fixture
     def encoder(self, mock_ffmpeg: None) -> Encoder:
@@ -593,7 +597,7 @@ class TestEncoderAdditionalMethods:
 
         # Проверяем структуру команды
         cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "ffmpeg"
+        assert Path(cmd[0]).name == "ffmpeg"
         assert "-y" in cmd
         assert "-i" in cmd
         assert str(video_path) in cmd

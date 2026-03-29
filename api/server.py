@@ -266,6 +266,12 @@ class APIIdempotencyStore:
         self._stop_event.set()
         self._cleanup_thread.join(timeout=1.0)
 
+    def is_running(self) -> bool:
+        """Проверяет, активен ли поток очистки idempotency store."""
+        return (
+            self._cleanup_thread.is_alive() and not self._stop_event.is_set()
+        )
+
     def _cleanup_loop(self) -> None:
         """Фоновая очистка устаревших записей idempotency store."""
         while not self._stop_event.wait(self._cleanup_interval_seconds):
@@ -708,6 +714,9 @@ class APIServer:
             if self._running:
                 logger.warning("API сервер уже запущен")
                 return False
+
+            if not self._idempotency.is_running():
+                self._idempotency = APIIdempotencyStore()
 
             try:
                 self._validate_bind_address()

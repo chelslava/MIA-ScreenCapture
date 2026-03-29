@@ -15,14 +15,6 @@
   потока FFmpeg в `close()`/cleanup, покрыть тестом
   многократный start/stop без утечек потоков
   (`recorder/ffmpeg_writer.py`, `tests/unit/test_ffmpeg_writer.py`).
-- [ ] [Tests] Устранить нестабильность
-  `tests/unit/test_config_extended.py::TestConfigSave::test_save_creates_directory`
-  из-за `PermissionError (WinError 5)` при работе с временными
-  каталогами (`tests/conftest.py`, `tests/unit/test_config_extended.py`).
-- [ ] [API] Сделать lifecycle idempotency-store корректным
-  при цикле `stop -> start`: пересоздание store/cleanup-thread
-  и тест `start/stop/start` (`api/server.py`,
-  `tests/unit/test_api_server.py`).
 
 ## P2 (после стабилизации релиза)
 

@@ -332,15 +332,14 @@ class TestConfigSave:
         finally:
             os.unlink(temp_path)
 
-    def test_save_creates_directory(self) -> None:
+    def test_save_creates_directory(self, tmp_path: Path) -> None:
         """Проверка создания директории при сохранении."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            config_path = Path(temp_dir) / "config" / "config.json"
+        config_path = tmp_path / "config" / "config.json"
 
-            # Директория должна создаваться
-            config_path.parent.mkdir(parents=True, exist_ok=True)
+        # Директория должна создаваться без зависимости от системного tmp.
+        config_path.parent.mkdir(parents=True, exist_ok=True)
 
-            assert config_path.parent.exists()
+        assert config_path.parent.exists()
 
 
 class TestConfigDefaults:
