@@ -950,11 +950,11 @@ class MainWindow(QMainWindow):
     ) -> Path:
         """Преобразование output_path из API в конечный путь файла."""
         if requested_output_path is None:
-            return cast(Path, self._settings_controller.get_output_path())
+            return self._settings_controller.get_output_path()
 
         raw_path = str(requested_output_path).strip()
         if not raw_path:
-            return cast(Path, self._settings_controller.get_output_path())
+            return self._settings_controller.get_output_path()
 
         candidate = Path(raw_path)
         is_dir_hint = raw_path.endswith(("/", "\\"))

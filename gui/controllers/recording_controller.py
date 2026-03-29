@@ -7,7 +7,7 @@
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from core.recording_state import (
     AudioSettings,
@@ -60,7 +60,7 @@ class RecordingController:
     def elapsed_time(self) -> float:
         """Получить время записи."""
         if self._video_recorder:
-            return self._video_recorder.elapsed_time
+            return cast(float, self._video_recorder.elapsed_time)
         return 0.0
 
     def build_capture_area(self, capture: CaptureSettings) -> CaptureArea:

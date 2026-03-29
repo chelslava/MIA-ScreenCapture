@@ -7,7 +7,7 @@
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from config import ConfigManager, get_config
 from gui.models.recording_state import (
@@ -211,7 +211,7 @@ class SettingsController:
             return Path(self._state.output.output_path)
 
         # Генерация пути по умолчанию
-        filename = self._state.get_output_filename()
+        filename = cast(str, self._state.get_output_filename())
         default_path = self._state.output.default_path
         if default_path:
             return Path(default_path) / filename

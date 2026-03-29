@@ -86,6 +86,13 @@
   в блокирующий `mypy`-scope CI.
 - Устранены type-замечания в `gui/main_window.py`;
   модуль добавлен в блокирующий `mypy`-scope CI.
+- Устранены type-замечания в
+  `gui/controllers/settings_controller.py` и
+  `gui/controllers/recording_controller.py`.
+- Блокирующий `mypy`-scope в CI расширен на
+  `gui/controllers/settings_controller.py`,
+  `gui/controllers/recording_controller.py` и
+  `gui/backends/recording_backend.py`.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного
