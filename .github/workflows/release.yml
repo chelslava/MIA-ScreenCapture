@@ -61,6 +61,10 @@ jobs:
 
       - name: Build Windows EXE
         run: |
+          if (-not (Test-Path "config")) {
+            New-Item -ItemType Directory -Path "config" | Out-Null
+          }
+
           pyinstaller --onefile --windowed `
             --name "MIA-ScreenCapture" `
             --add-data "config;config" `
