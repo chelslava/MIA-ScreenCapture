@@ -117,6 +117,7 @@ class APISettingsSchema(BaseModel):
     enabled: bool = Field(default=True)
     host: str = Field(default="127.0.0.1")
     port: int = Field(default=5000, ge=1, le=65535)
+    server_threads: int = Field(default=4, ge=1, le=32)
     api_key: str | None = Field(default=None)
 
     @field_validator("api_key", mode="before")
@@ -217,6 +218,7 @@ class APISettings:
     enabled: bool = True
     host: str = "127.0.0.1"
     port: int = 5000
+    server_threads: int = 4
     api_key: str | None = None
 
 

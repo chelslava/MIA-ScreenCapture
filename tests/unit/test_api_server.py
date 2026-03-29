@@ -271,6 +271,20 @@ class TestAPIServerStartStop:
 
         assert server._server_thread.daemon is True
 
+    def test_run_server_uses_configured_waitress_threads(self) -> None:
+        """Проверка прокидывания server_threads в waitress.create_server."""
+        server = APIServer(host="127.0.0.1", port=5007, server_threads=7)
+        fake_wsgi_server = MagicMock()
+
+        with patch(
+            "api.server.create_server", return_value=fake_wsgi_server
+        ) as create_server_mock:
+            server._run_server()
+
+        create_server_mock.assert_called_once()
+        _, kwargs = create_server_mock.call_args
+        assert kwargs["threads"] == 7
+
 
 class TestAPIServerURL:
     """Тесты получения URL сервера."""

@@ -600,6 +600,7 @@ class VideoRecorderApp:
         self._api_server = APIServer(
             host=api_config.get("host", "127.0.0.1"),
             port=api_config.get("port", 5000),
+            server_threads=api_config.get("server_threads", 4),
             api_key=api_config.get("api_key"),
         )
         self._sync_api_key_env(api_config.get("api_key"))
@@ -641,6 +642,7 @@ class VideoRecorderApp:
                 "enabled": config_api.enabled,
                 "host": config_api.host,
                 "port": config_api.port,
+                "server_threads": config_api.server_threads,
                 "api_key": self._get_effective_api_key(),
             }
 
@@ -648,6 +650,10 @@ class VideoRecorderApp:
             "enabled": cli_api.get("enabled", config_api.enabled),
             "host": cli_api.get("host", config_api.host),
             "port": cli_api.get("port", config_api.port),
+            "server_threads": cli_api.get(
+                "server_threads",
+                config_api.server_threads,
+            ),
             "api_key": self._get_effective_api_key(),
         }
 
@@ -676,6 +682,7 @@ class VideoRecorderApp:
             "enabled": config_api.enabled,
             "host": config_api.host,
             "port": config_api.port,
+            "server_threads": config_api.server_threads,
             "api_key": effective_api_key,
         }
         runtime_status["log_dir"] = str(get_api_log_dir())
@@ -709,6 +716,13 @@ class VideoRecorderApp:
             if port != api_settings.port:
                 api_settings.port = port
                 updated_fields.append("port")
+                restart_required = restart_required or server_running
+
+        if "server_threads" in data:
+            server_threads = max(1, int(data["server_threads"]))
+            if server_threads != api_settings.server_threads:
+                api_settings.server_threads = server_threads
+                updated_fields.append("server_threads")
                 restart_required = restart_required or server_running
 
         token_value = data.get("token", data.get("api_key"))

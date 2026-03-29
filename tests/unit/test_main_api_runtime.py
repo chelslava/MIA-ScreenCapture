@@ -38,10 +38,12 @@ class FakeApiServer:
         self,
         host: str = "127.0.0.1",
         port: int = 5000,
+        server_threads: int = 4,
         api_key: str | None = None,
     ) -> None:
         self.host = host
         self.port = port
+        self.server_threads = server_threads
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.app = SimpleNamespace(name="fake-app")
         self.callbacks: dict[str, object] = {}
@@ -97,6 +99,7 @@ def _build_app(
     host: str = "127.0.0.1",
     port: int = 5000,
     api_key: str | None = None,
+    server_threads: int = 4,
     cli_api: dict[str, object] | None = None,
     scheduler_max_concurrent_tasks: int = 1,
 ) -> tuple[main.VideoRecorderApp, SimpleNamespace]:
@@ -105,6 +108,7 @@ def _build_app(
         enabled=enabled,
         host=host,
         port=port,
+        server_threads=server_threads,
         api_key=api_key,
     )
     fake_config = SimpleNamespace(
@@ -207,6 +211,7 @@ class TestMainApiRuntime:
         assert fake_config.settings.api.api_key == "config-token"
         assert fake_config.save.call_count == 0
         assert result["status"]["configured"]["api_key"] == "env-token"
+        assert app._api_server.server_threads == 4
         register_routes_mock.assert_called_once_with(
             app._api_server.app, app._api_server
         )
@@ -271,6 +276,22 @@ class TestMainApiRuntime:
         assert os.environ["MIA_API_KEY"] == "new-token"
         assert server.api_key == "new-token"
         assert server.callbacks == {}
+
+    def test_apply_api_settings_updates_server_threads(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Изменение server_threads обновляет конфиг и требует рестарт."""
+        app, fake_config = _build_app(monkeypatch, server_threads=4)
+        server = FakeApiServer(server_threads=4)
+        server._running = True
+        app._api_server = server
+
+        result = app._apply_api_settings({"server_threads": 6})
+
+        assert result["success"] is True
+        assert result["restart_required"] is True
+        assert "server_threads" in result["updated_fields"]
+        assert fake_config.settings.api.server_threads == 6
 
     def test_apply_api_settings_clears_env_when_token_removed(
         self, monkeypatch: pytest.MonkeyPatch

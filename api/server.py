@@ -439,6 +439,7 @@ class APIServer:
         self,
         host: str = "127.0.0.1",
         port: int = 5000,
+        server_threads: int = 4,
         api_key: str | None = None,
     ):
         """
@@ -447,10 +448,12 @@ class APIServer:
         Args:
             host: Адрес хоста для привязки
             port: Номер порта для прослушивания
+            server_threads: Количество потоков waitress
             api_key: Токен API для аутентификации
         """
         self.host = host
         self.port = port
+        self.server_threads = max(1, int(server_threads))
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
 
         # Flask приложение
@@ -736,7 +739,7 @@ class APIServer:
                 self.app,
                 host=self.host,
                 port=self.port,
-                threads=4,
+                threads=self.server_threads,
                 clear_untrusted_proxy_headers=True,
             )
             self._wsgi_server.run()

@@ -73,6 +73,11 @@
 - Полностью переписан `tests/unit/test_scheduler_tab.py`:
   вместо синтетических проверок добавлены реальные поведенческие сценарии
   create/edit/delete/toggle, обновление кнопок и проверка payload диалога.
+- Убрано хардкод-значение `threads=4` для waitress:
+  параметр `server_threads` добавлен в API-конфигурацию и прокинут
+  в `APIServer`/`main.py`.
+- Добавлены unit-тесты на применение `server_threads` в runtime
+  и при создании waitress-сервера.
 
 ## [1.4.3] - 2026-03-28
 
