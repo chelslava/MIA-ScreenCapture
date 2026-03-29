@@ -73,6 +73,7 @@ logger = get_module_logger(__name__)
 
 _GUI_DEFAULT_TIMEOUT_SECONDS = 10.0
 _GUI_START_TIMEOUT_SECONDS = 20.0
+_GUI_STOP_TIMEOUT_SECONDS = 60.0
 
 
 class _MainThreadExecutor:
