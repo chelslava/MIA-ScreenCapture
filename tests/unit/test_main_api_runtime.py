@@ -182,14 +182,30 @@ class TestMainApiRuntime:
     def test_get_effective_api_key_falls_back_to_config(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """При отсутствии env токен берётся из конфигурации."""
+        """При отсутствии env токен читается из конфигурации без миграции."""
         app, fake_config = _build_app(monkeypatch, api_key="config-token")
 
         monkeypatch.delenv("MIA_API_KEY", raising=False)
 
         assert app._get_effective_api_key() == "config-token"
+        assert fake_config.settings.api.api_key == "config-token"
+        assert fake_config.save.call_count == 0
+
+    def test_start_api_server_migrates_legacy_config_api_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Legacy API key из конфига мигрируется в env при старте API."""
+        app, fake_config = _build_app(monkeypatch, api_key="config-token")
+        monkeypatch.delenv("MIA_API_KEY", raising=False)
+        monkeypatch.setattr("api.server.APIServer", FakeApiServer)
+        monkeypatch.setattr("api.routes.register_routes", lambda *args: None)
+
+        result = app._start_api_server(force=True)
+
+        assert result["success"] is True
         assert fake_config.settings.api.api_key is None
         assert fake_config.save.call_count == 1
+        assert os.environ["MIA_API_KEY"] == "config-token"
 
     def test_start_api_server_skips_when_disabled(
         self, monkeypatch: pytest.MonkeyPatch

@@ -111,20 +111,33 @@ class ApiRuntimeManager:
         self._app = app
 
     def get_effective_api_key(self) -> str | None:
-        """Возвращает актуальный API ключ с миграцией из legacy config."""
+        """Возвращает актуальный API ключ без побочных эффектов."""
         stored_api_key = api_auth.get_stored_api_key()
         if stored_api_key is not None and stored_api_key.strip():
             return stored_api_key.strip()
 
         config_api_key = config_module.get_config().settings.api.api_key
         if config_api_key is not None and config_api_key.strip():
-            # Миграция устаревшего хранения из config в env/credential store.
-            self.sync_api_key_env(config_api_key)
-            config_module.get_config().settings.api.api_key = None
-            config_module.get_config().save()
             return config_api_key.strip()
 
         return None
+
+    def migrate_legacy_api_key_if_needed(self) -> str | None:
+        """Мигрирует API ключ из legacy config в env при необходимости."""
+        stored_api_key = api_auth.get_stored_api_key()
+        if stored_api_key is not None and stored_api_key.strip():
+            return stored_api_key.strip()
+
+        config = config_module.get_config()
+        config_api_key = config.settings.api.api_key
+        if config_api_key is None or not config_api_key.strip():
+            return None
+
+        normalized_key = config_api_key.strip()
+        self.sync_api_key_env(normalized_key)
+        config.settings.api.api_key = None
+        config.save()
+        return normalized_key
 
     def sync_api_key_env(self, api_key: str | None) -> None:
         """Синхронизирует API ключ с постоянным хранилищем и env."""
@@ -132,6 +145,7 @@ class ApiRuntimeManager:
 
     def start_api_server(self, force: bool = False) -> dict[str, Any]:
         """Запускает API сервер."""
+        self.migrate_legacy_api_key_if_needed()
         api_config = self.get_api_runtime_settings()
 
         if not force and not api_config.get("enabled", True):
