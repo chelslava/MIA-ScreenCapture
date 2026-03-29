@@ -332,7 +332,7 @@ class ApiSettingsView(QWidget):
 
     def _resolve_current_log_path(self) -> Path | None:
         """Определение актуального файла логов API."""
-        api_log_dir = get_api_log_dir()
+        api_log_dir = Path(get_api_log_dir())
         if not api_log_dir.exists():
             return None
 

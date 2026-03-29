@@ -196,7 +196,7 @@ class DiagnosticsView(QWidget):
     def _check_ffmpeg(self) -> bool:
         """Проверка наличия FFmpeg."""
         try:
-            return check_ffmpeg()
+            return bool(check_ffmpeg())
         except Exception as e:
             logger.error(f"Ошибка проверки FFmpeg: {e}")
             return False
