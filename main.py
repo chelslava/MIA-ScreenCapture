@@ -43,8 +43,6 @@ if TYPE_CHECKING:
 from api.auth import (
     API_KEY_ENV_VAR,
     API_KEY_HEADER,
-    get_stored_api_key,
-    set_stored_api_key,
 )
 from api.websocket import WebSocketManager
 from cli.parser import (
@@ -54,15 +52,11 @@ from cli.parser import (
     validate_recording_params,
 )
 from config import get_config, init_config
+from core.api_runtime_manager import ApiRuntimeManager
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
 from core.recording_service import RecordingService
 from gui.backends import GUIRecordingBackend
-from logger_config import (
-    get_api_log_dir,
-    get_module_logger,
-    open_api_logs_folder,
-    setup_logger,
-)
+from logger_config import get_module_logger, setup_logger
 from recorder.utils import (
     check_ffmpeg,
     get_audio_devices,
@@ -159,6 +153,7 @@ class VideoRecorderApp:
         )
         self._gui_executor: _MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
+        self._api_runtime_manager = ApiRuntimeManager(self)
 
     def _get_api_headers(self) -> dict:
         """
@@ -173,33 +168,12 @@ class VideoRecorderApp:
         return {}
 
     def _sync_api_key_env(self, api_key: str | None) -> None:
-        """
-        Синхронизация API ключа с постоянным хранилищем и env.
-
-        Args:
-            api_key: Токен API или None для удаления из окружения.
-        """
-        set_stored_api_key(api_key)
+        """Синхронизирует API ключ через менеджер runtime."""
+        self._api_runtime_manager.sync_api_key_env(api_key)
 
     def _get_effective_api_key(self) -> str | None:
-        """
-        Получение актуального API ключа с fallback на legacy config.
-
-        Returns:
-            API ключ из постоянного хранилища/env или legacy конфигурации.
-        """
-        stored_api_key = get_stored_api_key()
-        if stored_api_key is not None and stored_api_key.strip():
-            return stored_api_key.strip()
-
-        config_api_key = get_config().settings.api.api_key
-        if config_api_key is not None and config_api_key.strip():
-            # Миграция устаревшего хранения из config в Credential Manager/env.
-            self._sync_api_key_env(config_api_key)
-            get_config().settings.api.api_key = None
-            get_config().save()
-            return config_api_key.strip()
-        return None
+        """Возвращает актуальный API ключ через менеджер runtime."""
+        return self._api_runtime_manager.get_effective_api_key()
 
     def _handle_unauthorized_response(self) -> int:
         """
@@ -583,188 +557,24 @@ class VideoRecorderApp:
         return 0
 
     def _start_api_server(self, force: bool = False) -> dict[str, Any]:
-        """Запуск API сервера."""
-        api_config = self._get_api_runtime_settings()
-
-        if not force and not api_config.get("enabled", True):
-            logger.info("API сервер отключен настройками")
-            return {"success": False, "running": False}
-
-        from api.routes import register_routes
-        from api.server import APIServer
-
-        if self._api_server is not None and self._api_server.is_running():
-            logger.info("API сервер уже запущен")
-            return {"success": True, "status": self._get_api_status()}
-
-        self._api_server = APIServer(
-            host=api_config.get("host", "127.0.0.1"),
-            port=api_config.get("port", 5000),
-            server_threads=api_config.get("server_threads", 4),
-            api_key=api_config.get("api_key"),
-        )
-        self._sync_api_key_env(api_config.get("api_key"))
-
-        assert self._api_server is not None
-        resolved_api_key = self._api_server.get_runtime_api_key()
-        if resolved_api_key and resolved_api_key != api_config.get("api_key"):
-            api_settings = get_config().settings.api
-            api_settings.api_key = None
-            get_config().save()
-        self._sync_api_key_env(resolved_api_key)
-        self._api_server.set_websocket_manager(self._websocket_manager)
-
-        # Регистрация маршрутов
-        register_routes(self._api_server.app, self._api_server)
-
-        # Настройка обратных вызовов
-        self._setup_api_callbacks()
-
-        # Запуск сервера
-        self._api_server.start()
-        if self._main_window is not None:
-            self._main_window._api_server = self._api_server
-        logger.info(f"API сервер запущен на {self._api_server.get_url()}")
-        return {"success": True, "status": self._get_api_status()}
+        """Запускает API сервер через менеджер runtime."""
+        return self._api_runtime_manager.start_api_server(force=force)
 
     def _get_api_runtime_settings(self) -> dict[str, Any]:
-        """
-        Получение настроек API для текущего режима запуска.
-
-        В GUI режиме приоритет отдается сохраненной конфигурации, а в CLI
-        режимах сохраняется поведение с параметрами командной строки.
-        """
-        config_api = get_config().settings.api
-        cli_api = self._config.get("api", {})
-
-        if self._mode == "gui":
-            return {
-                "enabled": config_api.enabled,
-                "host": config_api.host,
-                "port": config_api.port,
-                "server_threads": config_api.server_threads,
-                "api_key": self._get_effective_api_key(),
-            }
-
-        return {
-            "enabled": cli_api.get("enabled", config_api.enabled),
-            "host": cli_api.get("host", config_api.host),
-            "port": cli_api.get("port", config_api.port),
-            "server_threads": cli_api.get(
-                "server_threads",
-                config_api.server_threads,
-            ),
-            "api_key": self._get_effective_api_key(),
-        }
+        """Возвращает runtime-настройки API через менеджер."""
+        return self._api_runtime_manager.get_api_runtime_settings()
 
     def _get_api_status(self) -> dict[str, Any]:
-        """
-        Получение статуса API для GUI.
-
-        Returns:
-            Словарь со статусом сервера и сохраненными настройками.
-        """
-        config_api = get_config().settings.api
-        effective_api_key = self._get_effective_api_key()
-        runtime_status = (
-            self._api_server.get_status()
-            if self._api_server is not None
-            else {
-                "running": False,
-                "host": config_api.host,
-                "port": config_api.port,
-                "url": f"http://{config_api.host}:{config_api.port}",
-                "api_key_set": bool(effective_api_key),
-            }
-        )
-
-        runtime_status["configured"] = {
-            "enabled": config_api.enabled,
-            "host": config_api.host,
-            "port": config_api.port,
-            "server_threads": config_api.server_threads,
-            "api_key": effective_api_key,
-        }
-        runtime_status["log_dir"] = str(get_api_log_dir())
-        return runtime_status
+        """Возвращает статус API через менеджер runtime."""
+        return self._api_runtime_manager.get_api_status()
 
     def _apply_api_settings(self, data: dict[str, Any]) -> dict[str, Any]:
-        """
-        Применение настроек API из GUI.
-
-        Args:
-            data: Словарь с полями `port` и `token`/`api_key`.
-
-        Returns:
-            Результат применения настроек.
-        """
-        config = get_config()
-        api_settings = config.settings.api
-        updated_fields: list[str] = []
-        restart_required = False
-        server_running = bool(
-            self._api_server is not None and self._api_server.is_running()
-        )
-
-        if "host" in data and data["host"] != api_settings.host:
-            api_settings.host = str(data["host"])
-            updated_fields.append("host")
-            restart_required = restart_required or server_running
-
-        if "port" in data:
-            port = int(data["port"])
-            if port != api_settings.port:
-                api_settings.port = port
-                updated_fields.append("port")
-                restart_required = restart_required or server_running
-
-        if "server_threads" in data:
-            server_threads = max(1, int(data["server_threads"]))
-            if server_threads != api_settings.server_threads:
-                api_settings.server_threads = server_threads
-                updated_fields.append("server_threads")
-                restart_required = restart_required or server_running
-
-        token_value = data.get("token", data.get("api_key"))
-        if token_value is not None:
-            api_key = str(token_value).strip() or None
-            current_api_key = self._get_effective_api_key()
-            if api_key != current_api_key:
-                updated_fields.append("api_key")
-                if self._api_server is not None:
-                    self._api_server.set_api_key(api_key)
-                self._sync_api_key_env(api_key)
-            if api_settings.api_key is not None:
-                api_settings.api_key = None
-
-        if "enabled" in data and bool(data["enabled"]) != api_settings.enabled:
-            api_settings.enabled = bool(data["enabled"])
-            updated_fields.append("enabled")
-
-        config.save()
-
-        return {
-            "success": True,
-            "updated_fields": updated_fields,
-            "restart_required": restart_required,
-            "status": self._get_api_status(),
-        }
+        """Применяет настройки API через менеджер runtime."""
+        return self._api_runtime_manager.apply_api_settings(data)
 
     def _stop_api_server(self) -> dict[str, Any]:
-        """
-        Остановка API сервера.
-
-        Returns:
-            Словарь с результатом операции.
-        """
-        if self._api_server is None:
-            return {"success": True, "running": False}
-
-        self._api_server.stop()
-        self._api_server = None
-        if self._main_window is not None:
-            self._main_window._api_server = None
-        return {"success": True, "running": False}
+        """Останавливает API сервер через менеджер runtime."""
+        return self._api_runtime_manager.stop_api_server()
 
     def _restart_api_server(self) -> dict[str, Any]:
         """
@@ -777,8 +587,8 @@ class VideoRecorderApp:
         return self._start_api_server(force=True)
 
     def _open_api_logs_folder(self) -> None:
-        """Открытие папки с логами API."""
-        open_api_logs_folder()
+        """Открывает папку с логами API через менеджер runtime."""
+        self._api_runtime_manager.open_api_logs_folder()
 
     def get_api_controls(self) -> dict[str, Any]:
         """
@@ -787,43 +597,11 @@ class VideoRecorderApp:
         Returns:
             Словарь с готовыми методами для привязки к GUI.
         """
-        return {
-            "get_status": self._get_api_status,
-            "apply_settings": self._apply_api_settings,
-            "start": lambda: self._start_api_server(force=True),
-            "stop": self._stop_api_server,
-            "restart": self._restart_api_server,
-            "open_logs": self._open_api_logs_folder,
-        }
+        return self._api_runtime_manager.get_api_controls()
 
     def _setup_api_callbacks(self) -> None:
-        """Настройка обратных вызовов API."""
-        if not self._api_server:
-            return
-
-        # Обратный вызов статуса
-        self._api_server.set_callback("status", self._get_status)
-
-        # Обратные вызовы записи
-        self._api_server.set_callback("start", self._start_recording)
-        self._api_server.set_callback("stop", self._stop_recording)
-        self._api_server.set_callback("pause", self._toggle_pause)
-        self._api_server.set_callback("recordings", self._get_recordings)
-
-        # Обратные вызовы планировщика
-        self._api_server.set_callback("get_schedule", self._get_schedule)
-        self._api_server.set_callback("create_schedule", self._create_schedule)
-        self._api_server.set_callback("delete_schedule", self._delete_schedule)
-        self._api_server.set_callback("update_schedule", self._update_schedule)
-        self._api_server.set_callback("toggle_schedule", self._toggle_schedule)
-
-        # Обратные вызовы устройств
-        self._api_server.set_callback("devices", self._get_devices)
-        self._api_server.set_callback("windows", self._get_windows)
-
-        # Обратные вызовы конфигурации
-        self._api_server.set_callback("get_config", self._get_config)
-        self._api_server.set_callback("update_config", self._update_config)
+        """Настраивает обратные вызовы API через менеджер runtime."""
+        self._api_runtime_manager.setup_api_callbacks()
 
     def _setup_hotkeys(self) -> None:
         """Настройка глобальных горячих клавиш."""
@@ -1014,7 +792,7 @@ class VideoRecorderApp:
                             "таймаута GUI-потока"
                         ),
                     )
-                return cast(dict[str, Any], fallback_result)
+                return fallback_result
         return self._recording_service.stop_recording()
 
     def _toggle_pause(self) -> dict[str, Any]:

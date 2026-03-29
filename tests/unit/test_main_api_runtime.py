@@ -138,6 +138,7 @@ def _build_app(
     )
 
     monkeypatch.setattr(main, "get_config", lambda: fake_config)
+    monkeypatch.setattr("config.get_config", lambda: fake_config)
     monkeypatch.setattr(main, "RecordingService", FakeRecordingService)
     monkeypatch.setattr(main, "GUIRecordingBackend", lambda: object())
     monkeypatch.setattr(main, "WebSocketManager", FakeWebSocketManager)
@@ -157,8 +158,8 @@ def _build_app(
             return
         monkeypatch.delenv("MIA_API_KEY", raising=False)
 
-    monkeypatch.setattr(main, "get_stored_api_key", _get_stored_key)
-    monkeypatch.setattr(main, "set_stored_api_key", _set_stored_key)
+    monkeypatch.setattr("api.auth.get_stored_api_key", _get_stored_key)
+    monkeypatch.setattr("api.auth.set_stored_api_key", _set_stored_key)
     FakeApiServer.instances.clear()
 
     app = main.VideoRecorderApp({"mode": "gui", "api": cli_api or {}})
@@ -395,8 +396,8 @@ class TestMainApiRuntime:
         start_mock = MagicMock(
             return_value={"success": True, "status": {"running": True}}
         )
-        app._stop_api_server = stop_mock
-        app._start_api_server = start_mock
+        app._api_runtime_manager.stop_api_server = stop_mock
+        app._api_runtime_manager.start_api_server = start_mock
 
         result = app._restart_api_server()
 
@@ -412,17 +413,15 @@ class TestMainApiRuntime:
 
         start_mock = MagicMock(return_value={"success": True})
         stop_mock = MagicMock(return_value={"success": True})
-        restart_mock = MagicMock(return_value={"success": True})
         apply_settings_mock = MagicMock(return_value={"success": True})
         get_status_mock = MagicMock(return_value={"success": True})
         open_logs_mock = MagicMock()
 
-        app._start_api_server = start_mock
-        app._stop_api_server = stop_mock
-        app._restart_api_server = restart_mock
-        app._apply_api_settings = apply_settings_mock
-        app._get_api_status = get_status_mock
-        app._open_api_logs_folder = open_logs_mock
+        app._api_runtime_manager.start_api_server = start_mock
+        app._api_runtime_manager.stop_api_server = stop_mock
+        app._api_runtime_manager.apply_api_settings = apply_settings_mock
+        app._api_runtime_manager.get_api_status = get_status_mock
+        app._api_runtime_manager.open_api_logs_folder = open_logs_mock
 
         controls = app.get_api_controls()
 
@@ -444,9 +443,8 @@ class TestMainApiRuntime:
 
         get_status_mock.assert_called_once_with()
         apply_settings_mock.assert_called_once_with({"port": 5011})
-        start_mock.assert_called_once_with(force=True)
-        stop_mock.assert_called_once_with()
-        restart_mock.assert_called_once_with()
+        assert start_mock.call_count == 2
+        assert stop_mock.call_count == 2
         open_logs_mock.assert_called_once_with()
 
     def test_stop_recording_uses_extended_gui_timeout(
