@@ -538,6 +538,65 @@ class TestVideoRecorderStop:
 
         assert result is True
 
+    def test_stop_logs_warning_when_capture_thread_slow(
+        self,
+        recorder: VideoRecorder,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Таймаут join должен логироваться как warning."""
+
+        class SlowThread:
+            """Поток, который завершается только после cleanup."""
+
+            def __init__(self) -> None:
+                self._alive_checks = iter([True, True, False, False])
+
+            def is_alive(self) -> bool:
+                return next(self._alive_checks)
+
+            @staticmethod
+            def join(timeout: float) -> None:
+                _ = timeout
+
+        recorder._state = RecordingState.RECORDING
+        recorder._output_path = tmp_path / "slow.mp4"
+        recorder._capture_thread = SlowThread()  # type: ignore[assignment]
+
+        with (
+            patch.object(recorder, "_cleanup", return_value=True),
+            caplog.at_level("WARNING"),
+        ):
+            result = recorder.stop()
+
+        assert result is True
+        assert "Поток захвата не завершился за" in caplog.text
+
+    def test_stop_returns_false_when_capture_thread_hangs(
+        self, recorder: VideoRecorder, tmp_path: Path
+    ) -> None:
+        """Если поток не завершился после cleanup, stop возвращает False."""
+
+        class HungThread:
+            """Поток, который не завершается даже после cleanup."""
+
+            @staticmethod
+            def is_alive() -> bool:
+                return True
+
+            @staticmethod
+            def join(timeout: float) -> None:
+                _ = timeout
+
+        recorder._state = RecordingState.RECORDING
+        recorder._output_path = tmp_path / "hung.mp4"
+        recorder._capture_thread = HungThread()  # type: ignore[assignment]
+
+        with patch.object(recorder, "_cleanup", return_value=True):
+            result = recorder.stop()
+
+        assert result is False
+
 
 class TestVideoRecorderIntegration:
     """Интеграционные тесты VideoRecorder."""

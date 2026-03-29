@@ -28,6 +28,7 @@ from recorder.utils import (
 logger = get_module_logger(__name__)
 
 _CAPTURE_STOP_TIMEOUT_SECONDS = 15
+_CAPTURE_FORCE_JOIN_TIMEOUT_SECONDS = 2
 
 
 class RecordingState(Enum):
@@ -516,11 +517,36 @@ class VideoRecorder:
 
             self._state = RecordingState.STOPPING
 
-        # Ожидание завершения потока захвата
-        if self._capture_thread and self._capture_thread.is_alive():
-            self._capture_thread.join(timeout=_CAPTURE_STOP_TIMEOUT_SECONDS)
+        capture_thread = self._capture_thread
+
+        # Сигнализируем сессии о завершении до ожидания join.
+        if self._capture_session is not None:
+            try:
+                self._capture_session.stop()
+            except Exception as e:
+                logger.warning(
+                    "Не удалось остановить capture session перед join: %s",
+                    e,
+                )
+
+        # Ожидание завершения потока захвата.
+        if capture_thread and capture_thread.is_alive():
+            capture_thread.join(timeout=_CAPTURE_STOP_TIMEOUT_SECONDS)
+            if capture_thread.is_alive():
+                logger.warning(
+                    "Поток захвата не завершился за %s сек",
+                    _CAPTURE_STOP_TIMEOUT_SECONDS,
+                )
 
         cleanup_ok = self._cleanup()
+
+        # После cleanup даём потоку короткий шанс на финальное завершение.
+        if capture_thread and capture_thread.is_alive():
+            capture_thread.join(timeout=_CAPTURE_FORCE_JOIN_TIMEOUT_SECONDS)
+
+        if capture_thread and capture_thread.is_alive():
+            logger.error("Поток захвата не завершился после cleanup")
+            return False
 
         if not cleanup_ok:
             logger.error(
