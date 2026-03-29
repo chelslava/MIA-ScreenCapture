@@ -72,7 +72,7 @@ class InMemoryRateLimiter:
         self.config = config or RateLimitConfig()
         self._clients: dict[str, ClientState] = defaultdict(ClientState)
         self._lock = Lock()
-        self._last_cleanup = time.time()
+        self._last_cleanup = time.monotonic()
 
     def _get_client_ip(self) -> str:
         """Получение IP-адреса клиента."""
@@ -93,7 +93,7 @@ class InMemoryRateLimiter:
 
     def _reset_counters_if_needed(self, state: ClientState) -> None:
         """Сброс счётчиков при истечении временных окон."""
-        current_time = time.time()
+        current_time = time.monotonic()
 
         # Сброс burst счётчика (1 секунда)
         if current_time - state.last_burst_reset >= 1.0:
@@ -117,7 +117,7 @@ class InMemoryRateLimiter:
         Returns:
             Количество удалённых клиентов
         """
-        current_time = time.time()
+        current_time = time.monotonic()
         removed = 0
 
         # Периодическая очистка (раз в 10 минут)
@@ -163,7 +163,7 @@ class InMemoryRateLimiter:
             self._cleanup_inactive_clients()
 
             state = self._clients[client_ip]
-            current_time = time.time()
+            current_time = time.monotonic()
 
             # Обновление времени последней активности
             state.last_activity = current_time
@@ -262,7 +262,7 @@ class InMemoryRateLimiter:
                 "minute_count": state.minute_count,
                 "hour_count": state.hour_count,
                 "burst_count": state.burst_count,
-                "is_blocked": time.time() < state.blocked_until,
+                "is_blocked": time.monotonic() < state.blocked_until,
                 "minute_remaining": (
                     self.config.requests_per_minute - state.minute_count
                 ),

@@ -286,6 +286,124 @@ class TestInMemoryRateLimiter:
             assert allowed is False
             assert info["limit_type"] == "blocked"
 
+    def test_burst_block_uses_monotonic_clock(self, app):
+        """Тест блокировки burst на основе monotonic clock."""
+        config = RateLimitConfig(burst_limit=1, block_duration=5)
+        limiter = InMemoryRateLimiter(config)
+        limiter._clients["10.0.0.10"] = ClientState(
+            burst_count=1,
+            last_burst_reset=100.0,
+            last_activity=100.0,
+        )
+        limiter._last_cleanup = 0.0
+
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.10"),
+            patch.object(limiter, "_cleanup_inactive_clients", return_value=0),
+            patch("api.rate_limiter.time.time", side_effect=AssertionError),
+            patch("api.rate_limiter.logger.warning"),
+            patch("api.rate_limiter.time.monotonic", return_value=100.0),
+        ):
+            allowed, info = limiter.check_rate_limit()
+            assert allowed is False
+            assert info is not None
+            assert info["limit_type"] == "burst"
+            assert info["retry_after"] == 5
+
+        limiter._clients["10.0.0.10"].blocked_until = 105.0
+
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.10"),
+            patch.object(limiter, "_cleanup_inactive_clients", return_value=0),
+            patch("api.rate_limiter.time.time", side_effect=AssertionError),
+            patch("api.rate_limiter.logger.warning"),
+            patch("api.rate_limiter.time.monotonic", return_value=104.0),
+        ):
+            allowed, info = limiter.check_rate_limit()
+            assert allowed is False
+            assert info is not None
+            assert info["limit_type"] == "blocked"
+
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.10"),
+            patch.object(limiter, "_cleanup_inactive_clients", return_value=0),
+            patch("api.rate_limiter.time.time", side_effect=AssertionError),
+            patch("api.rate_limiter.logger.warning"),
+            patch("api.rate_limiter.time.monotonic", return_value=106.0),
+        ):
+            allowed, info = limiter.check_rate_limit()
+            assert allowed is True
+            assert info is None
+
+    def test_window_reset_uses_monotonic_clock(self, app):
+        """Тест сброса окон на основе monotonic clock."""
+        config = RateLimitConfig(
+            burst_limit=100,
+            requests_per_minute=100,
+            requests_per_hour=100,
+        )
+        limiter = InMemoryRateLimiter(config)
+        limiter._clients["10.0.0.11"] = ClientState(
+            minute_count=5,
+            hour_count=5,
+            burst_count=5,
+            last_minute_reset=0.0,
+            last_hour_reset=0.0,
+            last_burst_reset=0.0,
+            last_activity=0.0,
+        )
+        limiter._last_cleanup = 0.0
+
+        with (
+            app.test_request_context(),
+            patch.object(limiter, "_get_client_ip", return_value="10.0.0.11"),
+            patch.object(limiter, "_cleanup_inactive_clients", return_value=0),
+            patch("api.rate_limiter.time.time", side_effect=AssertionError),
+            patch("api.rate_limiter.time.monotonic", return_value=3661.0),
+        ):
+            limiter.check_rate_limit()
+
+        state = limiter._clients["10.0.0.11"]
+        assert state.burst_count == 1
+        assert state.minute_count == 1
+        assert state.hour_count == 1
+        assert state.last_burst_reset == pytest.approx(3661.0)
+        assert state.last_minute_reset == pytest.approx(3661.0)
+        assert state.last_hour_reset == pytest.approx(3661.0)
+
+    def test_cleanup_uses_monotonic_clock(self):
+        """Тест очистки неактивных клиентов через monotonic clock."""
+        limiter = InMemoryRateLimiter()
+        limiter._clients["10.0.0.12"] = ClientState(last_activity=-8000.0)
+        limiter._last_cleanup = 0.0
+
+        with (
+            patch("api.rate_limiter.time.time", side_effect=AssertionError),
+            patch("api.rate_limiter.logger.info"),
+            patch("api.rate_limiter.time.monotonic", return_value=700.0),
+        ):
+            removed = limiter._cleanup_inactive_clients()
+
+        assert removed == 1
+        assert "10.0.0.12" not in limiter._clients
+
+    def test_get_client_stats_uses_monotonic_clock(self):
+        """Тест статуса блокировки через monotonic clock."""
+        limiter = InMemoryRateLimiter()
+        limiter._clients["10.0.0.13"] = ClientState(blocked_until=105.0)
+
+        with patch("api.rate_limiter.time.time", side_effect=AssertionError):
+            with patch("api.rate_limiter.time.monotonic", return_value=100.0):
+                stats = limiter.get_client_stats("10.0.0.13")
+                assert stats["is_blocked"] is True
+
+            with patch("api.rate_limiter.time.monotonic", return_value=106.0):
+                stats = limiter.get_client_stats("10.0.0.13")
+                assert stats["is_blocked"] is False
+
 
 class TestRateLimitDecorator:
     """Тесты декоратора rate_limit."""
