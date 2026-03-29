@@ -78,7 +78,10 @@ class TestAPIServerLifecycle:
         assert status["host"] == "127.0.0.1"
         assert status["port"] == 5011
         assert status["url"] == "http://127.0.0.1:5011"
-        assert status["api_key"] == TEST_API_KEY
+        assert status["api_key"] != TEST_API_KEY
+        assert status["api_key"].startswith(TEST_API_KEY[:4])
+        assert status["api_key"].endswith(TEST_API_KEY[-4:])
+        assert "****" in status["api_key"]
         assert status["api_key_set"] is True
 
         assert api_server._server_thread is not None
