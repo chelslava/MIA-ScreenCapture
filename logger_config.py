@@ -13,7 +13,7 @@ import sys
 from collections.abc import MutableMapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 def get_log_dir() -> Path:
@@ -89,7 +89,7 @@ class _DailyLogFileHandler(logging.FileHandler):
         try:
             if self.stream:
                 self.stream.close()
-                self.stream = None
+                self.stream = cast(Any, None)
 
             self._current_date = next_date
             self.baseFilename = os.fspath(self._build_path(next_date))
