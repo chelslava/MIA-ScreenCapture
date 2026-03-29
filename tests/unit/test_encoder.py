@@ -5,6 +5,7 @@
 Тестирует классы EncodingSettings и Encoder.
 """
 
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -618,10 +619,12 @@ class TestEncoderProcessCleanup:
     ) -> None:
         """Проверка чтения хвоста stderr и удаления временного файла."""
         stderr_path = tmp_path / "ffmpeg_stderr.log"
+        real_named_temporary_file = tempfile.NamedTemporaryFile
 
         def fake_temp_file(*args, **kwargs):
-            _ = args, kwargs
-            return open(stderr_path, "w+b")
+            if kwargs.get("prefix") == "ffmpeg_stderr_":
+                return open(stderr_path, "w+b")
+            return real_named_temporary_file(*args, **kwargs)
 
         def fake_run(cmd, stdout, stderr, timeout):
             _ = cmd, stdout, timeout
@@ -648,10 +651,12 @@ class TestEncoderProcessCleanup:
     ) -> None:
         """Проверка fallback на stderr процесса при пустом файле лога."""
         stderr_path = tmp_path / "ffmpeg_stderr.log"
+        real_named_temporary_file = tempfile.NamedTemporaryFile
 
         def fake_temp_file(*args, **kwargs):
-            _ = args, kwargs
-            return open(stderr_path, "w+b")
+            if kwargs.get("prefix") == "ffmpeg_stderr_":
+                return open(stderr_path, "w+b")
+            return real_named_temporary_file(*args, **kwargs)
 
         def fake_run(cmd, stdout, stderr, timeout):
             _ = cmd, stdout, stderr, timeout
