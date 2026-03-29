@@ -12,7 +12,7 @@ import subprocess
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -950,11 +950,11 @@ class MainWindow(QMainWindow):
     ) -> Path:
         """Преобразование output_path из API в конечный путь файла."""
         if requested_output_path is None:
-            return self._settings_controller.get_output_path()
+            return cast(Path, self._settings_controller.get_output_path())
 
         raw_path = str(requested_output_path).strip()
         if not raw_path:
-            return self._settings_controller.get_output_path()
+            return cast(Path, self._settings_controller.get_output_path())
 
         candidate = Path(raw_path)
         is_dir_hint = raw_path.endswith(("/", "\\"))
@@ -1017,4 +1017,4 @@ class MainWindow(QMainWindow):
             Список словарей с информацией о записях
         """
         config = get_config()
-        return config.settings.recent_recordings
+        return cast(list[Any], config.settings.recent_recordings)

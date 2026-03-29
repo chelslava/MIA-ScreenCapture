@@ -84,6 +84,8 @@
 - Устранены type-замечания в `gui/views/api_settings_view.py`
   и `gui/views/diagnostics_view.py`; оба модуля включены
   в блокирующий `mypy`-scope CI.
+- Устранены type-замечания в `gui/main_window.py`;
+  модуль добавлен в блокирующий `mypy`-scope CI.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного
