@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -299,7 +300,7 @@ class VideoRecorder:
         # Информация о записи
         self._output_path: Path | None = None
         self._video_writer: cv2.VideoWriter | None = None
-        self._ffmpeg_writer = None
+        self._ffmpeg_writer: Any | None = None
         self._capture_area: CaptureArea | None = None
         self._capture_session: _WindowsCaptureSession | None = None
 
@@ -427,7 +428,12 @@ class VideoRecorder:
                     fourcc_code = self.CODEC_MAP.get(
                         self.codec.lower(), "mp4v"
                     )
-                    fourcc = cv2.VideoWriter_fourcc(*fourcc_code)
+                    fourcc_factory = getattr(cv2, "VideoWriter_fourcc", None)
+                    if fourcc_factory is None:
+                        raise RuntimeError(
+                            "OpenCV VideoWriter_fourcc недоступен"
+                        )
+                    fourcc = fourcc_factory(*fourcc_code)
 
                     self._video_writer = cv2.VideoWriter(
                         str(self._output_path),

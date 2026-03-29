@@ -93,6 +93,11 @@
   `gui/controllers/settings_controller.py`,
   `gui/controllers/recording_controller.py` и
   `gui/backends/recording_backend.py`.
+- Устранены type-замечания в `recorder/video_recorder.py`
+  и удалён избыточный `cast` в
+  `gui/controllers/recording_controller.py`.
+- Блокирующий `mypy`-scope в CI расширен на
+  `recorder/video_recorder.py`.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного
