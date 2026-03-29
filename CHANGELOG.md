@@ -76,6 +76,11 @@
   без изменения runtime-поведения.
 - Блокирующий `mypy`-scope в CI расширен на
   `api/server.py` и `core/recording_service.py`.
+- Блокирующий `mypy`-scope в CI расширен на безопасные
+  GUI view-модули:
+  `gui/views/__init__.py`, `gui/views/audio_view.py`,
+  `gui/views/capture_view.py`, `gui/views/output_view.py`,
+  `gui/views/video_view.py`.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного
