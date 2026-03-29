@@ -22,6 +22,10 @@
   с fallback на переменную окружения `MIA_API_KEY`.
 
 ### Changed
+- Синхронизирована версия `1.4.5` в `pyproject.toml`, `README.md`,
+  `api/swagger.py` и roadmap ближайшего релиза.
+- Добавлен release preflight-чеклист `plans/release-preflight-v1.4.5.md`
+  с quality gates, smoke evidence и проверкой артефактов.
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
 - Расширены unit-тесты для фильтра записей и очистки списка.
 - Выполнен headless smoke-run API runtime: `start/stop/restart`, смена порта

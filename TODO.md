@@ -11,10 +11,6 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] Синхронизировать версию `1.4.5` во всех точках:
-  runtime, `pyproject.toml`, README/wiki и changelog.
-- [ ] Добавить release preflight-чеклист:
-  `ruff`, `pytest`, smoke evidence, проверка артефактов и checksum.
 - [ ] Добавить сценарий проверки упакованного Windows EXE:
   запуск, `/health`, корректное завершение процесса.
 - [ ] Подготовить регрессионный сценарий GUI API tab:
