@@ -117,9 +117,9 @@ jobs:
             }
           }
           finally {
-            if (-not $proc.HasExited) {
+            if ($null -ne $proc -and -not $proc.HasExited) {
               Stop-Process -Id $proc.Id -Force
-              Wait-Process -Id $proc.Id
+              Wait-Process -Id $proc.Id -ErrorAction SilentlyContinue
             }
           }
 
