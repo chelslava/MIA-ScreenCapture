@@ -40,7 +40,7 @@ class TestSwaggerSpec:
         assert "description" in info
 
         assert "MIA-ScreenCapture" in info["title"]
-        assert info["version"] == "1.3.0"
+        assert info["version"] == "1.4.5"
 
     def test_swagger_spec_servers(self) -> None:
         """Проверка списка серверов."""
