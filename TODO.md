@@ -11,11 +11,6 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] [Stability] Закрывать и дожидаться stderr-reader
-  потока FFmpeg в `close()`/cleanup, покрыть тестом
-  многократный start/stop без утечек потоков
-  (`recorder/ffmpeg_writer.py`, `tests/unit/test_ffmpeg_writer.py`).
-
 ## P2 (после стабилизации релиза)
 
 - [ ] Реализовать асинхронную очередь GUI-команд для API (`start/stop/pause`)

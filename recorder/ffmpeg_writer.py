@@ -22,6 +22,7 @@ logger = get_module_logger(__name__)
 _FFMPEG_CLOSE_TIMEOUT_SECONDS = 180
 _FFMPEG_TERMINATE_GRACE_TIMEOUT_SECONDS = 15
 _FFMPEG_STDERR_TAIL_LINES = 50
+_STDERR_READER_JOIN_TIMEOUT_SECONDS = 2.0
 
 
 class FFmpegVideoWriter:
@@ -127,6 +128,7 @@ class FFmpegVideoWriter:
         self._start_time = 0.0
         self._stderr_tail: deque[str] = deque(maxlen=_FFMPEG_STDERR_TAIL_LINES)
         self._stderr_reader: threading.Thread | None = None
+        self._stderr_stream: Any | None = None
 
     @property
     def frame_count(self) -> int:
@@ -332,6 +334,7 @@ class FFmpegVideoWriter:
             return False
         finally:
             self._process = None
+            self._stop_stderr_reader()
 
     def _start_stderr_reader(self, stream: Any | None) -> None:
         """
@@ -343,6 +346,8 @@ class FFmpegVideoWriter:
         if stream is None:
             return
 
+        self._stderr_stream = stream
+
         reader = threading.Thread(
             target=self._read_stderr,
             args=(stream,),
@@ -351,6 +356,32 @@ class FFmpegVideoWriter:
         )
         self._stderr_reader = reader
         reader.start()
+
+    def _stop_stderr_reader(self) -> None:
+        """Останавливает stderr-reader и дожидается завершения потока."""
+        stream = self._stderr_stream
+        reader = self._stderr_reader
+        self._stderr_stream = None
+        self._stderr_reader = None
+
+        if stream is not None:
+            try:
+                stream.close()
+            except Exception:
+                logger.debug("Не удалось закрыть stderr stream FFmpeg")
+
+        if reader is None:
+            return
+
+        is_alive = getattr(reader, "is_alive", None)
+        join = getattr(reader, "join", None)
+        if callable(is_alive) and callable(join) and is_alive():
+            join(timeout=_STDERR_READER_JOIN_TIMEOUT_SECONDS)
+            if is_alive():
+                logger.warning(
+                    "stderr-reader поток FFmpeg не завершился за %.1f секунд",
+                    _STDERR_READER_JOIN_TIMEOUT_SECONDS,
+                )
 
     def _read_stderr(self, stream: Any) -> None:
         """

@@ -116,6 +116,9 @@
   через единый резолвер executable в `recorder/utils.py`;
   обновлены unit-тесты для `recorder/utils.py` и
   `recorder/ffmpeg_writer.py`.
+- `FFmpegVideoWriter.close()` теперь корректно закрывает stderr stream,
+  дожидается завершения stderr-reader потока и очищает его состояние;
+  добавлен unit-тест на многократные `open/close` без утечек потоков.
 - Жизненный цикл `idempotency store` в API исправлен для
   сценария `stop -> start`: при повторном старте сервер
   пересоздаёт хранилище и cleanup-thread;
