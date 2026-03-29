@@ -1,413 +1,295 @@
-"""
-Unit тесты для SchedulerTab
-===========================
+"""Поведенческие тесты вкладки планировщика."""
 
-Тестирует функциональность вкладки планировщика.
+from __future__ import annotations
 
-Примечание: PyQt6 мокируется в conftest.py для всех тестов.
-"""
+from dataclasses import dataclass
+from types import SimpleNamespace
+from typing import Any
 
-from datetime import datetime, timedelta
-
-import pytest
-
-
-class TestSchedulerTabBasics:
-    """Базовые тесты SchedulerTab."""
-
-    def test_scheduler_tab_module_exists(self) -> None:
-        """Проверка существования модуля."""
-        from gui import scheduler_tab
-
-        assert scheduler_tab is not None
-
-    def test_tab_name(self) -> None:
-        """Проверка имени вкладки."""
-        tab_name = "Планировщик"
-        assert tab_name == "Планировщик"
+from gui import scheduler_tab
+from scheduler.task_scheduler import (
+    RecordingParams,
+    ScheduleTask,
+    ScheduleType,
+)
 
 
-class TestSchedulerTabComponents:
-    """Параметризованные тесты компонентов вкладки."""
+class _Emitter:
+    """Простой collector для emitted сигналов."""
 
-    @pytest.mark.parametrize(
-        "component",
-        [
-            "task_list",
-            "add_task_button",
-            "edit_task_button",
-            "delete_task_button",
-            "task_details_panel",
-        ],
+    def __init__(self) -> None:
+        self.calls: list[tuple[Any, ...]] = []
+
+    def emit(self, *args: Any) -> None:
+        self.calls.append(args)
+
+
+@dataclass
+class _FakeButton:
+    """Минимальная кнопка с поддержкой enabled state."""
+
+    enabled: bool = False
+
+    def setEnabled(self, value: bool) -> None:  # noqa: N802 (Qt naming)
+        self.enabled = value
+
+    def isEnabled(self) -> bool:  # noqa: N802
+        return self.enabled
+
+
+class _FakeTable:
+    """Минимальная таблица для тестов SchedulerTab."""
+
+    def __init__(self) -> None:
+        self._current_row = -1
+        self._selected_items: list[int] = []
+        self.row_count = 0
+        self.items: dict[tuple[int, int], Any] = {}
+
+    def currentRow(self) -> int:  # noqa: N802
+        return self._current_row
+
+    def setCurrentRow(self, row: int) -> None:  # noqa: N802
+        self._current_row = row
+
+    def selectedItems(self) -> list[int]:  # noqa: N802
+        return list(self._selected_items)
+
+    def set_selected(self, has_selection: bool) -> None:
+        self._selected_items = [1] if has_selection else []
+
+    def setRowCount(self, count: int) -> None:  # noqa: N802
+        self.row_count = count
+
+    def setItem(self, row: int, column: int, item: Any) -> None:  # noqa: N802
+        self.items[(row, column)] = item
+
+
+@dataclass
+class _FakeLabel:
+    """Минимальная метка с поддержкой visible state."""
+
+    visible: bool = True
+
+    def setVisible(self, value: bool) -> None:  # noqa: N802
+        self.visible = value
+
+
+def _make_task(
+    task_id: str = "task-1",
+    schedule_type: ScheduleType = ScheduleType.DAILY,
+    enabled: bool = True,
+) -> ScheduleTask:
+    """Создаёт задачу для тестов."""
+    return ScheduleTask(
+        id=task_id,
+        name=f"Task {task_id}",
+        schedule_type=schedule_type,
+        params=RecordingParams(),
+        enabled=enabled,
+        time_of_day="10:00",
+        days_of_week=[0, 2, 4],
+        interval_hours=1,
+        interval_minutes=30,
+        cron_expression="0 9 * * 1-5",
     )
-    def test_component_exists(self, component: str) -> None:
-        """Проверка наличия компонента."""
-        components = [
-            "task_list",
-            "add_task_button",
-            "edit_task_button",
-            "delete_task_button",
-            "task_details_panel",
-        ]
-        assert component in components
 
 
-class TestSchedulerTabTaskList:
-    """Тесты списка задач."""
-
-    def test_task_list_columns(self) -> None:
-        """Проверка колонок списка задач."""
-        columns = ["name", "type", "schedule", "status", "next_run"]
-        assert len(columns) == 5
-
-    def test_task_list_empty_state(self) -> None:
-        """Проверка пустого состояния списка."""
-        tasks: list = []
-        assert len(tasks) == 0
-
-    def test_task_list_with_tasks(self) -> None:
-        """Проверка списка с задачами."""
-        tasks = [
-            {"name": "Daily Recording", "type": "once", "status": "active"},
-            {"name": "Weekly Backup", "type": "interval", "status": "active"},
-        ]
-        assert len(tasks) == 2
+def _build_scheduler_tab() -> scheduler_tab.SchedulerTab:
+    """Создаёт SchedulerTab без вызова Qt-инициализации."""
+    tab = scheduler_tab.SchedulerTab.__new__(scheduler_tab.SchedulerTab)
+    tab._tasks = []
+    tab.table = _FakeTable()
+    tab.edit_btn = _FakeButton()
+    tab.delete_btn = _FakeButton()
+    tab.toggle_btn = _FakeButton()
+    tab.info_label = _FakeLabel()
+    tab.task_created = _Emitter()
+    tab.task_updated = _Emitter()
+    tab.task_deleted = _Emitter()
+    tab.task_toggled = _Emitter()
+    return tab
 
 
-class TestSchedulerTabTaskTypes:
-    """Параметризованные тесты типов задач."""
+def test_scheduler_tab_module_exists() -> None:
+    """Проверка доступности модуля."""
+    assert scheduler_tab is not None
 
-    @pytest.mark.parametrize(
-        "task_type", ["once", "interval", "cron", "daily"]
+
+def test_selection_changes_button_states() -> None:
+    """Кнопки edit/delete/toggle зависят от выбора строки."""
+    tab = _build_scheduler_tab()
+
+    tab.table.set_selected(False)
+    tab._on_selection_changed()
+    assert tab.edit_btn.isEnabled() is False
+    assert tab.delete_btn.isEnabled() is False
+    assert tab.toggle_btn.isEnabled() is False
+
+    tab.table.set_selected(True)
+    tab._on_selection_changed()
+    assert tab.edit_btn.isEnabled() is True
+    assert tab.delete_btn.isEnabled() is True
+    assert tab.toggle_btn.isEnabled() is True
+
+
+def test_set_tasks_refreshes_table_and_empty_label() -> None:
+    """set_tasks обновляет row count и скрывает empty label."""
+    tab = _build_scheduler_tab()
+    tasks = [_make_task("task-1"), _make_task("task-2")]
+
+    tab.set_tasks(tasks)
+
+    assert tab.table.row_count == 2
+    assert tab.info_label.visible is False
+
+
+def test_add_task_emits_task_created(monkeypatch) -> None:
+    """Добавление задачи эмитит task_created с payload."""
+    tab = _build_scheduler_tab()
+    payload = {"name": "Created Task", "schedule_type": ScheduleType.ONCE}
+    monkeypatch.setattr(
+        scheduler_tab.QDialog,
+        "DialogCode",
+        SimpleNamespace(Accepted=1),
+        raising=False,
     )
-    def test_valid_task_types(self, task_type: str) -> None:
-        """Проверка валидных типов задач."""
-        valid_types = ["once", "interval", "cron", "daily"]
-        assert task_type in valid_types
+
+    class _FakeDialog:
+        def __init__(self, _parent) -> None:
+            return None
+
+        def exec(self) -> int:  # noqa: A003
+            return scheduler_tab.QDialog.DialogCode.Accepted
+
+        def get_task_data(self) -> dict[str, Any]:
+            return payload
+
+    monkeypatch.setattr(scheduler_tab, "TaskDialog", _FakeDialog)
+    tab._add_task()
+
+    assert tab.task_created.calls == [(payload,)]
 
 
-class TestSchedulerTabScheduleSettings:
-    """Параметризованные тесты настроек расписания."""
-
-    @pytest.mark.parametrize(
-        "settings_type,required_keys",
-        [
-            ("once", ["datetime"]),
-            ("interval", ["interval_seconds"]),
-            ("cron", ["cron_expression"]),
-            ("daily", ["time"]),
-        ],
+def test_edit_task_emits_task_updated_with_id(monkeypatch) -> None:
+    """Редактирование добавляет id текущей задачи и эмитит task_updated."""
+    tab = _build_scheduler_tab()
+    existing = _make_task("task-77")
+    tab._tasks = [existing]
+    tab.table.setCurrentRow(0)
+    payload = {"name": "Updated"}
+    monkeypatch.setattr(
+        scheduler_tab.QDialog,
+        "DialogCode",
+        SimpleNamespace(Accepted=1),
+        raising=False,
     )
-    def test_schedule_settings_has_required_keys(
-        self, settings_type: str, required_keys: list[str]
-    ) -> None:
-        """Проверка обязательных ключей для каждого типа расписания."""
-        # Создаём пример настроек для каждого типа
-        sample_settings = {
-            "once": {
-                "type": "once",
-                "datetime": datetime.now() + timedelta(hours=1),
-            },
-            "interval": {
-                "type": "interval",
-                "interval_seconds": 3600,
-                "start_date": datetime.now(),
-            },
-            "cron": {"type": "cron", "cron_expression": "0 9 * * 1-5"},
-            "daily": {"type": "daily", "time": "09:00"},
-        }
 
-        settings = sample_settings[settings_type]
-        for key in required_keys:
-            assert key in settings
+    class _FakeDialog:
+        def __init__(self, _parent, task) -> None:
+            assert task is existing
+
+        def exec(self) -> int:  # noqa: A003
+            return scheduler_tab.QDialog.DialogCode.Accepted
+
+        def get_task_data(self) -> dict[str, Any]:
+            return dict(payload)
+
+    monkeypatch.setattr(scheduler_tab, "TaskDialog", _FakeDialog)
+    tab._edit_task()
+
+    assert tab.task_updated.calls == [({"name": "Updated", "id": "task-77"},)]
 
 
-class TestSchedulerTabTaskStatus:
-    """Параметризованные тесты статуса задач."""
+def test_delete_task_emits_task_deleted_on_confirm_yes(monkeypatch) -> None:
+    """Удаление эмитит task_deleted после подтверждения."""
+    tab = _build_scheduler_tab()
+    task = _make_task("task-del")
+    tab._tasks = [task]
+    tab.table.setCurrentRow(0)
 
-    @pytest.mark.parametrize(
-        "status", ["active", "paused", "completed", "error"]
+    monkeypatch.setattr(
+        scheduler_tab.QMessageBox,
+        "question",
+        lambda *args, **kwargs: scheduler_tab.QMessageBox.StandardButton.Yes,
     )
-    def test_valid_task_statuses(self, status: str) -> None:
-        """Проверка валидных статусов задач."""
-        valid_statuses = ["active", "paused", "completed", "error"]
-        assert status in valid_statuses
+    tab._delete_task()
+
+    assert tab.task_deleted.calls == [("task-del",)]
 
 
-class TestSchedulerTabActions:
-    """Параметризованные тесты действий вкладки."""
+def test_toggle_task_emits_inverse_enabled_state() -> None:
+    """toggle эмитит id и инвертированный enabled флаг."""
+    tab = _build_scheduler_tab()
+    task = _make_task("task-toggle", enabled=True)
+    tab._tasks = [task]
+    tab.table.setCurrentRow(0)
 
-    @pytest.mark.parametrize(
-        "action",
-        [
-            "add_task",
-            "edit_task",
-            "delete_task",
-            "pause_task",
-            "resume_task",
-            "run_now",
-        ],
+    tab._toggle_task()
+
+    assert tab.task_toggled.calls == [("task-toggle", False)]
+
+
+def test_edit_task_does_nothing_for_invalid_row() -> None:
+    """Редактирование с невалидным row не эмитит событие."""
+    tab = _build_scheduler_tab()
+    tab._tasks = [_make_task("task-1")]
+    tab.table.setCurrentRow(-1)
+
+    tab._edit_task()
+
+    assert tab.task_updated.calls == []
+
+
+def test_format_schedule_for_weekly() -> None:
+    """Weekly-задача форматируется с днями и временем."""
+    tab = _build_scheduler_tab()
+    task = _make_task("task-weekly", schedule_type=ScheduleType.WEEKLY)
+    task.time_of_day = "09:30"
+    task.days_of_week = [0, 2, 4]
+
+    text = tab._format_schedule(task)
+
+    assert "Еженедельно" in text
+    assert "Пн, Ср, Пт" in text
+    assert "09:30" in text
+
+
+def test_task_dialog_get_task_data_for_weekly() -> None:
+    """TaskDialog возвращает expected payload для weekly."""
+    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog.name_edit = SimpleNamespace(text=lambda: "Weekly task")
+    dialog.type_combo = SimpleNamespace(currentIndex=lambda: 2)
+    dialog.area_combo = SimpleNamespace(currentIndex=lambda: 0)
+    dialog.audio_combo = SimpleNamespace(currentIndex=lambda: 0)
+    dialog.fps_spin = SimpleNamespace(value=lambda: 30)
+    dialog.duration_spin = SimpleNamespace(value=lambda: 0)
+    dialog.duration_unit_combo = SimpleNamespace(currentIndex=lambda: 1)
+    dialog.time_edit = SimpleNamespace(
+        time=lambda: SimpleNamespace(hour=lambda: 8, minute=lambda: 45)
     )
-    def test_valid_actions(self, action: str) -> None:
-        """Проверка валидных действий."""
-        valid_actions = [
-            "add_task",
-            "edit_task",
-            "delete_task",
-            "pause_task",
-            "resume_task",
-            "run_now",
-        ]
-        assert action in valid_actions
-
-
-class TestSchedulerTabDialogs:
-    """Тесты диалогов."""
-
-    @pytest.mark.parametrize(
-        "dialog_type", ["add_task", "edit_task", "confirm_delete"]
+    dialog.day_checks = [
+        SimpleNamespace(isChecked=lambda: True),
+        SimpleNamespace(isChecked=lambda: False),
+        SimpleNamespace(isChecked=lambda: True),
+        SimpleNamespace(isChecked=lambda: False),
+        SimpleNamespace(isChecked=lambda: True),
+        SimpleNamespace(isChecked=lambda: False),
+        SimpleNamespace(isChecked=lambda: False),
+    ]
+    dialog.interval_hours = SimpleNamespace(value=lambda: 0)
+    dialog.interval_minutes = SimpleNamespace(value=lambda: 0)
+    dialog.cron_edit = SimpleNamespace(text=lambda: "")
+    dialog.window_edit = SimpleNamespace(text=lambda: "")
+    dialog.date_edit = SimpleNamespace(
+        date=lambda: SimpleNamespace(
+            year=lambda: 2026, month=lambda: 3, day=lambda: 29
+        )
     )
-    def test_dialog_types(self, dialog_type: str) -> None:
-        """Проверка типов диалогов."""
-        valid_dialogs = ["add_task", "edit_task", "confirm_delete"]
-        assert dialog_type in valid_dialogs
 
-    def test_delete_confirmation_message(self) -> None:
-        """Проверка диалога подтверждения удаления."""
-        message = "Вы уверены, что хотите удалить задачу?"
-        assert "удалить" in message.lower()
+    data = dialog.get_task_data()
 
-
-class TestSchedulerTabValidation:
-    """Параметризованные тесты валидации."""
-
-    @pytest.mark.parametrize(
-        "name,expected_valid",
-        [
-            ("Daily Recording", True),
-            ("", False),
-            ("   ", False),
-            ("A" * 100, True),
-        ],
-    )
-    def test_validate_task_name(self, name: str, expected_valid: bool) -> None:
-        """Проверка валидации имени задачи."""
-        is_valid = len(name.strip()) > 0
-        assert is_valid == expected_valid
-
-    @pytest.mark.parametrize(
-        "interval,expected_valid",
-        [
-            (60, True),
-            (1, True),
-            (0, False),
-            (-1, False),
-            (3600, True),
-        ],
-    )
-    def test_validate_interval(
-        self, interval: int, expected_valid: bool
-    ) -> None:
-        """Проверка валидации интервала."""
-        is_valid = interval > 0
-        assert is_valid == expected_valid
-
-    @pytest.mark.parametrize(
-        "cron_expr,expected_valid",
-        [
-            ("0 9 * * 1-5", True),  # Будни в 9:00
-            ("*/15 * * * *", True),  # Каждые 15 минут
-            ("0 0 1 1 *", True),  # 1 января
-            ("invalid", False),
-            ("0 9 * *", False),  # Мало полей
-            ("0 9 * * * *", False),  # Много полей
-        ],
-    )
-    def test_validate_cron_expression(
-        self, cron_expr: str, expected_valid: bool
-    ) -> None:
-        """Проверка валидации cron выражения."""
-        # Простая проверка: 5 полей
-        parts = cron_expr.split()
-        is_valid = len(parts) == 5
-        assert is_valid == expected_valid
-
-
-class TestSchedulerTabCallbacks:
-    """Параметризованные тесты обратных вызовов."""
-
-    @pytest.mark.parametrize(
-        "callback_name",
-        [
-            "on_task_added",
-            "on_task_edited",
-            "on_task_deleted",
-            "on_task_triggered",
-            "on_task_error",
-        ],
-    )
-    def test_valid_callback_names(self, callback_name: str) -> None:
-        """Проверка имён callback-функций."""
-        valid_callbacks = [
-            "on_task_added",
-            "on_task_edited",
-            "on_task_deleted",
-            "on_task_triggered",
-            "on_task_error",
-        ]
-        assert callback_name in valid_callbacks
-
-
-class TestSchedulerTabUIUpdates:
-    """Тесты обновления UI."""
-
-    def test_update_task_list(self) -> None:
-        """Проверка обновления списка задач."""
-        action = "refresh_task_list"
-        assert action == "refresh_task_list"
-
-    @pytest.mark.parametrize(
-        "task_selected,edit_enabled,delete_enabled",
-        [
-            (True, True, True),
-            (False, False, False),
-        ],
-    )
-    def test_update_button_states(
-        self, task_selected: bool, edit_enabled: bool, delete_enabled: bool
-    ) -> None:
-        """Проверка обновления состояний кнопок."""
-        # Кнопки редактирования и удаления зависят от выбора задачи
-        assert edit_enabled == task_selected
-        assert delete_enabled == task_selected
-
-
-class TestSchedulerTabRecordingSettings:
-    """Параметризованные тесты настроек записи в задаче."""
-
-    @pytest.mark.parametrize("duration_seconds", [60, 300, 600, 3600])
-    def test_recording_duration_positive(self, duration_seconds: int) -> None:
-        """Проверка настройки длительности записи."""
-        assert duration_seconds > 0
-
-    @pytest.mark.parametrize(
-        "width,height",
-        [
-            (1920, 1080),
-            (1280, 720),
-            (3840, 2160),
-        ],
-    )
-    def test_recording_area_dimensions(self, width: int, height: int) -> None:
-        """Проверка настройки области записи."""
-        assert width > 0
-        assert height > 0
-
-    @pytest.mark.parametrize(
-        "audio_enabled,audio_source",
-        [
-            (True, "microphone"),
-            (True, "system"),
-            (True, "both"),
-            (False, "none"),
-        ],
-    )
-    def test_recording_audio_settings(
-        self, audio_enabled: bool, audio_source: str
-    ) -> None:
-        """Проверка настройки аудио."""
-        assert isinstance(audio_enabled, bool)
-        assert audio_source in ["microphone", "system", "both", "none"]
-
-    @pytest.mark.parametrize("output_format", ["mp4", "avi", "mkv", "webm"])
-    def test_recording_output_format(self, output_format: str) -> None:
-        """Проверка настройки формата вывода."""
-        valid_formats = ["mp4", "avi", "mkv", "webm"]
-        assert output_format in valid_formats
-
-
-class TestSchedulerTabErrorHandling:
-    """Параметризованные тесты обработки ошибок."""
-
-    @pytest.mark.parametrize(
-        "error_type,error_message",
-        [
-            ("invalid_datetime", "Указана прошедшая дата"),
-            ("invalid_interval", "Интервал должен быть больше 0"),
-            ("scheduler_error", "Ошибка планировщика"),
-        ],
-    )
-    def test_error_types_and_messages(
-        self, error_type: str, error_message: str
-    ) -> None:
-        """Проверка типов ошибок и сообщений."""
-        valid_error_types = [
-            "invalid_datetime",
-            "invalid_interval",
-            "scheduler_error",
-        ]
-        assert error_type in valid_error_types
-        assert len(error_message) > 0
-
-
-class TestSchedulerTabPersistence:
-    """Параметризованные тесты сохранения данных."""
-
-    @pytest.mark.parametrize(
-        "action",
-        [
-            "load_tasks",
-            "save_tasks",
-            "save_on_exit",
-        ],
-    )
-    def test_persistence_actions(self, action: str) -> None:
-        """Проверка действий сохранения."""
-        valid_actions = ["load_tasks", "save_tasks", "save_on_exit"]
-        assert action in valid_actions
-
-
-class TestSchedulerTabFiltering:
-    """Параметризованные тесты фильтрации задач."""
-
-    @pytest.mark.parametrize(
-        "filter_type,filter_value",
-        [
-            ("status", "active"),
-            ("status", "paused"),
-            ("type", "interval"),
-            ("type", "cron"),
-        ],
-    )
-    def test_filter_options(self, filter_type: str, filter_value: str) -> None:
-        """Проверка опций фильтрации."""
-        valid_filter_types = ["status", "type"]
-        assert filter_type in valid_filter_types
-
-    @pytest.mark.parametrize(
-        "search_term", ["Daily", "Weekly", "Backup", "Recording"]
-    )
-    def test_search_by_name(self, search_term: str) -> None:
-        """Проверка поиска по имени."""
-        assert len(search_term) > 0
-
-
-class TestSchedulerTabSorting:
-    """Параметризованные тесты сортировки задач."""
-
-    @pytest.mark.parametrize(
-        "sort_column,sort_order",
-        [
-            ("name", "ascending"),
-            ("name", "descending"),
-            ("next_run", "ascending"),
-            ("status", "ascending"),
-        ],
-    )
-    def test_sort_options(self, sort_column: str, sort_order: str) -> None:
-        """Проверка опций сортировки."""
-        valid_columns = ["name", "next_run", "status"]
-        valid_orders = ["ascending", "descending"]
-
-        assert sort_column in valid_columns
-        assert sort_order in valid_orders
+    assert data["name"] == "Weekly task"
+    assert data["schedule_type"] == ScheduleType.WEEKLY
+    assert data["time_of_day"] == "08:45"
+    assert data["days_of_week"] == [0, 2, 4]
