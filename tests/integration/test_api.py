@@ -698,7 +698,9 @@ class TestAPIConfigEndpoint:
         request_data = {"video": {"fps": 60}}
 
         response = client.put(
-            "/api/v1/config", json=request_data, content_type="application/json"
+            "/api/v1/config",
+            json=request_data,
+            content_type="application/json",
         )
 
         assert response.status_code == 200
