@@ -11,8 +11,27 @@
 
 ## P1 (следующий приоритет)
 
-- [ ] Расширить блокирующий `mypy`-scope в CI
-  по модулям API/GUI/recorder без возврата `continue-on-error`.
+- [ ] [Security] Ограничить CORS-политику: заменить
+  `CORS(self.app)` на allowlist (`origins`, `methods`,
+  `allowed_headers`) с тестами preflight/actual request
+  для разрешенного и запрещенного origin
+  (`api/server.py`, `tests/integration/test_api_server_lifecycle.py`).
+- [ ] [Stability] Закрывать и дожидаться stderr-reader
+  потока FFmpeg в `close()`/cleanup, покрыть тестом
+  многократный start/stop без утечек потоков
+  (`recorder/ffmpeg_writer.py`, `tests/unit/test_ffmpeg_writer.py`).
+- [ ] [Security] Использовать абсолютный путь к FFmpeg/FFprobe
+  во всех subprocess-вызовах вместо литерала `ffmpeg`
+  (`recorder/encoder.py`, `recorder/ffmpeg_writer.py`,
+  `recorder/utils.py`).
+- [ ] [Tests] Устранить нестабильность
+  `tests/unit/test_config_extended.py::TestConfigSave::test_save_creates_directory`
+  из-за `PermissionError (WinError 5)` при работе с временными
+  каталогами (`tests/conftest.py`, `tests/unit/test_config_extended.py`).
+- [ ] [API] Сделать lifecycle idempotency-store корректным
+  при цикле `stop -> start`: пересоздание store/cleanup-thread
+  и тест `start/stop/start` (`api/server.py`,
+  `tests/unit/test_api_server.py`).
 
 ## P2 (после стабилизации релиза)
 
@@ -34,6 +53,28 @@
   при зависших job callback.
 - [ ] Добавить release-gate по observability baseline
   (`p95`, `error_rate`, `rss_mb`) перед публикацией релиза.
+- [ ] [Perf] Убрать полное копирование deque в
+  `get_recent_events()` и возвращать последние N событий
+  без `list(self._events)` на каждый запрос
+  (`api/websocket.py`, `tests/unit/test_websocket.py`).
+- [ ] [Stability] Сделать `setup_logger()` идемпотентным
+  по `atexit` и handler lifecycle
+  (`logger_config.py`, `tests/unit/test_logger_config.py`).
+- [ ] [Security] Нормализовать `X-Request-ID`:
+  whitelist символов и лимит длины (например 64),
+  при нарушении генерировать новый ID
+  (`api/server.py`, `api/routes.py`,
+  `tests/integration/test_api_error_handling.py`).
+- [ ] [Testing] Снять полный `skip` с `tests/unit/test_gui_views.py`
+  или вынести эти тесты в отдельный job с `pytest-qt`
+  и реальным PyQt6-окружением.
+- [ ] [API] Ограничить конкуренцию фоновых API-операций:
+  bounded `ThreadPoolExecutor` + лимит очереди
+  и политика отказа (`api/server.py`).
+- [ ] [API] Добавить guard от запуска API без маршрутов
+  (проверка ключевых routes в `start()` или
+  явная регистрация в `APIServer`)
+  (`api/server.py`, `main.py`, `api/routes.py`).
 
 ### Security (безопасность)
 
@@ -128,7 +169,6 @@
 - [ ] Добавить версионирование конфига для миграции при смене схемы
   в `config.py:275-295`.
 - [ ] Проверка на пустые `rect_coords` в `gui/main_window.py:433-451`.
-- [ ] Null check для `time_of_day` в `scheduler/task_scheduler.py:482-484`.
 - [ ] Валидация пустых путей в `recorder/encoder.py:111-119`.
 
 ### Logging (логирование)
@@ -168,12 +208,8 @@
 
 ### Dependencies (зависимости)
 
-- [ ] Добавить `tzlocal` в `pyproject.toml` — используется в
-  `api/schemas.py:161` и `scheduler/task_scheduler.py:190`.
 - [ ] Добавить upper bounds для критичных зависимостей:
   `pydantic`, `flask`, `PyQt6`, `windows-capture`.
-- [ ] Проверить и добавить `requests` в dependencies
-  (используется в `main.py`, `cli/scheduler.py`).
 
 ### Observability (наблюдаемость)
 
@@ -254,74 +290,6 @@
 - [ ] Диалог горячих клавиш в GUI.
 - [ ] Абстрагировать общую логику `pause/resume/stop`
   из `video_recorder` и `audio_recorder` — устранить дублирование.
-
-## Новые задачи от 2026-03-29
-
-- [ ] [P1][Security] Ограничить CORS-политику: заменить
-  `CORS(self.app)` на allowlist (`origins`, `methods`,
-  `allowed_headers`) с тестами preflight/actual request
-  для разрешенного и запрещенного origin
-  (`api/server.py`, `tests/integration/test_api_server_lifecycle.py`).
-- [ ] [P1][Stability] Закрывать и дожидаться stderr-reader
-  потока FFmpeg в `close()`/cleanup, покрыть тестом
-  многократный start/stop без утечек потоков
-  (`recorder/ffmpeg_writer.py`, `tests/unit/test_ffmpeg_writer.py`).
-- [ ] [P1][Security] Использовать абсолютный путь к FFmpeg/FFprobe
-  во всех subprocess-вызовах вместо литерала `ffmpeg`
-  (`recorder/encoder.py`, `recorder/ffmpeg_writer.py`,
-  `recorder/utils.py`).
-- [ ] [P2][Perf] Убрать полное копирование deque в
-  `get_recent_events()` и возвращать последние N событий
-  без `list(self._events)` на каждый запрос
-  (`api/websocket.py`, `tests/unit/test_websocket.py`).
-- [ ] [P2][Stability] Сделать `setup_logger()` идемпотентным
-  по `atexit` и handler lifecycle
-  (`logger_config.py`, `tests/unit/test_logger_config.py`).
-- [ ] [P2][Security] Нормализовать `X-Request-ID`:
-  whitelist символов и лимит длины (например 64),
-  при нарушении генерировать новый ID
-  (`api/server.py`, `api/routes.py`,
-  `tests/integration/test_api_error_handling.py`).
-
-## Новые задачи от 2026-03-29 (итерация 2)
-
-- [ ] [P1][Tests] Устранить нестабильность
-  `tests/unit/test_config_extended.py::TestConfigSave::test_save_creates_directory`
-  из-за `PermissionError (WinError 5)` при работе с временными
-  каталогами (`tests/conftest.py`, `tests/unit/test_config_extended.py`).
-- [ ] [P1][Tooling] Сделать `uv run mypy .` воспроизводимым:
-  исключить runtime/tmp-директории (`tmp_pytest_run*`,
-  `.tmp_pytest_runs`, `.pytest_local_tmp`, `.codex_tmp`)
-  через конфигурацию и проверить в CI-подобном запуске
-  (`pyproject.toml`, `.gitignore`).
-- [ ] [P2][Testing] Снять полный `skip` с `tests/unit/test_gui_views.py`
-  или вынести эти тесты в отдельный job с `pytest-qt`
-  и реальным PyQt6-окружением.
-- [ ] [P3][Code Quality] Закрыть техдолг в `api/routes.py`:
-  либо внедрить неиспользуемые декораторы (`api_endpoint`,
-  `api_callback`), либо удалить мертвый код и комментарий `TODO`.
-
-## Новые задачи от 2026-03-29 (итерация 3)
-
-- [ ] [P1][Scheduler] Сделать `add_task()`/`update_task()`
-  атомарными: при ошибке `_schedule_job()` возвращать ошибку
-  и откатывать `enabled`/изменения задачи
-  (`scheduler/task_scheduler.py`).
-- [ ] [P1][Scheduler] Валидация `time_of_day` (`HH:MM`)
-  до вызова APScheduler: диапазон `00:00..23:59`
-  и тесты для `24:00`, `09:77`, `abc`
-  (`scheduler/task_scheduler.py`, `tests/unit/test_scheduler.py`).
-- [ ] [P1][API] Сделать lifecycle idempotency-store корректным
-  при цикле `stop -> start`: пересоздание store/cleanup-thread
-  и тест `start/stop/start` (`api/server.py`,
-  `tests/unit/test_api_server.py`).
-- [ ] [P2][API] Ограничить конкуренцию фоновых API-операций:
-  bounded `ThreadPoolExecutor` + лимит очереди
-  и политика отказа (`api/server.py`).
-- [ ] [P2][API] Добавить guard от запуска API без маршрутов
-  (проверка ключевых routes в `start()` или
-  явная регистрация в `APIServer`)
-  (`api/server.py`, `main.py`, `api/routes.py`).
 
 ## Правило ведения TODO
 
