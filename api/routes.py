@@ -444,10 +444,10 @@ def _register_health_route(app: Any, server: Any) -> None:
 def _register_legacy_routes(
     app: Any,
     *,
-    get_status: Callable[[], Any],
-    start_recording: Callable[[], Any],
-    stop_recording: Callable[[], Any],
-    pause_recording: Callable[[], Any],
+    get_status: Any,
+    start_recording: Any,
+    stop_recording: Any,
+    pause_recording: Any,
 ) -> None:
     """Регистрирует legacy API routes для обратной совместимости."""
 
@@ -479,7 +479,7 @@ def _register_legacy_routes(
         return pause_recording()
 
 
-def _register_status_routes(api_v1: Any, server: Any) -> Callable[[], Any]:
+def _register_status_routes(api_v1: Any, server: Any) -> Any:
     """Регистрирует маршруты состояния API."""
 
     @api_v1.route("/status", methods=["GET"])
@@ -513,7 +513,7 @@ def _register_status_routes(api_v1: Any, server: Any) -> Callable[[], Any]:
 def _register_recording_routes(
     api_v1: Any,
     server: Any,
-) -> tuple[Callable[[], Any], Callable[[], Any], Callable[[], Any]]:
+) -> tuple[Any, Any, Any]:
     """Регистрирует маршруты управления записью."""
 
     @api_v1.route("/start", methods=["POST"])
