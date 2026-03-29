@@ -688,3 +688,58 @@ class TestVideoRecorderErrorHandling:
 
         assert result is False
         assert recorder.state == RecordingState.STOPPING
+
+    def test_windows_capture_session_stop_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Ошибка остановки capture session должна логироваться."""
+        from recorder.video_recorder import _WindowsCaptureSession
+
+        class BrokenControl:
+            """Контроль, имитирующий ошибку остановки native сессии."""
+
+            @staticmethod
+            def stop() -> None:
+                raise RuntimeError("native stop failed")
+
+        session = _WindowsCaptureSession()
+        session._control = BrokenControl()
+
+        with caplog.at_level("WARNING"):
+            session.stop()
+
+        assert "Не удалось корректно остановить capture session" in (
+            caplog.text
+        )
+
+    def test_capture_loop_logs_warning_when_session_stop_fails(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Ветка finally должна логировать ошибку остановки session."""
+        recorder = VideoRecorder(use_ffmpeg=False)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(type="full", width=64, height=64)
+
+        class BrokenSession:
+            """Сессия, которая падает при старте и остановке."""
+
+            is_capture_lost = False
+
+            @staticmethod
+            def start(_capture_area: CaptureArea) -> None:
+                raise RuntimeError("start failed")
+
+            @staticmethod
+            def stop() -> None:
+                raise RuntimeError("stop failed")
+
+        with (
+            patch(
+                "recorder.video_recorder._WindowsCaptureSession",
+                return_value=BrokenSession(),
+            ),
+            caplog.at_level("WARNING"),
+        ):
+            recorder._capture_loop()
+
+        assert "Ошибка при остановке capture session в finally" in caplog.text

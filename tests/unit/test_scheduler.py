@@ -9,6 +9,8 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from scheduler.task_scheduler import (
     RecordingParams,
     ScheduleTask,
@@ -1011,3 +1013,36 @@ class TestCronSchedule:
         assert loaded_task is not None
         assert loaded_task.cron_expression == "15 10 * * 1-5"
         assert loaded_task.schedule_type == ScheduleType.CRON
+
+
+class TestTaskSchedulerResilience:
+    """Тесты устойчивости планировщика в ветках ошибок."""
+
+    def test_get_upcoming_runs_logs_job_lookup_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Ошибка чтения job не должна прерывать сбор upcoming runs."""
+        scheduler = TaskScheduler()
+        scheduler._tasks["test-upcoming"] = ScheduleTask(
+            id="test-upcoming",
+            name="Test Upcoming",
+            schedule_type=ScheduleType.DAILY,
+            params=RecordingParams(),
+            time_of_day="10:00",
+        )
+
+        class _BrokenScheduler:
+            running = True
+
+            @staticmethod
+            def get_job(_task_id: str):
+                raise RuntimeError("job lookup failed")
+
+        scheduler._scheduler = _BrokenScheduler()  # type: ignore[assignment]
+        with caplog.at_level("WARNING"):
+            upcoming = scheduler.get_upcoming_runs()
+
+        assert upcoming == []
+        assert "Не удалось получить next_run для задачи test-upcoming" in (
+            caplog.text
+        )

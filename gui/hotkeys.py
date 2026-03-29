@@ -150,8 +150,11 @@ class GlobalHotkeys:
         if self._listener:
             try:
                 self._listener.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Не удалось корректно остановить hotkey listener: %s",
+                    e,
+                )
             self._listener = None
         self._running = False
         logger.info("Горячие клавиши деактивированы")

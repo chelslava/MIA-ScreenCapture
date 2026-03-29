@@ -241,8 +241,11 @@ class _WindowsCaptureSession:
                 control.stop()
                 if hasattr(control, "wait"):
                     control.wait()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Не удалось корректно остановить capture session: %s",
+                    e,
+                )
         self._control = None
         self._capture = None
 
@@ -631,8 +634,11 @@ class VideoRecorder:
         finally:
             try:
                 session.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Ошибка при остановке capture session в finally: %s",
+                    e,
+                )
             self._capture_session = None
 
         if fatal_write_error:

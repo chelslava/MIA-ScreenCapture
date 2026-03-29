@@ -27,6 +27,9 @@
 
 ## P1 (важно, если успеваем до code freeze)
 
+- [x] Убрать `except ...: pass` в runtime-коде
+  (`scheduler/task_scheduler.py`, `recorder/video_recorder.py`,
+  `gui/hotkeys.py`) и заменить на логирование + контролируемый fallback.
 - [ ] Вынести слой сервисов для FFmpeg-пайплайна:
   отдельные `ProcessSupervisor`, `FinalizeService`, `RecoveryPolicy`.
 - [ ] Ввести bounded executor для фоновых API-операций
@@ -39,9 +42,13 @@
   и проброс в бизнес-логи.
 - [ ] Стандартизовать исключения слоя домена
   (`MIAError` и наследники) и маппинг в HTTP/GUI ответы.
+- [ ] Зафиксировать детерминированный shutdown потоков/процессов записи:
+  единый протокол `stop -> join(timeout) -> force cleanup`.
 
 ## P2 (после стабилизации P0/P1)
 
+- [ ] Исключить служебные pytest temp-каталоги из `mypy` прогона
+  (`tmp_pytest_run*`, `.tmp_pytest_runs`, `tests/.local_tmp`).
 - [ ] Ввести ring-buffer для live-логов GUI и ограничение памяти
   для долгих сессий.
 - [ ] Оптимизировать observability-метрики:
@@ -50,6 +57,8 @@
   с единым util-слоем времени.
 - [ ] Ввести deprecation-политику для legacy API routes
   с timeline удаления и тестами обратной совместимости.
+- [ ] Разделить DTO API и внутренние доменные модели записи через
+  adapter-layer между `api/*` и `core/*`.
 
 ## Рефакторинг-Стандарты `v1.4.6`
 

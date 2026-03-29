@@ -428,8 +428,12 @@ class TaskScheduler:
                         job = self._scheduler.get_job(task.id)
                         if job and job.next_run_time:
                             next_run = job.next_run_time
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(
+                            "Не удалось получить next_run для задачи %s: %s",
+                            task.id,
+                            e,
+                        )
 
                 if next_run:
                     upcoming.append(
