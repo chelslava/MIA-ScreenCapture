@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from config import get_config
 from core.event_bus import (
@@ -191,7 +191,9 @@ class RecordingService:
 
     def get_recordings(self) -> list[dict[str, Any]]:
         """Возвращает список последних записей из конфигурации."""
-        return get_config().settings.recent_recordings
+        return cast(
+            list[dict[str, Any]], get_config().settings.recent_recordings
+        )
 
     def stop_active_recording_if_any(self) -> dict[str, Any] | None:
         """Безопасно останавливает активную запись, если она есть."""
@@ -273,16 +275,16 @@ class RecordingService:
         config_manager = get_config()
         value = params.get("output_path")
         if not value:
-            return config_manager.get_output_path()
+            return cast(Path, config_manager.get_output_path())
 
         raw_path = str(value).strip()
         if not raw_path:
-            return config_manager.get_output_path()
+            return cast(Path, config_manager.get_output_path())
 
         candidate = Path(raw_path)
         is_dir_hint = raw_path.endswith(("/", "\\"))
         if is_dir_hint or (candidate.exists() and candidate.is_dir()):
-            generated_name = config_manager.get_output_path().name
+            generated_name = str(config_manager.get_output_path().name)
             return candidate / generated_name
 
         if candidate.suffix:

@@ -21,7 +21,7 @@ from typing import Any
 import psutil
 from flask import Flask, g, jsonify, request
 from flask_cors import CORS
-from waitress.server import create_server
+from waitress.server import create_server  # type: ignore[import-untyped]
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from api.auth import API_KEY_CONFIG_KEY
@@ -519,6 +519,7 @@ class APIServer:
 
         @self.app.errorhandler(RequestEntityTooLarge)
         def payload_too_large(e):
+            assert self.app is not None
             max_size = int(self.app.config.get("MAX_CONTENT_LENGTH", 0))
             return (
                 jsonify(
@@ -538,7 +539,7 @@ class APIServer:
             return jsonify({"error": "Внутренняя ошибка сервера"}), 500
 
         @self.app.before_request
-        def assign_request_id() -> None:
+        def assign_request_id() -> Any | None:
             request_id = request.headers.get(_REQUEST_ID_HEADER, "").strip()
             if not request_id:
                 request_id = uuid.uuid4().hex
@@ -547,7 +548,8 @@ class APIServer:
             self._observability.request_started()
 
             if request.path == "/health":
-                return jsonify(self._get_health_payload())  # type: ignore[return-value]
+                return jsonify(self._get_health_payload())
+            return None
 
         @self.app.after_request
         def add_request_id_header(response):

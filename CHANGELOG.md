@@ -71,6 +71,11 @@
 - Блокирующий `mypy`-scope в CI расширен на
   `gui/hotkeys.py`, `gui/scheduler_tab.py`,
   `recorder/audio_recorder.py`, `recorder/utils.py`.
+- Исправлены типовые проблемы для `mypy` в
+  `api/server.py` и `core/recording_service.py`
+  без изменения runtime-поведения.
+- Блокирующий `mypy`-scope в CI расширен на
+  `api/server.py` и `core/recording_service.py`.
 - Интеграционные тесты `tests/integration/test_api_extended.py`
   мигрированы на `/api/v1/*` и стабилизированы по rate-limit.
 - Добавлена утилита `scripts/api_smoke_run.py` для 30+ минутного
