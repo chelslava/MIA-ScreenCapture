@@ -71,7 +71,6 @@ jobs:
           uv run pytest tests/integration/ -v --tb=short --basetemp=tests/.local_tmp/pytest/integration 2>&1 `
             | Tee-Object -FilePath ".ci-logs/integration-tests-${{ matrix.python-version }}.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        continue-on-error: true
 
       - name: Upload pytest logs
         if: always()
@@ -121,7 +120,6 @@ jobs:
 
       - name: MyPy check
         run: uv run mypy core/ api/ cli/ config.py exceptions.py logger_config.py recorder/ scheduler/ gui/ --ignore-missing-imports
-        continue-on-error: true
 
   coverage:
     name: Coverage Report
