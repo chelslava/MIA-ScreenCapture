@@ -92,6 +92,10 @@
 - Добавлены unit-тесты устойчивости рекордера:
   `tests/unit/test_encoder.py`, `tests/unit/test_video_recorder.py`,
   `tests/unit/test_audio_recorder.py`.
+- Стабилизированы pytest-временные фикстуры для sandbox-окружения:
+  `tmp_path` и `temp_dir` в `tests/conftest.py` переведены на локальный
+  temp-root, устранены `PermissionError` в выборочных прогонах recorder/
+  scheduler тестов.
 
 ## [1.4.3] - 2026-03-28
 

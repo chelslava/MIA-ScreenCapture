@@ -11,6 +11,7 @@ import shutil
 import sys
 import tempfile
 import time
+import uuid
 from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,6 +27,7 @@ from _pytest import tmpdir as pytest_tmpdir
 _original_cleanup_dead_symlinks = pytest_pathlib.cleanup_dead_symlinks
 _LOCAL_TMP_ROOT = Path(__file__).parent / ".local_tmp"
 _LOCAL_SYSTEM_TMP = _LOCAL_TMP_ROOT / "system"
+_LOCAL_PYTEST_BASETEMP = Path(__file__).parent.parent / ".tmp_pytest_runs"
 
 
 def _safe_cleanup_dead_symlinks(root: Path) -> None:
@@ -53,15 +55,68 @@ def _bootstrap_local_tmp_dirs() -> None:
     Это снижает риск `WinError 5` на Windows из-за блокировок в системном
     temp-каталоге и в корневом `.pytest_cache`.
     """
-    (_LOCAL_TMP_ROOT / "pytest").mkdir(parents=True, exist_ok=True)
+    _LOCAL_PYTEST_BASETEMP.mkdir(parents=True, exist_ok=True)
     (_LOCAL_TMP_ROOT / ".pytest_cache").mkdir(parents=True, exist_ok=True)
     _LOCAL_SYSTEM_TMP.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("TMP", str(_LOCAL_SYSTEM_TMP))
-    os.environ.setdefault("TEMP", str(_LOCAL_SYSTEM_TMP))
-    os.environ.setdefault("TMPDIR", str(_LOCAL_SYSTEM_TMP))
+    tempfile.tempdir = str(_LOCAL_SYSTEM_TMP)
+    os.environ["TMP"] = str(_LOCAL_SYSTEM_TMP)
+    os.environ["TEMP"] = str(_LOCAL_SYSTEM_TMP)
+    os.environ["TMPDIR"] = str(_LOCAL_SYSTEM_TMP)
 
 
 _bootstrap_local_tmp_dirs()
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """
+    Принудительно направляет pytest tmp-path в локальный каталог проекта.
+    """
+    if getattr(config.option, "basetemp", None) is None:
+        run_basetemp = _LOCAL_SYSTEM_TMP / f"pytest_{uuid.uuid4().hex}"
+        config.option.basetemp = str(run_basetemp)
+
+        tmp_path_factory = getattr(config, "_tmp_path_factory", None)
+        if tmp_path_factory is not None:
+            tmp_path_factory._given_basetemp = run_basetemp
+            tmp_path_factory._basetemp = None
+
+
+def _create_local_temp_dir(prefix: str) -> Path:
+    """
+    Создаёт временную директорию внутри локального temp-каталога.
+
+    Args:
+        prefix: Префикс имени каталога.
+
+    Returns:
+        Путь к созданной директории.
+    """
+    while True:
+        temp_dir = _LOCAL_SYSTEM_TMP / f"{prefix}_{uuid.uuid4().hex[:8]}"
+        try:
+            temp_dir.mkdir()
+            return temp_dir
+        except FileExistsError:
+            continue
+
+
+def _remove_local_temp_dir(temp_dir: Path) -> None:
+    """
+    Удаляет временную директорию с повторными попытками.
+
+    Args:
+        temp_dir: Директория для удаления.
+    """
+    for attempt in range(10):
+        try:
+            shutil.rmtree(temp_dir)
+            break
+        except FileNotFoundError:
+            break
+        except OSError:
+            if attempt == 9:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -537,6 +592,21 @@ sys.modules["PyQt6.QtCore"] = qt_core_mock
 sys.modules["PyQt6.QtGui"] = qt_gui_mock
 
 
+@pytest.fixture(name="tmp_path")
+def local_tmp_path() -> Generator[Path, None, None]:
+    """
+    Создание локального временного каталога для тестов, совместимого с pytest.
+
+    Yields:
+        Путь к временной директории.
+    """
+    temp_dir = _create_local_temp_dir("tmp_path")
+    try:
+        yield temp_dir
+    finally:
+        _remove_local_temp_dir(temp_dir)
+
+
 @pytest.fixture
 def temp_dir() -> Generator[Path, None, None]:
     """
@@ -545,19 +615,11 @@ def temp_dir() -> Generator[Path, None, None]:
     Yields:
         Путь к временной директории
     """
-    tmpdir = Path(tempfile.mkdtemp())
+    temp_dir = _create_local_temp_dir("temp_dir")
     try:
-        yield tmpdir
+        yield temp_dir
     finally:
-        # На Windows возможны кратковременные блокировки файлов после теста.
-        for attempt in range(10):
-            try:
-                shutil.rmtree(tmpdir)
-                break
-            except OSError:
-                if attempt == 9:
-                    raise
-                time.sleep(0.05 * (attempt + 1))
+        _remove_local_temp_dir(temp_dir)
 
 
 @pytest.fixture
