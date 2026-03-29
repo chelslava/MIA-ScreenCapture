@@ -26,6 +26,8 @@
   `api/swagger.py` и roadmap ближайшего релиза.
 - Добавлен release preflight-чеклист `plans/release-preflight-v1.4.5.md`
   с quality gates, smoke evidence и проверкой артефактов.
+- Добавлены автопроверки консистентности версии между
+  `pyproject.toml`, `README.md`, `/health` и `/api/swagger.json`.
 - Добавлена синхронная очистка `recent recordings` в GUI-модели и конфиге.
 - Расширены unit-тесты для фильтра записей и очистки списка.
 - Выполнен headless smoke-run API runtime: `start/stop/restart`, смена порта

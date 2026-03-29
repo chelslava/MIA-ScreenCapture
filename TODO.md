@@ -21,10 +21,6 @@
   до полного целевого набора `tests/integration/` (legacy + v1).
 - [ ] Расширить блокирующий `mypy`-scope в CI
   по модулям API/GUI/recorder без возврата `continue-on-error`.
-- [ ] Добавить автопроверку консистентности версии `1.4.5`:
-  `pyproject.toml`, `/health`, `swagger.json`, `README.md`.
-- [ ] Добавить автопроверку Swagger-примеров на соответствие
-  реальной Pydantic-валидации API.
 
 ## P2 (после стабилизации релиза)
 

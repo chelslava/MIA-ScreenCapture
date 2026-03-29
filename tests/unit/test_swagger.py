@@ -5,8 +5,13 @@ Unit тесты для Swagger документации
 Тестирует OpenAPI/Swagger спецификацию и эндпоинты.
 """
 
+import re
+from pathlib import Path
+from unittest.mock import MagicMock
+
 from flask import Flask
 
+from api.routes import register_routes
 from api.schemas import (
     CreateScheduleRequest,
     StartRecordingRequest,
@@ -14,7 +19,34 @@ from api.schemas import (
     UpdateConfigRequest,
     UpdateScheduleRequest,
 )
+from api.server import APIServer
 from api.swagger import SWAGGER_SPEC, get_swagger_spec, register_swagger_routes
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_version_from_pyproject() -> str:
+    """Возвращает версию проекта из pyproject.toml."""
+    pyproject_text = (PROJECT_ROOT / "pyproject.toml").read_text(
+        encoding="utf-8",
+    )
+    match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject_text, re.MULTILINE)
+    if match is None:
+        raise AssertionError("Не удалось прочитать версию из pyproject.toml")
+    return match.group(1)
+
+
+def _load_version_from_readme() -> str:
+    """Возвращает версию из заголовка README."""
+    readme_text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    match = re.search(
+        r"^#\s+MIA-ScreenCapture\s+v(\d+\.\d+\.\d+)\s*$",
+        readme_text,
+        re.MULTILINE,
+    )
+    if match is None:
+        raise AssertionError("Не удалось прочитать версию из README.md")
+    return match.group(1)
 
 
 class TestSwaggerSpec:
@@ -462,3 +494,49 @@ class TestSwaggerRequestBodies:
         ]["content"]["application/json"]["examples"]
         for example in config_examples.values():
             UpdateConfigRequest(**example["value"])
+
+
+class TestVersionConsistency:
+    """Тесты консистентности версии в runtime и документации."""
+
+    def test_version_is_consistent_in_docs_and_swagger(self) -> None:
+        """Проверяет версию в pyproject, README и swagger-спецификации."""
+        expected_version = _load_version_from_pyproject()
+
+        assert expected_version == "1.4.5"
+        assert _load_version_from_readme() == expected_version
+        assert SWAGGER_SPEC["info"]["version"] == expected_version
+        assert (
+            SWAGGER_SPEC["components"]["schemas"]["Health"]["properties"][
+                "version"
+            ]["example"]
+            == expected_version
+        )
+
+    def test_runtime_health_and_swagger_use_project_version(self) -> None:
+        """Проверяет версию в /health и /api/swagger.json."""
+        expected_version = _load_version_from_pyproject()
+
+        server = APIServer(host="127.0.0.1", port=5014, api_key="test-version-key")
+        server.set_callback(
+            "status",
+            MagicMock(
+                return_value={
+                    "is_recording": False,
+                    "is_paused": False,
+                    "elapsed_time": 0,
+                    "current_file": None,
+                }
+            ),
+        )
+        register_routes(server.app, server)
+        server.app.config["TESTING"] = True
+        client = server.app.test_client()
+
+        health_response = client.get("/health")
+        swagger_response = client.get("/api/swagger.json")
+
+        assert health_response.status_code == 200
+        assert swagger_response.status_code == 200
+        assert health_response.get_json()["version"] == expected_version
+        assert swagger_response.get_json()["info"]["version"] == expected_version
