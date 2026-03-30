@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Changed
+- Усилен coverage gate в CI:
+  `coverage` job теперь использует `--cov-fail-under=60` и
+  дополнительно проверяет покрытие изменённых production Python-файлов
+  через `scripts/check_diff_coverage.py` (порог `35%` на файл).
 - Устранена гонка планировщика с `APScheduler JobLookupError`:
   разовые задачи с временем в прошлом больше не отправляются в
   APScheduler, а переводятся в отключённое состояние без запуска.

@@ -29,6 +29,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -166,7 +168,20 @@ jobs:
           New-Item -ItemType Directory -Force -Path "tests\\.local_tmp\\.pytest_cache" | Out-Null
 
       - name: Run tests with coverage
-        run: uv run pytest tests/unit/ --basetemp=tests/.local_tmp/pytest/coverage --cov=. --cov-report=xml --cov-report=term-missing --cov-fail-under=0
+        run: uv run pytest tests/unit/ --basetemp=tests/.local_tmp/pytest/coverage --cov=. --cov-report=xml --cov-report=json --cov-report=term-missing --cov-fail-under=60
+
+      - name: Gate diff coverage for changed Python files
+        shell: pwsh
+        run: |
+          $baseSha = "${{ github.event.before }}"
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            $baseSha = "${{ github.event.pull_request.base.sha }}"
+          }
+          uv run python scripts/check_diff_coverage.py `
+            --coverage-json coverage.json `
+            --base-sha $baseSha `
+            --head-sha "${{ github.sha }}" `
+            --min-file-coverage 35
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
