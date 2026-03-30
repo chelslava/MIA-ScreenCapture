@@ -17,6 +17,9 @@
 - В `main.py` продолжена P0-декомпозиция `VideoRecorderApp`:
   операции записи (`status/start/stop/pause/recordings`) выделены
   в `RecordingRuntimeCoordinator` с делегированием из `VideoRecorderApp`.
+- В `core/api_runtime_manager.py` добавлены lifecycle-состояния API
+  (`created/starting/running/stopping/stopped`) и блокировка переходов
+  для более безопасной обработки `start/stop/restart`.
 - `main.py` делегирует API runtime-операции в отдельный менеджер
   `core/api_runtime_manager.py` для снижения связности и подготовки
   дальнейшей декомпозиции `VideoRecorderApp`.
@@ -72,6 +75,9 @@
 - Расширены unit-тесты runtime-декомпозиции `main.py`:
   добавлена проверка делегирования `stop_recording` в
   `RecordingRuntimeCoordinator`.
+- Добавлены unit-проверки lifecycle-состояния API runtime и сценария
+  отказа старта при переходном состоянии в
+  `tests/unit/test_main_api_runtime.py`.
 - Добавлены/обновлены unit-тесты устойчивости:
   `tests/unit/test_hotkeys.py`,
   `tests/unit/test_scheduler.py`,

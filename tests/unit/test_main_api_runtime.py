@@ -342,6 +342,28 @@ class TestMainApiRuntime:
         assert result["status"]["running"] is True
         assert app._api_server is server
 
+    def test_api_status_contains_lifecycle_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Статус API должен содержать текущее lifecycle-состояние."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+
+        status = app._get_api_status()
+        assert status["lifecycle_state"] == "created"
+
+    def test_start_api_server_returns_busy_during_transition(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Старт отклоняется, если lifecycle уже в переходном состоянии."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app._api_runtime_manager._set_lifecycle_state("stopping")
+
+        result = app._start_api_server(force=True)
+
+        assert result["success"] is False
+        assert result["error"] == "API lifecycle busy"
+        assert result["running"] is False
+
     def test_apply_api_settings_updates_env_and_config(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

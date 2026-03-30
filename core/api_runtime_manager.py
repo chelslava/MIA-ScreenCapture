@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import api.auth as api_auth
 import config as config_module
@@ -14,6 +15,10 @@ from logger_config import (
 )
 
 logger = get_module_logger(__name__)
+
+ApiLifecycleState = Literal[
+    "created", "starting", "running", "stopping", "stopped"
+]
 
 
 class _ApiServerProtocol(Protocol):
@@ -109,6 +114,18 @@ class ApiRuntimeManager:
             app: Приложение, которое предоставляет состояние и callback-и.
         """
         self._app = app
+        self._lifecycle_lock = threading.RLock()
+        self._lifecycle_state: ApiLifecycleState = "created"
+
+    def _get_lifecycle_state(self) -> ApiLifecycleState:
+        """Возвращает текущее lifecycle-состояние API runtime."""
+        with self._lifecycle_lock:
+            return self._lifecycle_state
+
+    def _set_lifecycle_state(self, state: ApiLifecycleState) -> None:
+        """Обновляет lifecycle-состояние API runtime."""
+        with self._lifecycle_lock:
+            self._lifecycle_state = state
 
     def get_effective_api_key(self) -> str | None:
         """Возвращает актуальный API ключ без побочных эффектов."""
@@ -145,54 +162,81 @@ class ApiRuntimeManager:
 
     def start_api_server(self, force: bool = False) -> dict[str, Any]:
         """Запускает API сервер."""
-        self.migrate_legacy_api_key_if_needed()
-        api_config = self.get_api_runtime_settings()
+        with self._lifecycle_lock:
+            if self._lifecycle_state in {"starting", "stopping"}:
+                logger.warning(
+                    "API lifecycle занят переходом состояния: %s",
+                    self._lifecycle_state,
+                )
+                return {
+                    "success": False,
+                    "running": bool(
+                        self._app._api_server is not None
+                        and self._app._api_server.is_running()
+                    ),
+                    "error": "API lifecycle busy",
+                }
+            self._lifecycle_state = "starting"
 
-        if not force and not api_config.get("enabled", True):
-            logger.info("API сервер отключен настройками")
-            return {"success": False, "running": False}
+        try:
+            self.migrate_legacy_api_key_if_needed()
+            api_config = self.get_api_runtime_settings()
 
-        from api.routes import register_routes
-        from api.server import APIServer
+            if not force and not api_config.get("enabled", True):
+                self._set_lifecycle_state("stopped")
+                logger.info("API сервер отключен настройками")
+                return {"success": False, "running": False}
 
-        if (
-            self._app._api_server is not None
-            and self._app._api_server.is_running()
-        ):
-            logger.info("API сервер уже запущен")
+            from api.routes import register_routes
+            from api.server import APIServer
+
+            if (
+                self._app._api_server is not None
+                and self._app._api_server.is_running()
+            ):
+                self._set_lifecycle_state("running")
+                logger.info("API сервер уже запущен")
+                return {"success": True, "status": self.get_api_status()}
+
+            self._app._api_server = APIServer(
+                host=api_config.get("host", "127.0.0.1"),
+                port=api_config.get("port", 5000),
+                server_threads=api_config.get("server_threads", 4),
+                api_key=api_config.get("api_key"),
+            )
+            self.sync_api_key_env(api_config.get("api_key"))
+
+            assert self._app._api_server is not None
+            resolved_api_key = self._app._api_server.get_runtime_api_key()
+            if resolved_api_key and resolved_api_key != api_config.get(
+                "api_key"
+            ):
+                api_settings = config_module.get_config().settings.api
+                api_settings.api_key = None
+                config_module.get_config().save()
+            self.sync_api_key_env(resolved_api_key)
+            self._app._api_server.set_websocket_manager(
+                self._app._websocket_manager
+            )
+
+            # Регистрация маршрутов API.
+            register_routes(self._app._api_server.app, self._app._api_server)
+
+            # Настройка обратных вызовов API.
+            self.setup_api_callbacks()
+
+            # Запуск сервера.
+            self._app._api_server.start()
+            self._set_lifecycle_state("running")
+            if self._app._main_window is not None:
+                self._app._main_window._api_server = self._app._api_server
+            logger.info(
+                f"API сервер запущен на {self._app._api_server.get_url()}"
+            )
             return {"success": True, "status": self.get_api_status()}
-
-        self._app._api_server = APIServer(
-            host=api_config.get("host", "127.0.0.1"),
-            port=api_config.get("port", 5000),
-            server_threads=api_config.get("server_threads", 4),
-            api_key=api_config.get("api_key"),
-        )
-        self.sync_api_key_env(api_config.get("api_key"))
-
-        assert self._app._api_server is not None
-        resolved_api_key = self._app._api_server.get_runtime_api_key()
-        if resolved_api_key and resolved_api_key != api_config.get("api_key"):
-            api_settings = config_module.get_config().settings.api
-            api_settings.api_key = None
-            config_module.get_config().save()
-        self.sync_api_key_env(resolved_api_key)
-        self._app._api_server.set_websocket_manager(
-            self._app._websocket_manager
-        )
-
-        # Регистрация маршрутов API.
-        register_routes(self._app._api_server.app, self._app._api_server)
-
-        # Настройка обратных вызовов API.
-        self.setup_api_callbacks()
-
-        # Запуск сервера.
-        self._app._api_server.start()
-        if self._app._main_window is not None:
-            self._app._main_window._api_server = self._app._api_server
-        logger.info(f"API сервер запущен на {self._app._api_server.get_url()}")
-        return {"success": True, "status": self.get_api_status()}
+        except Exception:
+            self._set_lifecycle_state("stopped")
+            raise
 
     def get_api_runtime_settings(self) -> dict[str, Any]:
         """Возвращает runtime-настройки API для текущего режима запуска."""
@@ -243,6 +287,7 @@ class ApiRuntimeManager:
             "api_key": effective_api_key,
         }
         runtime_status["log_dir"] = str(get_api_log_dir())
+        runtime_status["lifecycle_state"] = self._get_lifecycle_state()
         return runtime_status
 
     def apply_api_settings(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -302,13 +347,30 @@ class ApiRuntimeManager:
 
     def stop_api_server(self) -> dict[str, Any]:
         """Останавливает API сервер."""
+        with self._lifecycle_lock:
+            if self._lifecycle_state == "starting":
+                logger.warning(
+                    "Остановка API отклонена: lifecycle в состоянии starting"
+                )
+                return {
+                    "success": False,
+                    "running": bool(
+                        self._app._api_server is not None
+                        and self._app._api_server.is_running()
+                    ),
+                    "error": "API lifecycle busy",
+                }
+            self._lifecycle_state = "stopping"
+
         if self._app._api_server is None:
+            self._set_lifecycle_state("stopped")
             return {"success": True, "running": False}
 
         self._app._api_server.stop()
         self._app._api_server = None
         if self._app._main_window is not None:
             self._app._main_window._api_server = None
+        self._set_lifecycle_state("stopped")
         return {"success": True, "running": False}
 
     def restart_api_server(self) -> dict[str, Any]:
