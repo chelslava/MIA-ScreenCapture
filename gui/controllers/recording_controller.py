@@ -158,6 +158,9 @@ class RecordingController:
             # Запуск аудиозаписи при необходимости
             if audio.audio_type in (AudioMode.MIC, AudioMode.BOTH):
                 self._audio_recorder = AudioRecorder()
+                self._audio_recorder.set_callbacks(
+                    on_chunks_dropped=self._on_audio_chunks_dropped
+                )
                 audio_started = self._audio_recorder.start(
                     self._temp_audio,
                     device_index=audio.mic_device_index,
@@ -169,6 +172,9 @@ class RecordingController:
             elif audio.audio_type == AudioMode.SYSTEM:
                 try:
                     self._audio_recorder = SystemAudioRecorder()
+                    self._audio_recorder.set_callbacks(
+                        on_chunks_dropped=self._on_audio_chunks_dropped
+                    )
                     audio_started = self._audio_recorder.start(
                         self._temp_audio, duration=duration
                     )
@@ -317,3 +323,19 @@ class RecordingController:
             self._encoder = None
         self._temp_video = None
         self._temp_audio = None
+
+    def _on_audio_chunks_dropped(self, count: int) -> None:
+        """
+        Callback при потере аудио-чанков.
+
+        Args:
+            count: Общее количество потерянных чанков
+        """
+        logger.warning(f"Потеряно аудио-чанков: {count}")
+
+    @property
+    def dropped_audio_chunks(self) -> int:
+        """Количество потерянных аудио-чанков."""
+        if self._audio_recorder:
+            return self._audio_recorder.dropped_chunks
+        return 0

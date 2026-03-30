@@ -95,9 +95,11 @@ class AudioRecorder:
 
         # Обратные вызовы
         self._on_error: Callable | None = None
+        self._on_chunks_dropped: Callable | None = None
 
         # Информация о платформе
         self._platform = get_platform()
+        self._last_dropped_notification = 0
 
     @property
     def state(self) -> AudioState:
@@ -129,14 +131,26 @@ class AudioRecorder:
         """Получение текущего пути вывода."""
         return self._output_path
 
-    def set_callbacks(self, on_error: Callable | None = None) -> None:
+    @property
+    def dropped_chunks(self) -> int:
+        """Получение количества пропущенных аудио-чанков."""
+        return self._dropped_chunks
+
+    def set_callbacks(
+        self,
+        on_error: Callable | None = None,
+        on_chunks_dropped: Callable | None = None,
+    ) -> None:
         """
         Установка функций обратного вызова.
 
         Args:
             on_error: Вызывается при ошибке (получает сообщение об ошибке)
+            on_chunks_dropped: Вызывается при потере аудио-чанков
+                (получает количество потерянных чанков)
         """
         self._on_error = on_error
+        self._on_chunks_dropped = on_chunks_dropped
 
     @staticmethod
     def get_available_devices() -> list[dict[str, Any]]:
@@ -403,6 +417,18 @@ class AudioRecorder:
             self._audio_queue.put_nowait((audio_data, frames))
         except queue.Full:
             self._dropped_chunks += 1
+
+            # Уведомление при первой потере и далее каждые 10
+            should_notify = (
+                self._dropped_chunks == 1 or self._dropped_chunks % 10 == 0
+            )
+
+            if should_notify and self._on_chunks_dropped:
+                try:
+                    self._on_chunks_dropped(self._dropped_chunks)
+                except Exception as e:
+                    logger.error(f"Ошибка в on_chunks_dropped callback: {e}")
+
             if self._dropped_chunks == 1 or self._dropped_chunks % 50 == 0:
                 logger.warning(
                     "Очередь аудио переполнена, пропущено чанков: %s",
