@@ -1247,6 +1247,8 @@ class VideoRecorderApp:
         """Сохранение конфигурации при завершении."""
         try:
             config = get_config()
+            # Сначала flush debounce timer
+            config.flush_debounced_saves()
             config.save()
             logger.info("Конфигурация сохранена")
         except Exception as e:

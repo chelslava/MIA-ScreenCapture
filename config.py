@@ -401,6 +401,22 @@ class ConfigManager:
         self._recent_save_timer.cancel()
         self._recent_save_timer = None
 
+    def flush_debounced_saves(self) -> bool:
+        """
+        Немедленно выполнить отложенное сохранение (для shutdown).
+
+        Returns:
+            True если сохранение успешно или нет отложенных сохранений
+        """
+        with self._save_lock:
+            if self._recent_save_timer is None:
+                return True
+            self._cancel_recent_save_timer_locked()
+
+        # Выполняем flush вне lock
+        self._flush_recent_recordings_save()
+        return True
+
     def validate_settings(self) -> tuple[bool, list[str]]:
         """
         Валидация текущих настроек.
