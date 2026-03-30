@@ -120,34 +120,43 @@ class ApiRuntimeManager:
         """Обновляет lifecycle-состояние API runtime."""
         self._lifecycle.set_state(state)
 
+    @staticmethod
+    def _normalize_api_key(value: Any) -> str | None:
+        """Нормализует значение API ключа к строке или None."""
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
     def get_effective_api_key(self) -> str | None:
         """Возвращает актуальный API ключ без побочных эффектов."""
-        stored_api_key = api_auth.get_stored_api_key()
-        if stored_api_key is not None and stored_api_key.strip():
-            return stored_api_key.strip()
+        stored_api_key = self._normalize_api_key(api_auth.get_stored_api_key())
+        if stored_api_key is not None:
+            return stored_api_key
 
-        config_api_key = config_module.get_config().settings.api.api_key
-        if config_api_key is not None and config_api_key.strip():
-            return config_api_key.strip()
+        config_api_key = self._normalize_api_key(
+            config_module.get_config().settings.api.api_key
+        )
+        if config_api_key is not None:
+            return config_api_key
 
         return None
 
     def migrate_legacy_api_key_if_needed(self) -> str | None:
         """Мигрирует API ключ из legacy config в env при необходимости."""
-        stored_api_key = api_auth.get_stored_api_key()
-        if stored_api_key is not None and stored_api_key.strip():
-            return stored_api_key.strip()
+        stored_api_key = self._normalize_api_key(api_auth.get_stored_api_key())
+        if stored_api_key is not None:
+            return stored_api_key
 
         config = config_module.get_config()
-        config_api_key = config.settings.api.api_key
-        if config_api_key is None or not config_api_key.strip():
+        config_api_key = self._normalize_api_key(config.settings.api.api_key)
+        if config_api_key is None:
             return None
 
-        normalized_key = config_api_key.strip()
-        self.sync_api_key_env(normalized_key)
+        self.sync_api_key_env(config_api_key)
         config.settings.api.api_key = None
         config.save()
-        return normalized_key
+        return config_api_key
 
     def sync_api_key_env(self, api_key: str | None) -> None:
         """Синхронизирует API ключ с постоянным хранилищем и env."""
@@ -285,13 +294,11 @@ class ApiRuntimeManager:
         """Применяет настройки API из GUI."""
         config = config_module.get_config()
         api_settings = config.settings.api
-        original_snapshot = {
-            "enabled": api_settings.enabled,
-            "host": api_settings.host,
-            "port": api_settings.port,
-            "server_threads": api_settings.server_threads,
-            "api_key": api_settings.api_key,
-        }
+        original_enabled = api_settings.enabled
+        original_host = api_settings.host
+        original_port = api_settings.port
+        original_server_threads = api_settings.server_threads
+        original_api_key = api_settings.api_key
         updated_fields: list[str] = []
         restart_required = False
         server_running = bool(
@@ -364,17 +371,11 @@ class ApiRuntimeManager:
 
         persisted = config.save()
         if not persisted:
-            api_settings.enabled = bool(original_snapshot["enabled"])
-            api_settings.host = str(original_snapshot["host"])
-            api_settings.port = int(original_snapshot["port"])
-            api_settings.server_threads = int(
-                original_snapshot["server_threads"]
-            )
-            api_settings.api_key = (
-                str(original_snapshot["api_key"])
-                if isinstance(original_snapshot["api_key"], str)
-                else None
-            )
+            api_settings.enabled = original_enabled
+            api_settings.host = original_host
+            api_settings.port = original_port
+            api_settings.server_threads = original_server_threads
+            api_settings.api_key = original_api_key
             return {
                 "success": False,
                 "error": "Не удалось сохранить настройки API",
