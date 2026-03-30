@@ -41,27 +41,21 @@
 
 ### P1-Critical (блокирующие проблемы)
 
-- [ ] Уведомлять пользователя при потере audio chunks
-  (`recorder/audio_recorder.py:394-410`).
-  Риск: запись продолжается с пропусками аудио, пользователь не в курсе.
-- [ ] Исправить potential deadlock в video_recorder.stop()
-  (`recorder/video_recorder.py:507-561`).
-  Риск: `_lock` держится во время `_capture_session.stop()` → deadlock.
-- [ ] Устранить утечку FFmpeg stderr reader thread
-  (`recorder/ffmpeg_writer.py:339-384`).
-  Риск: thread блокируется на `readline()` при краше FFmpeg.
-- [ ] Валидация rect coordinates против frame bounds
-  (`recorder/video_recorder.py:183-192`).
-  Риск: IndexError или memory issues при edge cases.
-- [ ] Уведомлять при fallback на full screen при window not found
-  (`recorder/video_recorder.py:91-108`).
-  Риск: запись идёт неправильной области без ведома пользователя.
-- [ ] Ограничить memory growth в API idempotency store
-  (`api/server.py:351-464`).
-  Риск: entries накапливаются при sustained load.
-- [ ] Возвращать ошибку при невалидном state transition в pause_recording
-  (`core/recording_state.py:122-126`).
-  Риск: silent no-op, caller не знает что pause не сработал.
+- [x] ~~Уведомлять пользователя при потере audio chunks~~
+  (commit: e0ccca2). Callback `on_chunks_dropped`, property `dropped_chunks`.
+- [x] ~~Исправить potential deadlock в video_recorder.stop()~~
+  Уже исправлено в текущем коде - lock освобождается до join().
+- [x] ~~Устранить утечку FFmpeg stderr reader thread~~
+  Откат select-based решения из-за несовместимости с Windows.
+  Закрытие stream в _stop_stderr_reader() достаточно.
+- [x] ~~Валидация rect coordinates против frame bounds~~
+  Уже реализовано в `_WindowsCaptureSession.on_frame_captured()`.
+- [x] ~~Уведомлять при fallback на full screen при window not found~~
+  (commit: cd6f4c4). Улучшено логирование, сохраняется искомый заголовок.
+- [x] ~~Ограничить memory growth в API idempotency store~~
+  (commit: 670245c). Лимит `_MAX_PATH_ENTRIES = 100` для path_counts.
+- [x] ~~Возвращать ошибку при невалидном state transition в pause_recording~~
+  (commit: 3d40121). `pause_recording()` и `resume_recording()` возвращают bool.
 
 ## P2 (после стабилизации P0/P1)
 

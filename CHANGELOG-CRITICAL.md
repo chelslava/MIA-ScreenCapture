@@ -1,7 +1,7 @@
 # Changelist: Исправление критических проблем
 
 > Дата: 2026-03-30
-> Коммитов: 10
+> Коммитов: 15
 
 ## Исправленные проблемы
 
@@ -40,6 +40,35 @@
    - Валидация через `CronTrigger.from_crontab()`
    - Человекочитаемое сообщение об ошибке
 
+### P1-Critical (7 задач)
+
+7. **Уведомление о потере audio chunks** (commit: e0ccca2)
+   - Файлы: `recorder/audio_recorder.py`, `gui/controllers/recording_controller.py`
+   - Callback `on_chunks_dropped` для уведомления
+   - Property `dropped_chunks` для мониторинга
+
+8. **Deadlock в video_recorder.stop()** — уже исправлено
+   - Lock освобождается до `join()` в текущем коде
+
+9. **Утечка FFmpeg stderr reader thread** — откат решения
+   - select.select() несовместим с текстовыми потоками на Windows
+   - Закрытие stream достаточно для освобождения thread
+
+10. **Валидация rect coordinates** — уже реализовано
+    - Координаты обрезаются до размеров кадра в `_WindowsCaptureSession`
+
+11. **Уведомление при fallback на full screen** (commit: cd6f4c4)
+    - Улучшено логирование
+    - Сохранение искомого заголовка для диагностики
+
+12. **Ограничение memory growth в API observability** (commit: 670245c)
+    - Файл: `api/server.py`
+    - Лимит `_MAX_PATH_ENTRIES = 100` для `path_counts`
+
+13. **Ошибка при невалидном state transition** (commit: 3d40121)
+    - Файл: `core/recording_state.py`
+    - `pause_recording()` и `resume_recording()` возвращают bool
+
 ### Исправления CI
 
 - **UnicodeEncodeError в diff coverage скрипте** (commit: 3484450)
@@ -50,12 +79,19 @@
   - Файл: `gui/controllers/recording_controller.py`
   - Удалён неиспользуемый импорт `DiskSpaceError`
 
+- **Откат select-based stderr reader** (commit: fbaa34d)
+  - Файл: `recorder/ffmpeg_writer.py`
+  - Несовместимость с текстовыми потоками на Windows
+
 ## Изменённые файлы
 
 ```
 api/auth.py              - Безопасное хранение API key
 api/rate_limiter.py      - Валидация IP-адресов
-gui/controllers/recording_controller.py - Проверка диска
+api/server.py            - Ограничение memory growth
+core/recording_state.py  - State transition с возвратом bool
+gui/controllers/recording_controller.py - Проверка диска, audio callbacks
+recorder/audio_recorder.py - Callback on_chunks_dropped
 recorder/ffmpeg_writer.py - Обработка повреждённых файлов
 recorder/utils.py        - Функции check_disk_space, get_available_disk_space
 recorder/video_recorder.py - Race condition fixes, corrupted file handling
@@ -66,7 +102,7 @@ tests/unit/test_api_auth.py - Обновлены тесты для нового 
 
 ## Статистика
 
-- Строк добавлено: ~200
-- Строк удалено: ~20
-- Файлов изменено: 10
+- Строк добавлено: ~300
+- Строк удалено: ~40
+- Файлов изменено: 12
 - Тестов обновлено: 3
