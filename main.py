@@ -1023,16 +1023,26 @@ class VideoRecorderApp:
         """
         from config import (
             APISettings,
+            APISettingsSchema,
             AudioSettings,
+            AudioSettingsSchema,
             CaptureSettings,
+            CaptureSettingsSchema,
             OutputSettings,
+            OutputSettingsSchema,
             SchedulerSettings,
+            SchedulerSettingsSchema,
             VideoSettings,
+            VideoSettingsSchema,
         )
 
         config = get_config()
         restart_required: list[str] = []
         updated_sections: list[str] = []
+        staged_sections: dict[str, dict[str, Any]] = {}
+        simple_updates: dict[str, Any] = {}
+        original_sections: dict[str, dict[str, Any]] = {}
+        original_simple: dict[str, Any] = {}
 
         # Обновление вложенных секций
         section_classes = {
@@ -1043,40 +1053,88 @@ class VideoRecorderApp:
             "api": APISettings,
             "scheduler": SchedulerSettings,
         }
+        section_schemas = {
+            "video": VideoSettingsSchema,
+            "audio": AudioSettingsSchema,
+            "capture": CaptureSettingsSchema,
+            "output": OutputSettingsSchema,
+            "api": APISettingsSchema,
+            "scheduler": SchedulerSettingsSchema,
+        }
 
-        for section_name, _section_class in section_classes.items():
-            if section_name in data:
+        try:
+            for section_name, _section_class in section_classes.items():
+                if section_name not in data:
+                    continue
                 section_data = data[section_name]
-                if isinstance(section_data, dict):
-                    current_section = getattr(
-                        config.settings, section_name, None
-                    )
-                    if current_section:
-                        for key, value in section_data.items():
-                            if hasattr(current_section, key):
-                                setattr(current_section, key, value)
-                        updated_sections.append(section_name)
+                if not isinstance(section_data, dict):
+                    continue
+                current_section = getattr(config.settings, section_name, None)
+                if current_section is None:
+                    continue
 
-                        # Проверка, нужен ли перезапуск
-                        if (
-                            section_name == "api"
-                            and self._api_server
-                            and any(
-                                k in section_data
-                                for k in ["host", "port", "enabled"]
-                            )
-                        ):
-                            restart_required.append("api")
+                current_values = vars(current_section).copy()
+                original_sections[section_name] = current_values.copy()
+                merged_values = current_values.copy()
+                for key, value in section_data.items():
+                    if key in merged_values:
+                        merged_values[key] = value
+
+                validated = section_schemas[section_name].model_validate(
+                    merged_values
+                )
+                staged_sections[section_name] = validated.model_dump()
+                updated_sections.append(section_name)
+
+                # Проверка, нужен ли перезапуск
+                if (
+                    section_name == "api"
+                    and self._api_server
+                    and any(
+                        k in section_data for k in ["host", "port", "enabled"]
+                    )
+                ):
+                    restart_required.append("api")
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
         # Обновление простых полей
         simple_fields = ["minimize_to_tray", "show_notifications", "language"]
         for field_name in simple_fields:
             if field_name in data:
-                setattr(config.settings, field_name, data[field_name])
+                original_simple[field_name] = getattr(
+                    config.settings, field_name
+                )
+                simple_updates[field_name] = data[field_name]
                 updated_sections.append(field_name)
 
+        # Apply
+        for section_name, values in staged_sections.items():
+            target = getattr(config.settings, section_name, None)
+            if target is None:
+                continue
+            for key, value in values.items():
+                if hasattr(target, key):
+                    setattr(target, key, value)
+
+        for field_name, value in simple_updates.items():
+            setattr(config.settings, field_name, value)
+
         # Сохранение
-        config.save()
+        if not config.save():
+            for section_name, values in original_sections.items():
+                target = getattr(config.settings, section_name, None)
+                if target is None:
+                    continue
+                for key, value in values.items():
+                    if hasattr(target, key):
+                        setattr(target, key, value)
+            for field_name, value in original_simple.items():
+                setattr(config.settings, field_name, value)
+            return {
+                "success": False,
+                "error": "Не удалось сохранить конфигурацию",
+            }
 
         # Уведомление о требуемом перезапуске
         if restart_required:

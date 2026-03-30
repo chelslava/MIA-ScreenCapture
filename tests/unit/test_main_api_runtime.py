@@ -471,6 +471,33 @@ class TestMainApiRuntime:
         assert os.environ["MIA_API_KEY"] == "old-token"
         assert server.api_key == "old-token"
 
+    def test_update_config_validation_error_is_atomic(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Невалидные секционные данные не должны применяться частично."""
+        app, fake_config = _build_app(monkeypatch, api_key="old-token")
+        before_port = fake_config.settings.api.port
+
+        result = app._update_config({"api": {"port": 70000}})
+
+        assert result["success"] is False
+        assert fake_config.settings.api.port == before_port
+        assert fake_config.save.call_count == 0
+
+    def test_update_config_rolls_back_on_save_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """При ошибке сохранения значения секций откатываются."""
+        app, fake_config = _build_app(monkeypatch, api_key="old-token")
+        fake_config.save.return_value = False
+        before_port = fake_config.settings.api.port
+
+        result = app._update_config({"api": {"port": 5055}})
+
+        assert result["success"] is False
+        assert result["error"] == "Не удалось сохранить конфигурацию"
+        assert fake_config.settings.api.port == before_port
+
     def test_stop_api_server_clears_server_reference(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

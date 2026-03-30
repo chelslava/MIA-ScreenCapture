@@ -30,6 +30,9 @@
 - В `ApiRuntimeManager.apply_api_settings` внедрён транзакционный путь
   для API-настроек: `validate -> apply -> persist`, rollback при ошибке
   сохранения и отсутствие частичных side-effect обновлений токена.
+- В `main.py::_update_config` внедрён транзакционный путь обновления
+  секций конфигурации: предварительная валидация секций, apply только
+  после успешной проверки и rollback при ошибке `config.save()`.
 - `main.py` делегирует API runtime-операции в отдельный менеджер
   `core/api_runtime_manager.py` для снижения связности и подготовки
   дальнейшей декомпозиции `VideoRecorderApp`.
@@ -98,6 +101,9 @@
 - Добавлены unit-тесты транзакционного обновления API-настроек:
   атомарность при валидационной ошибке и rollback при ошибке persist
   в `tests/unit/test_main_api_runtime.py`.
+- Добавлены unit-тесты транзакционности для `main.py::_update_config`:
+  атомарность при валидации и rollback при ошибке сохранения
+  (`tests/unit/test_main_api_runtime.py`).
 - Добавлены/обновлены unit-тесты устойчивости:
   `tests/unit/test_hotkeys.py`,
   `tests/unit/test_scheduler.py`,
