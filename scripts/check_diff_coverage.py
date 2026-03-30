@@ -83,10 +83,32 @@ def _get_changed_python_files(base_sha: str, head_sha: str) -> list[str]:
             text=True,
             check=True,
         )
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(
-            "Не удалось получить список изменённых файлов через git diff"
-        ) from exc
+    except subprocess.CalledProcessError:
+        try:
+            fallback_base = subprocess.run(
+                ["git", "rev-parse", f"{head_sha}~1"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            result = subprocess.run(
+                [
+                    "git",
+                    "diff",
+                    "--name-only",
+                    fallback_base,
+                    head_sha,
+                    "--",
+                    "*.py",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as fallback_exc:
+            raise RuntimeError(
+                "Не удалось получить список изменённых файлов через git diff"
+            ) from fallback_exc
 
     files = [
         _normalize_path(line.strip())
