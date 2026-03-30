@@ -134,7 +134,7 @@ def _build_app(
             ),
         ),
         config_path="config/config.json",
-        save=MagicMock(),
+        save=MagicMock(return_value=True),
     )
 
     monkeypatch.setattr(main, "get_config", lambda: fake_config)
@@ -420,6 +420,41 @@ class TestMainApiRuntime:
         assert fake_config.settings.api.api_key is None
         assert "MIA_API_KEY" not in os.environ
         assert server.api_key is None
+
+    def test_apply_api_settings_validation_error_is_atomic(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """При невалидных значениях настройки не должны применяться частично."""
+        app, fake_config = _build_app(monkeypatch, api_key="old-token")
+        before_port = fake_config.settings.api.port
+        before_threads = fake_config.settings.api.server_threads
+
+        result = app._apply_api_settings(
+            {"port": 70000, "server_threads": "not-number"}
+        )
+
+        assert result["success"] is False
+        assert fake_config.settings.api.port == before_port
+        assert fake_config.settings.api.server_threads == before_threads
+        assert fake_config.save.call_count == 0
+
+    def test_apply_api_settings_rollback_on_persist_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """При ошибке save значения API и токен должны быть откатаны."""
+        app, fake_config = _build_app(monkeypatch, api_key="old-token")
+        fake_config.save.return_value = False
+        server = FakeApiServer(api_key="old-token")
+        app._api_server = server
+        monkeypatch.setenv("MIA_API_KEY", "old-token")
+        before_port = fake_config.settings.api.port
+
+        result = app._apply_api_settings({"port": 5055, "token": "new-token"})
+
+        assert result["success"] is False
+        assert fake_config.settings.api.port == before_port
+        assert os.environ["MIA_API_KEY"] == "old-token"
+        assert server.api_key == "old-token"
 
     def test_stop_api_server_clears_server_reference(
         self, monkeypatch: pytest.MonkeyPatch

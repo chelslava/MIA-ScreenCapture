@@ -285,49 +285,106 @@ class ApiRuntimeManager:
         """Применяет настройки API из GUI."""
         config = config_module.get_config()
         api_settings = config.settings.api
+        original_snapshot = {
+            "enabled": api_settings.enabled,
+            "host": api_settings.host,
+            "port": api_settings.port,
+            "server_threads": api_settings.server_threads,
+            "api_key": api_settings.api_key,
+        }
         updated_fields: list[str] = []
         restart_required = False
         server_running = bool(
             self._app._api_server is not None
             and self._app._api_server.is_running()
         )
+        proposed = {
+            "enabled": api_settings.enabled,
+            "host": api_settings.host,
+            "port": api_settings.port,
+            "server_threads": api_settings.server_threads,
+            "api_key": api_settings.api_key,
+        }
 
-        if "host" in data and data["host"] != api_settings.host:
-            api_settings.host = str(data["host"])
-            updated_fields.append("host")
-            restart_required = restart_required or server_running
+        try:
+            if "host" in data:
+                host = str(data["host"])
+                if host != api_settings.host:
+                    proposed["host"] = host
+                    updated_fields.append("host")
+                    restart_required = restart_required or server_running
 
-        if "port" in data:
-            port = int(data["port"])
-            if port != api_settings.port:
-                api_settings.port = port
-                updated_fields.append("port")
-                restart_required = restart_required or server_running
+            if "port" in data:
+                port = int(data["port"])
+                if port != api_settings.port:
+                    proposed["port"] = port
+                    updated_fields.append("port")
+                    restart_required = restart_required or server_running
 
-        if "server_threads" in data:
-            server_threads = max(1, int(data["server_threads"]))
-            if server_threads != api_settings.server_threads:
-                api_settings.server_threads = server_threads
-                updated_fields.append("server_threads")
-                restart_required = restart_required or server_running
+            if "server_threads" in data:
+                server_threads = max(1, int(data["server_threads"]))
+                if server_threads != api_settings.server_threads:
+                    proposed["server_threads"] = server_threads
+                    updated_fields.append("server_threads")
+                    restart_required = restart_required or server_running
 
-        token_value = data.get("token", data.get("api_key"))
-        if token_value is not None:
-            api_key = str(token_value).strip() or None
-            current_api_key = self.get_effective_api_key()
-            if api_key != current_api_key:
-                updated_fields.append("api_key")
-                if self._app._api_server is not None:
-                    self._app._api_server.set_api_key(api_key)
-                self.sync_api_key_env(api_key)
-            if api_settings.api_key is not None:
-                api_settings.api_key = None
+            if (
+                "enabled" in data
+                and bool(data["enabled"]) != api_settings.enabled
+            ):
+                proposed["enabled"] = bool(data["enabled"])
+                updated_fields.append("enabled")
 
-        if "enabled" in data and bool(data["enabled"]) != api_settings.enabled:
-            api_settings.enabled = bool(data["enabled"])
-            updated_fields.append("enabled")
+            token_value = data.get("token", data.get("api_key"))
+            api_key: str | None = None
+            if token_value is not None:
+                api_key = str(token_value).strip() or None
+                current_api_key = self.get_effective_api_key()
+                if api_key != current_api_key:
+                    updated_fields.append("api_key")
+                if proposed["api_key"] is not None:
+                    proposed["api_key"] = None
 
-        config.save()
+            validated = config_module.APISettingsSchema.model_validate(
+                proposed
+            )
+        except (TypeError, ValueError) as e:
+            logger.warning("Невалидные значения API настроек: %s", e)
+            return {
+                "success": False,
+                "error": str(e),
+                "status": self.get_api_status(),
+            }
+
+        api_settings.enabled = validated.enabled
+        api_settings.host = validated.host
+        api_settings.port = validated.port
+        api_settings.server_threads = validated.server_threads
+        api_settings.api_key = validated.api_key
+
+        persisted = config.save()
+        if not persisted:
+            api_settings.enabled = bool(original_snapshot["enabled"])
+            api_settings.host = str(original_snapshot["host"])
+            api_settings.port = int(original_snapshot["port"])
+            api_settings.server_threads = int(
+                original_snapshot["server_threads"]
+            )
+            api_settings.api_key = (
+                str(original_snapshot["api_key"])
+                if isinstance(original_snapshot["api_key"], str)
+                else None
+            )
+            return {
+                "success": False,
+                "error": "Не удалось сохранить настройки API",
+                "status": self.get_api_status(),
+            }
+
+        if "api_key" in updated_fields:
+            if self._app._api_server is not None:
+                self._app._api_server.set_api_key(api_key)
+            self.sync_api_key_env(api_key)
 
         return {
             "success": True,

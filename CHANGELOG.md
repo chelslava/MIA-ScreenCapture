@@ -24,6 +24,9 @@
 - Подтверждён единый источник модели состояния записи:
   `gui.models.recording_state` используется как совместимый shim-реэкспорт
   типов из `core.recording_state` без дублирования доменной модели.
+- В `ApiRuntimeManager.apply_api_settings` внедрён транзакционный путь
+  для API-настроек: `validate -> apply -> persist`, rollback при ошибке
+  сохранения и отсутствие частичных side-effect обновлений токена.
 - `main.py` делегирует API runtime-операции в отдельный менеджер
   `core/api_runtime_manager.py` для снижения связности и подготовки
   дальнейшей декомпозиции `VideoRecorderApp`.
@@ -86,6 +89,9 @@
   `tests/unit/test_api_lifecycle_manager.py`.
 - Добавлен защитный unit-тест совместимости GUI/core модели состояния:
   `tests/unit/test_gui_models.py::TestGuiCoreRecordingStateCompatibility`.
+- Добавлены unit-тесты транзакционного обновления API-настроек:
+  атомарность при валидационной ошибке и rollback при ошибке persist
+  в `tests/unit/test_main_api_runtime.py`.
 - Добавлены/обновлены unit-тесты устойчивости:
   `tests/unit/test_hotkeys.py`,
   `tests/unit/test_scheduler.py`,
