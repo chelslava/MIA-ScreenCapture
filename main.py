@@ -188,9 +188,7 @@ class GuiRuntimeCoordinator:
         self._app._main_window.recording_resumed.connect(
             tray_icon.on_recording_resumed
         )
-        self._app._main_window.error_occurred.connect(
-            tray_icon.on_error
-        )
+        self._app._main_window.error_occurred.connect(tray_icon.on_error)
         self._app._main_window.close_requested.connect(
             self._app._handle_close_requested
         )
