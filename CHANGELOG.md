@@ -17,6 +17,9 @@
 - В `main.py` продолжена P0-декомпозиция `VideoRecorderApp`:
   операции записи (`status/start/stop/pause/recordings`) выделены
   в `RecordingRuntimeCoordinator` с делегированием из `VideoRecorderApp`.
+- Завершён шаг декомпозиции `VideoRecorderApp` по coordinator-слоям:
+  API-операции вынесены в `ApiRuntimeCoordinator`, теперь GUI/API/recording
+  делегируются отдельным координаторам с явными зонами ответственности.
 - Stateful lifecycle API вынесен в отдельный менеджер
   `core/api_lifecycle_manager.py` (`created/starting/running/stopping/stopped`);
   `ApiRuntimeManager` переведён на использование этого слоя для
@@ -87,6 +90,9 @@
   `tests/unit/test_main_api_runtime.py`.
 - Добавлены unit-тесты lifecycle-менеджера API:
   `tests/unit/test_api_lifecycle_manager.py`.
+- Добавлен unit-тест делегирования API-старта в coordinator:
+  `tests/unit/test_main_api_runtime.py::
+  test_start_api_server_delegates_to_api_runtime_coordinator`.
 - Добавлен защитный unit-тест совместимости GUI/core модели состояния:
   `tests/unit/test_gui_models.py::TestGuiCoreRecordingStateCompatibility`.
 - Добавлены unit-тесты транзакционного обновления API-настроек:

@@ -182,6 +182,21 @@ class TestMainApiRuntime:
         assert result == 123
         run_mock.assert_called_once_with()
 
+    def test_start_api_server_delegates_to_api_runtime_coordinator(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`_start_api_server` должен делегироваться API coordinator."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        start_mock = MagicMock(return_value={"success": True})
+        app._api_runtime_coordinator = SimpleNamespace(
+            start_api_server=start_mock
+        )
+
+        result = app._start_api_server(force=True)
+
+        start_mock.assert_called_once_with(force=True)
+        assert result == {"success": True}
+
     def test_get_effective_api_key_prefers_env(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

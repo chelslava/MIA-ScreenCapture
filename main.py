@@ -306,6 +306,57 @@ class RecordingRuntimeCoordinator:
         return self._app._recording_service.get_recordings()
 
 
+class ApiRuntimeCoordinator:
+    """Координатор runtime-операций API сервера."""
+
+    def __init__(self, manager: ApiRuntimeManager) -> None:
+        self._manager = manager
+
+    def sync_api_key_env(self, api_key: str | None) -> None:
+        """Синхронизирует API ключ через runtime-менеджер."""
+        self._manager.sync_api_key_env(api_key)
+
+    def get_effective_api_key(self) -> str | None:
+        """Возвращает актуальный API ключ."""
+        return self._manager.get_effective_api_key()
+
+    def start_api_server(self, force: bool = False) -> dict[str, Any]:
+        """Запускает API сервер."""
+        return self._manager.start_api_server(force=force)
+
+    def get_api_runtime_settings(self) -> dict[str, Any]:
+        """Возвращает runtime-настройки API."""
+        return self._manager.get_api_runtime_settings()
+
+    def get_api_status(self) -> dict[str, Any]:
+        """Возвращает статус API."""
+        return self._manager.get_api_status()
+
+    def apply_api_settings(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Применяет API-настройки."""
+        return self._manager.apply_api_settings(data)
+
+    def stop_api_server(self) -> dict[str, Any]:
+        """Останавливает API сервер."""
+        return self._manager.stop_api_server()
+
+    def restart_api_server(self) -> dict[str, Any]:
+        """Перезапускает API сервер."""
+        return self._manager.restart_api_server()
+
+    def open_api_logs_folder(self) -> None:
+        """Открывает каталог API-логов."""
+        self._manager.open_api_logs_folder()
+
+    def get_api_controls(self) -> dict[str, Any]:
+        """Возвращает набор callbacks для GUI API-вкладки."""
+        return self._manager.get_api_controls()
+
+    def setup_api_callbacks(self) -> None:
+        """Регистрирует callbacks API."""
+        self._manager.setup_api_callbacks()
+
+
 class VideoRecorderApp:
     """
     Главный класс приложения.
@@ -353,6 +404,9 @@ class VideoRecorderApp:
         self._gui_runtime_coordinator = GuiRuntimeCoordinator(self)
         self._recording_runtime_coordinator = RecordingRuntimeCoordinator(self)
         self._api_runtime_manager = ApiRuntimeManager(self)
+        self._api_runtime_coordinator = ApiRuntimeCoordinator(
+            self._api_runtime_manager
+        )
 
     def _get_api_headers(self) -> dict:
         """
@@ -368,11 +422,11 @@ class VideoRecorderApp:
 
     def _sync_api_key_env(self, api_key: str | None) -> None:
         """Синхронизирует API ключ через менеджер runtime."""
-        self._api_runtime_manager.sync_api_key_env(api_key)
+        self._api_runtime_coordinator.sync_api_key_env(api_key)
 
     def _get_effective_api_key(self) -> str | None:
         """Возвращает актуальный API ключ через менеджер runtime."""
-        return self._api_runtime_manager.get_effective_api_key()
+        return self._api_runtime_coordinator.get_effective_api_key()
 
     def _handle_unauthorized_response(self) -> int:
         """
@@ -676,23 +730,23 @@ class VideoRecorderApp:
 
     def _start_api_server(self, force: bool = False) -> dict[str, Any]:
         """Запускает API сервер через менеджер runtime."""
-        return self._api_runtime_manager.start_api_server(force=force)
+        return self._api_runtime_coordinator.start_api_server(force=force)
 
     def _get_api_runtime_settings(self) -> dict[str, Any]:
         """Возвращает runtime-настройки API через менеджер."""
-        return self._api_runtime_manager.get_api_runtime_settings()
+        return self._api_runtime_coordinator.get_api_runtime_settings()
 
     def _get_api_status(self) -> dict[str, Any]:
         """Возвращает статус API через менеджер runtime."""
-        return self._api_runtime_manager.get_api_status()
+        return self._api_runtime_coordinator.get_api_status()
 
     def _apply_api_settings(self, data: dict[str, Any]) -> dict[str, Any]:
         """Применяет настройки API через менеджер runtime."""
-        return self._api_runtime_manager.apply_api_settings(data)
+        return self._api_runtime_coordinator.apply_api_settings(data)
 
     def _stop_api_server(self) -> dict[str, Any]:
         """Останавливает API сервер через менеджер runtime."""
-        return self._api_runtime_manager.stop_api_server()
+        return self._api_runtime_coordinator.stop_api_server()
 
     def _restart_api_server(self) -> dict[str, Any]:
         """
@@ -701,11 +755,11 @@ class VideoRecorderApp:
         Returns:
             Словарь с результатом операции.
         """
-        return self._api_runtime_manager.restart_api_server()
+        return self._api_runtime_coordinator.restart_api_server()
 
     def _open_api_logs_folder(self) -> None:
         """Открывает папку с логами API через менеджер runtime."""
-        self._api_runtime_manager.open_api_logs_folder()
+        self._api_runtime_coordinator.open_api_logs_folder()
 
     def get_api_controls(self) -> dict[str, Any]:
         """
@@ -714,11 +768,11 @@ class VideoRecorderApp:
         Returns:
             Словарь с готовыми методами для привязки к GUI.
         """
-        return self._api_runtime_manager.get_api_controls()
+        return self._api_runtime_coordinator.get_api_controls()
 
     def _setup_api_callbacks(self) -> None:
         """Настраивает обратные вызовы API через менеджер runtime."""
-        self._api_runtime_manager.setup_api_callbacks()
+        self._api_runtime_coordinator.setup_api_callbacks()
 
     def _setup_hotkeys(self) -> None:
         """Настройка глобальных горячих клавиш."""

@@ -5,9 +5,6 @@
 
 ## P0 (обязательно в `v1.4.6`)
 
-- [ ] Разбить `main.py:VideoRecorderApp` на координирующие компоненты:
-  `ApiRuntimeCoordinator`, `GuiRuntimeCoordinator`,
-  `RecordingRuntimeCoordinator` с явными зонами ответственности.
 - [ ] Ввести транзакционное обновление конфигурации:
   `load -> validate -> apply -> persist` без частичных записей.
 - [ ] Закрыть технический долг по типизации для рефакторинга:
