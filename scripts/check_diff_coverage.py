@@ -134,6 +134,16 @@ def _load_coverage_map(coverage_json_path: Path) -> dict[str, float]:
 
 def main() -> int:
     """Точка входа проверки diff coverage."""
+    import io
+
+    stdout_utf8 = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    stderr_utf8 = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
+
+    def safe_print(message: str, file=None) -> None:
+        target = file or stdout_utf8
+        target.write(message + "\n")
+        target.flush()
+
     parser = argparse.ArgumentParser(
         description="Проверка покрытия изменённых Python-файлов",
     )
@@ -154,9 +164,9 @@ def main() -> int:
 
     coverage_json_path = Path(args.coverage_json)
     if not coverage_json_path.exists():
-        print(
+        safe_print(
             f"[diff-coverage] Файл не найден: {coverage_json_path}",
-            file=sys.stderr,
+            file=stderr_utf8,
         )
         return 2
 
@@ -164,33 +174,33 @@ def main() -> int:
         base_sha = _resolve_base_sha(args.base_sha, args.head_sha)
         changed_files = _get_changed_python_files(base_sha, args.head_sha)
     except RuntimeError as exc:
-        print(f"[diff-coverage] {exc}", file=sys.stderr)
+        safe_print(f"[diff-coverage] {exc}", file=stderr_utf8)
         return 2
 
     if not changed_files:
-        print("[diff-coverage] Нет изменённых production Python-файлов.")
+        safe_print("[diff-coverage] Нет изменённых production Python-файлов.")
         return 0
 
     coverage_map = _load_coverage_map(coverage_json_path)
     failed: list[tuple[str, float]] = []
 
-    print(
+    safe_print(
         "[diff-coverage] Проверка изменённых файлов "
         f"(порог: {args.min_file_coverage:.1f}%):"
     )
     for path in changed_files:
         coverage_percent = coverage_map.get(path, 0.0)
-        print(f"  - {path}: {coverage_percent:.2f}%")
+        safe_print(f"  - {path}: {coverage_percent:.2f}%")
         if coverage_percent < args.min_file_coverage:
             failed.append((path, coverage_percent))
 
     if not failed:
-        print("[diff-coverage] Все изменённые файлы проходят порог.")
+        safe_print("[diff-coverage] Все изменённые файлы проходят порог.")
         return 0
 
-    print("[diff-coverage] Файлы ниже порога:")
+    safe_print("[diff-coverage] Файлы ниже порога:")
     for path, coverage_percent in failed:
-        print(f"  - {path}: {coverage_percent:.2f}%")
+        safe_print(f"  - {path}: {coverage_percent:.2f}%")
     return 1
 
 
