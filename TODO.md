@@ -5,9 +5,8 @@
 
 ## P0 (обязательно в `v1.4.6`)
 
-- [ ] Дозакрыть v1 lifecycle/idempotency API-контракты:
-  `/api/v1/stop` (202/running), `/api/v1/operations/{id}` (200/404),
-  `idempotency_in_progress` и длинный `Idempotency-Key`.
+- [ ] P0 задачи закрыты. Новые P0 задачи добавляются сюда только при
+  обнаружении блокирующих рисков релиза.
 
 ## P1 (важно, если успеваем до code freeze)
 
@@ -23,6 +22,16 @@
   API/recording/scheduler и заменить на точечные обработчики.
 - [ ] Снизить риск регрессий GUI: уменьшить долю `skip`-тестов
   и добавить smoke-проверки view-контрактов.
+- [ ] Ввести coverage-gate в CI:
+  `--cov-fail-under` + контроль покрытия изменённых файлов.
+- [ ] Добавить race-тесты для `APIOperationStore` и
+  `APIIdempotencyStore` (submit/wait/stop/queue-overflow/shutdown).
+- [ ] Зафиксировать корректный shutdown debounce-сохранения конфига:
+  без потери последних изменений и без висячих таймеров.
+- [ ] Добавить DST/timezone интеграционные тесты scheduler
+  для `daily/weekly/cron` сценариев.
+- [ ] Ввести типизированную модель API-операций вместо
+  неструктурированных `dict[str, Any]` в runtime-слое.
 
 ## P2 (после стабилизации P0/P1)
 
@@ -39,6 +48,14 @@
 - [ ] Добавить benchmark-suite для hot-path API
   (`/health`, `/api/v1/status`, recent events, idempotency replay)
   с базовой линией и порогом регрессии.
+- [ ] Разобрать слой `core/contracts.py`:
+  интегрировать в реальный runtime/CLI поток или удалить как legacy.
+- [ ] Усилить диагностику output path на Windows:
+  заменить `os.access` на пробную запись/удаление temp-файла.
+- [ ] Добавить property-based/табличные тесты для `api/schemas.py`
+  и преобразований scheduler payload.
+- [ ] Расширить pre-commit quality gates:
+  обязательный `mypy` и быстрый smoke-набор тестов.
 
 ## Рефакторинг-Стандарты `v1.4.6`
 

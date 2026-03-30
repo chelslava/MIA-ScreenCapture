@@ -353,6 +353,105 @@ class TestStopRecordingRoute:
         assert response.status_code == 500
         assert_error_contract(response, "internal_error", request_id)
 
+    def test_stop_recording_v1_returns_202_when_operation_running(
+        self,
+        recording_client: FlaskClient,
+        recording_server: APIServer,
+    ) -> None:
+        """Проверяет контракт 202 для `/api/v1/stop` при running-операции."""
+        request_id = f"{TEST_REQUEST_ID}-stop-v1-running"
+
+        running_operation = {
+            "id": STOP_OPERATION_ID,
+            "type": "stop",
+            "status": "running",
+            "created_at": "2026-03-30T10:00:00+00:00",
+            "updated_at": "2026-03-30T10:00:00+00:00",
+            "completed_at": None,
+            "request_id": request_id,
+            "trace_id": request_id,
+            "client_ip": "127.0.0.1",
+        }
+        recording_server.submit_background_operation = MagicMock(
+            return_value=running_operation
+        )
+        recording_server.wait_for_background_operation = MagicMock(
+            return_value=running_operation
+        )
+
+        response = recording_client.post(
+            "/api/v1/stop",
+            headers=_make_headers(request_id),
+        )
+
+        assert response.status_code == 202
+        assert response.headers.get("X-Request-ID") == request_id
+        payload = response.get_json()
+        assert payload["success"] is True
+        assert payload["data"]["operation_id"] == STOP_OPERATION_ID
+        assert payload["data"]["type"] == "stop"
+        assert payload["data"]["status"] == "running"
+        assert payload["data"]["request_id"] == request_id
+        assert payload["data"]["trace_id"] == request_id
+        assert payload["data"]["client_ip"] == "127.0.0.1"
+
+    def test_get_operation_status_v1_success(
+        self,
+        recording_client: FlaskClient,
+        recording_server: APIServer,
+    ) -> None:
+        """Проверяет успешный контракт `/api/v1/operations/{id}`."""
+        request_id = f"{TEST_REQUEST_ID}-operation-v1-ok"
+        operation = {
+            "id": STOP_OPERATION_ID,
+            "type": "stop",
+            "status": "succeeded",
+            "created_at": "2026-03-30T10:00:00+00:00",
+            "updated_at": "2026-03-30T10:00:01+00:00",
+            "completed_at": "2026-03-30T10:00:01+00:00",
+            "result": {"success": True},
+            "error": None,
+            "request_id": request_id,
+            "trace_id": request_id,
+            "client_ip": "127.0.0.1",
+        }
+        recording_server.get_background_operation = MagicMock(
+            return_value=operation
+        )
+
+        response = recording_client.get(
+            f"/api/v1/operations/{STOP_OPERATION_ID}",
+            headers=_make_headers(request_id),
+        )
+
+        assert response.status_code == 200
+        assert response.headers.get("X-Request-ID") == request_id
+        payload = response.get_json()
+        assert payload["success"] is True
+        assert payload["data"]["operation_id"] == STOP_OPERATION_ID
+        assert payload["data"]["status"] == "succeeded"
+        assert payload["data"]["request_id"] == request_id
+        assert payload["data"]["trace_id"] == request_id
+
+    def test_get_operation_status_v1_not_found_contract(
+        self,
+        recording_client: FlaskClient,
+        recording_server: APIServer,
+    ) -> None:
+        """Проверяет контракт 404 для `/api/v1/operations/{id}`."""
+        request_id = f"{TEST_REQUEST_ID}-operation-v1-not-found"
+        recording_server.get_background_operation = MagicMock(
+            return_value=None
+        )
+
+        response = recording_client.get(
+            "/api/v1/operations/nonexistent-operation",
+            headers=_make_headers(request_id),
+        )
+
+        assert response.status_code == 404
+        assert_error_contract(response, "not_found", request_id)
+
 
 class TestPauseRecordingRoute:
     """Тесты маршрута `/api/pause`."""
@@ -377,3 +476,55 @@ class TestPauseRecordingRoute:
         assert data["data"] == {"success": True, "is_paused": True}
 
         recording_callbacks["pause"].assert_called_once_with()
+
+
+class TestV1IdempotencyContracts:
+    """Тесты v1 контрактов идемпотентности для write-endpoints."""
+
+    def test_start_v1_returns_conflict_for_in_progress_idempotency(
+        self,
+        recording_client: FlaskClient,
+        recording_server: APIServer,
+        recording_callbacks: dict[str, MagicMock],
+    ) -> None:
+        """Проверяет `idempotency_in_progress` для `/api/v1/start`."""
+        request_id = f"{TEST_REQUEST_ID}-idempotency-in-progress"
+        recording_server.begin_idempotency_request = MagicMock(
+            return_value={"state": "in_progress"}
+        )
+
+        response = recording_client.post(
+            "/api/v1/start",
+            json={"area": "full", "fps": 30},
+            headers={
+                **_make_headers(request_id),
+                "Idempotency-Key": "in-progress-key-001",
+            },
+        )
+
+        assert response.status_code == 409
+        assert_error_contract(response, "idempotency_in_progress", request_id)
+        recording_callbacks["start"].assert_not_called()
+
+    def test_start_v1_rejects_too_long_idempotency_key(
+        self,
+        recording_client: FlaskClient,
+        recording_callbacks: dict[str, MagicMock],
+    ) -> None:
+        """Проверяет валидацию длины `Idempotency-Key` для `/api/v1/start`."""
+        request_id = f"{TEST_REQUEST_ID}-idempotency-key-too-long"
+        too_long_key = "k" * 129
+
+        response = recording_client.post(
+            "/api/v1/start",
+            json={"area": "full", "fps": 30},
+            headers={
+                **_make_headers(request_id),
+                "Idempotency-Key": too_long_key,
+            },
+        )
+
+        assert response.status_code == 400
+        data = assert_error_contract(response, "validation_error", request_id)
+        assert "Idempotency-Key" in data["error"]["message"]
+        recording_callbacks["start"].assert_not_called()

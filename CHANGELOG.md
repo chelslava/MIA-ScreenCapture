@@ -94,6 +94,10 @@
   на явное делегирование координатору без изменения поведения.
 
 ### Tests
+- Добавлены integration-проверки v1 lifecycle/idempotency контрактов:
+  `/api/v1/stop` (`202` при `running`), `/api/v1/operations/{id}` (`200/404`),
+  `idempotency_in_progress` и слишком длинный `Idempotency-Key`
+  в `tests/integration/test_api_recording_routes.py`.
 - Добавлены regression-тесты scheduler на устойчивость к
   `JobLookupError` в путях `remove_task`, `update_task`,
   `enable_task(..., False)` в `tests/unit/test_scheduler.py`.
