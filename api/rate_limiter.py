@@ -5,6 +5,7 @@
 Реализует ограничение частоты API запросов для защиты от злоупотреблений.
 """
 
+import re
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -18,6 +19,37 @@ from flask import Flask, current_app, jsonify, request
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
+
+# Паттерн для валидации IPv4 адреса
+IPV4_PATTERN = re.compile(
+    r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
+    r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+)
+
+# Паттерн для валидации IPv6 адреса (упрощённый)
+IPV6_PATTERN = re.compile(
+    r"^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|"
+    r"^(?:[0-9a-fA-F]{1,4}:){1,7}:$|"
+    r"^(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}$|"
+    r"^::(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}$|"
+    r"^(?:[0-9a-fA-F]{1,4}:){1,5}:(?::[0-9a-fA-F]{1,4}){1,2}$|"
+    r"^(?:[0-9a-fA-F]{1,4}:){1,4}:(?::[0-9a-fA-F]{1,4}){1,3}$|"
+    r"^(?:[0-9a-fA-F]{1,4}:){1,3}:(?::[0-9a-fA-F]{1,4}){1,4}$|"
+    r"^(?:[0-9a-fA-F]{1,4}:){1,2}:(?::[0-9a-fA-F]{1,4}){1,5}$|"
+    r"^[0-9a-fA-F]{1,4}:(?::[0-9a-fA-F]{1,4}){1,6}$|"
+    r"^:(?::[0-9a-fA-F]{1,4}){1,7}$|"
+    r"^::(?:[fF]{2}:)?(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\."
+    r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\."
+    r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\."
+    r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+)
+
+
+def _is_valid_ip(ip_str: str) -> bool:
+    """Проверка валидности IP-адреса."""
+    if not ip_str:
+        return False
+    return bool(IPV4_PATTERN.match(ip_str) or IPV6_PATTERN.match(ip_str))
 
 
 @dataclass
@@ -75,16 +107,26 @@ class InMemoryRateLimiter:
         self._last_cleanup = time.monotonic()
 
     def _get_client_ip(self) -> str:
-        """Получение IP-адреса клиента."""
-        # Проверка заголовков прокси
+        """Получение IP-адреса клиента с валидацией."""
+        # Проверка заголовков прокси с валидацией
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
-            return str(forwarded).split(",")[0].strip()
+            # Берём первый IP из списка
+            ip_candidate = str(forwarded).split(",")[0].strip()
+            if _is_valid_ip(ip_candidate):
+                return ip_candidate
+            logger.warning(
+                f"Invalid IP in X-Forwarded-For: {ip_candidate[:50]}"
+            )
 
         real_ip = request.headers.get("X-Real-IP")
         if real_ip:
-            return str(real_ip).strip()
+            ip_candidate = str(real_ip).strip()
+            if _is_valid_ip(ip_candidate):
+                return ip_candidate
+            logger.warning(f"Invalid IP in X-Real-IP: {ip_candidate[:50]}")
 
+        # Fallback к remote_addr
         return request.remote_addr or "unknown"
 
     def _is_whitelisted(self, client_ip: str) -> bool:
