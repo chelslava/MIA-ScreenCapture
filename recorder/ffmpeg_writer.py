@@ -419,25 +419,8 @@ class FFmpegVideoWriter:
         Args:
             stream: Поток stderr процесса FFmpeg.
         """
-        import select
-
         try:
             while self._process is not None:
-                # Проверяем есть ли данные для чтения с таймаутом
-                try:
-                    ready, _, _ = select.select([stream], [], [], 0.5)
-                    if not ready:
-                        # Таймаут - проверяем жив ли процесс
-                        if (
-                            self._process is None
-                            or self._process.poll() is not None
-                        ):
-                            break
-                        continue
-                except (ValueError, OSError):
-                    # Stream закрыт или недействителен
-                    break
-
                 line = stream.readline()
                 if not line:
                     break
