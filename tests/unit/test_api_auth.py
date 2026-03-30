@@ -95,10 +95,11 @@ class TestSetStoredApiKey:
     def test_set_stored_api_key_uses_env_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """При недоступном Credential Manager используется env."""
+        """При недоступном Credential Manager ключ НЕ сохраняется в env."""
         monkeypatch.setenv(API_KEY_ENV_VAR, "old-value")
         set_stored_api_key("new-value")
-        assert os.environ[API_KEY_ENV_VAR] == "new-value"
+        # Новое поведение: env НЕ используется как fallback
+        assert os.environ[API_KEY_ENV_VAR] == "old-value"
         monkeypatch.delenv(API_KEY_ENV_VAR, raising=False)
 
     def test_set_stored_api_key_clears_env_on_empty(
@@ -126,8 +127,9 @@ class TestSetStoredApiKey:
         set_stored_api_key("stored-value")
 
         assert calls == ["stored-value"]
-        assert os.environ[API_KEY_ENV_VAR] == "stored-value"
-        monkeypatch.delenv(API_KEY_ENV_VAR, raising=False)
+        # Новое поведение: при успешном сохранении в Credential Manager
+        # ключ НЕ записывается в env
+        assert API_KEY_ENV_VAR not in os.environ
 
     def test_set_stored_api_key_rejects_masked_value(
         self, monkeypatch: pytest.MonkeyPatch
