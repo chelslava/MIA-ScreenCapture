@@ -109,6 +109,102 @@ class _MainThreadExecutor:
         return result.get("value")
 
 
+class GuiRuntimeCoordinator:
+    """Координатор запуска GUI-рантайма приложения."""
+
+    def __init__(self, app: "VideoRecorderApp") -> None:
+        self._app = app
+
+    def run(self) -> int:
+        """Запускает GUI-режим и инициализирует связанные компоненты."""
+        from PyQt6.QtWidgets import QApplication
+
+        self._app._app = QApplication(sys.argv)
+        assert self._app._app is not None
+        self._app._gui_thread_id = threading.get_ident()
+        self._app._gui_executor = _MainThreadExecutor()
+        self._app._app.setApplicationName("MIA-ScreenCapture")
+        try:
+            version = importlib.metadata.version("mia-screencapture")
+        except importlib.metadata.PackageNotFoundError:
+            version = "dev"
+        self._app._app.setApplicationVersion(version)
+
+        self._setup_main_window()
+        self._setup_tray_icon()
+        self._bind_window_and_tray_signals()
+        self._bind_runtime_components()
+
+        self._app._main_window.show()
+        self._app._running = True
+        return self._app._app.exec()
+
+    def _setup_main_window(self) -> None:
+        """Создаёт главное окно приложения."""
+        from gui.main_window import MainWindow
+
+        self._app._main_window = MainWindow()
+        assert self._app._main_window is not None
+
+    def _setup_tray_icon(self) -> None:
+        """Создаёт иконку в трее и подключает её сигналы."""
+        from gui.tray_icon import TrayIcon
+
+        assert self._app._main_window is not None
+        self._app._tray_icon = TrayIcon(self._app._main_window)
+        assert self._app._tray_icon is not None
+        self._app._tray_icon.show()
+
+        self._app._tray_icon.start_requested.connect(
+            self._app._main_window._start_recording
+        )
+        self._app._tray_icon.stop_requested.connect(
+            self._app._main_window._stop_recording
+        )
+        self._app._tray_icon.pause_requested.connect(
+            self._app._main_window._toggle_pause
+        )
+        self._app._tray_icon.show_window_requested.connect(
+            self._app._show_window
+        )
+        self._app._tray_icon.exit_requested.connect(self._app._quit_app)
+
+    def _bind_window_and_tray_signals(self) -> None:
+        """Связывает сигналы главного окна и трея."""
+        assert self._app._main_window is not None
+        assert self._app._tray_icon is not None
+
+        self._app._main_window.recording_started.connect(
+            lambda p: self._app._tray_icon.on_recording_started(p)
+        )
+        self._app._main_window.recording_stopped.connect(
+            lambda p: self._app._tray_icon.on_recording_stopped(p)
+        )
+        self._app._main_window.recording_paused.connect(
+            self._app._tray_icon.on_recording_paused
+        )
+        self._app._main_window.recording_resumed.connect(
+            self._app._tray_icon.on_recording_resumed
+        )
+        self._app._main_window.error_occurred.connect(
+            self._app._tray_icon.on_error
+        )
+        self._app._main_window.close_requested.connect(
+            self._app._handle_close_requested
+        )
+
+    def _bind_runtime_components(self) -> None:
+        """Подключает API/планировщик и hotkeys к GUI."""
+        assert self._app._main_window is not None
+
+        self._app._setup_hotkeys()
+        self._app._start_api_server()
+        self._app._main_window._api_server = self._app._api_server
+        self._app._main_window._api_controls = self._app.get_api_controls()
+        self._app._main_window._refresh_api_status()
+        self._app._start_scheduler()
+
+
 class VideoRecorderApp:
     """
     Главный класс приложения.
@@ -153,6 +249,7 @@ class VideoRecorderApp:
         )
         self._gui_executor: _MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
+        self._gui_runtime_coordinator = GuiRuntimeCoordinator(self)
         self._api_runtime_manager = ApiRuntimeManager(self)
 
     def _get_api_headers(self) -> dict:
@@ -248,88 +345,7 @@ class VideoRecorderApp:
 
     def _run_gui(self) -> int:
         """Запуск с GUI."""
-        from PyQt6.QtWidgets import QApplication
-
-        # Создание Qt приложения
-        self._app = QApplication(sys.argv)
-        assert self._app is not None
-        self._gui_thread_id = threading.get_ident()
-        self._gui_executor = _MainThreadExecutor()
-        self._app.setApplicationName("MIA-ScreenCapture")
-        try:
-            version = importlib.metadata.version("mia-screencapture")
-        except importlib.metadata.PackageNotFoundError:
-            version = "dev"
-        self._app.setApplicationVersion(version)
-
-        # Примечание: В PyQt6 High DPI поддержка включена по умолчанию
-        # Атрибуты AA_EnableHighDpiScaling и AA_UseHighDpiPixmaps удалены в Qt 6
-
-        # Создание главного окна
-        from gui.main_window import MainWindow
-
-        self._main_window = MainWindow()
-        assert self._main_window is not None
-
-        # Создание иконки в трее
-        from gui.tray_icon import TrayIcon
-
-        self._tray_icon = TrayIcon(self._main_window)
-        assert self._tray_icon is not None
-        self._tray_icon.show()
-
-        # Подключение сигналов трея
-        self._tray_icon.start_requested.connect(
-            self._main_window._start_recording
-        )
-        self._tray_icon.stop_requested.connect(
-            self._main_window._stop_recording
-        )
-        self._tray_icon.pause_requested.connect(
-            self._main_window._toggle_pause
-        )
-        self._tray_icon.show_window_requested.connect(self._show_window)
-        self._tray_icon.exit_requested.connect(self._quit_app)
-
-        # Инициализация горячих клавиш
-        self._setup_hotkeys()
-
-        # Подключение сигналов окна к трею
-        self._main_window.recording_started.connect(
-            lambda p: self._tray_icon.on_recording_started(p)  # type: ignore[union-attr]
-        )
-        self._main_window.recording_stopped.connect(
-            lambda p: self._tray_icon.on_recording_stopped(p)  # type: ignore[union-attr]
-        )
-        self._main_window.recording_paused.connect(
-            self._tray_icon.on_recording_paused
-        )
-        self._main_window.recording_resumed.connect(
-            self._tray_icon.on_recording_resumed
-        )
-        self._main_window.error_occurred.connect(self._tray_icon.on_error)
-
-        # Обработка закрытия окна через сигнал
-        self._main_window.close_requested.connect(self._handle_close_requested)
-
-        # Запуск API сервера
-        self._start_api_server()
-
-        # Передача ссылки на API сервер в главное окно
-        self._main_window._api_server = self._api_server
-        self._main_window._api_controls = self.get_api_controls()
-        self._main_window._refresh_api_status()
-
-        # Запуск планировщика
-        self._start_scheduler()
-
-        # Показ окна
-        self._main_window.show()
-
-        self._running = True
-
-        # Запуск цикла событий
-        return self._app.exec()
+        return self._gui_runtime_coordinator.run()
 
     def _run_headless(self) -> int:
         """Запуск в режиме без интерфейса (только API)."""
@@ -583,8 +599,7 @@ class VideoRecorderApp:
         Returns:
             Словарь с результатом операции.
         """
-        self._stop_api_server()
-        return self._start_api_server(force=True)
+        return self._api_runtime_manager.restart_api_server()
 
     def _open_api_logs_folder(self) -> None:
         """Открывает папку с логами API через менеджер runtime."""

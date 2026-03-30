@@ -43,10 +43,17 @@
   execution-engine вынесен в `scheduler/execution_engine.py`,
   а `_load_tasks/_save_tasks`, `_create_trigger` и `_execute_task`
   в `TaskScheduler` переведены на тонкие обёртки над выделенными слоями.
+- В `main.py` начало P0-декомпозиции `VideoRecorderApp`:
+  GUI bootstrap вынесен в отдельный `GuiRuntimeCoordinator`, а
+  `_run_gui()` и `_restart_api_server()` переведены на явную делегацию
+  координаторам runtime-слоя.
 - Добавлен централизованный маппинг доменных исключений
   (`MIAError` и наследники) в стабильный API-контракт ошибок
   через `api/error_mapping.py`; роуты `api/routes.py` теперь
   используют этот маппинг вместо универсального fallback `500`.
+- В `main.py` начат P0-рефакторинг декомпозиции `VideoRecorderApp`:
+  выделен `GuiRuntimeCoordinator`, а запуск GUI (`_run_gui`) переведён
+  на явное делегирование координатору без изменения поведения.
 
 ### Tests
 - Добавлены unit-тесты маппинга исключений:
@@ -80,6 +87,12 @@
   `tests/integration/test_api_error_handling.py`
   (маппинг `ValueError -> 400 validation_error`,
   `RecordingStateError -> 409 conflict`).
+- Обновлены unit-тесты runtime-декомпозиции `main.py`:
+  добавлена проверка делегации `_run_gui()` координатору и
+  обновлён сценарий делегации `_restart_api_server()`.
+- Добавлен unit-тест делегирования GUI-рантайма:
+  `tests/unit/test_main_api_runtime.py::
+  test_run_gui_delegates_to_gui_runtime_coordinator`.
 
 ### Planned for 1.5.0
 - Формирование scope следующего релиза после стабилизации `1.4.5`.

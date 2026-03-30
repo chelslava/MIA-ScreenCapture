@@ -169,6 +169,19 @@ def _build_app(
 class TestMainApiRuntime:
     """Тесты runtime-управления API сервера из main.py."""
 
+    def test_run_gui_delegates_to_gui_runtime_coordinator(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`_run_gui` делегирует запуск координатору GUI-рантайма."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        run_mock = MagicMock(return_value=123)
+        app._gui_runtime_coordinator = SimpleNamespace(run=run_mock)
+
+        result = app._run_gui()
+
+        assert result == 123
+        run_mock.assert_called_once_with()
+
     def test_get_effective_api_key_prefers_env(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -403,22 +416,19 @@ class TestMainApiRuntime:
         assert app._api_server is None
         assert app._main_window._api_server is None
 
-    def test_restart_api_server_calls_forced_start(
+    def test_restart_api_server_delegates_to_runtime_manager(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Перезапуск должен использовать force=True при старте."""
+        """Перезапуск должен делегироваться runtime-менеджеру."""
         app, _ = _build_app(monkeypatch, api_key="config-token")
-        stop_mock = MagicMock(return_value={"success": True, "running": False})
-        start_mock = MagicMock(
+        restart_mock = MagicMock(
             return_value={"success": True, "status": {"running": True}}
         )
-        app._api_runtime_manager.stop_api_server = stop_mock
-        app._api_runtime_manager.start_api_server = start_mock
+        app._api_runtime_manager.restart_api_server = restart_mock
 
         result = app._restart_api_server()
 
-        stop_mock.assert_called_once()
-        start_mock.assert_called_once_with(force=True)
+        restart_mock.assert_called_once_with()
         assert result == {"success": True, "status": {"running": True}}
 
     def test_get_api_controls_returns_expected_actions(

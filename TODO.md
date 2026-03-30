@@ -8,9 +8,6 @@
 - [ ] Разбить `main.py:VideoRecorderApp` на координирующие компоненты:
   `ApiRuntimeCoordinator`, `GuiRuntimeCoordinator`,
   `RecordingRuntimeCoordinator` с явными зонами ответственности.
-- [ ] Декомпозировать `api/routes.py:register_routes()` на группы роутов
-  (`status`, `recording`, `config`, `schedule`, `observability`)
-  и убрать единый «монолитный» регистратор.
 - [ ] Вынести lifecycle API-сервера в отдельный stateful-менеджер
   (`created -> starting -> running -> stopping -> stopped`) и закрыть
   гонки `start/stop/restart` на Windows.
@@ -18,8 +15,6 @@
   `gui.models.recording_state` -> единый источник истины в `core`.
 - [ ] Ввести транзакционное обновление конфигурации:
   `load -> validate -> apply -> persist` без частичных записей.
-- [ ] Провести контрактный рефакторинг API ошибок:
-  единый формат, стабильные `error.code`, без смешения `data/error`.
 - [ ] Закрыть технический долг по типизации для рефакторинга:
   добавить strict-проверку `mypy` для модулей, затронутых в этом релизе.
 - [ ] Добавить «защитные» тесты рефакторинга:
