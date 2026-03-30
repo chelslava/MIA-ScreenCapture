@@ -24,8 +24,6 @@
   и добавить smoke-проверки view-контрактов.
 - [ ] Ввести coverage-gate в CI:
   `--cov-fail-under` + контроль покрытия изменённых файлов.
-- [ ] Добавить race-тесты для `APIOperationStore` и
-  `APIIdempotencyStore` (submit/wait/stop/queue-overflow/shutdown).
 - [ ] Зафиксировать корректный shutdown debounce-сохранения конфига:
   без потери последних изменений и без висячих таймеров.
 - [ ] Добавить DST/timezone интеграционные тесты scheduler

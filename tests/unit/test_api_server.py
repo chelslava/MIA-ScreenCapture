@@ -765,6 +765,44 @@ class TestAPIIdempotencyStore:
         assert store.get_size() == 0
         store.stop()
 
+    def test_abort_clears_in_progress_entry(self) -> None:
+        """abort удаляет in-progress запись и позволяет начать заново."""
+        store = APIIdempotencyStore(
+            ttl_seconds=10.0, cleanup_interval_seconds=5.0
+        )
+        key = "idem-key-abort"
+
+        started = store.begin(key, "fp-abort")
+        assert started["state"] == "started"
+
+        in_progress = store.begin(key, "fp-abort")
+        assert in_progress["state"] == "in_progress"
+
+        store.abort(key)
+        restarted = store.begin(key, "fp-abort")
+        assert restarted["state"] == "started"
+        store.stop()
+
+    def test_complete_5xx_drops_entry_without_replay(self) -> None:
+        """Ответ 5xx не кэшируется: следующий begin должен быть started."""
+        store = APIIdempotencyStore(
+            ttl_seconds=10.0, cleanup_interval_seconds=5.0
+        )
+        key = "idem-key-5xx"
+
+        started = store.begin(key, "fp-5xx")
+        assert started["state"] == "started"
+
+        store.complete(
+            key=key,
+            status_code=500,
+            body_bytes=b'{"success":false}',
+            mimetype="application/json",
+        )
+        restarted = store.begin(key, "fp-5xx")
+        assert restarted["state"] == "started"
+        store.stop()
+
 
 class TestAPIOperationStore:
     """Тесты bounded executor для фоновых операций API."""
@@ -794,3 +832,37 @@ class TestAPIOperationStore:
         assert completed is not None
         assert completed["status"] == "succeeded"
         store.stop()
+
+    def test_runner_exception_marks_operation_failed(self) -> None:
+        """Исключение runner переводит операцию в failed."""
+        store = APIOperationStore(max_workers=1, max_queue_size=1)
+
+        def failing_runner() -> None:
+            raise RuntimeError("boom")
+
+        operation = store.submit("failing", failing_runner)
+        completed = store.wait(str(operation["id"]), timeout=1.0)
+
+        assert completed is not None
+        assert completed["status"] == "failed"
+        assert "boom" in str(completed.get("error", ""))
+        store.stop()
+
+    def test_submit_rejected_after_stop(self) -> None:
+        """После stop новые операции должны отклоняться."""
+        store = APIOperationStore(max_workers=1, max_queue_size=1)
+        store.stop()
+
+        operation = store.submit("after-stop", lambda: {"success": True})
+
+        assert operation["status"] == "failed"
+        assert "executor остановлен" in str(operation.get("error", ""))
+
+    def test_wait_unknown_operation_returns_none(self) -> None:
+        """Ожидание неизвестной операции должно возвращать None."""
+        store = APIOperationStore(max_workers=1, max_queue_size=1)
+        try:
+            result = store.wait("missing-operation-id", timeout=0.01)
+            assert result is None
+        finally:
+            store.stop()

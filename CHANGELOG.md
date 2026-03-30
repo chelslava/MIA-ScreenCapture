@@ -94,6 +94,11 @@
   на явное делегирование координатору без изменения поведения.
 
 ### Tests
+- Расширены unit-тесты устойчивости API runtime-хранилищ:
+  добавлены edge/race сценарии для `APIIdempotencyStore`
+  (`abort`, `in_progress`, `5xx` без replay) и `APIOperationStore`
+  (`runner exception`, `submit after stop`, `wait unknown id`)
+  в `tests/unit/test_api_server.py`.
 - Добавлены integration-проверки v1 lifecycle/idempotency контрактов:
   `/api/v1/stop` (`202` при `running`), `/api/v1/operations/{id}` (`200/404`),
   `idempotency_in_progress` и слишком длинный `Idempotency-Key`
