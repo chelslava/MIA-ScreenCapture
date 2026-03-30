@@ -351,9 +351,7 @@ class VideoRecorderApp:
         self._gui_executor: _MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
         self._gui_runtime_coordinator = GuiRuntimeCoordinator(self)
-        self._recording_runtime_coordinator = RecordingRuntimeCoordinator(
-            self
-        )
+        self._recording_runtime_coordinator = RecordingRuntimeCoordinator(self)
         self._api_runtime_manager = ApiRuntimeManager(self)
 
     def _get_api_headers(self) -> dict:
