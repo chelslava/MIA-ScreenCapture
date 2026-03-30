@@ -89,7 +89,11 @@ class CaptureArea:
 
     @classmethod
     def from_window(cls, window_title: str) -> "CaptureArea":
-        """Создание области захвата из заголовка окна."""
+        """Создание области захвата из заголовка окна.
+
+        Если окно не найдено, возвращает полный экран и логирует предупреждение.
+        Caller может проверить `window_title` атрибут чтобы понять произошёл ли fallback.
+        """
         windows = get_available_windows()
         for win in windows:
             if window_title.lower() in win["title"].lower():
@@ -103,9 +107,13 @@ class CaptureArea:
                 )
         # Возврат к полному экрану, если окно не найдено
         logger.warning(
-            f"Окно '{window_title}' не найдено, используется полный экран"
+            f"Окно '{window_title}' не найдено, используется полный экран. "
+            "Проверьте что окно открыто."
         )
-        return cls.full_screen()
+        area = cls.full_screen()
+        # Сохраняем искомый заголовок для диагностики
+        area.window_title = f"(not found: {window_title})"
+        return area
 
     def to_capture_dict(self) -> dict[str, int]:
         """Преобразование в общий формат словаря области захвата."""
