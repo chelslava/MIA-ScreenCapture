@@ -8,11 +8,6 @@
 - [ ] Разбить `main.py:VideoRecorderApp` на координирующие компоненты:
   `ApiRuntimeCoordinator`, `GuiRuntimeCoordinator`,
   `RecordingRuntimeCoordinator` с явными зонами ответственности.
-- [ ] Вынести lifecycle API-сервера в отдельный stateful-менеджер
-  (`created -> starting -> running -> stopping -> stopped`) и закрыть
-  гонки `start/stop/restart` на Windows.
-- [ ] Устранить дубли модели состояния записи:
-  `gui.models.recording_state` -> единый источник истины в `core`.
 - [ ] Ввести транзакционное обновление конфигурации:
   `load -> validate -> apply -> persist` без частичных записей.
 - [ ] Закрыть технический долг по типизации для рефакторинга:

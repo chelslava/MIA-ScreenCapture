@@ -8,6 +8,8 @@
 from datetime import datetime
 from pathlib import Path
 
+import core.recording_state as core_recording_state
+import gui.models.recording_state as gui_recording_state
 from core.recording_types import AudioMode, CaptureMode
 from gui.models.recording_state import (
     AudioSettings,
@@ -18,6 +20,37 @@ from gui.models.recording_state import (
     RecordingStatus,
     VideoSettings,
 )
+
+
+class TestGuiCoreRecordingStateCompatibility:
+    """Проверки единого источника модели состояния между GUI и core."""
+
+    def test_gui_reexports_core_recording_state_types(self) -> None:
+        """GUI-модуль должен быть shim-слоем над core-моделью."""
+        assert (
+            gui_recording_state.RecordingState
+            is core_recording_state.RecordingState
+        )
+        assert (
+            gui_recording_state.RecordingStatus
+            is core_recording_state.RecordingStatus
+        )
+        assert (
+            gui_recording_state.CaptureSettings
+            is core_recording_state.CaptureSettings
+        )
+        assert (
+            gui_recording_state.AudioSettings
+            is core_recording_state.AudioSettings
+        )
+        assert (
+            gui_recording_state.VideoSettings
+            is core_recording_state.VideoSettings
+        )
+        assert (
+            gui_recording_state.OutputSettings
+            is core_recording_state.OutputSettings
+        )
 
 
 class TestRecordingStatus:

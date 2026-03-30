@@ -17,9 +17,13 @@
 - В `main.py` продолжена P0-декомпозиция `VideoRecorderApp`:
   операции записи (`status/start/stop/pause/recordings`) выделены
   в `RecordingRuntimeCoordinator` с делегированием из `VideoRecorderApp`.
-- В `core/api_runtime_manager.py` добавлены lifecycle-состояния API
-  (`created/starting/running/stopping/stopped`) и блокировка переходов
-  для более безопасной обработки `start/stop/restart`.
+- Stateful lifecycle API вынесен в отдельный менеджер
+  `core/api_lifecycle_manager.py` (`created/starting/running/stopping/stopped`);
+  `ApiRuntimeManager` переведён на использование этого слоя для
+  более безопасной обработки `start/stop/restart`.
+- Подтверждён единый источник модели состояния записи:
+  `gui.models.recording_state` используется как совместимый shim-реэкспорт
+  типов из `core.recording_state` без дублирования доменной модели.
 - `main.py` делегирует API runtime-операции в отдельный менеджер
   `core/api_runtime_manager.py` для снижения связности и подготовки
   дальнейшей декомпозиции `VideoRecorderApp`.
@@ -78,6 +82,10 @@
 - Добавлены unit-проверки lifecycle-состояния API runtime и сценария
   отказа старта при переходном состоянии в
   `tests/unit/test_main_api_runtime.py`.
+- Добавлены unit-тесты lifecycle-менеджера API:
+  `tests/unit/test_api_lifecycle_manager.py`.
+- Добавлен защитный unit-тест совместимости GUI/core модели состояния:
+  `tests/unit/test_gui_models.py::TestGuiCoreRecordingStateCompatibility`.
 - Добавлены/обновлены unit-тесты устойчивости:
   `tests/unit/test_hotkeys.py`,
   `tests/unit/test_scheduler.py`,

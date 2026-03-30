@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import threading
 from collections.abc import Callable
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
 import api.auth as api_auth
 import config as config_module
+from core.api_lifecycle_manager import ApiLifecycleManager, ApiLifecycleState
 from logger_config import (
     get_api_log_dir,
     get_module_logger,
@@ -15,10 +15,6 @@ from logger_config import (
 )
 
 logger = get_module_logger(__name__)
-
-ApiLifecycleState = Literal[
-    "created", "starting", "running", "stopping", "stopped"
-]
 
 
 class _ApiServerProtocol(Protocol):
@@ -114,18 +110,15 @@ class ApiRuntimeManager:
             app: Приложение, которое предоставляет состояние и callback-и.
         """
         self._app = app
-        self._lifecycle_lock = threading.RLock()
-        self._lifecycle_state: ApiLifecycleState = "created"
+        self._lifecycle = ApiLifecycleManager()
 
     def _get_lifecycle_state(self) -> ApiLifecycleState:
         """Возвращает текущее lifecycle-состояние API runtime."""
-        with self._lifecycle_lock:
-            return self._lifecycle_state
+        return self._lifecycle.get_state()
 
     def _set_lifecycle_state(self, state: ApiLifecycleState) -> None:
         """Обновляет lifecycle-состояние API runtime."""
-        with self._lifecycle_lock:
-            self._lifecycle_state = state
+        self._lifecycle.set_state(state)
 
     def get_effective_api_key(self) -> str | None:
         """Возвращает актуальный API ключ без побочных эффектов."""
@@ -162,21 +155,19 @@ class ApiRuntimeManager:
 
     def start_api_server(self, force: bool = False) -> dict[str, Any]:
         """Запускает API сервер."""
-        with self._lifecycle_lock:
-            if self._lifecycle_state in {"starting", "stopping"}:
-                logger.warning(
-                    "API lifecycle занят переходом состояния: %s",
-                    self._lifecycle_state,
-                )
-                return {
-                    "success": False,
-                    "running": bool(
-                        self._app._api_server is not None
-                        and self._app._api_server.is_running()
-                    ),
-                    "error": "API lifecycle busy",
-                }
-            self._lifecycle_state = "starting"
+        if not self._lifecycle.try_begin_start():
+            logger.warning(
+                "API lifecycle занят переходом состояния: %s",
+                self._get_lifecycle_state(),
+            )
+            return {
+                "success": False,
+                "running": bool(
+                    self._app._api_server is not None
+                    and self._app._api_server.is_running()
+                ),
+                "error": "API lifecycle busy",
+            }
 
         try:
             self.migrate_legacy_api_key_if_needed()
@@ -347,20 +338,18 @@ class ApiRuntimeManager:
 
     def stop_api_server(self) -> dict[str, Any]:
         """Останавливает API сервер."""
-        with self._lifecycle_lock:
-            if self._lifecycle_state == "starting":
-                logger.warning(
-                    "Остановка API отклонена: lifecycle в состоянии starting"
-                )
-                return {
-                    "success": False,
-                    "running": bool(
-                        self._app._api_server is not None
-                        and self._app._api_server.is_running()
-                    ),
-                    "error": "API lifecycle busy",
-                }
-            self._lifecycle_state = "stopping"
+        if not self._lifecycle.try_begin_stop():
+            logger.warning(
+                "Остановка API отклонена: lifecycle в состоянии starting"
+            )
+            return {
+                "success": False,
+                "running": bool(
+                    self._app._api_server is not None
+                    and self._app._api_server.is_running()
+                ),
+                "error": "API lifecycle busy",
+            }
 
         if self._app._api_server is None:
             self._set_lifecycle_state("stopped")
