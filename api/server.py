@@ -22,14 +22,14 @@ from pathlib import Path
 from typing import Any
 
 import psutil
-from flask import Flask, g, jsonify, request
+from flask import Flask, jsonify
 from flask_cors import CORS
 from waitress.server import create_server
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
 from api.auth import API_KEY_CONFIG_KEY
 from api.error_mapping import map_exception_to_api_error
-from api.request_context import ensure_request_context
+from api.request_lifecycle import register_request_lifecycle
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -791,48 +791,13 @@ class APIServer:
                 mapped.status_code,
             )
 
-        @self.app.before_request
-        def assign_request_id() -> Any | None:
-            request_context = ensure_request_context()
-            g.request_id = request_context.request_id
-            g.trace_id = request_context.trace_id
-            g.client_ip = request_context.client_ip
-            g.request_started_at = time.monotonic()
-            self._observability.request_started()
-
-            if request.path == "/health":
-                return jsonify(self._get_health_payload())
-            return None
-
-        @self.app.after_request
-        def add_request_id_header(response):
-            request_context = ensure_request_context()
-            response.headers[_REQUEST_ID_HEADER] = request_context.request_id
-            started_at = getattr(g, "request_started_at", None)
-            latency_ms = 0.0
-            if isinstance(started_at, float):
-                latency_seconds = max(0.0, time.monotonic() - started_at)
-                latency_ms = latency_seconds * 1000.0
-                self._observability.request_finished(
-                    method=request.method,
-                    path=request.path,
-                    status_code=response.status_code,
-                    latency_seconds=latency_seconds,
-                )
-            logger.log(
-                self._resolve_access_log_level(
-                    path=request.path,
-                    status_code=response.status_code,
-                ),
-                "API %s %s -> %s (%.2f ms) request_id=%s ip=%s",
-                request.method,
-                request.path,
-                response.status_code,
-                latency_ms,
-                request_context.request_id,
-                request_context.client_ip,
-            )
-            return response
+        register_request_lifecycle(
+            self.app,
+            request_id_header=_REQUEST_ID_HEADER,
+            observability=self._observability,
+            health_payload_factory=self._get_health_payload,
+            access_log_level_resolver=self._resolve_access_log_level,
+        )
 
         logger.info("Flask приложение создано")
 

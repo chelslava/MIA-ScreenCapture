@@ -28,8 +28,6 @@
   единый протокол `stop -> join(timeout) -> force cleanup`.
 - [ ] Протащить `request_id/trace_id` в фоновые API-операции
   и связанные бизнес-логи для end-to-end корреляции.
-- [ ] Вынести request lifecycle middleware (`before/after_request`)
-  в отдельный слой, отделив от bootstrap-кода `APIServer`.
 
 ## P2 (после стабилизации P0/P1)
 
