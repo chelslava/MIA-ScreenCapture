@@ -91,4 +91,3 @@ def test_regular_request_updates_observability() -> None:
     assert obs.finished_calls[0]["path"] == "/ping"
     assert obs.finished_calls[0]["status_code"] == 200
     assert obs.finished_calls[0]["latency_seconds"] >= 0.0
-
