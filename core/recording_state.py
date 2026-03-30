@@ -119,17 +119,31 @@ class RecordingState:
             self.recording_start_time = datetime.now()
             self.elapsed_time = 0.0
 
-    def pause_recording(self) -> None:
-        """Приостановить запись."""
+    def pause_recording(self) -> bool:
+        """Приостановить запись.
+
+        Returns:
+            True если переход выполнен, False если текущее состояние
+            не позволяет паузу.
+        """
         with self._lock:
             if self.status == RecordingStatus.RECORDING:
                 self.status = RecordingStatus.PAUSED
+                return True
+            return False
 
-    def resume_recording(self) -> None:
-        """Возобновить запись."""
+    def resume_recording(self) -> bool:
+        """Возобновить запись.
+
+        Returns:
+            True если переход выполнен, False если текущее состояние
+            не позволяет возобновление.
+        """
         with self._lock:
             if self.status == RecordingStatus.PAUSED:
                 self.status = RecordingStatus.RECORDING
+                return True
+            return False
 
     def stop_recording(self) -> None:
         """Остановить запись."""
