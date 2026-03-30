@@ -129,6 +129,7 @@ class FFmpegVideoWriter:
         self._stderr_tail: deque[str] = deque(maxlen=_FFMPEG_STDERR_TAIL_LINES)
         self._stderr_reader: threading.Thread | None = None
         self._stderr_stream: Any | None = None
+        self._is_corrupted = False
 
     @property
     def frame_count(self) -> int:
@@ -146,6 +147,34 @@ class FFmpegVideoWriter:
     def is_opened(self) -> bool:
         """Проверка что писатель открыт."""
         return self._process is not None and self._process.poll() is None
+
+    @property
+    def is_corrupted(self) -> bool:
+        """Проверка что файл повреждён (запись прервана)."""
+        return self._is_corrupted
+
+    def mark_corrupted(self) -> None:
+        """Пометить файл как повреждённый."""
+        self._is_corrupted = True
+
+    def cleanup_corrupted_file(self) -> bool:
+        """
+        Удалить повреждённый файл.
+
+        Returns:
+            True если файл удалён или не существовал
+        """
+        if not self._is_corrupted:
+            return True
+
+        try:
+            if self._output_path.exists():
+                self._output_path.unlink()
+                logger.info(f"Удалён повреждённый файл: {self._output_path}")
+            return True
+        except OSError as e:
+            logger.error(f"Не удалось удалить повреждённый файл: {e}")
+            return False
 
     def open(self) -> bool:
         """

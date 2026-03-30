@@ -623,6 +623,7 @@ class VideoRecorder:
                         write_ok = self._ffmpeg_writer.write(frame)
                         if not write_ok:
                             fatal_write_error = True
+                            self._ffmpeg_writer.mark_corrupted()
                             message = (
                                 "Ошибка записи кадра в FFmpeg. "
                                 "Запись остановлена аварийно."
@@ -688,8 +689,12 @@ class VideoRecorder:
         success = True
         try:
             if self._ffmpeg_writer is not None:
-                ffmpeg_closed = self._ffmpeg_writer.close()
-                success = success and ffmpeg_closed
+                if self._ffmpeg_writer.is_corrupted:
+                    self._ffmpeg_writer.close()
+                    self._ffmpeg_writer.cleanup_corrupted_file()
+                else:
+                    ffmpeg_closed = self._ffmpeg_writer.close()
+                    success = success and ffmpeg_closed
                 self._ffmpeg_writer = None
             if self._video_writer is not None:
                 self._video_writer.release()
