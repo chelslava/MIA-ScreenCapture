@@ -5,8 +5,6 @@
 
 ## P0 (обязательно в `v1.4.6`)
 
-- [ ] Устранить race-condition планировщика при удалении задач
-  (`APScheduler JobLookupError`) и добавить regression-тест.
 - [ ] Дозакрыть v1 lifecycle/idempotency API-контракты:
   `/api/v1/stop` (202/running), `/api/v1/operations/{id}` (200/404),
   `idempotency_in_progress` и длинный `Idempotency-Key`.

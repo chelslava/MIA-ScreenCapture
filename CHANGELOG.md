@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Changed
+- Устранена гонка планировщика с `APScheduler JobLookupError`:
+  разовые задачи с временем в прошлом больше не отправляются в
+  APScheduler, а переводятся в отключённое состояние без запуска.
+- `TaskScheduler._unschedule_job` сделан идемпотентным:
+  добавлена безопасная проверка наличия job и точечная обработка
+  `JobLookupError` без побочных сбоев в потоках планировщика.
 - Добавлены защитные integration-тесты рефакторинга API:
   `tests/integration/test_api_contract_snapshots.py` фиксирует
   snapshot/contract для `/health`, `/api/v1/status`, `/api/v1/config`.
@@ -88,6 +94,12 @@
   на явное делегирование координатору без изменения поведения.
 
 ### Tests
+- Добавлены regression-тесты scheduler на устойчивость к
+  `JobLookupError` в путях `remove_task`, `update_task`,
+  `enable_task(..., False)` в `tests/unit/test_scheduler.py`.
+- Добавлен regression-тест на поведение разовой задачи в прошлом:
+  задача сохраняется, но не планируется в APScheduler
+  (`tests/unit/test_scheduler.py`).
 - Добавлены unit-тесты маппинга исключений:
   `tests/unit/test_api_error_mapping.py`.
 - Расширены интеграционные проверки обработки ошибок:

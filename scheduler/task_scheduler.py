@@ -18,6 +18,7 @@ from typing import Any
 
 import tzlocal
 from apscheduler.executors.pool import ThreadPoolExecutor
+from apscheduler.jobstores.base import JobLookupError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -469,6 +470,18 @@ class TaskScheduler:
             task: Задача для планирования
         """
         try:
+            if self._is_expired_once_task(task):
+                # Разовые задачи в прошлом не отправляем в APScheduler:
+                # это исключает гонку удаления job внутри его потока.
+                task.enabled = False
+                task.next_run = None
+                logger.info(
+                    "Разовая задача %s имеет прошедшее время запуска и "
+                    "переведена в отключённое состояние",
+                    task.id,
+                )
+                return True
+
             trigger = self._create_trigger(task)
             if trigger:
                 self._scheduler.add_job(
@@ -497,6 +510,20 @@ class TaskScheduler:
 
         return False
 
+    def _is_expired_once_task(self, task: ScheduleTask) -> bool:
+        """Проверяет, что разовая задача имеет время запуска в прошлом."""
+        if task.schedule_type is not ScheduleType.ONCE:
+            return False
+        if task.start_time is None:
+            return False
+
+        now = (
+            datetime.now(task.start_time.tzinfo)
+            if task.start_time.tzinfo is not None
+            else datetime.now()
+        )
+        return task.start_time <= now
+
     def _unschedule_job(self, task_id: str) -> None:
         """
         Удаление задачи из APScheduler.
@@ -504,8 +531,32 @@ class TaskScheduler:
         Args:
             task_id: ID задачи для удаления из расписания
         """
-        with contextlib.suppress(Exception):
+        try:
+            scheduled_job = self._scheduler.get_job(task_id)
+        except Exception as e:
+            logger.warning(
+                "Не удалось проверить наличие задачи %s в APScheduler: %s",
+                task_id,
+                e,
+            )
+            scheduled_job = None
+
+        if scheduled_job is None:
+            return
+
+        try:
             self._scheduler.remove_job(task_id)
+        except JobLookupError:
+            logger.debug(
+                "Задача %s уже отсутствует в APScheduler при удалении",
+                task_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "Ошибка удаления задачи %s из APScheduler: %s",
+                task_id,
+                e,
+            )
 
     def _create_trigger(self, task: ScheduleTask):
         """

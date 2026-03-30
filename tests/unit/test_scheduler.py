@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from apscheduler.jobstores.base import JobLookupError
 
 from scheduler.task_scheduler import (
     RecordingParams,
@@ -572,6 +573,144 @@ class TestTaskScheduler:
         result = scheduler.remove_task("nonexistent")
 
         assert result is False
+
+    def test_remove_task_ignores_job_lookup_error(
+        self,
+        tasks_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """remove_task не падает, если APScheduler уже потерял job."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+
+        task = ScheduleTask(
+            id="to-remove-joblookup",
+            name="To Remove",
+            schedule_type=ScheduleType.ONCE,
+            params=RecordingParams(),
+        )
+        assert scheduler.add_task(task) is True
+
+        def _raise_job_lookup(task_id: str) -> None:
+            raise JobLookupError(task_id)
+
+        monkeypatch.setattr(
+            scheduler._scheduler,
+            "get_job",
+            lambda _task_id: object(),
+        )
+        monkeypatch.setattr(
+            scheduler._scheduler,
+            "remove_job",
+            _raise_job_lookup,
+        )
+
+        assert scheduler.remove_task("to-remove-joblookup") is True
+        assert scheduler.get_task("to-remove-joblookup") is None
+
+    def test_update_task_ignores_job_lookup_error(
+        self,
+        tasks_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """update_task не падает при JobLookupError во время unschedule."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+
+        original = ScheduleTask(
+            id="to-update-joblookup",
+            name="Original",
+            schedule_type=ScheduleType.DAILY,
+            params=RecordingParams(fps=30),
+            time_of_day="09:00",
+            enabled=True,
+        )
+        assert scheduler.add_task(original) is True
+
+        updated = ScheduleTask(
+            id="to-update-joblookup",
+            name="Updated",
+            schedule_type=ScheduleType.DAILY,
+            params=RecordingParams(fps=60),
+            time_of_day="10:00",
+            enabled=True,
+        )
+
+        monkeypatch.setattr(
+            scheduler._scheduler,
+            "get_job",
+            lambda _task_id: object(),
+        )
+        monkeypatch.setattr(
+            scheduler._scheduler,
+            "remove_job",
+            lambda task_id: (_ for _ in ()).throw(JobLookupError(task_id)),
+        )
+        monkeypatch.setattr(scheduler, "_schedule_job", lambda _task: True)
+
+        assert scheduler.update_task(updated) is True
+        persisted = scheduler.get_task("to-update-joblookup")
+        assert persisted is not None
+        assert persisted.name == "Updated"
+        assert persisted.params.fps == 60
+
+    def test_disable_task_ignores_job_lookup_error(
+        self,
+        tasks_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """enable_task(..., False) не падает при JobLookupError."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+
+        task = ScheduleTask(
+            id="to-disable-joblookup",
+            name="Disable JobLookup",
+            schedule_type=ScheduleType.DAILY,
+            params=RecordingParams(),
+            time_of_day="11:00",
+            enabled=True,
+        )
+        assert scheduler.add_task(task) is True
+
+        monkeypatch.setattr(
+            scheduler._scheduler,
+            "get_job",
+            lambda _task_id: object(),
+        )
+        monkeypatch.setattr(
+            scheduler._scheduler,
+            "remove_job",
+            lambda task_id: (_ for _ in ()).throw(JobLookupError(task_id)),
+        )
+
+        assert scheduler.enable_task("to-disable-joblookup", False) is True
+        persisted = scheduler.get_task("to-disable-joblookup")
+        assert persisted is not None
+        assert persisted.enabled is False
+
+    def test_add_once_task_in_past_disables_task_without_scheduling(
+        self,
+        tasks_file: Path,
+    ):
+        """Разовая задача в прошлом не должна планироваться в APScheduler."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            task = ScheduleTask(
+                id="past-once-task",
+                name="Past Once Task",
+                schedule_type=ScheduleType.ONCE,
+                params=RecordingParams(),
+                start_time=datetime.now() - timedelta(minutes=10),
+                enabled=True,
+            )
+
+            assert scheduler.add_task(task) is True
+            persisted_task = scheduler.get_task("past-once-task")
+            assert persisted_task is not None
+            assert persisted_task.enabled is False
+            assert persisted_task.next_run is None
+            assert scheduler._scheduler.get_job("past-once-task") is None
+        finally:
+            scheduler.stop()
 
     def test_update_task(self, tasks_file: Path):
         """Проверка обновления задачи."""
