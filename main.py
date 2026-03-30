@@ -205,6 +205,107 @@ class GuiRuntimeCoordinator:
         self._app._start_scheduler()
 
 
+class RecordingRuntimeCoordinator:
+    """Координатор runtime-операций записи для GUI/headless режимов."""
+
+    def __init__(self, app: "VideoRecorderApp") -> None:
+        self._app = app
+
+    def get_status(self) -> dict[str, Any]:
+        """Возвращает текущий статус записи."""
+        if self._app._main_window:
+            return cast(
+                dict[str, Any],
+                self._app._run_on_gui_thread(
+                    lambda: self._app._main_window.get_status()
+                ),
+            )
+        return self._app._recording_service.get_status()
+
+    def start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Запускает запись через GUI или headless сервис."""
+        if self._app._main_window:
+            return cast(
+                dict[str, Any],
+                self._app._run_on_gui_thread(
+                    lambda: self._app._main_window.start_recording_with_params(
+                        params
+                    ),
+                    timeout=_GUI_START_TIMEOUT_SECONDS,
+                ),
+            )
+        return self._app._recording_service.start_recording(params)
+
+    def stop_recording(self) -> dict[str, Any]:
+        """Останавливает запись с fallback при таймауте GUI-потока."""
+        if self._app._main_window:
+            try:
+                return cast(
+                    dict[str, Any],
+                    self._app._run_on_gui_thread(
+                        lambda: self._app._main_window.stop_recording(),
+                        timeout=_GUI_STOP_TIMEOUT_SECONDS,
+                    ),
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Таймаут остановки записи в GUI-потоке (%.1f c). "
+                    "Пробуем резервную остановку через сервис.",
+                    _GUI_STOP_TIMEOUT_SECONDS,
+                )
+                try:
+                    fallback_result = (
+                        self._app._recording_service.stop_recording()
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "Резервная остановка после таймаута GUI завершилась "
+                        "ошибкой: %s",
+                        e,
+                    )
+                    return {
+                        "success": False,
+                        "error": (
+                            "Остановка записи превысила таймаут GUI-потока, "
+                            "резервная остановка не удалась"
+                        ),
+                    }
+
+                if fallback_result.get("success"):
+                    fallback_result.setdefault(
+                        "warning",
+                        (
+                            "Остановка завершена через резервный путь после "
+                            "таймаута GUI-потока"
+                        ),
+                    )
+                return fallback_result
+
+        return self._app._recording_service.stop_recording()
+
+    def toggle_pause(self) -> dict[str, Any]:
+        """Переключает паузу записи."""
+        if self._app._main_window:
+            return cast(
+                dict[str, Any],
+                self._app._run_on_gui_thread(
+                    lambda: self._app._main_window.toggle_pause()
+                ),
+            )
+        return self._app._recording_service.toggle_pause()
+
+    def get_recordings(self) -> list[Any]:
+        """Возвращает список последних записей."""
+        if self._app._main_window:
+            return cast(
+                list[Any],
+                self._app._run_on_gui_thread(
+                    lambda: self._app._main_window.get_recordings()
+                ),
+            )
+        return self._app._recording_service.get_recordings()
+
+
 class VideoRecorderApp:
     """
     Главный класс приложения.
@@ -250,6 +351,9 @@ class VideoRecorderApp:
         self._gui_executor: _MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
         self._gui_runtime_coordinator = GuiRuntimeCoordinator(self)
+        self._recording_runtime_coordinator = RecordingRuntimeCoordinator(
+            self
+        )
         self._api_runtime_manager = ApiRuntimeManager(self)
 
     def _get_api_headers(self) -> dict:
@@ -743,94 +847,23 @@ class VideoRecorderApp:
 
     def _get_status(self) -> dict[str, Any]:
         """Получение статуса записи."""
-        if self._main_window:
-            return cast(
-                dict[str, Any],
-                self._run_on_gui_thread(
-                    lambda: self._main_window.get_status()
-                ),
-            )
-        return self._recording_service.get_status()
+        return self._recording_runtime_coordinator.get_status()
 
     def _start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
         """Запуск записи."""
-        if self._main_window:
-            return cast(
-                dict[str, Any],
-                self._run_on_gui_thread(
-                    lambda: self._main_window.start_recording_with_params(
-                        params
-                    ),
-                    timeout=_GUI_START_TIMEOUT_SECONDS,
-                ),
-            )
-        return self._recording_service.start_recording(params)
+        return self._recording_runtime_coordinator.start_recording(params)
 
     def _stop_recording(self) -> dict[str, Any]:
         """Остановка записи."""
-        if self._main_window:
-            try:
-                return cast(
-                    dict[str, Any],
-                    self._run_on_gui_thread(
-                        lambda: self._main_window.stop_recording(),
-                        timeout=_GUI_STOP_TIMEOUT_SECONDS,
-                    ),
-                )
-            except TimeoutError:
-                logger.warning(
-                    "Таймаут остановки записи в GUI-потоке (%.1f c). "
-                    "Пробуем резервную остановку через сервис.",
-                    _GUI_STOP_TIMEOUT_SECONDS,
-                )
-                try:
-                    fallback_result = self._recording_service.stop_recording()
-                except Exception as e:
-                    logger.exception(
-                        "Резервная остановка после таймаута GUI завершилась "
-                        "ошибкой: %s",
-                        e,
-                    )
-                    return {
-                        "success": False,
-                        "error": (
-                            "Остановка записи превысила таймаут GUI-потока, "
-                            "резервная остановка не удалась"
-                        ),
-                    }
-
-                if fallback_result.get("success"):
-                    fallback_result.setdefault(
-                        "warning",
-                        (
-                            "Остановка завершена через резервный путь после "
-                            "таймаута GUI-потока"
-                        ),
-                    )
-                return fallback_result
-        return self._recording_service.stop_recording()
+        return self._recording_runtime_coordinator.stop_recording()
 
     def _toggle_pause(self) -> dict[str, Any]:
         """Переключение состояния паузы."""
-        if self._main_window:
-            return cast(
-                dict[str, Any],
-                self._run_on_gui_thread(
-                    lambda: self._main_window.toggle_pause()
-                ),
-            )
-        return self._recording_service.toggle_pause()
+        return self._recording_runtime_coordinator.toggle_pause()
 
     def _get_recordings(self) -> list:
         """Получение недавних записей."""
-        if self._main_window:
-            return cast(
-                list[Any],
-                self._run_on_gui_thread(
-                    lambda: self._main_window.get_recordings()
-                ),
-            )
-        return self._recording_service.get_recordings()
+        return self._recording_runtime_coordinator.get_recordings()
 
     def _get_schedule(self) -> list:
         """Получение запланированных задач."""

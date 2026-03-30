@@ -492,6 +492,21 @@ class TestMainApiRuntime:
         assert kwargs["timeout"] == 60.0
         assert result == stop_result
 
+    def test_stop_recording_delegates_to_recording_coordinator(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Остановка записи должна делегироваться recording coordinator."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        stop_mock = MagicMock(return_value={"success": True})
+        app._recording_runtime_coordinator = SimpleNamespace(
+            stop_recording=stop_mock
+        )
+
+        result = app._stop_recording()
+
+        stop_mock.assert_called_once_with()
+        assert result == {"success": True}
+
     def test_start_scheduler_uses_configured_max_concurrency(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
