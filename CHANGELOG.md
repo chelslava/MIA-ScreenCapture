@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Changed
+- Расширен CI-охват строгой типизации (`mypy`) для модулей
+  `main.py`, `logger_config.py`, `core/container.py`;
+  дополнительно устранены ошибки `mypy` в `main.py` без изменения
+  runtime-поведения.
 - Добавлен единый маппинг исключений доменного слоя в API-контракт:
   `api/error_mapping.py` нормализует `MIAError` и связанные исключения
   в `(status_code, error.code, message, details)`.

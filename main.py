@@ -135,6 +135,7 @@ class GuiRuntimeCoordinator:
         self._bind_window_and_tray_signals()
         self._bind_runtime_components()
 
+        assert self._app._main_window is not None
         self._app._main_window.show()
         self._app._running = True
         return self._app._app.exec()
@@ -173,21 +174,22 @@ class GuiRuntimeCoordinator:
         """Связывает сигналы главного окна и трея."""
         assert self._app._main_window is not None
         assert self._app._tray_icon is not None
+        tray_icon = self._app._tray_icon
 
         self._app._main_window.recording_started.connect(
-            lambda p: self._app._tray_icon.on_recording_started(p)
+            lambda p: tray_icon.on_recording_started(p)
         )
         self._app._main_window.recording_stopped.connect(
-            lambda p: self._app._tray_icon.on_recording_stopped(p)
+            lambda p: tray_icon.on_recording_stopped(p)
         )
         self._app._main_window.recording_paused.connect(
-            self._app._tray_icon.on_recording_paused
+            tray_icon.on_recording_paused
         )
         self._app._main_window.recording_resumed.connect(
-            self._app._tray_icon.on_recording_resumed
+            tray_icon.on_recording_resumed
         )
         self._app._main_window.error_occurred.connect(
-            self._app._tray_icon.on_error
+            tray_icon.on_error
         )
         self._app._main_window.close_requested.connect(
             self._app._handle_close_requested
@@ -303,7 +305,10 @@ class RecordingRuntimeCoordinator:
                     lambda: self._app._main_window.get_recordings()
                 ),
             )
-        return self._app._recording_service.get_recordings()
+        return cast(
+            list[Any],
+            self._app._recording_service.get_recordings(),
+        )
 
 
 class ApiRuntimeCoordinator:
@@ -695,31 +700,31 @@ class VideoRecorderApp:
         """Создание запланированной задачи через CLI."""
         from cli.scheduler import create_schedule
 
-        return create_schedule(self._config)
+        return cast(int, create_schedule(self._config))
 
     def _run_schedule_update(self) -> int:
         """Обновление запланированной задачи через CLI."""
         from cli.scheduler import update_schedule
 
-        return update_schedule(self._config)
+        return cast(int, update_schedule(self._config))
 
     def _run_schedule_delete(self) -> int:
         """Удаление запланированной задачи через CLI."""
         from cli.scheduler import delete_schedule
 
-        return delete_schedule(self._config)
+        return cast(int, delete_schedule(self._config))
 
     def _run_schedule_toggle(self) -> int:
         """Включение/выключение запланированной задачи через CLI."""
         from cli.scheduler import toggle_schedule
 
-        return toggle_schedule(self._config)
+        return cast(int, toggle_schedule(self._config))
 
     def _run_schedule_preview(self) -> int:
         """Просмотр предстоящих запусков через CLI."""
         from cli.scheduler import preview_upcoming_runs
 
-        return preview_upcoming_runs(self._config)
+        return cast(int, preview_upcoming_runs(self._config))
 
     def _run_list_presets(self) -> int:
         """Показ списка preset шаблонов."""
@@ -1001,11 +1006,11 @@ class VideoRecorderApp:
 
     def _get_devices(self) -> dict[str, list]:
         """Получение аудиоустройств."""
-        return get_audio_devices()
+        return cast(dict[str, list], get_audio_devices())
 
     def _get_windows(self) -> list:
         """Получение доступных окон."""
-        return get_available_windows()
+        return cast(list, get_available_windows())
 
     def _get_config(self) -> dict[str, Any]:
         """Получение текущей конфигурации."""
