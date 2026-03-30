@@ -466,6 +466,8 @@ class APIIdempotencyStore:
 class APIServerObservability:
     """Потокобезопасный сбор базовых эксплуатационных метрик API."""
 
+    _MAX_PATH_ENTRIES = 100
+
     def __init__(self, max_latency_samples: int = 2000) -> None:
         self._lock = threading.Lock()
         self._started_at = time.monotonic()
@@ -502,7 +504,12 @@ class APIServerObservability:
             self._method_counts[method] = (
                 self._method_counts.get(method, 0) + 1
             )
-            self._path_counts[path] = self._path_counts.get(path, 0) + 1
+            # Ограничение роста path_counts
+            if (
+                len(self._path_counts) < self._MAX_PATH_ENTRIES
+                or path in self._path_counts
+            ):
+                self._path_counts[path] = self._path_counts.get(path, 0) + 1
             self._latency_ms.append(latency_ms)
 
     @staticmethod
