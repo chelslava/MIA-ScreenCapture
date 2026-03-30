@@ -578,6 +578,67 @@ def get_unique_filename(base_path: Path, filename: str) -> Path:
     return full_path
 
 
+def get_available_disk_space(path: Path) -> int:
+    """
+    Получение доступного места на диске для указанного пути.
+
+    Args:
+        path: Путь для проверки (файл или директория)
+
+    Returns:
+        Количество свободных байт на диске
+    """
+    if path.is_file():
+        check_path = path.parent
+    else:
+        check_path = path
+        check_path.mkdir(parents=True, exist_ok=True)
+
+    stat = shutil.disk_usage(str(check_path))
+    return stat.free
+
+
+def check_disk_space(
+    output_path: Path,
+    min_space_mb: int = 100,
+    estimated_size_mb: int | None = None,
+) -> tuple[bool, int, str | None]:
+    """
+    Проверка достаточности места на диске для записи.
+
+    Args:
+        output_path: Путь к выходному файлу
+        min_space_mb: Минимальное свободное место в МБ (по умолчанию 100)
+        estimated_size_mb: Ожидаемый размер файла в МБ (опционально)
+
+    Returns:
+        Кортеж (достаточно_места, свободно_байт, сообщение_об_ошибке)
+    """
+    try:
+        free_bytes = get_available_disk_space(output_path)
+        free_mb = free_bytes / (1024 * 1024)
+
+        required_mb = min_space_mb
+        if estimated_size_mb is not None:
+            required_mb = max(min_space_mb, estimated_size_mb)
+
+        if free_mb < required_mb:
+            error_msg = (
+                f"Недостаточно места на диске: {free_mb:.0f} МБ свободно, "
+                f"требуется минимум {required_mb:.0f} МБ"
+            )
+            return False, free_bytes, error_msg
+
+        return True, free_bytes, None
+
+    except FileNotFoundError as e:
+        error_msg = f"Путь недоступен: {e}"
+        return False, 0, error_msg
+    except OSError as e:
+        error_msg = f"Ошибка проверки диска: {e}"
+        return False, 0, error_msg
+
+
 class Singleton(type):
     """
     Метакласс Singleton для обеспечения существования только одного экземпляра класса.

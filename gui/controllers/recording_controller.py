@@ -16,9 +16,11 @@ from core.recording_state import (
     VideoSettings,
 )
 from core.recording_types import AudioMode, CaptureMode
+from exceptions import DiskSpaceError
 from logger_config import get_module_logger
 from recorder.audio_recorder import AudioRecorder, SystemAudioRecorder
 from recorder.encoder import EncodingSettings, RecordingEncoder
+from recorder.utils import check_disk_space
 from recorder.video_recorder import CaptureArea, VideoRecorder
 
 if TYPE_CHECKING:
@@ -104,6 +106,21 @@ class RecordingController:
             Кортеж (успех, сообщение об ошибке или None)
         """
         try:
+            # Проверка свободного места на диске
+            min_space_mb = 100
+            ok, free_bytes, error_msg = check_disk_space(
+                output_path, min_space_mb=min_space_mb
+            )
+            if not ok:
+                logger.error(error_msg)
+                return False, error_msg
+
+            free_mb = free_bytes / (1024 * 1024)
+            logger.info(
+                f"Доступно места на диске: {free_mb:.0f} МБ "
+                f"(требуется минимум {min_space_mb} МБ)"
+            )
+
             # Настройка кодировщика
             preset = getattr(video, "preset", "medium")
             settings = EncodingSettings(
