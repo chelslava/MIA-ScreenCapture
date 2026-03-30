@@ -16,7 +16,6 @@ from core.recording_state import (
     VideoSettings,
 )
 from core.recording_types import AudioMode, CaptureMode
-from exceptions import DiskSpaceError
 from logger_config import get_module_logger
 from recorder.audio_recorder import AudioRecorder, SystemAudioRecorder
 from recorder.encoder import EncodingSettings, RecordingEncoder
