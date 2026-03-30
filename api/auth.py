@@ -85,7 +85,7 @@ def get_stored_api_key() -> str | None:
 
 def set_stored_api_key(api_key: str | None) -> None:
     """
-    Сохранение API ключа в Credential Manager с fallback на env.
+    Сохранение API ключа в Credential Manager.
 
     Args:
         api_key: API ключ или None для удаления.
@@ -97,15 +97,24 @@ def set_stored_api_key(api_key: str | None) -> None:
             "ключ будет очищен."
         )
         normalized = None
+
     stored_in_credential = _set_api_key_in_credential_manager(normalized)
+
     if normalized is not None:
-        os.environ[API_KEY_ENV_VAR] = normalized
-        if not stored_in_credential:
-            logger.debug(
-                "Credential Manager недоступен; используется env для API ключа."
+        if stored_in_credential:
+            # Успешно сохранено в Credential Manager
+            # Удаляем из env если был там ранее
+            os.environ.pop(API_KEY_ENV_VAR, None)
+            logger.info("API ключ сохранён в Windows Credential Manager")
+        else:
+            # Credential Manager недоступен — warning, не сохраняем в env
+            logger.warning(
+                "Credential Manager недоступен; API ключ не сохранён. "
+                "На Windows рекомендуется использовать Credential Manager."
             )
-        return
-    os.environ.pop(API_KEY_ENV_VAR, None)
+    else:
+        # Удаление ключа
+        os.environ.pop(API_KEY_ENV_VAR, None)
 
 
 def _load_win32cred_module() -> Any | None:
