@@ -606,13 +606,27 @@ class VideoRecorder:
 
                 # Захват кадра
                 try:
+                    # Проверка потери захвата перед чтением
+                    if session.is_capture_lost:
+                        logger.warning("Capture lost before frame read")
+                        self._capture_lost = True
+                        break
+
                     frame = session.read_frame(
                         timeout=max(frame_interval, 0.01)
                     )
+
+                    # Проверка потери захвата после чтения
+                    if session.is_capture_lost:
+                        logger.warning("Capture lost after frame read")
+                        self._capture_lost = True
+                        if frame is not None:
+                            # Попытка записать последний кадр
+                            if self._ffmpeg_writer is not None:
+                                self._ffmpeg_writer.write(frame)
+                        break
+
                     if frame is None:
-                        # Timeout - проверяем, не потерян ли захват
-                        if session.is_capture_lost:
-                            break
                         continue
 
                     # Сброс флага потери при успешном захвате
