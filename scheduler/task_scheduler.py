@@ -617,7 +617,38 @@ class TaskScheduler:
                     False,
                     "Для interval задачи нужен интервал больше 0",
                 )
+
+        if task.schedule_type == ScheduleType.CRON:
+            if not task.cron_expression:
+                return (
+                    False,
+                    "Для cron задачи требуется cron_expression",
+                )
+            cron_error = self._validate_cron_expression(task.cron_expression)
+            if cron_error:
+                return False, cron_error
+
         return True, None
+
+    def _validate_cron_expression(self, expression: str) -> str | None:
+        """
+        Валидация cron-выражения.
+
+        Args:
+            expression: Cron-выражение для проверки
+
+        Returns:
+            Сообщение об ошибке или None если валидно
+        """
+        try:
+            from apscheduler.triggers.cron import CronTrigger
+
+            CronTrigger.from_crontab(expression)
+            return None
+        except ValueError as e:
+            return f"Некорректное cron-выражение '{expression}': {e}"
+        except Exception as e:
+            return f"Ошибка парсинга cron-выражения: {e}"
 
     def _execute_task(self, task_id: str) -> None:
         """
