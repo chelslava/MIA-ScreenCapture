@@ -115,6 +115,38 @@ class TestAPIServerLifecycle:
 
         api_server.stop()
 
+    def test_lifecycle_smoke_multiple_start_stop_cycles(
+        self,
+        api_server: APIServer,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Проверяет стабильность нескольких циклов start/stop."""
+        fake_servers: list[_FakeWsgiServer] = []
+
+        def _create_fake_server(*_args: object, **_kwargs: object) -> object:
+            fake_server = _FakeWsgiServer()
+            fake_servers.append(fake_server)
+            return fake_server
+
+        create_server_mock = MagicMock(side_effect=_create_fake_server)
+        monkeypatch.setattr("api.server.create_server", create_server_mock)
+        monkeypatch.setattr(api_server, "_validate_bind_address", lambda: None)
+
+        cycles_count = 3
+        for cycle_index in range(cycles_count):
+            assert api_server.start() is True
+            assert fake_servers[cycle_index].started.wait(timeout=1.0) is True
+            assert api_server.is_running() is True
+
+            api_server.stop()
+
+            assert fake_servers[cycle_index].close_calls == 1
+            assert api_server.is_running() is False
+            assert api_server._server_thread is not None
+            assert api_server._server_thread.is_alive() is False
+
+        assert create_server_mock.call_count == cycles_count
+
     def test_start_returns_false_when_bind_validation_fails(
         self,
         api_server: APIServer,

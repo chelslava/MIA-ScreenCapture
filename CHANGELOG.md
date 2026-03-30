@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Changed
+- Добавлены защитные integration-тесты рефакторинга API:
+  `tests/integration/test_api_contract_snapshots.py` фиксирует
+  snapshot/contract для `/health`, `/api/v1/status`, `/api/v1/config`.
+- Усилен lifecycle smoke API сервера:
+  `tests/integration/test_api_server_lifecycle.py` теперь покрывает
+  несколько циклов `start/stop` для проверки стабильности оркестрации.
 - Расширен CI-охват строгой типизации (`mypy`) для модулей
   `main.py`, `logger_config.py`, `core/container.py`;
   дополнительно устранены ошибки `mypy` в `main.py` без изменения

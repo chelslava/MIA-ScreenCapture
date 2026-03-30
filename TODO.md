@@ -5,8 +5,11 @@
 
 ## P0 (обязательно в `v1.4.6`)
 
-- [ ] Добавить «защитные» тесты рефакторинга:
-  snapshot/contract tests для API и интеграционные smoke-тесты lifecycle.
+- [ ] Устранить race-condition планировщика при удалении задач
+  (`APScheduler JobLookupError`) и добавить regression-тест.
+- [ ] Дозакрыть v1 lifecycle/idempotency API-контракты:
+  `/api/v1/stop` (202/running), `/api/v1/operations/{id}` (200/404),
+  `idempotency_in_progress` и длинный `Idempotency-Key`.
 
 ## P1 (важно, если успеваем до code freeze)
 
@@ -16,6 +19,12 @@
   единый протокол `stop -> join(timeout) -> force cleanup`.
 - [ ] Протащить `request_id/trace_id` в фоновые API-операции
   и связанные бизнес-логи для end-to-end корреляции.
+- [ ] Продолжить декомпозицию крупных runtime-модулей:
+  `main.py`, `api/server.py`, `api/routes.py`.
+- [ ] Снизить число широких `except Exception` в критичных путях
+  API/recording/scheduler и заменить на точечные обработчики.
+- [ ] Снизить риск регрессий GUI: уменьшить долю `skip`-тестов
+  и добавить smoke-проверки view-контрактов.
 
 ## P2 (после стабилизации P0/P1)
 
