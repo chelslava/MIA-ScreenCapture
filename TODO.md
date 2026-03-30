@@ -5,8 +5,18 @@
 
 ## P0 (обязательно в `v1.4.6`)
 
-- [ ] P0 задачи закрыты. Новые P0 задачи добавляются сюда только при
-  обнаружении блокирующих рисков релиза.
+- [x] ~~Добавить валидацию свободного места на диске перед стартом записи~~
+  (commit: 8b35cf7). Функция `check_disk_space()` в `recorder/utils.py`.
+- [x] ~~Предотвратить повреждение видео при ошибке FFmpeg write~~
+  (commit: b864177). Флаг `is_corrupted`, метод `cleanup_corrupted_file()`.
+- [x] ~~Исправить race condition при потере capture-сессии~~
+  (commit: ca8fb16). Проверка `is_capture_lost` до/после `read_frame()`.
+- [x] ~~Валидация X-Forwarded-For против IP spoofing~~
+  (commit: beca1f4). Паттерны IPv4/IPv6, валидация перед использованием.
+- [x] ~~Устранить утечку API key через env fallback~~
+  (commit: ecb0cb5). Credential Manager — единственное хранилище.
+- [x] ~~Валидация cron_expression перед созданием scheduler task~~
+  (commit: e6682be). Валидация через `CronTrigger.from_crontab()`.
 
 ## P1 (важно, если успеваем до code freeze)
 
@@ -28,6 +38,30 @@
   для `daily/weekly/cron` сценариев.
 - [ ] Ввести типизированную модель API-операций вместо
   неструктурированных `dict[str, Any]` в runtime-слое.
+
+### P1-Critical (блокирующие проблемы)
+
+- [ ] Уведомлять пользователя при потере audio chunks
+  (`recorder/audio_recorder.py:394-410`).
+  Риск: запись продолжается с пропусками аудио, пользователь не в курсе.
+- [ ] Исправить potential deadlock в video_recorder.stop()
+  (`recorder/video_recorder.py:507-561`).
+  Риск: `_lock` держится во время `_capture_session.stop()` → deadlock.
+- [ ] Устранить утечку FFmpeg stderr reader thread
+  (`recorder/ffmpeg_writer.py:339-384`).
+  Риск: thread блокируется на `readline()` при краше FFmpeg.
+- [ ] Валидация rect coordinates против frame bounds
+  (`recorder/video_recorder.py:183-192`).
+  Риск: IndexError или memory issues при edge cases.
+- [ ] Уведомлять при fallback на full screen при window not found
+  (`recorder/video_recorder.py:91-108`).
+  Риск: запись идёт неправильной области без ведома пользователя.
+- [ ] Ограничить memory growth в API idempotency store
+  (`api/server.py:351-464`).
+  Риск: entries накапливаются при sustained load.
+- [ ] Возвращать ошибку при невалидном state transition в pause_recording
+  (`core/recording_state.py:122-126`).
+  Риск: silent no-op, caller не знает что pause не сработал.
 
 ## P2 (после стабилизации P0/P1)
 
