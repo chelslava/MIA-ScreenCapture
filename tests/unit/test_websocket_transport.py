@@ -3,15 +3,13 @@ Unit-тесты для WebSocket транспорта.
 """
 
 import json
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from api.websocket_transport import (
     Channel,
     ErrorCode,
     MessageType,
     WebSocketClient,
-    WebSocketMessage,
     WebSocketTransport,
     create_error_message,
     create_event_message,
@@ -151,7 +149,10 @@ class TestWebSocketTransport:
     def test_authenticate_with_valid_token(self) -> None:
         """Аутентификация с валидным токеном."""
         mock_manager = MagicMock()
-        auth_check = lambda token: token == "valid-token"
+
+        def auth_check(token: str) -> bool:
+            return token == "valid-token"
+
         transport = WebSocketTransport(mock_manager, auth_check=auth_check)
 
         assert transport.authenticate("valid-token") is True
