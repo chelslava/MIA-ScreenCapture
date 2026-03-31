@@ -4,6 +4,7 @@ Unit-тесты для WebSocket транспорта.
 
 import json
 from unittest.mock import MagicMock
+
 from api.websocket_transport import (
     Channel,
     ErrorCode,
