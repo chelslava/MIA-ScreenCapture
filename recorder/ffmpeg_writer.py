@@ -157,6 +157,34 @@ class FFmpegVideoWriter:
         """Пометить файл как повреждённый."""
         self._is_corrupted = True
 
+    def _terminate_process_safely(self) -> None:
+        """Безопасно завершает FFmpeg процесс при ошибке."""
+        process = self._process
+        if process is None:
+            return
+
+        try:
+            process.stdin.close()
+        except Exception:
+            pass
+
+        try:
+            process.terminate()
+            process.wait(timeout=_FFMPEG_TERMINATE_GRACE_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "FFmpeg не завершился после terminate, выполняется kill"
+            )
+            process.kill()
+        except Exception as e:
+            logger.warning(f"Ошибка при terminate FFmpeg: {e}")
+            try:
+                process.kill()
+            except Exception:
+                pass
+
+        self._stop_stderr_reader()
+
     def cleanup_corrupted_file(self) -> bool:
         """
         Удалить повреждённый файл.
@@ -271,6 +299,9 @@ class FFmpegVideoWriter:
         if not self.is_opened:
             return False
 
+        if self._is_corrupted:
+            return False
+
         try:
             with self._lock:
                 if self._process and self._process.stdin:
@@ -278,7 +309,9 @@ class FFmpegVideoWriter:
                     self._frame_count += 1
                     return True
         except BrokenPipeError:
-            logger.error("FFmpeg pipe broken")
+            logger.error("FFmpeg pipe broken, помечаем файл как повреждённый")
+            self._is_corrupted = True
+            self._terminate_process_safely()
             return False
         except Exception as e:
             logger.error(f"Ошибка записи кадра: {e}")
