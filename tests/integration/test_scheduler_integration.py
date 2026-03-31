@@ -796,7 +796,7 @@ class TestDSTTimezoneHandling:
             id="interval-dst-test",
             name="Interval DST Test",
             schedule_type=ScheduleType.INTERVAL,
-            interval_minutes=1,
+            interval_seconds=1,
             params=RecordingParams(),
         )
 
@@ -804,10 +804,8 @@ class TestDSTTimezoneHandling:
         assert ok, "Task creation failed"
 
         scheduler_with_callback.start()
-        # Ждём выполнения хотя бы одной задачи
-        time.sleep(2)
+        time.sleep(2.5)
 
         scheduler_with_callback.stop()
 
-        # Интервальные задачи должны выполняться независимо от DST
         assert task_callback_results["execution_count"] >= 1
