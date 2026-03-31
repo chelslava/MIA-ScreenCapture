@@ -150,6 +150,9 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = ["api", "cli", "core", "gui", "recorder", "scheduler", "tests"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/unit/test_websocket_transport.py" = ["I001"]
+
 # ====================
 # MyPy Configuration
 # ====================
