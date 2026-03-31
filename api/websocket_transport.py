@@ -281,7 +281,6 @@ class WebSocketTransport:
 
     def broadcast_event(self, event: dict[str, Any]) -> None:
         """Рассылка события всем подключённым клиентам."""
-        message = create_event_message(event).to_json()
         logger.debug(f"Broadcast event: {event.get('type', 'unknown')}")
 
     def get_initial_messages(self) -> list[str]:
