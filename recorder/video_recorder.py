@@ -149,6 +149,8 @@ class _WindowsCaptureSession:
     последний полученный кадр и возвращаем его по запросу.
     """
 
+    _INIT_TIMEOUT_SECONDS = 10.0
+
     def __init__(self, on_closed_callback: Callable | None = None) -> None:
         self._capture = None
         self._control = None
@@ -157,7 +159,9 @@ class _WindowsCaptureSession:
         self._lock = threading.Lock()
         self._closed = False
         self._on_closed_callback = on_closed_callback
-        self._capture_lost = False  # Флаг потери захвата
+        self._capture_lost = False
+        self._init_complete = threading.Event()
+        self._init_error: Exception | None = None
 
     def start(self, capture_area: CaptureArea) -> None:
         try:
@@ -219,6 +223,7 @@ class _WindowsCaptureSession:
                 # Копия нужна, т.к. буфер принадлежит native стороне.
                 self._last_frame = np.array(bgr, copy=True)
                 self._frame_event.set()
+                self._init_complete.set()
 
         @capture.event
         def on_closed() -> None:
@@ -237,7 +242,28 @@ class _WindowsCaptureSession:
                     logger.error(f"Ошибка в on_closed callback: {e}")
 
         self._capture = capture
-        self._control = capture.start_free_threaded()
+
+        def _do_start() -> None:
+            try:
+                self._control = capture.start_free_threaded()
+            except Exception as e:
+                self._init_error = e
+                self._init_complete.set()
+
+        init_thread = threading.Thread(target=_do_start, daemon=True)
+        init_thread.start()
+
+        if not self._init_complete.wait(timeout=self._INIT_TIMEOUT_SECONDS):
+            self._closed = True
+            raise TimeoutError(
+                f"Инициализация захвата не завершена за "
+                f"{self._INIT_TIMEOUT_SECONDS} секунд"
+            )
+
+        if self._init_error is not None:
+            raise RuntimeError(
+                f"Ошибка инициализации захвата: {self._init_error}"
+            ) from self._init_error
 
     def read_frame(self, timeout: float) -> np.ndarray | None:
         if self._capture_lost:
@@ -323,7 +349,9 @@ class VideoRecorder:
         # Состояние
         self._state = RecordingState.IDLE
         self._lock = threading.Lock()
+        self._capture_lost_lock = threading.Lock()
         self._capture_thread: threading.Thread | None = None
+        self._shutdown_event = threading.Event()
 
         # Информация о записи
         self._output_path: Path | None = None
@@ -337,6 +365,7 @@ class VideoRecorder:
         self._paused_time: float = 0
         self._total_paused: float = 0
         self._frame_count: int = 0
+        self._capture_lost: bool = False
 
         # Обратные вызовы
         self._on_frame_captured: Callable | None = None
@@ -478,11 +507,12 @@ class VideoRecorder:
                 self._paused_time = 0
                 self._total_paused = 0
                 self._frame_count = 0
+                self._shutdown_event.clear()
 
                 # Запуск потока захвата
                 self._state = RecordingState.RECORDING
                 self._capture_thread = threading.Thread(
-                    target=self._capture_loop, daemon=True
+                    target=self._capture_loop, daemon=False
                 )
                 self._capture_thread.start()
 
@@ -540,6 +570,7 @@ class VideoRecorder:
                 return False
 
             self._state = RecordingState.STOPPING
+            self._shutdown_event.set()
 
         capture_thread = self._capture_thread
 
@@ -592,6 +623,8 @@ class VideoRecorder:
 
         def on_capture_lost(message: str) -> None:
             logger.error(f"Capture lost: {message}")
+            with self._capture_lost_lock:
+                self._capture_lost = True
             if self._on_error:
                 try:
                     self._on_error(message)
@@ -600,11 +633,12 @@ class VideoRecorder:
 
         session = _WindowsCaptureSession(on_closed_callback=on_capture_lost)
         self._capture_session = session
-        self._capture_lost = False
+        with self._capture_lost_lock:
+            self._capture_lost = False
 
         try:
             session.start(self._capture_area)  # type: ignore[arg-type]
-            while self._state not in (
+            while not self._shutdown_event.is_set() and self._state not in (
                 RecordingState.IDLE,
                 RecordingState.STOPPING,
             ):
@@ -615,7 +649,8 @@ class VideoRecorder:
                 # Проверка потери захвата
                 if session.is_capture_lost:
                     logger.warning("Capture lost detected in capture loop")
-                    self._capture_lost = True
+                    with self._capture_lost_lock:
+                        self._capture_lost = True
                     break
 
                 # Контроль частоты кадров с высокой точностью
@@ -633,7 +668,8 @@ class VideoRecorder:
                     # Проверка потери захвата перед чтением
                     if session.is_capture_lost:
                         logger.warning("Capture lost before frame read")
-                        self._capture_lost = True
+                        with self._capture_lost_lock:
+                            self._capture_lost = True
                         break
 
                     frame = session.read_frame(
@@ -643,7 +679,8 @@ class VideoRecorder:
                     # Проверка потери захвата после чтения
                     if session.is_capture_lost:
                         logger.warning("Capture lost after frame read")
-                        self._capture_lost = True
+                        with self._capture_lost_lock:
+                            self._capture_lost = True
                         if frame is not None:
                             # Попытка записать последний кадр
                             if self._ffmpeg_writer is not None:
@@ -654,7 +691,8 @@ class VideoRecorder:
                         continue
 
                     # Сброс флага потери при успешном захвате
-                    self._capture_lost = False
+                    with self._capture_lost_lock:
+                        self._capture_lost = False
 
                     # Запись кадра
                     if self._ffmpeg_writer is not None:
@@ -716,7 +754,8 @@ class VideoRecorder:
     @property
     def is_capture_lost(self) -> bool:
         """Проверка, был ли потерян захват."""
-        return getattr(self, "_capture_lost", False)
+        with self._capture_lost_lock:
+            return self._capture_lost
 
     def _cleanup(self) -> bool:
         """Очистка ресурсов.

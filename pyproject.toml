@@ -58,6 +58,8 @@ dependencies = [
     "pycaw>=20230407; sys_platform == 'win32'",
     # Global Hotkeys
     "pynput>=1.7.6",
+    # WebSocket client
+    "websockets>=12.0",
     # Type hints support
     "typing-extensions>=4.7.0",
     # Data Validation

@@ -34,6 +34,7 @@ from config import get_config
 from core.recording_types import AudioMode, CaptureMode
 from gui.controllers.recording_controller import RecordingController
 from gui.controllers.settings_controller import SettingsController
+from gui.controllers.websocket_controller import WebSocketClientController
 from gui.models.recording_state import (
     AudioSettings,
     CaptureSettings,
@@ -87,6 +88,7 @@ class MainWindow(QMainWindow):
         self._settings_controller = SettingsController(
             self._state, get_config()
         )
+        self._ws_controller: WebSocketClientController | None = None
 
         # Таймер обновления статуса
         self._update_timer = QTimer()
@@ -172,6 +174,13 @@ class MainWindow(QMainWindow):
         # Индикатор состояния
         self.status_label = QLabel("Готов")
         self.status_bar.addPermanentWidget(self.status_label)
+
+        # Индикатор WebSocket соединения
+        self._ws_status_label = QLabel("WS: —")
+        self._ws_status_label.setToolTip(
+            "Статус WebSocket-соединения с API сервером"
+        )
+        self.status_bar.addPermanentWidget(self._ws_status_label)
 
         # Индикатор времени
         self.time_label = QLabel("00:00")
@@ -632,10 +641,22 @@ class MainWindow(QMainWindow):
         if result.get("success"):
             self.status_bar.showMessage("API сервер запущен", 5000)
             self._refresh_api_status()
+            self._start_websocket_after_api(result)
             return
         self._show_error(
             result.get("error", "Не удалось запустить API сервер")
         )
+
+    def _start_websocket_after_api(self, api_result: dict) -> None:
+        """Запуск WebSocket клиента после старта API."""
+        configured = api_result.get("configured", {})
+        url = api_result.get("url", "")
+        token = configured.get("api_key", "")
+
+        if url and token:
+            if not self._ws_controller:
+                self.init_websocket_client(url, token)
+            self.connect_websocket()
 
     def _on_api_stop(self) -> None:
         """Остановка API сервера из вкладки."""
@@ -644,6 +665,7 @@ class MainWindow(QMainWindow):
             self._show_error("Управление API недоступно")
             return
         if result.get("success"):
+            self.disconnect_websocket()
             self.status_bar.showMessage("API сервер остановлен", 5000)
             self._refresh_api_status()
             return
@@ -658,12 +680,89 @@ class MainWindow(QMainWindow):
             self._show_error("Управление API недоступно")
             return
         if result.get("success"):
+            self.disconnect_websocket()
             self.status_bar.showMessage("API сервер перезапущен", 5000)
             self._refresh_api_status()
+            self._start_websocket_after_api(result)
             return
         self._show_error(
             result.get("error", "Не удалось перезапустить API сервер")
         )
+
+    # === WebSocket клиент ===
+
+    def init_websocket_client(self, base_url: str, api_token: str) -> None:
+        """
+        Инициализация WebSocket-клиента.
+
+        Args:
+            base_url: Базовый URL API (http://host:port)
+            api_token: API токен для аутентификации
+        """
+        ws_url = base_url.replace("http://", "ws://").replace(
+            "https://", "wss://"
+        )
+        ws_url = f"{ws_url}/ws"
+
+        self._ws_controller = WebSocketClientController(
+            base_url=ws_url, api_token=api_token, parent=self
+        )
+        self._ws_controller.status_changed.connect(self._on_ws_status_changed)
+        self._ws_controller.event_received.connect(self._on_ws_event_received)
+        self._ws_controller.error_occurred.connect(self._on_ws_error)
+        logger.info("WebSocket клиент инициализирован: %s", ws_url)
+
+    def connect_websocket(self) -> None:
+        """Подключение WebSocket-клиента к серверу."""
+        if self._ws_controller:
+            self._ws_controller.connect()
+
+    def disconnect_websocket(self) -> None:
+        """Отключение WebSocket-клиента."""
+        if self._ws_controller:
+            self._ws_controller.disconnect()
+
+    def _on_ws_status_changed(self, status: str) -> None:
+        """Обработка изменения статуса WebSocket."""
+        status_map = {
+            "connected": ("WS: ●", "#22c55e", "Подключено"),
+            "connecting": ("WS: ◐", "#f59e0b", "Подключение..."),
+            "disconnected": ("WS: ○", "#6b7280", "Отключено"),
+            "reconnecting": (
+                "WS: ◐",
+                "#f59e0b",
+                "Переподключение...",
+            ),
+            "error": ("WS: ✗", "#ef4444", "Ошибка"),
+        }
+        text, color, tooltip = status_map.get(
+            status, ("WS: ?", "#6b7280", "Неизвестно")
+        )
+        self._ws_status_label.setText(text)
+        self._ws_status_label.setStyleSheet(
+            f"color: {color}; font-weight: bold;"
+        )
+        self._ws_status_label.setToolTip(tooltip)
+
+    def _on_ws_event_received(self, event_type: str, payload: dict) -> None:
+        """Обработка полученного через WebSocket события."""
+        logger.debug("WebSocket событие: %s, payload: %s", event_type, payload)
+
+        if event_type == "recording.started":
+            self.recording_started.emit(payload.get("output_path", ""))
+        elif event_type == "recording.stopped":
+            self.recording_stopped.emit(payload.get("output_path", ""))
+        elif event_type == "recording.paused":
+            self.recording_paused.emit()
+        elif event_type == "recording.resumed":
+            self.recording_resumed.emit()
+        elif event_type == "recording.error":
+            error_msg = payload.get("error", "Неизвестная ошибка")
+            self.error_occurred.emit(error_msg)
+
+    def _on_ws_error(self, message: str) -> None:
+        """Обработка ошибки WebSocket."""
+        logger.warning("WebSocket ошибка: %s", message)
 
     # === Вспомогательные методы ===
 

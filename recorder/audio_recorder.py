@@ -79,6 +79,7 @@ class AudioRecorder:
         self._record_thread: threading.Thread | None = None
         self._writer_thread: threading.Thread | None = None
         self._writer_stop_event = threading.Event()
+        self._shutdown_event = threading.Event()
         self._dropped_chunks = 0
 
         # Информация о записи
@@ -212,15 +213,16 @@ class AudioRecorder:
                 self._dropped_chunks = 0
                 self._reset_audio_queue()
                 self._writer_stop_event.clear()
+                self._shutdown_event.clear()
 
                 # Запуск потока записи
                 self._state = AudioState.RECORDING
                 self._writer_thread = threading.Thread(
-                    target=self._writer_loop, daemon=True
+                    target=self._writer_loop, daemon=False
                 )
                 self._writer_thread.start()
                 self._record_thread = threading.Thread(
-                    target=self._record_loop, daemon=True
+                    target=self._record_loop, daemon=False
                 )
                 self._record_thread.start()
 
@@ -320,6 +322,7 @@ class AudioRecorder:
                 return False
 
             self._state = AudioState.STOPPING
+            self._shutdown_event.set()
 
         # Ожидание завершения потока записи
         if self._record_thread and self._record_thread.is_alive():
@@ -357,9 +360,13 @@ class AudioRecorder:
                 blocksize=self.config.chunk_size,
                 callback=audio_callback,
             ):
-                while self._state not in (
-                    AudioState.IDLE,
-                    AudioState.STOPPING,
+                while (
+                    not self._shutdown_event.is_set()
+                    and self._state
+                    not in (
+                        AudioState.IDLE,
+                        AudioState.STOPPING,
+                    )
                 ):
                     if self._state == AudioState.PAUSED:
                         time.sleep(0.1)
@@ -382,7 +389,10 @@ class AudioRecorder:
             return
 
         try:
-            while self._state not in (AudioState.IDLE, AudioState.STOPPING):
+            while not self._shutdown_event.is_set() and self._state not in (
+                AudioState.IDLE,
+                AudioState.STOPPING,
+            ):
                 if self._state == AudioState.PAUSED:
                     time.sleep(0.1)
                     continue
