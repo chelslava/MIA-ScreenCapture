@@ -505,7 +505,7 @@ class TestVersionConsistency:
         """Проверяет версию в pyproject, README и swagger-спецификации."""
         expected_version = _load_version_from_pyproject()
 
-        assert expected_version == "1.4.5"
+        assert expected_version.startswith("1.4.6")
         assert _load_version_from_readme() == expected_version
         assert SWAGGER_SPEC["info"]["version"] == expected_version
         assert (
