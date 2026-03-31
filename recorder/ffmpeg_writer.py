@@ -163,10 +163,12 @@ class FFmpegVideoWriter:
         if process is None:
             return
 
-        try:
-            process.stdin.close()
-        except Exception:
-            pass
+        stdin = process.stdin
+        if stdin is not None:
+            try:
+                stdin.close()
+            except Exception:
+                pass
 
         try:
             process.terminate()
