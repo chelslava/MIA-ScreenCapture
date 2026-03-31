@@ -23,11 +23,13 @@
   - Риск: повреждение данных при краше
   - Решение: реализовать корректный shutdown через `atexit` или explicit join
 
-- [ ] **Silent fallback при ненайденном окне**: `CaptureArea.from_window()`
+- [x] **Silent fallback при ненайденном окне**: `CaptureArea.from_window()`
   (`video_recorder.py:97-116`) при ненайденном окне молча возвращает
   полный экран. Caller может не заметить fallback.
   - Риск: запись не того контента
   - Решение: выбрасывать исключение или требовать explicit fallback
+  - **Выполнено** (commit: e815393): добавлен параметр `raise_if_not_found`,
+    флаг `strict_window_match` для API/scheduler путей
 
 ### WebSocket Transport
 
