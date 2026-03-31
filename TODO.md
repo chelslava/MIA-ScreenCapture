@@ -34,13 +34,14 @@
 
 ### WebSocket Transport
 
-- [ ] **WebSocket Transport**: Реализовать реальный транспорт для событий записи
+- [x] **WebSocket Transport**: Реализовать реальный транспорт для событий записи
   (дизайн в `plans/websocket-transport-v1.5.0.md`). Сейчас `WebSocketManager`
   работает без реального WebSocket/SSE транспорта.
-  - Этап 1: Протокол и контракт (JSON schema, каналы, ошибки, heartbeat)
-  - Этап 2: WebSocket endpoint в `api/server.py`, auth handshake, snapshot
+  - Этап 1: Протокол и контракт (JSON schema, каналы, ошибки, heartbeat) ✅
+  - Этап 2: WebSocket endpoint в `api/server.py`, auth handshake, snapshot ✅
   - Этап 3: GUI-клиент для real-time канала
   - Этап 4: Нагрузочная проверка (мульти-клиент, утечки памяти)
+  - **Выполнено** (commit: 86fa106): Этап 1-2 завершены
 
 - [ ] **DST/Timezone тесты scheduler**: Добавить интеграционные тесты для
   `daily/weekly/cron` сценариев при переходе на летнее/зимнее время.
