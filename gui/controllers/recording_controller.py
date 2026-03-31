@@ -73,11 +73,17 @@ class RecordingController:
 
         Returns:
             Объект CaptureArea для VideoRecorder
+
+        Raises:
+            ValueError: Если strict_window_match=True и окно не найдено
         """
         if capture.capture_type == CaptureMode.FULL:
             return CaptureArea.full_screen()
         elif capture.capture_type == CaptureMode.WINDOW:
-            return CaptureArea.from_window(capture.window_title)
+            return CaptureArea.from_window(
+                capture.window_title,
+                raise_if_not_found=capture.strict_window_match,
+            )
         elif capture.capture_type == CaptureMode.RECT:
             return CaptureArea.from_rect(*capture.rect_coords)
 

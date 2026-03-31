@@ -29,6 +29,7 @@ def _map_capture(capture: CaptureRequest) -> CaptureSettings:
         capture_type=capture.mode,
         window_title=capture.window_title,
         rect_coords=capture.rect_coords,
+        strict_window_match=True,  # API/scheduler требуют строгого совпадения
     )
 
 

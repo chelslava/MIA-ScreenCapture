@@ -34,6 +34,7 @@ class CaptureSettings:
     capture_type: CaptureMode = CaptureMode.FULL
     window_title: str = ""
     rect_coords: tuple[int, int, int, int] = (0, 0, 1920, 1080)
+    strict_window_match: bool = False  # Ошибка если окно не найдено
 
 
 @dataclass

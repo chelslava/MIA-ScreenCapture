@@ -8,13 +8,14 @@
 
 ### Критичные (HIGH) — стабильность
 
-- [ ] **FFmpeg process leak при BrokenPipeError**: В `ffmpeg_writer.py:261-287`
+- [x] **FFmpeg process leak при BrokenPipeError**: В `ffmpeg_writer.py:261-287`
   метод `write()` при ошибке возвращает `False`, но не помечает процесс
   как сломанный и не пытается его завершить. Следующие вызовы будут
   писать в закрытый pipe.
   - Риск: утечка процессов, повреждение файла
   - Решение: при `BrokenPipeError` устанавливать `_is_corrupted=True`,
     вызывать `terminate()` для процесса
+  - **Выполнено** (commit: fb71bb0): добавлен метод `_terminate_process_safely()`
 
 - [ ] **Daemon-потоки с ресурсами**: Потоки захвата создаются как `daemon=True`
   (`video_recorder.py:468`, `audio_recorder.py:218-225`). При аварийном
