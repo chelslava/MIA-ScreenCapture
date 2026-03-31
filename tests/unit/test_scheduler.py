@@ -1292,8 +1292,6 @@ class TestDSTTimezoneHandling:
         self, tasks_file: Path
     ) -> None:
         """Разовая задача с naive datetime должна интерпретироваться в локальном TZ."""
-        import tzlocal
-
         scheduler = TaskScheduler(persist_path=tasks_file)
 
         # Naive datetime в будущем
@@ -1311,9 +1309,7 @@ class TestDSTTimezoneHandling:
         # Задача должна добавляться без ошибки
         assert scheduler.add_task(task) is True
 
-    def test_once_task_with_tz_aware_datetime(
-        self, tasks_file: Path
-    ) -> None:
+    def test_once_task_with_tz_aware_datetime(self, tasks_file: Path) -> None:
         """Разовая задача с timezone-aware datetime должна сохранять TZ."""
         from zoneinfo import ZoneInfo
 

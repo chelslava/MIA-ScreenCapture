@@ -716,9 +716,6 @@ class TestDSTTimezoneHandling:
         self, scheduler_with_callback: TaskScheduler
     ):
         """Проверка что daily задача корректно работает при переходе DST."""
-        from zoneinfo import ZoneInfo
-
-        tz = ZoneInfo("Europe/Moscow")
         task = ScheduleTask(
             id="dst-test",
             name="DST Test Task",
@@ -727,8 +724,8 @@ class TestDSTTimezoneHandling:
             params=RecordingParams(),
         )
 
-        ok, err = scheduler_with_callback.add_task(task)
-        assert ok, f"Task creation failed: {err}"
+        ok = scheduler_with_callback.add_task(task)
+        assert ok, "Task creation failed"
 
         # Проверяем что next_run вычислен корректно
         scheduler_with_callback.start()
@@ -753,8 +750,8 @@ class TestDSTTimezoneHandling:
             params=RecordingParams(),
         )
 
-        ok, err = scheduler_with_callback.add_task(task)
-        assert ok, f"Task creation failed: {err}"
+        ok = scheduler_with_callback.add_task(task)
+        assert ok, "Task creation failed"
 
         scheduler_with_callback.start()
         time.sleep(0.5)
@@ -777,8 +774,8 @@ class TestDSTTimezoneHandling:
             params=RecordingParams(),
         )
 
-        ok, err = scheduler_with_callback.add_task(task)
-        assert ok, f"Task creation failed: {err}"
+        ok = scheduler_with_callback.add_task(task)
+        assert ok, "Task creation failed"
 
         scheduler_with_callback.start()
         time.sleep(0.5)
@@ -803,8 +800,8 @@ class TestDSTTimezoneHandling:
             params=RecordingParams(),
         )
 
-        ok, err = scheduler_with_callback.add_task(task)
-        assert ok, f"Task creation failed: {err}"
+        ok = scheduler_with_callback.add_task(task)
+        assert ok, "Task creation failed"
 
         scheduler_with_callback.start()
         # Ждём выполнения хотя бы одной задачи
