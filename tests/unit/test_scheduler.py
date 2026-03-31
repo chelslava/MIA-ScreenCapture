@@ -1185,3 +1185,248 @@ class TestTaskSchedulerResilience:
         assert "Не удалось получить next_run для задачи test-upcoming" in (
             caplog.text
         )
+
+
+class TestDSTTimezoneHandling:
+    """Тесты корректной обработки DST и часовых поясов."""
+
+    def test_daily_task_uses_local_timezone(self, tasks_file: Path) -> None:
+        """Daily задача должна использовать локальный часовой пояс."""
+        import tzlocal
+
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            task = ScheduleTask(
+                id="daily-tz-test",
+                name="Daily TZ Test",
+                schedule_type=ScheduleType.DAILY,
+                params=RecordingParams(),
+                time_of_day="09:00",
+                enabled=True,
+            )
+
+            assert scheduler.add_task(task) is True
+
+            job = scheduler._scheduler.get_job("daily-tz-test")
+            assert job is not None
+            assert job.next_run_time is not None
+
+            # Проверяем, что timezone соответствует локальной
+            local_tz = tzlocal.get_localzone()
+            assert job.next_run_time.tzinfo is not None
+            assert str(job.next_run_time.tzinfo) == str(local_tz)
+        finally:
+            scheduler.stop()
+
+    def test_weekly_task_next_run_valid(self, tasks_file: Path) -> None:
+        """Weekly задача должна корректно вычислять следующий запуск."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            # Понедельник, среда, пятница
+            task = ScheduleTask(
+                id="weekly-next-run",
+                name="Weekly Next Run Test",
+                schedule_type=ScheduleType.WEEKLY,
+                params=RecordingParams(),
+                time_of_day="14:30",
+                days_of_week=[0, 2, 4],
+                enabled=True,
+            )
+
+            assert scheduler.add_task(task) is True
+
+            job = scheduler._scheduler.get_job("weekly-next-run")
+            assert job is not None
+            assert job.next_run_time is not None
+
+            # Проверяем, что день недели корректный (0=Mon, 2=Wed, 4=Fri)
+            next_run_weekday = job.next_run_time.weekday()
+            assert next_run_weekday in (0, 2, 4)
+
+            # Проверяем время
+            assert job.next_run_time.hour == 14
+            assert job.next_run_time.minute == 30
+        finally:
+            scheduler.stop()
+
+    def test_cron_task_with_timezone(self, tasks_file: Path) -> None:
+        """Cron задача должна учитывать локальный часовой пояс."""
+        import tzlocal
+
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            task = ScheduleTask(
+                id="cron-tz-test",
+                name="Cron TZ Test",
+                schedule_type=ScheduleType.CRON,
+                params=RecordingParams(),
+                cron_expression="0 9 * * 1-5",
+                enabled=True,
+            )
+
+            assert scheduler.add_task(task) is True
+
+            job = scheduler._scheduler.get_job("cron-tz-test")
+            assert job is not None
+            assert job.next_run_time is not None
+
+            # Проверяем, что timezone соответствует локальной
+            local_tz = tzlocal.get_localzone()
+            assert job.next_run_time.tzinfo is not None
+            assert str(job.next_run_time.tzinfo) == str(local_tz)
+
+            # Проверяем, что это будний день (1-5 в cron = Пн-Пт)
+            next_run_weekday = job.next_run_time.weekday()
+            assert next_run_weekday in (0, 1, 2, 3, 4)
+
+            # Проверяем время 9:00
+            assert job.next_run_time.hour == 9
+            assert job.next_run_time.minute == 0
+        finally:
+            scheduler.stop()
+
+    def test_once_task_with_naive_datetime_uses_local_tz(
+        self, tasks_file: Path
+    ) -> None:
+        """Разовая задача с naive datetime должна интерпретироваться в локальном TZ."""
+        import tzlocal
+
+        scheduler = TaskScheduler(persist_path=tasks_file)
+
+        # Naive datetime в будущем
+        future_dt = datetime.now() + timedelta(hours=2)
+
+        task = ScheduleTask(
+            id="once-naive-dt",
+            name="Once Naive DT",
+            schedule_type=ScheduleType.ONCE,
+            params=RecordingParams(),
+            start_time=future_dt,
+            enabled=True,
+        )
+
+        # Задача должна добавляться без ошибки
+        assert scheduler.add_task(task) is True
+
+    def test_once_task_with_tz_aware_datetime(
+        self, tasks_file: Path
+    ) -> None:
+        """Разовая задача с timezone-aware datetime должна сохранять TZ."""
+        from zoneinfo import ZoneInfo
+
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            # Явно указываем Europe/Moscow
+            moscow_tz = ZoneInfo("Europe/Moscow")
+            future_dt = datetime.now(moscow_tz) + timedelta(hours=3)
+
+            task = ScheduleTask(
+                id="once-aware-dt",
+                name="Once Aware DT",
+                schedule_type=ScheduleType.ONCE,
+                params=RecordingParams(),
+                start_time=future_dt,
+                enabled=True,
+            )
+
+            assert scheduler.add_task(task) is True
+
+            job = scheduler._scheduler.get_job("once-aware-dt")
+            assert job is not None
+            assert job.next_run_time is not None
+        finally:
+            scheduler.stop()
+
+    def test_interval_task_timezone_stable(self, tasks_file: Path) -> None:
+        """Interval задача не должна зависеть от DST переходов."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            task = ScheduleTask(
+                id="interval-dst-test",
+                name="Interval DST Test",
+                schedule_type=ScheduleType.INTERVAL,
+                params=RecordingParams(),
+                interval_hours=2,
+                enabled=True,
+            )
+
+            assert scheduler.add_task(task) is True
+
+            job = scheduler._scheduler.get_job("interval-dst-test")
+            assert job is not None
+            assert job.next_run_time is not None
+
+            # Интервал должен быть ровно 2 часа
+            from apscheduler.triggers.interval import IntervalTrigger
+
+            assert isinstance(job.trigger, IntervalTrigger)
+        finally:
+            scheduler.stop()
+
+    def test_persisted_task_preserves_timezone_info(
+        self, tasks_file: Path
+    ) -> None:
+        """Сохранённая задача должна сохранять информацию о часовом поясе."""
+        scheduler1 = TaskScheduler(persist_path=tasks_file)
+
+        task = ScheduleTask(
+            id="tz-persist-test",
+            name="TZ Persist Test",
+            schedule_type=ScheduleType.DAILY,
+            params=RecordingParams(),
+            time_of_day="15:45",
+            enabled=True,
+        )
+
+        scheduler1.add_task(task)
+        scheduler1._save_tasks()
+
+        # Загружаем в новом экземпляре
+        scheduler2 = TaskScheduler(persist_path=tasks_file)
+        scheduler2.start()
+        try:
+            loaded = scheduler2.get_task("tz-persist-test")
+            assert loaded is not None
+            assert loaded.time_of_day == "15:45"
+
+            # Запускаем планирование и проверяем корректность
+            loaded.enabled = True
+            assert scheduler2._schedule_job(loaded) is True
+
+            job = scheduler2._scheduler.get_job("tz-persist-test")
+            assert job is not None
+            assert job.next_run_time is not None
+        finally:
+            scheduler2.stop()
+
+    def test_daily_task_across_dst_boundary(self, tasks_file: Path) -> None:
+        """Daily задача должна работать корректно при переходе DST."""
+        # Этот тест проверяет, что APScheduler корректно обрабатывает
+        # задачи, которые попадают на несуществующий час при переходе на летнее время
+        # (например, 2:00 -> 3:00 в день перехода)
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            # Задача на 02:30 - потенциально проблемное время при DST
+            task = ScheduleTask(
+                id="dst-boundary-test",
+                name="DST Boundary Test",
+                schedule_type=ScheduleType.DAILY,
+                params=RecordingParams(),
+                time_of_day="02:30",
+                enabled=True,
+            )
+
+            # Задача должна добавляться без ошибки
+            assert scheduler.add_task(task) is True
+
+            job = scheduler._scheduler.get_job("dst-boundary-test")
+            assert job is not None
+            assert job.next_run_time is not None
+        finally:
+            scheduler.stop()

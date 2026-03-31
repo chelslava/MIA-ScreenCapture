@@ -1,100 +1,151 @@
-# TODO: Рефакторинг-План До `v1.4.6`
+# TODO: План Развития До `v1.5.0`
 
-> Обновлено: 2026-03-30  
-> Фокус релиза: устойчивый рефакторинг без регрессий поведения
+> Обновлено: 2026-03-31
+> Текущая версия: 1.4.6-dev
+> Целевой релиз: 1.5.0
 
-## P0 (обязательно в `v1.4.6`)
+## P0 (обязательно в `v1.5.0`)
 
-- [x] ~~Добавить валидацию свободного места на диске перед стартом записи~~
-  (commit: 8b35cf7). Функция `check_disk_space()` в `recorder/utils.py`.
-- [x] ~~Предотвратить повреждение видео при ошибке FFmpeg write~~
-  (commit: b864177). Флаг `is_corrupted`, метод `cleanup_corrupted_file()`.
-- [x] ~~Исправить race condition при потере capture-сессии~~
-  (commit: ca8fb16). Проверка `is_capture_lost` до/после `read_frame()`.
-- [x] ~~Валидация X-Forwarded-For против IP spoofing~~
-  (commit: beca1f4). Паттерны IPv4/IPv6, валидация перед использованием.
-- [x] ~~Устранить утечку API key через env fallback~~
-  (commit: ecb0cb5). Credential Manager — единственное хранилище.
-- [x] ~~Валидация cron_expression перед созданием scheduler task~~
-  (commit: e6682be). Валидация через `CronTrigger.from_crontab()`.
+### Критичные (HIGH) — стабильность
+
+- [ ] **FFmpeg process leak при BrokenPipeError**: В `ffmpeg_writer.py:261-287`
+  метод `write()` при ошибке возвращает `False`, но не помечает процесс
+  как сломанный и не пытается его завершить. Следующие вызовы будут
+  писать в закрытый pipe.
+  - Риск: утечка процессов, повреждение файла
+  - Решение: при `BrokenPipeError` устанавливать `_is_corrupted=True`,
+    вызывать `terminate()` для процесса
+
+- [ ] **Daemon-потоки с ресурсами**: Потоки захвата создаются как `daemon=True`
+  (`video_recorder.py:468`, `audio_recorder.py:218-225`). При аварийном
+  завершении могут оставить открытыми файловые дескрипторы (WAV, FFmpeg pipe).
+  - Риск: повреждение данных при краше
+  - Решение: реализовать корректный shutdown через `atexit` или explicit join
+
+- [ ] **Silent fallback при ненайденном окне**: `CaptureArea.from_window()`
+  (`video_recorder.py:97-116`) при ненайденном окне молча возвращает
+  полный экран. Caller может не заметить fallback.
+  - Риск: запись не того контента
+  - Решение: выбрасывать исключение или требовать explicit fallback
+
+### WebSocket Transport
+
+- [ ] **WebSocket Transport**: Реализовать реальный транспорт для событий записи
+  (дизайн в `plans/websocket-transport-v1.5.0.md`). Сейчас `WebSocketManager`
+  работает без реального WebSocket/SSE транспорта.
+  - Этап 1: Протокол и контракт (JSON schema, каналы, ошибки, heartbeat)
+  - Этап 2: WebSocket endpoint в `api/server.py`, auth handshake, snapshot
+  - Этап 3: GUI-клиент для real-time канала
+  - Этап 4: Нагрузочная проверка (мульти-клиент, утечки памяти)
+
+- [ ] **DST/Timezone тесты scheduler**: Добавить интеграционные тесты для
+  `daily/weekly/cron` сценариев при переходе на летнее/зимнее время.
 
 ## P1 (важно, если успеваем до code freeze)
 
-- [ ] Вынести слой сервисов для FFmpeg-пайплайна:
-  отдельные `ProcessSupervisor`, `FinalizeService`, `RecoveryPolicy`.
-- [ ] Зафиксировать детерминированный shutdown потоков/процессов записи:
-  единый протокол `stop -> join(timeout) -> force cleanup`.
-- [ ] Протащить `request_id/trace_id` в фоновые API-операции
-  и связанные бизнес-логи для end-to-end корреляции.
-- [ ] Продолжить декомпозицию крупных runtime-модулей:
-  `main.py`, `api/server.py`, `api/routes.py`.
-- [ ] Снизить число широких `except Exception` в критичных путях
-  API/recording/scheduler и заменить на точечные обработчики.
-- [ ] Снизить риск регрессий GUI: уменьшить долю `skip`-тестов
-  и добавить smoke-проверки view-контрактов.
-- [ ] Зафиксировать корректный shutdown debounce-сохранения конфига:
-  без потери последних изменений и без висячих таймеров.
-- [ ] Добавить DST/timezone интеграционные тесты scheduler
-  для `daily/weekly/cron` сценариев.
-- [ ] Ввести типизированную модель API-операций вместо
-  неструктурированных `dict[str, Any]` в runtime-слое.
+### Архитектура и декомпозиция
 
-### P1-Critical (блокирующие проблемы)
+- [ ] **Декомпозиция runtime-модулей**: Рефакторинг крупных файлов:
+  - `main.py` (1359 строк) → цель <400 строк
+  - `api/server.py` (1124 строки) → цель <400 строк
+  - `api/routes.py` (994 строки) → цель <400 строк
+- [ ] **Слой сервисов FFmpeg-пайплайна**: Вынести отдельные компоненты:
+  `ProcessSupervisor`, `FinalizeService`, `RecoveryPolicy`.
+  Снижение связности в `recorder/encoder.py`.
+- [ ] **Типизированные API-операции**: Заменить `dict[str, Any]` на
+  dataclass/Pydantic модели в runtime-слое API.
+- [ ] **Унификация RecordingState**: Enum дублируется в `core/recording_state.py`
+  и `recorder/video_recorder.py:34-40`. Оставить одно определение.
 
-- [x] ~~Уведомлять пользователя при потере audio chunks~~
-  (commit: e0ccca2). Callback `on_chunks_dropped`, property `dropped_chunks`.
-- [x] ~~Исправить potential deadlock в video_recorder.stop()~~
-  Уже исправлено в текущем коде - lock освобождается до join().
-- [x] ~~Устранить утечку FFmpeg stderr reader thread~~
-  Откат select-based решения из-за несовместимости с Windows.
-  Закрытие stream в _stop_stderr_reader() достаточно.
-- [x] ~~Валидация rect coordinates против frame bounds~~
-  Уже реализовано в `_WindowsCaptureSession.on_frame_captured()`.
-- [x] ~~Уведомлять при fallback на full screen при window not found~~
-  (commit: cd6f4c4). Улучшено логирование, сохраняется искомый заголовок.
-- [x] ~~Ограничить memory growth в API idempotency store~~
-  (commit: 670245c). Лимит `_MAX_PATH_ENTRIES = 100` для path_counts.
-- [x] ~~Возвращать ошибку при невалидном state transition в pause_recording~~
-  (commit: 3d40121). `pause_recording()` и `resume_recording()` возвращают bool.
+### Надёжность и устойчивость
+
+- [ ] **Race condition в capture loop**: `_capture_lost` устанавливается без
+  защиты `_lock` (`video_recorder.py:528-565`). Использовать `threading.Event`
+  или атомарный флаг.
+- [ ] **Timeout инициализации windows-capture**: `capture.start_free_threaded()`
+  без таймаута (`video_recorder.py:224`). Добавить таймаут на первый кадр.
+- [ ] **Точечные обработчики исключений**: Снизить число `except Exception`
+  в критичных путях API/recording/scheduler. Заменить на конкретные типы.
+- [ ] **Детерминированный shutdown**: Зафиксировать протокол
+  `stop -> join(timeout) -> force cleanup` для всех потоков записи.
+- [ ] **Ring-buffer для GUI-логов**: Ограничить память для долгих сессий
+  API-вкладки (профилирование показало лаги при >30 мин).
+- [ ] **Health-check FFmpeg pipeline**: Детекция зависания writer и
+  авто-рекавери (снижение кейсов `moov atom not found`).
+- [ ] **Потеря аудио-чанков**: При переполнении очереди чанки отбрасываются
+  (`audio_recorder.py:416-436`), но нет уведомления пользователя через GUI.
+  Пробросить через event bus.
+- [ ] **Валидация rect_coords**: Некорректные координаты молча заменяются
+  на fallback (`recording_service.py:232-248`). Добавить валидацию с ошибкой.
+- [ ] **Обработка TimeoutError в `_run_on_gui_thread`**: Метод выбрасывает
+  `TimeoutError`, но в `_execute_scheduled_task` нет обработки
+  (`main.py:877-901`).
+
+### Тестирование и качество
+
+- [ ] **GUI smoke-тесты**: Добавить базовые проверки view-контрактов,
+  уменьшить долю пропущенных тестов.
+- [ ] **Benchmark-suite для hot-path API**: `/health`, `/api/v1/status`,
+  recent events, idempotency replay с порогом регрессии.
+- [ ] **Property-based тесты**: Для `api/schemas.py` и преобразований
+  scheduler payload через `hypothesis`.
 
 ## P2 (после стабилизации P0/P1)
 
-- [ ] Ввести ring-buffer для live-логов GUI и ограничение памяти
-  для долгих сессий.
-- [ ] Оптимизировать observability-метрики:
-  перцентили без полной сортировки на каждый запрос.
-- [ ] Перевести критичные тайминги записи на `time.monotonic()`
-  с единым util-слоем времени.
-- [ ] Ввести deprecation-политику для legacy API routes
-  с timeline удаления и тестами обратной совместимости.
-- [ ] Разделить DTO API и внутренние доменные модели записи через
-  adapter-layer между `api/*` и `core/*`.
-- [ ] Добавить benchmark-suite для hot-path API
-  (`/health`, `/api/v1/status`, recent events, idempotency replay)
-  с базовой линией и порогом регрессии.
-- [ ] Разобрать слой `core/contracts.py`:
-  интегрировать в реальный runtime/CLI поток или удалить как legacy.
-- [ ] Усилить диагностику output path на Windows:
-  заменить `os.access` на пробную запись/удаление temp-файла.
-- [ ] Добавить property-based/табличные тесты для `api/schemas.py`
-  и преобразований scheduler payload.
-- [ ] Расширить pre-commit quality gates:
-  обязательный `mypy` и быстрый smoke-набор тестов.
+### Производительность
 
-## Рефакторинг-Стандарты `v1.4.6`
+- [ ] **Блокирующий sleep в capture loop**: `time.sleep(sleep_time * 0.9)`
+  (`video_recorder.py:608-611`) — неточный метод контроля FPS.
+  Использовать `time.perf_counter()` с `Event.wait()`.
+- [ ] **Копирование кадров**: `np.array(bgr, copy=True)` на каждом кадре
+  (`video_recorder.py:204`). Рассмотреть zero-copy подход.
+- [ ] **Оптимизация observability-метрик**: Перцентили без полной
+  сортировки на каждый запрос (алгоритм P-square или histogram).
+- [ ] **Унификация time.monotonic()**: Перевести все критичные тайминги
+  записи на единый util-слой.
+- [ ] **Профилирование hot-path захвата**: Метрики jitter FPS,
+  оптимизация пути кадра от capture до encode.
+- [ ] **Incremental diff для GUI-логов**: Добавить inotify/file watcher
+  вместо периодического чтения файла.
+- [ ] **Кэш списка аудиоустройств**: `sd.query_devices()` при каждом
+  `start()` (`audio_recorder.py:237-257`). Кешировать с TTL.
+
+### Техдолг и поддержка
+
+- [ ] **Deprecation-политика для legacy API**: Timeline удаления
+  `/api/*` routes (без `v1`) с тестами обратной совместимости.
+- [ ] **Разделение DTO и доменных моделей**: Adapter-layer между
+  `api/*` и `core/*` для изоляции слоёв.
+- [ ] **Диагностика output path на Windows**: Заменить `os.access` на
+  пробную запись/удаление temp-файла для надёжной проверки прав.
+- [ ] **JSON-логи для API**: Опционально (по флагу) структурированные
+  логи с `trace_id`, `request_id`, `latency_ms`, `status`.
+- [ ] **Кэширование expensive queries**: `get_audio_devices()` и
+  `get_available_windows()` вызываются при каждом запросе `/devices`,
+  `/windows`. Добавить TTL-кэш.
+- [ ] **Конфигурируемые таймауты FFmpeg**: Вынести `_FFMPEG_CLOSE_TIMEOUT_SECONDS`
+  и другие таймауты в конфигурацию (`ffmpeg_writer.py:22-25`).
+- [ ] **Обработка PermissionError при создании директории**: Явная обработка
+  ошибок при `mkdir()` в `video_recorder.py:416` и `audio_recorder.py:196`.
+
+### Pre-commit и CI
+
+- [ ] **Обязательный mypy в pre-commit**: Расширить quality gates.
+- [ ] **Быстрый smoke-набор тестов**: Для pre-commit hook (<30 сек).
+
+## Рефакторинг-Стандарты
 
 - [ ] Не менять внешние API-контракты без явной миграции и changelog entry.
-- [ ] Каждый рефакторинг-коммит должен сопровождаться тестом,
-  который доказывает сохранение поведения.
-- [ ] Запрет на «большие смешанные» PR:
-  одна архитектурная цель на один логический набор изменений.
-- [ ] Для новых модулей: обязательные docstring, type hints,
-  явные зависимости через конструктор.
+- [ ] Каждый рефакторинг-коммит сопровождается тестом, доказывающим
+  сохранение поведения.
+- [ ] Запрет на «большие смешанные» PR: одна архитектурная цель на PR.
+- [ ] Для новых модулей: обязательные docstring, type hints, явные
+  зависимости через конструктор.
 
-## Release Gates для `v1.4.6`
+## Release Gates для `v1.5.0`
 
-- [ ] Все P0 задачи закрыты и удалены из этого файла.
-- [ ] `CI` полностью зелёный на `main` минимум в двух последовательных прогонах.
+- [ ] Все P0 задачи закрыты.
+- [ ] CI полностью зелёный на `main` минимум в двух последовательных прогонах.
 - [ ] Ручной regression checklist для GUI/API выполнен и приложен в `plans/`.
-- [ ] Обновлены `CHANGELOG.md`, `plans/release-preflight-v1.4.6.md`,
-  релизные заметки и wiki.
+- [ ] Обновлены `CHANGELOG.md`, `README.md`, версия в `pyproject.toml`.
+- [ ] Подготовлен release preflight-чеклист `plans/release-preflight-v1.5.0.md`.

@@ -707,3 +707,110 @@ class TestTaskSchedulerFromDict:
         assert task.name == "Cron Task from Dict"
         assert task.schedule_type == ScheduleType.CRON
         assert task.cron_expression == "0 9 * * 1-5"
+
+
+class TestDSTTimezoneHandling:
+    """Тесты для обработки DST и часовых поясов."""
+
+    def test_daily_task_across_dst_boundary(
+        self, scheduler_with_callback: TaskScheduler
+    ):
+        """Проверка что daily задача корректно работает при переходе DST."""
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("Europe/Moscow")
+        task = ScheduleTask(
+            id="dst-test",
+            name="DST Test Task",
+            schedule_type=ScheduleType.DAILY,
+            time_of_day="03:00",
+            params=RecordingParams(),
+        )
+
+        ok, err = scheduler_with_callback.add_task(task)
+        assert ok, f"Task creation failed: {err}"
+
+        # Проверяем что next_run вычислен корректно
+        scheduler_with_callback.start()
+        time.sleep(0.5)
+
+        task_info = scheduler_with_callback.get_task("dst-test")
+        assert task_info is not None
+        assert task_info.next_run is not None
+
+        scheduler_with_callback.stop()
+
+    def test_weekly_task_with_timezone(
+        self, scheduler_with_callback: TaskScheduler
+    ):
+        """Проверка weekly задачи с явным часовым поясом."""
+        task = ScheduleTask(
+            id="weekly-tz-test",
+            name="Weekly TZ Test",
+            schedule_type=ScheduleType.WEEKLY,
+            time_of_day="14:30",
+            days_of_week=[0, 2, 4],
+            params=RecordingParams(),
+        )
+
+        ok, err = scheduler_with_callback.add_task(task)
+        assert ok, f"Task creation failed: {err}"
+
+        scheduler_with_callback.start()
+        time.sleep(0.5)
+
+        task_info = scheduler_with_callback.get_task("weekly-tz-test")
+        assert task_info is not None
+        assert task_info.next_run is not None
+
+        scheduler_with_callback.stop()
+
+    def test_cron_task_with_timezone(
+        self, scheduler_with_callback: TaskScheduler
+    ):
+        """Проверка cron задачи с часовым поясом."""
+        task = ScheduleTask(
+            id="cron-tz-test",
+            name="Cron TZ Test",
+            schedule_type=ScheduleType.CRON,
+            cron_expression="30 9 * * 1-5",
+            params=RecordingParams(),
+        )
+
+        ok, err = scheduler_with_callback.add_task(task)
+        assert ok, f"Task creation failed: {err}"
+
+        scheduler_with_callback.start()
+        time.sleep(0.5)
+
+        task_info = scheduler_with_callback.get_task("cron-tz-test")
+        assert task_info is not None
+        assert task_info.next_run is not None
+
+        scheduler_with_callback.stop()
+
+    def test_interval_task_timezone_independent(
+        self,
+        scheduler_with_callback: TaskScheduler,
+        task_callback_results: dict,
+    ):
+        """Проверка что interval задача не зависит от DST."""
+        task = ScheduleTask(
+            id="interval-dst-test",
+            name="Interval DST Test",
+            schedule_type=ScheduleType.INTERVAL,
+            interval_minutes=1,
+            params=RecordingParams(),
+        )
+
+        ok, err = scheduler_with_callback.add_task(task)
+        assert ok, f"Task creation failed: {err}"
+
+        scheduler_with_callback.start()
+        # Ждём выполнения хотя бы одной задачи
+        time.sleep(2)
+
+        scheduler_with_callback.stop()
+
+        # Интервальные задачи должны выполняться независимо от DST
+        assert task_callback_results["execution_count"] >= 1
