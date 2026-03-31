@@ -148,7 +148,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["api", "cli", "gui", "recorder", "scheduler"]
+known-first-party = ["api", "cli", "core", "gui", "recorder", "scheduler"]
 
 # ====================
 # MyPy Configuration
