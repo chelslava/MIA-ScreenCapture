@@ -75,7 +75,9 @@ class TestRecordingController:
         ) as mock:
             mock.return_value = MagicMock()
             controller.build_capture_area(capture)
-            mock.assert_called_once_with("Test Window")
+            mock.assert_called_once_with(
+                "Test Window", raise_if_not_found=False
+            )
 
     def test_build_capture_area_rectangle(
         self, controller: RecordingController
