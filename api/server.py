@@ -669,6 +669,7 @@ class APIServer:
         # Обратные вызовы
         self._callbacks: dict[str, Callable] = {}
         self._websocket_manager: Any | None = None
+        self._ws_transport: Any = None
 
         # Создание Flask приложения
         self._create_app()
@@ -806,7 +807,46 @@ class APIServer:
             access_log_level_resolver=self._resolve_access_log_level,
         )
 
+        self._init_websocket_transport()
+
         logger.info("Flask приложение создано")
+
+    def _init_websocket_transport(self) -> None:
+        """Инициализация WebSocket транспорта."""
+        if self.app is None:
+            return
+
+        try:
+            from flask_sock import Sock
+
+            from api.websocket_transport import (
+                WebSocketTransport,
+                create_websocket_handler,
+            )
+
+            sock = Sock(self.app)
+
+            self._ws_transport = WebSocketTransport(
+                websocket_manager=self._websocket_manager,
+                auth_check=self._check_ws_auth,
+            )
+
+            sock.route("/ws")(create_websocket_handler(self._ws_transport))
+            logger.info("WebSocket transport инициализирован на /ws")
+
+        except ImportError as e:
+            logger.warning(
+                "Flask-Sock не установлен, WebSocket transport недоступен: %s",
+                e,
+            )
+            self._ws_transport = None
+
+    def _check_ws_auth(self, token: str) -> bool:
+        """Проверка токена для WebSocket подключения."""
+        api_key = self.get_api_key()
+        if not api_key:
+            return True
+        return token == api_key
 
     @staticmethod
     def _resolve_access_log_level(path: str, status_code: int) -> int:
@@ -928,6 +968,9 @@ class APIServer:
             if not self._operations.is_running():
                 self._operations = APIOperationStore()
 
+            if self._ws_transport:
+                self._ws_transport.start()
+
             try:
                 self._validate_bind_address()
                 self._running = True
@@ -996,6 +1039,9 @@ class APIServer:
             self._running = False
             server_thread = self._server_thread
             wsgi_server = self._wsgi_server
+
+        if self._ws_transport:
+            self._ws_transport.stop()
 
         if wsgi_server is not None:
             try:

@@ -40,6 +40,8 @@ dependencies = [
     # REST API
     "flask>=2.3.0",
     "flask-cors>=4.0.0",
+    "flask-sock>=0.6.0",
+    "simple-websocket>=1.0.0",
     "waitress>=2.1.2",
     "requests>=2.31.0",
     # Task Scheduling
