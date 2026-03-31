@@ -13,6 +13,52 @@
 
 Без токена доступны только служебные endpoints вроде `GET /health`.
 
+## WebSocket
+
+Real-time события записи доступны через WebSocket:
+
+**Endpoint:** `ws://127.0.0.1:<port>/ws`
+
+**Аутентификация:**
+- Заголовок: `X-API-Key: <token>`
+- Query-параметр: `?token=<token>` (fallback)
+
+**Формат сообщений:**
+```json
+{
+  "type": "event",
+  "channel": "recording",
+  "event": {
+    "type": "started",
+    "timestamp": "2026-03-31T12:00:00+00:00",
+    "data": {"output_path": "D:/Videos/recording.mp4"}
+  },
+  "meta": {
+    "message_id": "uuid",
+    "server_time": "2026-03-31T12:00:00+00:00",
+    "schema_version": 1
+  }
+}
+```
+
+**Типы сообщений:**
+- `hello` — приветствие при подключении
+- `snapshot` — начальное состояние (последние события + статус)
+- `event` — доменное событие записи
+- `heartbeat` — ping/pong для проверки соединения
+- `error` — ошибка транспорта
+
+**Каналы:**
+- `system` — служебные сообщения
+- `recording` — события записи (started, stopped, paused, error)
+- `api` — статус API сервера
+- `metrics` — метрики и счётчики
+
+**Heartbeat:**
+- Сервер отправляет `ping` каждые 15 секунд
+- Клиент должен ответить `pong` в течение 45 секунд
+- При отсутствии ответа соединение закрывается
+
 ## Версионирование
 
 Актуальный контракт:

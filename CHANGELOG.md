@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+- **WebSocket Transport** (этап 1-2): Real-time транспорт для событий записи
+  - Endpoint `/ws` для WebSocket подключений
+  - Протокол с каналами: `recording`, `system`, `api`, `metrics`
+  - Аутентификация через `X-API-Key` или query-параметр `token`
+  - Heartbeat (ping/pong) с таймаутом 45 секунд
+  - Начальный snapshot при подключении
+  - Зависимости: `flask-sock`, `simple-websocket`
+
+### Fixed
+- **FFmpeg process leak**: При `BrokenPipeError` процесс теперь корректно
+  завершается через `_terminate_process_safely()`, файл помечается как
+  повреждённый.
+- **Silent fallback при ненайденном окне**: `CaptureArea.from_window()` 
+  теперь принимает параметр `raise_if_not_found`. API/scheduler пути
+  используют строгий режим с ошибкой при ненайденном окне.
+
 ### Changed
 - Усилен coverage gate в CI:
   `coverage` job теперь использует `--cov-fail-under=60` и
