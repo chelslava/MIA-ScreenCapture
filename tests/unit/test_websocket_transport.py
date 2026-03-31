@@ -3,7 +3,8 @@ Unit-тесты для WebSocket транспорта.
 """
 
 import json
-from unittest import mock
+from unittest.mock import MagicMock
+
 from api.websocket_transport import (
     Channel,
     ErrorCode,
@@ -139,7 +140,7 @@ class TestWebSocketTransport:
 
     def test_transport_initialization(self) -> None:
         """Проверка инициализации транспорта."""
-        mock_manager = mock.MagicMock()
+        mock_manager = MagicMock()
         transport = WebSocketTransport(mock_manager)
 
         assert transport._ws_manager == mock_manager
@@ -147,7 +148,7 @@ class TestWebSocketTransport:
 
     def test_authenticate_with_valid_token(self) -> None:
         """Аутентификация с валидным токеном."""
-        mock_manager = mock.MagicMock()
+        mock_manager = MagicMock()
 
         def auth_check(token: str) -> bool:
             return token == "valid-token"
@@ -159,14 +160,14 @@ class TestWebSocketTransport:
 
     def test_authenticate_without_token(self) -> None:
         """Аутентификация без токена."""
-        mock_manager = mock.MagicMock()
+        mock_manager = MagicMock()
         transport = WebSocketTransport(mock_manager)
 
         assert transport.authenticate(None) is False
 
     def test_register_client(self) -> None:
         """Регистрация клиента."""
-        mock_manager = mock.MagicMock()
+        mock_manager = MagicMock()
         transport = WebSocketTransport(mock_manager)
 
         client = transport.register_client("client-1")
@@ -176,7 +177,7 @@ class TestWebSocketTransport:
 
     def test_unregister_client(self) -> None:
         """Отключение клиента."""
-        mock_manager = mock.MagicMock()
+        mock_manager = MagicMock()
         transport = WebSocketTransport(mock_manager)
 
         transport.register_client("client-1")
@@ -186,7 +187,7 @@ class TestWebSocketTransport:
 
     def test_get_initial_messages(self) -> None:
         """Получение начальных сообщений."""
-        mock_manager = mock.MagicMock()
+        mock_manager = MagicMock()
         mock_manager.get_recent_events.return_value = []
         mock_manager.get_stats.return_value = {"buffered_events": 0}
 
@@ -202,7 +203,7 @@ class TestWebSocketTransport:
 
     def test_start_stop(self) -> None:
         """Запуск и остановка транспорта."""
-        mock_manager = mock.MagicMock()
+        mock_manager = MagicMock()
         transport = WebSocketTransport(mock_manager)
 
         transport.start()
