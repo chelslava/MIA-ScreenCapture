@@ -305,9 +305,9 @@ class TestWebSocketHeartbeat:
             subscriptions=[Channel.RECORDING],
         )
 
-        from api.websocket_transport import HEARTBEAT_TIMEOUT_SECONDS
-
         from datetime import datetime, timedelta
+
+        from api.websocket_transport import HEARTBEAT_TIMEOUT_SECONDS
 
         ws_client = ws_transport._clients.get(client.client_id)
         if ws_client:
