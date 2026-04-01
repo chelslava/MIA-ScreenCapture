@@ -11,7 +11,6 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,8 +19,6 @@ from api.websocket_transport import (
     MessageType,
     WebSocketMessage,
     WebSocketTransport,
-    create_hello_message,
-    create_snapshot_message,
 )
 
 

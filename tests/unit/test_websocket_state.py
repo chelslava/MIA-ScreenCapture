@@ -168,7 +168,6 @@ class TestWebSocketState:
         import threading
 
         state = WebSocketState()
-        errors: list[str] = []
 
         def set_connecting() -> None:
             for _ in range(100):
