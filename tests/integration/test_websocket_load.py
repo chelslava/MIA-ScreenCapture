@@ -306,6 +306,7 @@ class TestWebSocketHeartbeat:
         )
 
         from api.websocket_transport import HEARTBEAT_TIMEOUT_SECONDS
+
         from datetime import datetime, timedelta
 
         ws_client = ws_transport._clients.get(client.client_id)
