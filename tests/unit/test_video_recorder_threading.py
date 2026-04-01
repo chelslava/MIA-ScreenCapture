@@ -76,15 +76,12 @@ class TestShutdownEvent:
         """Тест очистки shutdown event при старте."""
         recorder = VideoRecorder()
         recorder._shutdown_event.set()
-
-        with patch.object(
-            recorder, "_create_ffmpeg_writer", return_value=MagicMock()
-        ):
-            with patch(
-                "recorder.video_recorder.get_platform", return_value="windows"
-            ):
-                with patch.object(recorder, "_capture_area", None):
-                    pass
+        # _shutdown_event.clear() вызывается в start() на строке 510
+        # Проверяем что флаг установлен до старта
+        assert recorder._shutdown_event.is_set()
+        # После создания нового recorder событие должно быть сброшено
+        recorder2 = VideoRecorder()
+        assert not recorder2._shutdown_event.is_set()
 
     def test_shutdown_event_set_on_stop(self) -> None:
         """Тест установки shutdown event при остановке."""
@@ -118,17 +115,29 @@ class TestWindowsCaptureSessionTimeout:
 
     def test_timeout_on_init(self) -> None:
         """Тест timeout при инициализации."""
+        # Уменьшаем timeout для быстрого теста
         session = _WindowsCaptureSession()
+        session._INIT_TIMEOUT_SECONDS = 0.5
 
-        with patch(
-            "recorder.video_recorder._WindowsCaptureSession.start"
-        ) as mock_start:
+        # Мокаем windows_capture модуль
+        mock_capture = MagicMock()
+        mock_control = MagicMock()
 
-            def slow_init(capture_area):
-                time.sleep(15)
+        # event декоратор должен вернуть функцию как есть
+        def mock_event_decorator(func):
+            return func
+        mock_capture.event = mock_event_decorator
 
-            mock_start.side_effect = slow_init
+        # start_free_threaded блокирует навсегда (не вызывает _init_complete.set())
+        mock_capture.start_free_threaded.return_value = mock_control
 
+        mock_windows_capture = MagicMock()
+        mock_windows_capture.WindowsCapture.return_value = mock_capture
+        mock_windows_capture.InternalCaptureControl = MagicMock
+
+        with patch.dict(
+            "sys.modules", {"windows_capture": mock_windows_capture}
+        ):
             capture_area = CaptureArea(type="full", width=1920, height=1080)
 
             with pytest.raises(TimeoutError):

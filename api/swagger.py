@@ -14,7 +14,7 @@ SWAGGER_SPEC: dict[str, Any] = {
     "info": {
         "title": "MIA-ScreenCapture API",
         "description": "REST API для управления записью экрана",
-        "version": "1.4.5",
+        "version": "1.4.6.dev0",
         "contact": {
             "name": "MIA Development Team",
         },
@@ -200,7 +200,7 @@ SWAGGER_SPEC: dict[str, Any] = {
                     },
                     "version": {
                         "type": "string",
-                        "example": "1.4.5",
+                        "example": "1.4.6.dev0",
                     },
                     "uptime_seconds": {
                         "type": "number",
@@ -991,7 +991,7 @@ SWAGGER_SPEC: dict[str, Any] = {
                                     "value": {
                                         "name": "Разовая запись",
                                         "trigger": "once",
-                                        "datetime": "2026-04-01T10:00:00+03:00",
+                                        "datetime": "2026-04-02T10:00:00+03:00",
                                         "params": {},
                                     },
                                 },

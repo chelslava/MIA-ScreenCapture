@@ -42,7 +42,7 @@ def _load_version_from_readme() -> str:
     """Возвращает версию из заголовка README."""
     readme_text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
     match = re.search(
-        r"^#\s+MIA-ScreenCapture\s+v(\d+\.\d+\.\d+)\s*$",
+        r"^#\s+MIA-ScreenCapture\s+v(\d+\.\d+\.\d+(?:\.\w+)?)",
         readme_text,
         re.MULTILINE,
     )
@@ -74,7 +74,7 @@ class TestSwaggerSpec:
         assert "description" in info
 
         assert "MIA-ScreenCapture" in info["title"]
-        assert info["version"] == "1.4.5"
+        assert info["version"] == _load_version_from_pyproject()
 
     def test_swagger_spec_servers(self) -> None:
         """Проверка списка серверов."""
