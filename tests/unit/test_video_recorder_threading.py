@@ -125,6 +125,7 @@ class TestWindowsCaptureSessionTimeout:
         # event декоратор должен вернуть функцию как есть
         def mock_event_decorator(func):
             return func
+
         mock_capture.event = mock_event_decorator
 
         # start_free_threaded блокирует навсегда (не вызывает _init_complete.set())
