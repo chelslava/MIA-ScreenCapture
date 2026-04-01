@@ -11,7 +11,6 @@ import json
 import random
 import threading
 import time
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal

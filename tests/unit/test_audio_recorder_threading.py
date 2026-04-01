@@ -9,8 +9,6 @@
 import threading
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from recorder.audio_recorder import AudioRecorder, AudioState
 
 

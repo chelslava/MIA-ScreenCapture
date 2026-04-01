@@ -5,8 +5,6 @@ Unit-тесты для контроллера WebSocket-клиента.
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from gui.controllers.websocket_controller import (
     RECONNECT_INITIAL_DELAY_MS,
     RECONNECT_JITTER,

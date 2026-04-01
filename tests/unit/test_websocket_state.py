@@ -4,8 +4,6 @@ Unit-тесты для модели состояния WebSocket-клиента.
 
 from datetime import datetime
 
-import pytest
-
 from gui.models.websocket_state import (
     ConnectionStatus,
     ReceivedEvent,
