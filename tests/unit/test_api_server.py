@@ -157,8 +157,9 @@ class TestAPIServerStartStop:
         """Проверка установки флага running при запуске."""
         server = APIServer(host="127.0.0.1", port=5002)
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             result = server.start()
 
@@ -169,8 +170,9 @@ class TestAPIServerStartStop:
         """Проверка что повторный запуск возвращает False."""
         server = APIServer(host="127.0.0.1", port=5003)
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             server.start()
             result = server.start()
@@ -196,8 +198,9 @@ class TestAPIServerStartStop:
         """Проверка очистки флага running при остановке."""
         server = APIServer(host="127.0.0.1", port=5004)
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             server.start()
 
@@ -254,8 +257,9 @@ class TestAPIServerStartStop:
 
         assert server.is_running() is False
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             server.start()
 
@@ -269,8 +273,9 @@ class TestAPIServerStartStop:
         """Проверка создания потока при запуске."""
         server = APIServer(host="127.0.0.1", port=5006)
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             server.start()
 
@@ -282,16 +287,18 @@ class TestAPIServerStartStop:
         server = APIServer(host="127.0.0.1", port=5010)
         first_store = server._idempotency
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             assert server.start() is True
 
         server.stop()
         assert first_store.is_running() is False
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             assert server.start() is True
 
@@ -304,16 +311,18 @@ class TestAPIServerStartStop:
         server = APIServer(host="127.0.0.1", port=5011)
         first_store = server._operations
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             assert server.start() is True
 
         server.stop()
         assert first_store.is_running() is False
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             assert server.start() is True
 
@@ -325,8 +334,9 @@ class TestAPIServerStartStop:
         """Проверка что поток является daemon."""
         server = APIServer(host="127.0.0.1", port=5007)
 
-        with patch.object(server, "_run_server"), patch.object(
-            server, "_validate_bind_address"
+        with (
+            patch.object(server, "_run_server"),
+            patch.object(server, "_validate_bind_address"),
         ):
             server.start()
 

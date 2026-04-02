@@ -133,8 +133,9 @@ class TestAudioRecorder:
         output_path = tmp_path / "test_audio.wav"
 
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"), patch.object(
-                recorder, "_writer_loop"
+            with (
+                patch.object(recorder, "_record_loop"),
+                patch.object(recorder, "_writer_loop"),
             ):
                 result = recorder.start(output_path)
 
@@ -149,8 +150,9 @@ class TestAudioRecorder:
         output_path = tmp_path / "subdir" / "test_audio.wav"
 
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"), patch.object(
-                recorder, "_writer_loop"
+            with (
+                patch.object(recorder, "_record_loop"),
+                patch.object(recorder, "_writer_loop"),
             ):
                 result = recorder.start(output_path)
 
@@ -320,8 +322,9 @@ class TestAudioRecorder:
         output_path = tmp_path / "test_audio.wav"
 
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"), patch.object(
-                recorder, "_writer_loop"
+            with (
+                patch.object(recorder, "_record_loop"),
+                patch.object(recorder, "_writer_loop"),
             ):
                 result = recorder.start(output_path, device_index=2)
 
@@ -335,8 +338,9 @@ class TestAudioRecorder:
         output_path = tmp_path / "test_audio.wav"
 
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"), patch.object(
-                recorder, "_writer_loop"
+            with (
+                patch.object(recorder, "_record_loop"),
+                patch.object(recorder, "_writer_loop"),
             ):
                 result = recorder.start(output_path, duration=10.0)
 
@@ -379,8 +383,9 @@ class TestAudioRecorderIntegration:
 
         # Мокаем все внешние зависимости
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"), patch.object(
-                recorder, "_writer_loop"
+            with (
+                patch.object(recorder, "_record_loop"),
+                patch.object(recorder, "_writer_loop"),
             ):
                 # Запуск
                 assert recorder.start(output_path) is True

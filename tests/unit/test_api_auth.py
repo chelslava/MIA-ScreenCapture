@@ -319,7 +319,9 @@ class TestRequireApiKey:
             durations: list[float] = []
             for _ in range(samples):
                 start = time.perf_counter()
-                client.get("/protected", headers={API_KEY_HEADER: different_key})
+                client.get(
+                    "/protected", headers={API_KEY_HEADER: different_key}
+                )
                 durations.append(time.perf_counter() - start)
             return durations
 
