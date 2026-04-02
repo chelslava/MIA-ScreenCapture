@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 
 from logger_config import get_module_logger
-from recorder.utils import get_ffmpeg_path
+from recorder.utils import get_ffmpeg_path, get_subprocess_creationflags
 
 logger = get_module_logger(__name__)
 
@@ -265,14 +265,18 @@ class FFmpegVideoWriter:
 
             logger.info(f"Запуск FFmpeg: {' '.join(cmd)}")
 
-            self._process = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                text=False,
-                bufsize=0,
-            )
+            creationflags = get_subprocess_creationflags()
+            popen_kwargs: dict[str, Any] = {
+                "stdin": subprocess.PIPE,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.PIPE,
+                "text": False,
+                "bufsize": 0,
+            }
+            if creationflags:
+                popen_kwargs["creationflags"] = creationflags
+
+            self._process = subprocess.Popen(cmd, **popen_kwargs)
 
             self._stderr_tail.clear()
             self._start_stderr_reader(self._process.stderr)

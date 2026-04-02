@@ -16,7 +16,12 @@ from pathlib import Path
 from typing import Any
 
 from logger_config import get_module_logger
-from recorder.utils import check_ffmpeg, get_ffmpeg_path, get_ffprobe_path
+from recorder.utils import (
+    check_ffmpeg,
+    get_ffmpeg_path,
+    get_ffprobe_path,
+    get_subprocess_creationflags,
+)
 
 logger = get_module_logger(__name__)
 _FFMPEG_ERROR_TAIL_BYTES = 16 * 1024
@@ -275,6 +280,7 @@ class Encoder:
         ограниченный хвост.
         """
         stderr_temp_path: Path | None = None
+        creationflags = get_subprocess_creationflags()
         try:
             with tempfile.NamedTemporaryFile(
                 prefix="ffmpeg_stderr_",
@@ -282,12 +288,21 @@ class Encoder:
                 delete=False,
             ) as stderr_file:
                 stderr_temp_path = Path(stderr_file.name)
-                process = subprocess.run(
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=stderr_file,
-                    timeout=timeout,
-                )
+                if creationflags:
+                    process = subprocess.run(
+                        cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=stderr_file,
+                        timeout=timeout,
+                        creationflags=creationflags,
+                    )
+                else:
+                    process = subprocess.run(
+                        cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=stderr_file,
+                        timeout=timeout,
+                    )
             stderr_tail = None
             if process.returncode != 0 and stderr_temp_path is not None:
                 stderr_tail = self._read_file_tail(
@@ -342,9 +357,19 @@ class Encoder:
 
             import json
 
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30
-            )
+            creationflags = get_subprocess_creationflags()
+            if creationflags:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    creationflags=creationflags,
+                )
+            else:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=30
+                )
 
             if result.returncode == 0:
                 return json.loads(result.stdout)  # type: ignore[no-any-return]
@@ -405,9 +430,19 @@ class Encoder:
                 str(audio_path),
             ]
 
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=600
-            )
+            creationflags = get_subprocess_creationflags()
+            if creationflags:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                    creationflags=creationflags,
+                )
+            else:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=600
+                )
 
             if result.returncode != 0:
                 return False, result.stderr
@@ -451,9 +486,19 @@ class Encoder:
                 str(output_path),
             ]
 
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30
-            )
+            creationflags = get_subprocess_creationflags()
+            if creationflags:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    creationflags=creationflags,
+                )
+            else:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=30
+                )
 
             if result.returncode != 0:
                 return False, result.stderr

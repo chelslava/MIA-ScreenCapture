@@ -630,8 +630,8 @@ class TestEncoderProcessCleanup:
                 return open(stderr_path, "w+b")
             return real_named_temporary_file(*args, **kwargs)
 
-        def fake_run(cmd, stdout, stderr, timeout):
-            _ = cmd, stdout, timeout
+        def fake_run(cmd, stdout, stderr, timeout, **kwargs):
+            _ = cmd, stdout, timeout, kwargs
             stderr.write(b"line 1\nline 2\n")
             stderr.flush()
             return MagicMock(returncode=1, stderr="")
@@ -662,8 +662,8 @@ class TestEncoderProcessCleanup:
                 return open(stderr_path, "w+b")
             return real_named_temporary_file(*args, **kwargs)
 
-        def fake_run(cmd, stdout, stderr, timeout):
-            _ = cmd, stdout, stderr, timeout
+        def fake_run(cmd, stdout, stderr, timeout, **kwargs):
+            _ = cmd, stdout, stderr, timeout, kwargs
             return MagicMock(returncode=1, stderr="  process error  ")
 
         with (

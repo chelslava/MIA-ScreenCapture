@@ -18,6 +18,13 @@ from logger_config import get_module_logger
 logger = get_module_logger(__name__)
 
 
+def get_subprocess_creationflags() -> int:
+    """Возвращает флаги для скрытия консоли на Windows."""
+    if os.name != "nt":
+        return 0
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 def get_platform() -> str:
     """
     Получение идентификатора текущей платформы.
@@ -48,12 +55,22 @@ def check_ffmpeg() -> tuple[bool, str | None]:
         return False, None
 
     try:
-        result = subprocess.run(
-            [ffmpeg_path, "-version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+        creationflags = get_subprocess_creationflags()
+        if creationflags:
+            result = subprocess.run(
+                [ffmpeg_path, "-version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=creationflags,
+            )
+        else:
+            result = subprocess.run(
+                [ffmpeg_path, "-version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
         if result.returncode == 0:
             # Извлечение версии из первой строки
             first_line = result.stdout.split("\n")[0]

@@ -5,6 +5,7 @@
 Проверяет функциональность recorder/utils.py.
 """
 
+import os
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -69,12 +70,16 @@ class TestCheckFFmpeg:
 
         assert available is True
         assert version == "5.0"
-        mock_run.assert_called_once_with(
-            [r"C:\Tools\ffmpeg\bin\ffmpeg.exe", "-version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+        mock_run.assert_called_once()
+        args, kwargs = mock_run.call_args
+        assert args[0] == [r"C:\Tools\ffmpeg\bin\ffmpeg.exe", "-version"]
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
+        assert kwargs["timeout"] == 10
+        if os.name == "nt":
+            assert kwargs["creationflags"] == subprocess.CREATE_NO_WINDOW
+        else:
+            assert "creationflags" not in kwargs
 
     @patch("recorder.utils.get_ffmpeg_path")
     @patch("subprocess.run")
