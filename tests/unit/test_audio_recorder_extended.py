@@ -216,7 +216,9 @@ class TestAudioRecorderStartStop:
 
         with patch("recorder.audio_recorder.get_audio_devices"):
             with patch.object(AudioRecorder, "_init_audio"):
-                with patch.object(AudioRecorder, "_record_loop"):
+                with patch.object(AudioRecorder, "_record_loop"), patch.object(
+                    AudioRecorder, "_writer_loop"
+                ):
                     recorder = AudioRecorder()
                     result = recorder.start(output_file)
 
@@ -241,7 +243,9 @@ class TestAudioRecorderStartStop:
 
         with patch("recorder.audio_recorder.get_audio_devices"):
             with patch.object(AudioRecorder, "_init_audio"):
-                with patch.object(AudioRecorder, "_record_loop"):
+                with patch.object(AudioRecorder, "_record_loop"), patch.object(
+                    AudioRecorder, "_writer_loop"
+                ):
                     recorder = AudioRecorder()
                     result = recorder.start(output_file, device_index=0)
 
@@ -254,7 +258,9 @@ class TestAudioRecorderStartStop:
 
         with patch("recorder.audio_recorder.get_audio_devices"):
             with patch.object(AudioRecorder, "_init_audio"):
-                with patch.object(AudioRecorder, "_record_loop"):
+                with patch.object(AudioRecorder, "_record_loop"), patch.object(
+                    AudioRecorder, "_writer_loop"
+                ):
                     recorder = AudioRecorder()
                     result = recorder.start(output_file, duration=60.0)
 
@@ -532,7 +538,9 @@ class TestAudioRecorderNegative:
 
         with patch("recorder.audio_recorder.get_audio_devices"):
             with patch.object(AudioRecorder, "_init_audio"):
-                with patch.object(AudioRecorder, "_record_loop"):
+                with patch.object(AudioRecorder, "_record_loop"), patch.object(
+                    AudioRecorder, "_writer_loop"
+                ):
                     recorder = AudioRecorder()
                     result = recorder.start(output_file)
 

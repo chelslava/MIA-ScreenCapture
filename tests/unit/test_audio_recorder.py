@@ -133,7 +133,9 @@ class TestAudioRecorder:
         output_path = tmp_path / "test_audio.wav"
 
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"):
+            with patch.object(recorder, "_record_loop"), patch.object(
+                recorder, "_writer_loop"
+            ):
                 result = recorder.start(output_path)
 
         assert result is True
@@ -147,7 +149,9 @@ class TestAudioRecorder:
         output_path = tmp_path / "subdir" / "test_audio.wav"
 
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"):
+            with patch.object(recorder, "_record_loop"), patch.object(
+                recorder, "_writer_loop"
+            ):
                 result = recorder.start(output_path)
 
         assert result is True
@@ -316,7 +320,9 @@ class TestAudioRecorder:
         output_path = tmp_path / "test_audio.wav"
 
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"):
+            with patch.object(recorder, "_record_loop"), patch.object(
+                recorder, "_writer_loop"
+            ):
                 result = recorder.start(output_path, device_index=2)
 
         assert result is True
@@ -329,7 +335,9 @@ class TestAudioRecorder:
         output_path = tmp_path / "test_audio.wav"
 
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"):
+            with patch.object(recorder, "_record_loop"), patch.object(
+                recorder, "_writer_loop"
+            ):
                 result = recorder.start(output_path, duration=10.0)
 
         assert result is True
@@ -371,7 +379,9 @@ class TestAudioRecorderIntegration:
 
         # Мокаем все внешние зависимости
         with patch.object(recorder, "_init_audio"):
-            with patch.object(recorder, "_record_loop"):
+            with patch.object(recorder, "_record_loop"), patch.object(
+                recorder, "_writer_loop"
+            ):
                 # Запуск
                 assert recorder.start(output_path) is True
                 assert recorder.is_recording is True

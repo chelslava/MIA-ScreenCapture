@@ -991,7 +991,7 @@ SWAGGER_SPEC: dict[str, Any] = {
                                     "value": {
                                         "name": "Разовая запись",
                                         "trigger": "once",
-                                        "datetime": "2026-04-02T10:00:00+03:00",
+                                        "datetime": "2099-01-01T10:00:00+03:00",
                                         "params": {},
                                     },
                                 },

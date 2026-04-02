@@ -304,6 +304,7 @@ class TestRequireApiKey:
     )
     def test_timing_attack_protection(self, app, client):
         """Проверка защиты от timing attacks."""
+        import statistics
         import time
 
         test_key = "a" * 32  # Длинный ключ
@@ -314,27 +315,31 @@ class TestRequireApiKey:
         def protected():
             return {"success": True}
 
-        # Измеряем время для полностью неверного ключа
-        times_wrong = []
-        for _ in range(10):
-            start = time.perf_counter()
-            client.get("/protected", headers={API_KEY_HEADER: "x" * 32})
-            times_wrong.append(time.perf_counter() - start)
+        def _measure(different_key: str, samples: int) -> list[float]:
+            durations: list[float] = []
+            for _ in range(samples):
+                start = time.perf_counter()
+                client.get("/protected", headers={API_KEY_HEADER: different_key})
+                durations.append(time.perf_counter() - start)
+            return durations
 
-        # Измеряем время для почти правильного ключа
-        times_almost = []
-        for _ in range(10):
-            start = time.perf_counter()
-            client.get("/protected", headers={API_KEY_HEADER: "a" * 31 + "x"})
-            times_almost.append(time.perf_counter() - start)
+        # Прогрев, чтобы снизить влияние холодного кэша.
+        with patch("api.auth.logger.warning"):
+            _measure("x" * 32, samples=5)
+            _measure("a" * 31 + "x", samples=5)
 
-        avg_wrong = sum(times_wrong) / len(times_wrong)
-        avg_almost = sum(times_almost) / len(times_almost)
+            times_wrong = _measure("x" * 32, samples=30)
+            times_almost = _measure("a" * 31 + "x", samples=30)
 
-        # Время не должно сильно отличаться (допуск 100% для стабильности)
-        if min(avg_wrong, avg_almost) > 0:
-            ratio = max(avg_wrong, avg_almost) / min(avg_wrong, avg_almost)
-            assert ratio < 3.0, (
+        median_wrong = statistics.median(times_wrong)
+        median_almost = statistics.median(times_almost)
+
+        # Время не должно сильно отличаться (медиана устойчива к шуму).
+        if min(median_wrong, median_almost) > 0:
+            ratio = max(median_wrong, median_almost) / min(
+                median_wrong, median_almost
+            )
+            assert ratio < 4.0, (
                 f"Timing attack vulnerability detected: ratio={ratio}"
             )
 

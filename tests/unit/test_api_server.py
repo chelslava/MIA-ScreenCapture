@@ -157,7 +157,9 @@ class TestAPIServerStartStop:
         """Проверка установки флага running при запуске."""
         server = APIServer(host="127.0.0.1", port=5002)
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             result = server.start()
 
         assert result is True
@@ -167,7 +169,9 @@ class TestAPIServerStartStop:
         """Проверка что повторный запуск возвращает False."""
         server = APIServer(host="127.0.0.1", port=5003)
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             server.start()
             result = server.start()
 
@@ -192,7 +196,9 @@ class TestAPIServerStartStop:
         """Проверка очистки флага running при остановке."""
         server = APIServer(host="127.0.0.1", port=5004)
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             server.start()
 
         server.stop()
@@ -248,7 +254,9 @@ class TestAPIServerStartStop:
 
         assert server.is_running() is False
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             server.start()
 
         assert server.is_running() is True
@@ -261,7 +269,9 @@ class TestAPIServerStartStop:
         """Проверка создания потока при запуске."""
         server = APIServer(host="127.0.0.1", port=5006)
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             server.start()
 
         assert server._server_thread is not None
@@ -272,13 +282,17 @@ class TestAPIServerStartStop:
         server = APIServer(host="127.0.0.1", port=5010)
         first_store = server._idempotency
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             assert server.start() is True
 
         server.stop()
         assert first_store.is_running() is False
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             assert server.start() is True
 
         assert server._idempotency is not first_store
@@ -290,13 +304,17 @@ class TestAPIServerStartStop:
         server = APIServer(host="127.0.0.1", port=5011)
         first_store = server._operations
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             assert server.start() is True
 
         server.stop()
         assert first_store.is_running() is False
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             assert server.start() is True
 
         assert server._operations is not first_store
@@ -307,7 +325,9 @@ class TestAPIServerStartStop:
         """Проверка что поток является daemon."""
         server = APIServer(host="127.0.0.1", port=5007)
 
-        with patch.object(server, "_run_server"):
+        with patch.object(server, "_run_server"), patch.object(
+            server, "_validate_bind_address"
+        ):
             server.start()
 
         assert server._server_thread.daemon is True
