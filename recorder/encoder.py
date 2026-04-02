@@ -572,6 +572,8 @@ class RecordingEncoder:
         """
         if not self._temp_video or not self._temp_video.exists():
             return False, "Нет видеофайла для обработки"
+        if self._temp_dir is None:
+            return False, "Нет временной директории для обработки"
 
         try:
             temp_output_path = self._temp_dir / (
