@@ -141,10 +141,13 @@ class RecordingController:
                     return False, error_msg
             # Проверка свободного места на диске
             min_space_mb = 100
-            ok, free_bytes, error_msg = check_disk_space(
+            ok, free_bytes, disk_error_msg = check_disk_space(
                 output_path, min_space_mb=min_space_mb
             )
             if not ok:
+                error_msg = (
+                    disk_error_msg or "Недостаточно места на диске для записи."
+                )
                 logger.error(error_msg)
                 return False, error_msg
 
