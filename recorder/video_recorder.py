@@ -275,7 +275,7 @@ class _WindowsCaptureSession:
         with self._lock:
             if self._last_frame is None:
                 return None
-            frame = self._last_frame.copy()
+            frame = self._last_frame
             self._frame_event.clear()
             return frame
 

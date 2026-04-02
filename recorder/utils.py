@@ -588,7 +588,10 @@ def get_available_disk_space(path: Path) -> int:
     Returns:
         Количество свободных байт на диске
     """
-    if path.is_file():
+    # Если путь указывает на файл (по расширению), проверяем родителя.
+    if path.suffix:
+        check_path = path.parent
+    elif path.is_file():
         check_path = path.parent
     else:
         check_path = path

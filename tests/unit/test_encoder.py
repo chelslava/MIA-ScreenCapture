@@ -720,6 +720,11 @@ class TestRecordingEncoder:
                 "recorder.encoder.tempfile.mkdtemp",
                 return_value=str(temp_dir),
             ),
+            patch.object(
+                RecordingEncoder,
+                "_move_final_output",
+                return_value=(True, None),
+            ) as mock_move,
         ):
             recording_encoder = RecordingEncoder(output_path)
             temp_video, temp_audio = recording_encoder.setup()
@@ -732,10 +737,11 @@ class TestRecordingEncoder:
         mock_encoder.merge_video_audio.assert_called_once_with(
             temp_video,
             temp_audio,
-            output_path,
+            temp_dir / "final_temp.mp4",
             keep_originals=False,
             progress_callback=None,
         )
+        mock_move.assert_called_once_with(temp_dir / "final_temp.mp4")
         assert not temp_dir.exists()
         assert recording_encoder._temp_dir is None
         assert recording_encoder._temp_video is None
@@ -757,6 +763,11 @@ class TestRecordingEncoder:
                 "recorder.encoder.tempfile.mkdtemp",
                 return_value=str(temp_dir),
             ),
+            patch.object(
+                RecordingEncoder,
+                "_move_final_output",
+                return_value=(True, None),
+            ) as mock_move,
         ):
             recording_encoder = RecordingEncoder(output_path)
             temp_video, _ = recording_encoder.setup()
@@ -767,9 +778,10 @@ class TestRecordingEncoder:
         assert result == (True, None)
         mock_encoder.encode_video.assert_called_once_with(
             temp_video,
-            output_path,
+            temp_dir / "final_temp.mp4",
             progress_callback=None,
         )
+        mock_move.assert_called_once_with(temp_dir / "final_temp.mp4")
         assert not temp_dir.exists()
 
     def test_cleanup_handles_rmtree_error(self, tmp_path: Path) -> None:

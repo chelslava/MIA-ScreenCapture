@@ -140,10 +140,10 @@ class TestFFmpegVideoWriterDiagnostics:
         assert popen_args[0][0] == r"C:\Tools\ffmpeg\bin\ffmpeg.exe"
         assert popen_kwargs["stderr"] == subprocess.PIPE
         assert popen_kwargs["stdout"] == subprocess.DEVNULL
-        assert popen_kwargs["text"] is True
-        assert popen_kwargs["encoding"] == "utf-8"
-        assert popen_kwargs["errors"] == "replace"
-        assert popen_kwargs["bufsize"] == 1
+        assert popen_kwargs["text"] is False
+        assert "encoding" not in popen_kwargs
+        assert "errors" not in popen_kwargs
+        assert popen_kwargs["bufsize"] == 0
 
     def test_open_fails_without_ffmpeg_path(
         self,

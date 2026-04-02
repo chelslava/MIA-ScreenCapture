@@ -111,6 +111,21 @@ class RecordingController:
             Кортеж (успех, сообщение об ошибке или None)
         """
         try:
+            if output_path.exists() and output_path.is_dir():
+                if output_path.suffix:
+                    try:
+                        output_path.rmdir()
+                        logger.warning(
+                            "Удалена ошибочно созданная директория: %s",
+                            output_path,
+                        )
+                    except OSError:
+                        return (
+                            False,
+                            "Путь вывода указывает на директорию с "
+                            "расширением файла. Удалите её вручную "
+                            "и повторите запись.",
+                        )
             # Проверка свободного места на диске
             min_space_mb = 100
             ok, free_bytes, error_msg = check_disk_space(
@@ -291,7 +306,8 @@ class RecordingController:
         if self._encoder:
             success, error = self._encoder.finalize(has_audio=has_audio)
             if success:
-                output_path = self._state.current_output
+                output_path = self._encoder.output_path
+                self._state.current_output = output_path
             else:
                 logger.error(f"Не удалось финализировать запись: {error}")
 

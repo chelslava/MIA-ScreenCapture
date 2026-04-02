@@ -270,10 +270,8 @@ class FFmpegVideoWriter:
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                bufsize=1,
+                text=False,
+                bufsize=0,
             )
 
             self._stderr_tail.clear()

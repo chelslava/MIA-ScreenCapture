@@ -529,12 +529,15 @@ class RecordingEncoder:
             return False, "Нет видеофайла для обработки"
 
         try:
+            temp_output_path = self._temp_dir / (
+                f"final_temp{self.output_path.suffix}"
+            )
             if has_audio and self._temp_audio and self._temp_audio.exists():
                 # Объединение видео и аудио
                 success, error = self.encoder.merge_video_audio(
                     self._temp_video,
                     self._temp_audio,
-                    self.output_path,
+                    temp_output_path,
                     keep_originals=False,
                     progress_callback=progress_callback,
                 )
@@ -542,11 +545,14 @@ class RecordingEncoder:
                 # Просто копирование видео в вывод
                 success, error = self.encoder.encode_video(
                     self._temp_video,
-                    self.output_path,
+                    temp_output_path,
                     progress_callback=progress_callback,
                 )
 
             if success:
+                moved, move_error = self._move_final_output(temp_output_path)
+                if not moved:
+                    return False, move_error
                 logger.info(f"Запись завершена: {self.output_path}")
 
             return success, error
@@ -567,6 +573,49 @@ class RecordingEncoder:
         self._temp_dir = None
         self._temp_video = None
         self._temp_audio = None
+
+    def _move_final_output(
+        self, temp_output_path: Path
+    ) -> tuple[bool, str | None]:
+        """Переносит финальный файл в целевую директорию.
+
+        Args:
+            temp_output_path: Путь к временному выходному файлу.
+
+        Returns:
+            Кортеж (успех, сообщение_об_ошибке или None)
+        """
+        try:
+            temp_output_path.replace(self.output_path)
+            return True, None
+        except PermissionError as e:
+            # Пытаемся копированием, если rename/replace запрещён политиками.
+            try:
+                shutil.copy2(temp_output_path, self.output_path)
+                temp_output_path.unlink(missing_ok=True)
+                return True, None
+            except Exception:
+                # Падение доступа к целевой папке — пробуем безопасный fallback.
+                fallback_dir = Path.home() / "Videos" / "Recordings"
+                try:
+                    fallback_dir.mkdir(parents=True, exist_ok=True)
+                    fallback_path = fallback_dir / self.output_path.name
+                    shutil.copy2(temp_output_path, fallback_path)
+                    temp_output_path.unlink(missing_ok=True)
+                    self.output_path = fallback_path
+                    logger.warning(
+                        "Файл сохранён в резервную директорию: %s",
+                        self.output_path,
+                    )
+                    return True, None
+                except Exception as fallback_error:
+                    return (
+                        False,
+                        f"Не удалось переместить файл: {e} "
+                        f"(fallback: {fallback_error})",
+                    )
+        except Exception as e:
+            return False, f"Не удалось переместить файл: {e}"
 
     def cancel(self) -> None:
         """Отмена записи и очистка."""

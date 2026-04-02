@@ -207,11 +207,16 @@ class SettingsController:
         Returns:
             Путь к выходному файлу
         """
+        filename = cast(str, self._state.get_output_filename())
         if self._state.output.output_path:
-            return Path(self._state.output.output_path)
+            output_path = Path(self._state.output.output_path)
+            if output_path.exists() and output_path.is_dir():
+                return output_path / filename
+            if output_path.suffix == "":
+                return output_path.with_suffix(f".{self._state.video.format}")
+            return output_path
 
         # Генерация пути по умолчанию
-        filename = cast(str, self._state.get_output_filename())
         default_path = self._state.output.default_path
         if default_path:
             return Path(default_path) / filename

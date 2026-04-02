@@ -1,4 +1,4 @@
-# MIA-ScreenCapture v1.4.6.dev0
+# MIA-ScreenCapture v1.4.6
 
 Профессиональная программа для записи видео с экрана с графическим интерфейсом, REST API, WebSocket, планировщиком задач и поддержкой командной строки.
 
@@ -296,7 +296,7 @@ API сервер запускается по адресу `http://127.0.0.1:5000
 {
   "status": "ok",
   "timestamp": "2026-03-27T18:12:34.567890+00:00",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "uptime_seconds": 123.456,
   "websocket": {
     "transport_ready": false
