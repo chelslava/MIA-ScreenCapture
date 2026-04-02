@@ -217,6 +217,37 @@ class RecordingService:
         )
         return normalized
 
+    def _validate_rect_coords(
+        self, rect: list[int] | tuple[int, ...]
+    ) -> tuple[int, int, int, int]:
+        """Валидирует координаты области захвата.
+
+        Args:
+            rect: Список или кортеж из 4 координат [x1, y1, x2, y2].
+
+        Returns:
+            Кортеж (x1, y1, x2, y2).
+
+        Raises:
+            ValueError: Если координаты некорректны.
+        """
+        if len(rect) != 4:
+            raise ValueError(
+                f"rect должен содержать 4 координаты [x1, y1, x2, y2], "
+                f"получено {len(rect)}"
+            )
+        x1, y1, x2, y2 = int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3])
+        if x2 <= x1:
+            raise ValueError(f"x2 должен быть больше x1: x1={x1}, x2={x2}")
+        if y2 <= y1:
+            raise ValueError(f"y2 должен быть больше y1: y1={y1}, y2={y2}")
+        if any(c < 0 for c in (x1, y1, x2, y2)):
+            raise ValueError(
+                f"Координаты не могут быть отрицательными: "
+                f"[{x1}, {y1}, {x2}, {y2}]"
+            )
+        return (x1, y1, x2, y2)
+
     def _build_capture_settings(
         self, params: dict[str, Any]
     ) -> CaptureRequest:
@@ -231,14 +262,13 @@ class RecordingService:
         rect_value = params.get("rect")
         rect_coords: tuple[int, int, int, int]
         if isinstance(rect_value, (list, tuple)) and len(rect_value) >= 4:
-            rect_coords = (
-                int(rect_value[0]),
-                int(rect_value[1]),
-                int(rect_value[2]),
-                int(rect_value[3]),
+            rect_coords = self._validate_rect_coords(rect_value)
+        elif area == "rect":
+            raise ValueError(
+                "Для area='rect' необходимо указать корректные rect_coords "
+                "в формате [x1, y1, x2, y2]"
             )
         else:
-            # fallback на full-hd, если координаты не переданы
             rect_coords = (0, 0, 1920, 1080)
 
         return CaptureRequest(

@@ -216,3 +216,78 @@ class TestRecordingService:
             )
 
         assert str(path).endswith("session_01.mkv")
+
+
+class TestRectCoordsValidation:
+    """Тесты валидации координат области захвата."""
+
+    def test_valid_rect_coords(self) -> None:
+        """Корректные координаты проходят валидацию."""
+        service = RecordingService(backend=FakeBackend())
+        result = service._validate_rect_coords([100, 200, 500, 600])
+        assert result == (100, 200, 500, 600)
+
+    def test_valid_rect_coords_tuple(self) -> None:
+        """Кортеж координат проходит валидацию."""
+        service = RecordingService(backend=FakeBackend())
+        result = service._validate_rect_coords((0, 0, 1920, 1080))
+        assert result == (0, 0, 1920, 1080)
+
+    def test_invalid_rect_coords_wrong_count(self) -> None:
+        """Ошибка при количестве координат != 4."""
+        service = RecordingService(backend=FakeBackend())
+        try:
+            service._validate_rect_coords([100, 200, 500])
+            assert False, "Должен быть выброшен ValueError"
+        except ValueError as e:
+            assert "4 координаты" in str(e)
+
+    def test_invalid_rect_coords_x2_le_x1(self) -> None:
+        """Ошибка при x2 <= x1."""
+        service = RecordingService(backend=FakeBackend())
+        try:
+            service._validate_rect_coords([500, 100, 100, 600])
+            assert False, "Должен быть выброшен ValueError"
+        except ValueError as e:
+            assert "x2 должен быть больше x1" in str(e)
+
+    def test_invalid_rect_coords_y2_le_y1(self) -> None:
+        """Ошибка при y2 <= y1."""
+        service = RecordingService(backend=FakeBackend())
+        try:
+            service._validate_rect_coords([100, 600, 500, 100])
+            assert False, "Должен быть выброшен ValueError"
+        except ValueError as e:
+            assert "y2 должен быть больше y1" in str(e)
+
+    def test_invalid_rect_coords_negative(self) -> None:
+        """Ошибка при отрицательных координатах."""
+        service = RecordingService(backend=FakeBackend())
+        try:
+            service._validate_rect_coords([-100, 0, 500, 600])
+            assert False, "Должен быть выброшен ValueError"
+        except ValueError as e:
+            assert "отрицательными" in str(e)
+
+    def test_build_capture_settings_rect_without_coords(self) -> None:
+        """Ошибка при area=rect без координат."""
+        service = RecordingService(backend=FakeBackend())
+        try:
+            service._build_capture_settings({"area": "rect"})
+            assert False, "Должен быть выброшен ValueError"
+        except ValueError as e:
+            assert "rect_coords" in str(e)
+
+    def test_build_capture_settings_rect_with_valid_coords(self) -> None:
+        """Корректные координаты при area=rect."""
+        service = RecordingService(backend=FakeBackend())
+        result = service._build_capture_settings(
+            {"area": "rect", "rect": [0, 0, 800, 600]}
+        )
+        assert result.rect_coords == (0, 0, 800, 600)
+
+    def test_build_capture_settings_full_without_coords(self) -> None:
+        """Fallback координаты при area=full без rect."""
+        service = RecordingService(backend=FakeBackend())
+        result = service._build_capture_settings({"area": "full"})
+        assert result.rect_coords == (0, 0, 1920, 1080)

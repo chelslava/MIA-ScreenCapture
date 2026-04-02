@@ -868,21 +868,35 @@ class VideoRecorderApp:
                 "bitrate": params.bitrate,
                 "duration": params.duration,
             }
+            task_id = getattr(params, "task_id", "unknown")
         else:
             param_dict = params
+            task_id = params.get("id", "unknown")
 
         logger.info(f"Выполнение запланированной задачи: {param_dict}")
 
-        # Запуск записи
-        if self._main_window:
-            self._run_on_gui_thread(
-                lambda: self._main_window.start_recording_with_params(
-                    param_dict
-                ),
-                timeout=20.0,
+        try:
+            if self._main_window:
+                self._run_on_gui_thread(
+                    lambda: self._main_window.start_recording_with_params(
+                        param_dict
+                    ),
+                    timeout=20.0,
+                )
+            else:
+                self._start_recording(param_dict)
+        except TimeoutError as e:
+            logger.error(
+                "Таймаут запуска записи из планировщика: task_id=%s, error=%s",
+                task_id,
+                e,
             )
-        else:
-            self._start_recording(param_dict)
+        except Exception as e:
+            logger.error(
+                "Ошибка запуска записи из планировщика: task_id=%s, error=%s",
+                task_id,
+                e,
+            )
 
     # Реализации обратных вызовов API
 
