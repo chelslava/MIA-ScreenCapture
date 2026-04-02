@@ -126,6 +126,19 @@ class RecordingController:
                             "расширением файла. Удалите её вручную "
                             "и повторите запись.",
                         )
+            target_dir = (
+                output_path.parent if output_path.suffix else output_path
+            )
+            if not target_dir.exists():
+                try:
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    logger.info(
+                        "Создана директория для записи: %s", target_dir
+                    )
+                except OSError as e:
+                    error_msg = f"Путь недоступен: {e}"
+                    logger.error(error_msg)
+                    return False, error_msg
             # Проверка свободного места на диске
             min_space_mb = 100
             ok, free_bytes, error_msg = check_disk_space(
