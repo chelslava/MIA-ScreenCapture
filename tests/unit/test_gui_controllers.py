@@ -224,7 +224,9 @@ class TestRecordingController:
         audio = AudioSettings()
         video = VideoSettings()
 
-        with patch("gui.controllers.recording_controller.time.monotonic") as mock_time:
+        with patch(
+            "gui.controllers.recording_controller.time.monotonic"
+        ) as mock_time:
             mock_time.side_effect = [
                 100.0,
                 100.5,
@@ -273,7 +275,9 @@ class TestRecordingController:
         audio = AudioSettings()
         video = VideoSettings()
 
-        with patch("gui.controllers.recording_controller.time.monotonic") as mock_time:
+        with patch(
+            "gui.controllers.recording_controller.time.monotonic"
+        ) as mock_time:
             mock_time.side_effect = [
                 100.0,
                 131.0,

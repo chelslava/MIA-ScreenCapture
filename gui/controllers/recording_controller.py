@@ -141,7 +141,9 @@ class RecordingController:
             return False, error_msg
 
         if ffmpeg_version:
-            logger.debug("Pre-start health-check FFmpeg OK: %s", ffmpeg_version)
+            logger.debug(
+                "Pre-start health-check FFmpeg OK: %s", ffmpeg_version
+            )
 
         try:
             if output_path.exists() and output_path.is_dir():
