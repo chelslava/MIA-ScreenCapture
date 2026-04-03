@@ -16,6 +16,7 @@ import pytest
 from core.recording_types import AudioMode, CaptureMode
 from gui.models.recording_state import (
     AudioSettings,
+    CaptureSettings,
     RecordingState,
     VideoSettings,
 )
@@ -51,6 +52,7 @@ def _build_window():
     window.recordings_list = MagicMock()
     window._recordings_filter_input = MagicMock()
     window._diagnostics_view = MagicMock()
+    window._recording_indicator = MagicMock()
     return window
 
 
@@ -746,9 +748,12 @@ class TestMainWindowMethods:
 
         call = window._recording_controller.start_recording.call_args.kwargs
         assert call["capture"].rect_coords == (0, 0, 1600, 900)
-        window._on_recording_started.assert_called_once_with(
-            Path("D:/capture.mp4")
+        called_output, called_capture = (
+            window._on_recording_started.call_args.args
         )
+        assert called_output == Path("D:/capture.mp4")
+        assert called_capture.capture_type == CaptureMode.FULL
+        assert called_capture.rect_coords == (0, 0, 1600, 900)
 
     def test_stop_recording_reports_missing_output(self) -> None:
         """Если backend не вернул путь, показывается ошибка."""
@@ -781,8 +786,12 @@ class TestMainWindowMethods:
         """UI обновляется при старте, паузе и возобновлении записи."""
         window = _build_window()
         output = Path("D:/capture.mp4")
+        capture = CaptureSettings(
+            capture_type=CaptureMode.RECT,
+            rect_coords=(10, 20, 100, 200),
+        )
 
-        window._on_recording_started(output)
+        window._on_recording_started(output, capture)
         window._on_recording_paused()
         window._on_recording_resumed()
 
@@ -795,6 +804,11 @@ class TestMainWindowMethods:
         window.recording_started.emit.assert_called_once_with(str(output))
         window.recording_paused.emit.assert_called_once()
         window.recording_resumed.emit.assert_called_once()
+        window._recording_indicator.show_for_capture.assert_called_once_with(
+            capture
+        )
+        window._recording_indicator.set_paused.assert_any_call(True)
+        window._recording_indicator.set_paused.assert_any_call(False)
 
     def test_on_recording_stopped_adds_recent_recording_for_existing_file(
         self, tmp_path: Path
@@ -813,6 +827,7 @@ class TestMainWindowMethods:
         )
         window._refresh_recent_recordings.assert_called_once()
         window.recording_stopped.emit.assert_called_once_with(str(output))
+        window._recording_indicator.hide_indicator.assert_called_once()
 
     def test_update_status_formats_elapsed_time(self) -> None:
         """Таймер статуса форматирует elapsed time во время записи."""

@@ -44,6 +44,7 @@ from gui.models.recording_state import (
 from gui.views.audio_view import AudioView
 from gui.views.capture_view import CaptureView
 from gui.views.output_view import OutputView
+from gui.views.recording_indicator import RecordingIndicatorOverlay
 from gui.views.video_view import VideoView
 from logger_config import get_module_logger
 from recorder.utils import check_ffmpeg, format_filesize, format_time
@@ -89,6 +90,7 @@ class MainWindow(QMainWindow):
             self._state, get_config()
         )
         self._ws_controller: WebSocketClientController | None = None
+        self._recording_indicator = RecordingIndicatorOverlay()
 
         # Таймер обновления статуса
         self._update_timer = QTimer()
@@ -483,7 +485,7 @@ class MainWindow(QMainWindow):
         )
 
         if success:
-            self._on_recording_started(output_path)
+            self._on_recording_started(output_path, capture)
         else:
             self._show_error(error_msg or "Не удалось запустить запись")
 
@@ -510,7 +512,11 @@ class MainWindow(QMainWindow):
 
     # === Обработчики событий записи ===
 
-    def _on_recording_started(self, output_path: Path) -> None:
+    def _on_recording_started(
+        self,
+        output_path: Path,
+        capture: CaptureSettings | None = None,
+    ) -> None:
         """Обработка запуска записи."""
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
@@ -519,6 +525,8 @@ class MainWindow(QMainWindow):
 
         self.status_label.setText("Запись")
         self.status_label.setStyleSheet("color: red; font-weight: bold;")
+        if capture is not None:
+            self._recording_indicator.show_for_capture(capture)
 
         self.recording_started.emit(str(output_path))
         logger.info(f"Запись запущена: {output_path}")
@@ -532,6 +540,7 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Готов")
         self.status_label.setStyleSheet("")
         self.time_label.setText("00:00")
+        self._recording_indicator.hide_indicator()
 
         # Добавление в список последних записей
         if output_path.exists():
@@ -547,6 +556,7 @@ class MainWindow(QMainWindow):
         self.pause_btn.setText("Продолжить")
         self.status_label.setText("Пауза")
         self.status_label.setStyleSheet("color: orange; font-weight: bold;")
+        self._recording_indicator.set_paused(True)
 
         self.recording_paused.emit()
 
@@ -555,6 +565,7 @@ class MainWindow(QMainWindow):
         self.pause_btn.setText("Пауза")
         self.status_label.setText("Запись")
         self.status_label.setStyleSheet("color: red; font-weight: bold;")
+        self._recording_indicator.set_paused(False)
 
         self.recording_resumed.emit()
 
@@ -1032,7 +1043,7 @@ class MainWindow(QMainWindow):
             )
 
             if success:
-                self._on_recording_started(output_path)
+                self._on_recording_started(output_path, capture)
                 return {
                     "success": True,
                     "output_path": str(output_path),
@@ -1054,24 +1065,24 @@ class MainWindow(QMainWindow):
     ) -> Path:
         """Преобразование output_path из API в конечный путь файла."""
         if requested_output_path is None:
-            return self._settings_controller.get_output_path()
+            return Path(str(self._settings_controller.get_output_path()))
 
         raw_path = str(requested_output_path).strip()
         if not raw_path:
-            return self._settings_controller.get_output_path()
+            return Path(str(self._settings_controller.get_output_path()))
 
         candidate = Path(raw_path)
         is_dir_hint = raw_path.endswith(("/", "\\"))
         if is_dir_hint or (candidate.exists() and candidate.is_dir()):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             extension = output_format.lstrip(".")
-            return candidate / f"recording_{timestamp}.{extension}"
+            return Path(candidate, f"recording_{timestamp}.{extension}")
 
         if candidate.suffix:
-            return candidate
+            return Path(str(candidate))
 
         extension = output_format.lstrip(".")
-        return candidate.with_suffix(f".{extension}")
+        return Path(str(candidate.with_suffix(f".{extension}")))
 
     def stop_recording(self) -> dict:
         """
