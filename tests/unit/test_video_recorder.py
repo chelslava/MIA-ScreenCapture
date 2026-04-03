@@ -735,6 +735,167 @@ class TestVideoRecorderErrorHandling:
         assert recorder.is_capture_lost is True
         assert recorder.state == RecordingState.IDLE
 
+    def test_capture_loop_reconnects_window_capture(self) -> None:
+        """Потеря window capture должна пытаться восстановиться."""
+        recorder = VideoRecorder(use_ffmpeg=False)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(
+            type="window",
+            width=32,
+            height=32,
+            window_title="Browser",
+        )
+        recorder._video_writer = MagicMock()
+
+        frame = np.zeros((32, 32, 3), dtype=np.uint8)
+
+        class LostSession:
+            """Сессия, которая сразу сообщает о потере захвата."""
+
+            is_capture_lost = True
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                raise AssertionError("read_frame вызываться не должен")
+
+            def stop(self) -> None:
+                return
+
+        class RecoveredSession:
+            """Сессия, которая отдаёт кадр после восстановления."""
+
+            def __init__(self) -> None:
+                self.is_capture_lost = False
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                recorder._shutdown_event.set()
+                return frame
+
+            def stop(self) -> None:
+                return
+
+        with (
+            patch(
+                "recorder.video_recorder._WindowsCaptureSession",
+                side_effect=[LostSession(), RecoveredSession()],
+            ),
+            patch(
+                "recorder.video_recorder.CaptureArea.from_window",
+                return_value=CaptureArea(
+                    type="window",
+                    width=32,
+                    height=32,
+                    window_title="Browser",
+                ),
+            ),
+        ):
+            recorder._capture_loop()
+
+        assert recorder._video_writer.write.call_count == 1
+        assert recorder.is_capture_lost is False
+        assert recorder.state == RecordingState.IDLE
+
+    def test_capture_loop_reports_error_when_window_reconnect_fails(
+        self,
+    ) -> None:
+        """После неудачного восстановления window capture приходит ошибка."""
+        recorder = VideoRecorder(use_ffmpeg=False)
+        error_callback = MagicMock()
+        recorder.set_callbacks(on_error=error_callback)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(
+            type="window",
+            width=32,
+            height=32,
+            window_title="Browser",
+        )
+
+        class LostSession:
+            """Сессия, которая сразу теряет захват."""
+
+            is_capture_lost = True
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                raise AssertionError("read_frame вызываться не должен")
+
+            def stop(self) -> None:
+                return
+
+        with (
+            patch(
+                "recorder.video_recorder._WindowsCaptureSession",
+                return_value=LostSession(),
+            ),
+            patch(
+                "recorder.video_recorder.CaptureArea.from_window",
+                side_effect=ValueError("window not found"),
+            ),
+            patch(
+                "recorder.video_recorder._WINDOW_CAPTURE_RECONNECT_TIMEOUT_SECONDS",
+                0.01,
+            ),
+            patch(
+                "recorder.video_recorder._WINDOW_CAPTURE_RECONNECT_POLL_SECONDS",
+                0.001,
+            ),
+        ):
+            recorder._capture_loop()
+
+        error_callback.assert_called_once()
+        assert "Захват потерян" in error_callback.call_args.args[0]
+        assert recorder.is_capture_lost is True
+        assert recorder.state == RecordingState.IDLE
+
+    def test_capture_loop_writes_last_frame_for_opencv_on_capture_loss(
+        self,
+    ) -> None:
+        """Последний кадр сохраняется и в OpenCV path при потере захвата."""
+        recorder = VideoRecorder(use_ffmpeg=False)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(type="full", width=16, height=16)
+        video_writer = MagicMock()
+        recorder._video_writer = video_writer
+        frame = np.zeros((16, 16, 3), dtype=np.uint8)
+
+        class LostAfterReadSession:
+            """Сессия, теряющая захват сразу после получения кадра."""
+
+            def __init__(self) -> None:
+                self.is_capture_lost = False
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                self.is_capture_lost = True
+                return frame
+
+            def stop(self) -> None:
+                return
+
+        with patch(
+            "recorder.video_recorder._WindowsCaptureSession",
+            return_value=LostAfterReadSession(),
+        ):
+            recorder._capture_loop()
+
+        video_writer.write.assert_called_once_with(frame)
+        video_writer.release.assert_called_once()
+        assert recorder._video_writer is None
+        assert recorder.is_capture_lost is True
+
     def test_stop_returns_false_when_cleanup_fails(
         self, recorder: VideoRecorder, tmp_path: Path
     ) -> None:
