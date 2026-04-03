@@ -1,8 +1,5 @@
 """
-Представление области захвата
-=============================
-
-Компонент UI для выбора области захвата экрана.
+Представление области захвата.
 """
 
 from PyQt6.QtCore import pyqtSignal
@@ -11,7 +8,6 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -21,10 +17,13 @@ from PyQt6.QtWidgets import (
 )
 
 from gui.models.recording_state import CaptureType
-from logger_config import get_module_logger
+from gui.views.area_selector import (
+    AreaSelectorDialog,
+    SelectionPreviewWidget,
+    describe_rect,
+    format_rect_coords,
+)
 from recorder.utils import get_available_windows, get_screen_size
-
-logger = get_module_logger(__name__)
 
 
 class CaptureView(QWidget):
@@ -32,24 +31,25 @@ class CaptureView(QWidget):
     Представление для выбора области захвата.
 
     Содержит:
-    - Радиокнопки для выбора типа области
-    - Селектор окон
-    - Поле ввода координат прямоугольника
+    - Радиокнопки для выбора типа области.
+    - Селектор окон.
+    - Графический выбор прямоугольной области.
     """
 
-    # Сигналы
     capture_type_changed = pyqtSignal(CaptureType)
     window_selected = pyqtSignal(str)
-    rect_selected = pyqtSignal(tuple)  # (x1, y1, x2, y2)
+    rect_selected = pyqtSignal(tuple)
 
     def __init__(self, parent: QWidget | None = None):
         """
         Инициализация представления.
 
         Args:
-            parent: Родительский виджет
+            parent: Родительский виджет.
         """
         super().__init__(parent)
+        self._rect_coords: tuple[int, int, int, int] | None = None
+        self._screen_size = get_screen_size()
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -60,7 +60,6 @@ class CaptureView(QWidget):
         group = QGroupBox("Область захвата")
         group_layout = QVBoxLayout(group)
 
-        # Радиокнопки
         self._button_group = QButtonGroup()
 
         self._full_screen_radio = QRadioButton("Весь экран")
@@ -72,7 +71,6 @@ class CaptureView(QWidget):
         self._button_group.addButton(self._window_radio, 1)
         group_layout.addWidget(self._window_radio)
 
-        # Селектор окон
         window_layout = QHBoxLayout()
         self._window_combo = QComboBox()
         self._window_combo.setMinimumWidth(200)
@@ -91,28 +89,33 @@ class CaptureView(QWidget):
         self._button_group.addButton(self._rect_radio, 2)
         group_layout.addWidget(self._rect_radio)
 
-        # Координаты прямоугольника
         rect_layout = QHBoxLayout()
         self._rect_edit = QLineEdit()
-        self._rect_edit.setPlaceholderText("X1, Y1, X2, Y2")
+        self._rect_edit.setPlaceholderText("Область не выбрана")
+        self._rect_edit.setReadOnly(True)
         self._rect_edit.setEnabled(False)
 
-        select_rect_btn = QPushButton("Выбрать")
-        select_rect_btn.setMaximumWidth(80)
-        select_rect_btn.clicked.connect(self._select_rectangle)
+        self._select_rect_btn = QPushButton("Выбрать")
+        self._select_rect_btn.setMaximumWidth(90)
+        self._select_rect_btn.clicked.connect(self._select_rectangle)
 
-        rect_layout.addWidget(QLabel("Координаты:"))
+        rect_layout.addWidget(QLabel("Область:"))
         rect_layout.addWidget(self._rect_edit)
-        rect_layout.addWidget(select_rect_btn)
+        rect_layout.addWidget(self._select_rect_btn)
         group_layout.addLayout(rect_layout)
 
-        # Подключение сигналов
+        self._rect_summary_label = QLabel()
+        self._rect_summary_label.setText("Область не выбрана")
+        group_layout.addWidget(self._rect_summary_label)
+
+        self._rect_preview = SelectionPreviewWidget()
+        self._rect_preview.set_screen_size(*self._screen_size)
+        group_layout.addWidget(self._rect_preview)
+
         self._button_group.buttonClicked.connect(self._on_button_clicked)
         self._window_combo.currentTextChanged.connect(self._on_window_changed)
 
-        # Начальное состояние
         self._update_enabled_state()
-
         layout.addWidget(group)
 
     def _refresh_windows(self) -> None:
@@ -124,27 +127,22 @@ class CaptureView(QWidget):
             self._window_combo.addItem(win["title"])
 
     def _select_rectangle(self) -> None:
-        """Открытие диалога для выбора прямоугольника."""
-        screen_width, screen_height = get_screen_size()
-
-        text, ok = QInputDialog.getText(
+        """Открыть overlay для графического выбора области."""
+        coords = AreaSelectorDialog.select_area(
             self,
-            "Выбор области",
-            "Введите координаты (x1, y1, x2, y2):",
-            QLineEdit.EchoMode.Normal,
-            f"0, 0, {screen_width}, {screen_height}",
+            initial_rect=self._rect_coords,
         )
 
-        if ok:
-            self._rect_edit.setText(text)
-            self._rect_radio.setChecked(True)
+        if coords is not None:
+            self.set_rect_coords(coords)
+            self.set_capture_type(CaptureType.RECT)
             self._on_button_clicked(self._rect_radio)
+            self.rect_selected.emit(coords)
 
     def _on_button_clicked(self, button: QRadioButton) -> None:
         """Обработка клика по радиокнопке."""
         self._update_enabled_state()
 
-        # Определение типа захвата
         if button == self._full_screen_radio:
             capture_type = CaptureType.FULL
         elif button == self._window_radio:
@@ -165,27 +163,28 @@ class CaptureView(QWidget):
 
         self._window_combo.setEnabled(is_window)
         self._rect_edit.setEnabled(is_rect)
+        self._rect_summary_label.setEnabled(is_rect)
+        self._rect_preview.setEnabled(is_rect)
 
     def get_capture_type(self) -> CaptureType:
         """
         Получить выбранный тип области захвата.
 
         Returns:
-            Тип области захвата
+            Тип области захвата.
         """
-        if self._full_screen_radio.isChecked():
-            return CaptureType.FULL
-        elif self._window_radio.isChecked():
-            return CaptureType.WINDOW
-        else:
+        if self._rect_radio.isChecked():
             return CaptureType.RECT
+        if self._window_radio.isChecked():
+            return CaptureType.WINDOW
+        return CaptureType.FULL
 
     def get_window_title(self) -> str:
         """
         Получить выбранный заголовок окна.
 
         Returns:
-            Заголовок окна
+            Заголовок окна.
         """
         return self._window_combo.currentText()
 
@@ -194,24 +193,20 @@ class CaptureView(QWidget):
         Получить координаты прямоугольника.
 
         Returns:
-            Кортеж (x1, y1, x2, y2) или None при ошибке
+            Кортеж `(x1, y1, x2, y2)` или `None`.
         """
-        coords_text = self._rect_edit.text()
-        try:
-            coords = [int(x.strip()) for x in coords_text.split(",")]
-            if len(coords) == 4:
-                return (coords[0], coords[1], coords[2], coords[3])
-        except ValueError:
-            pass
-        return None
+        return self._rect_coords
 
     def set_capture_type(self, capture_type: CaptureType) -> None:
         """
         Установить тип области захвата.
 
         Args:
-            capture_type: Тип области захвата
+            capture_type: Тип области захвата.
         """
+        self._full_screen_radio.setChecked(False)
+        self._window_radio.setChecked(False)
+        self._rect_radio.setChecked(False)
         if capture_type == CaptureType.FULL:
             self._full_screen_radio.setChecked(True)
         elif capture_type == CaptureType.WINDOW:
@@ -225,9 +220,16 @@ class CaptureView(QWidget):
         Установить выбранный заголовок окна.
 
         Args:
-            title: Заголовок окна
+            title: Заголовок окна.
         """
-        index = self._window_combo.findText(title)
+        if hasattr(self._window_combo, "findText"):
+            index = self._window_combo.findText(title)
+        else:
+            index = -1
+            for current_index in range(self._window_combo.count()):
+                if self._window_combo.itemText(current_index) == title:
+                    index = current_index
+                    break
         if index >= 0:
             self._window_combo.setCurrentIndex(index)
 
@@ -236,8 +238,9 @@ class CaptureView(QWidget):
         Установить координаты прямоугольника.
 
         Args:
-            coords: Кортеж (x1, y1, x2, y2)
+            coords: Кортеж `(x1, y1, x2, y2)`.
         """
-        self._rect_edit.setText(
-            f"{coords[0]}, {coords[1]}, {coords[2]}, {coords[3]}"
-        )
+        self._rect_coords = coords
+        self._rect_edit.setText(format_rect_coords(coords))
+        self._rect_summary_label.setText(describe_rect(coords))
+        self._rect_preview.set_rect_coords(coords)

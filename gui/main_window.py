@@ -342,6 +342,11 @@ class MainWindow(QMainWindow):
 
     def _apply_settings_to_views(self) -> None:
         """Применение настроек к представлениям."""
+        self._capture_view.set_capture_type(self._state.capture.capture_type)
+        self._capture_view.set_window_title(self._state.capture.window_title)
+        if self._state.capture.capture_type == CaptureMode.RECT:
+            self._capture_view.set_rect_coords(self._state.capture.rect_coords)
+
         # Настройки видео
         self._video_view.set_settings(self._state.video)
 

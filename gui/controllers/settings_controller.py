@@ -7,7 +7,7 @@
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from config import ConfigManager, get_config
 from gui.models.recording_state import (
@@ -63,6 +63,28 @@ class SettingsController:
         self._state.video.bitrate = settings.video.bitrate
         self._state.video.format = settings.video.format
 
+        capture_type_map = {
+            "full": CaptureType.FULL,
+            "window": CaptureType.WINDOW,
+            "rect": CaptureType.RECT,
+        }
+        self._state.capture.capture_type = capture_type_map.get(
+            settings.capture.area_type,
+            CaptureType.FULL,
+        )
+        self._state.capture.window_title = settings.capture.window_title or ""
+        if (
+            settings.capture.rect_coords
+            and len(settings.capture.rect_coords) == 4
+        ):
+            x1, y1, x2, y2 = settings.capture.rect_coords
+            self._state.capture.rect_coords = (
+                int(x1),
+                int(y1),
+                int(x2),
+                int(y2),
+            )
+
         # Путь вывода
         if settings.output.default_path:
             self._state.output.default_path = settings.output.default_path
@@ -92,6 +114,17 @@ class SettingsController:
         settings.video.codec = self._state.video.codec
         settings.video.bitrate = self._state.video.bitrate
         settings.video.format = self._state.video.format
+
+        settings.capture.area_type = self._state.capture.capture_type.value
+        settings.capture.window_title = (
+            self._state.capture.window_title or None
+        )
+        if self._state.capture.capture_type == CaptureType.RECT:
+            settings.capture.rect_coords = list(
+                self._state.capture.rect_coords
+            )
+        else:
+            settings.capture.rect_coords = None
 
         # Путь вывода
         if self._state.output.default_path:
@@ -207,17 +240,21 @@ class SettingsController:
         Returns:
             Путь к выходному файлу
         """
-        filename = cast(str, self._state.get_output_filename())
+        filename = self._state.get_output_filename()
         if self._state.output.output_path:
             output_path = Path(self._state.output.output_path)
             if output_path.exists() and output_path.is_dir():
-                return output_path / filename
+                return Path(output_path, filename)
             if output_path.suffix == "":
-                return output_path.with_suffix(f".{self._state.video.format}")
-            return output_path
+                return Path(
+                    str(
+                        output_path.with_suffix(f".{self._state.video.format}")
+                    )
+                )
+            return Path(str(output_path))
 
         # Генерация пути по умолчанию
         default_path = self._state.output.default_path
         if default_path:
-            return Path(default_path) / filename
+            return Path(default_path, filename)
         return Path(filename)
