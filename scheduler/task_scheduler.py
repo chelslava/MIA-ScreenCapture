@@ -25,7 +25,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from logger_config import get_module_logger
 from scheduler.execution_engine import SchedulerExecutionEngine
 from scheduler.task_storage import TaskStorage
-from scheduler.trigger_builder import create_trigger
+from scheduler.trigger_builder import (
+    create_trigger,
+    normalize_crontab_expression,
+)
 
 logger = get_module_logger(__name__)
 _TIME_OF_DAY_PATTERN = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
@@ -643,7 +646,7 @@ class TaskScheduler:
         try:
             from apscheduler.triggers.cron import CronTrigger
 
-            CronTrigger.from_crontab(expression)
+            CronTrigger.from_crontab(normalize_crontab_expression(expression))
             return None
         except ValueError as e:
             return f"Некорректное cron-выражение '{expression}': {e}"
