@@ -1114,6 +1114,32 @@ class TestCronSchedule:
 
         assert isinstance(trigger, CronTrigger)
 
+    def test_cron_trigger_creation_uses_standard_weekdays(
+        self,
+        tasks_file: Path,
+    ) -> None:
+        """Числа в cron day-of-week трактуются как в обычном crontab."""
+        scheduler = TaskScheduler(persist_path=tasks_file)
+        scheduler.start()
+        try:
+            task = ScheduleTask(
+                id="cron-weekday-standard",
+                name="Cron Weekday Standard",
+                schedule_type=ScheduleType.CRON,
+                params=RecordingParams(),
+                cron_expression="0 9 * * 1-5",
+                enabled=True,
+            )
+
+            assert scheduler.add_task(task) is True
+
+            job = scheduler._scheduler.get_job("cron-weekday-standard")
+            assert job is not None
+            assert job.next_run_time is not None
+            assert job.next_run_time.weekday() in (0, 1, 2, 3, 4)
+        finally:
+            scheduler.stop()
+
     def test_cron_task_without_expression(self, tasks_file: Path):
         """Проверка cron-задачи без выражения."""
         scheduler = TaskScheduler(persist_path=tasks_file)
