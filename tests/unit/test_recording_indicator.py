@@ -4,6 +4,7 @@
 
 from core.recording_state import CaptureSettings
 from core.recording_types import CaptureMode
+from gui import views as gui_views
 from gui.views.recording_indicator import (
     RecordingIndicatorOverlay,
     resolve_indicator_rect,
@@ -12,6 +13,10 @@ from gui.views.recording_indicator import (
 
 class TestResolveIndicatorRect:
     """Тесты расчёта области индикатора."""
+
+    def test_recording_indicator_exported_from_gui_views(self) -> None:
+        """Индикатор доступен через пакетный импорт gui.views."""
+        assert gui_views.RecordingIndicatorOverlay is RecordingIndicatorOverlay
 
     def test_resolve_full_screen_rect(self) -> None:
         """Для full mode берётся весь экран."""
