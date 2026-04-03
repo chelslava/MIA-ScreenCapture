@@ -97,14 +97,17 @@ class TestRecordingController:
 
     @patch("gui.controllers.recording_controller.RecordingEncoder")
     @patch("gui.controllers.recording_controller.VideoRecorder")
+    @patch("gui.controllers.recording_controller.check_ffmpeg")
     def test_start_recording_success(
         self,
+        mock_check_ffmpeg: MagicMock,
         mock_video_recorder: MagicMock,
         mock_encoder: MagicMock,
         controller: RecordingController,
     ) -> None:
         """Проверка успешного запуска записи."""
         # Настройка моков
+        mock_check_ffmpeg.return_value = (True, "5.0")
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),
@@ -133,14 +136,17 @@ class TestRecordingController:
     @patch("gui.controllers.recording_controller.AudioRecorder")
     @patch("gui.controllers.recording_controller.RecordingEncoder")
     @patch("gui.controllers.recording_controller.VideoRecorder")
+    @patch("gui.controllers.recording_controller.check_ffmpeg")
     def test_start_recording_fails_when_audio_start_fails(
         self,
+        mock_check_ffmpeg: MagicMock,
         mock_video_recorder: MagicMock,
         mock_encoder: MagicMock,
         mock_audio_recorder: MagicMock,
         controller: RecordingController,
     ) -> None:
         """Проверка ошибки запуска, если аудиозапись не стартовала."""
+        mock_check_ffmpeg.return_value = (True, "5.0")
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),
@@ -167,6 +173,130 @@ class TestRecordingController:
 
         assert success is False
         assert error_msg == "Не удалось запустить аудиозапись"
+
+    @patch("gui.controllers.recording_controller.check_ffmpeg")
+    def test_start_recording_fails_when_ffmpeg_unavailable(
+        self,
+        mock_check_ffmpeg: MagicMock,
+        controller: RecordingController,
+    ) -> None:
+        """Запись не должна стартовать при недоступном FFmpeg."""
+        mock_check_ffmpeg.return_value = (False, None)
+        output_path = Path("/output/test.mp4")
+
+        success, error_msg = controller.start_recording(
+            output_path,
+            CaptureSettings(),
+            AudioSettings(),
+            VideoSettings(),
+        )
+
+        assert success is False
+        assert error_msg is not None
+        assert "FFmpeg недоступен" in error_msg
+        mock_check_ffmpeg.assert_called_once()
+
+    @patch("gui.controllers.recording_controller.RecordingEncoder")
+    @patch("gui.controllers.recording_controller.VideoRecorder")
+    @patch("gui.controllers.recording_controller.check_ffmpeg")
+    def test_start_recording_reuses_ffmpeg_health_cache_within_ttl(
+        self,
+        mock_check_ffmpeg: MagicMock,
+        mock_video_recorder: MagicMock,
+        mock_encoder: MagicMock,
+        controller: RecordingController,
+    ) -> None:
+        """Повторный старт в пределах TTL не должен заново дёргать check_ffmpeg."""
+        mock_check_ffmpeg.return_value = (True, "5.0")
+        mock_encoder_instance = MagicMock()
+        mock_encoder_instance.setup.return_value = (
+            Path("/tmp/video.mp4"),
+            Path("/tmp/audio.wav"),
+        )
+        mock_encoder.return_value = mock_encoder_instance
+        mock_video_instance = MagicMock()
+        mock_video_instance.start.return_value = True
+        mock_video_instance.stop.return_value = True
+        mock_video_recorder.return_value = mock_video_instance
+
+        output_path = Path("/output/test.mp4")
+        capture = CaptureSettings()
+        audio = AudioSettings()
+        video = VideoSettings()
+
+        with patch(
+            "gui.controllers.recording_controller.time.monotonic"
+        ) as mock_time:
+            mock_time.side_effect = [
+                100.0,
+                100.5,
+            ]
+            success1, error_msg1 = controller.start_recording(
+                output_path, capture, audio, video
+            )
+            controller._state.stop_recording()
+            controller._video_recorder = None
+            controller._encoder = None
+            success2, error_msg2 = controller.start_recording(
+                output_path, capture, audio, video
+            )
+
+        assert success1 is True
+        assert error_msg1 is None
+        assert success2 is True
+        assert error_msg2 is None
+        mock_check_ffmpeg.assert_called_once()
+
+    @patch("gui.controllers.recording_controller.RecordingEncoder")
+    @patch("gui.controllers.recording_controller.VideoRecorder")
+    @patch("gui.controllers.recording_controller.check_ffmpeg")
+    def test_start_recording_refreshes_ffmpeg_health_cache_after_ttl(
+        self,
+        mock_check_ffmpeg: MagicMock,
+        mock_video_recorder: MagicMock,
+        mock_encoder: MagicMock,
+        controller: RecordingController,
+    ) -> None:
+        """После истечения TTL проверка FFmpeg должна выполняться заново."""
+        mock_check_ffmpeg.return_value = (True, "5.0")
+        mock_encoder_instance = MagicMock()
+        mock_encoder_instance.setup.return_value = (
+            Path("/tmp/video.mp4"),
+            Path("/tmp/audio.wav"),
+        )
+        mock_encoder.return_value = mock_encoder_instance
+        mock_video_instance = MagicMock()
+        mock_video_instance.start.return_value = True
+        mock_video_instance.stop.return_value = True
+        mock_video_recorder.return_value = mock_video_instance
+
+        output_path = Path("/output/test.mp4")
+        capture = CaptureSettings()
+        audio = AudioSettings()
+        video = VideoSettings()
+
+        with patch(
+            "gui.controllers.recording_controller.time.monotonic"
+        ) as mock_time:
+            mock_time.side_effect = [
+                100.0,
+                131.0,
+            ]
+            success1, error_msg1 = controller.start_recording(
+                output_path, capture, audio, video
+            )
+            controller._state.stop_recording()
+            controller._video_recorder = None
+            controller._encoder = None
+            success2, error_msg2 = controller.start_recording(
+                output_path, capture, audio, video
+            )
+
+        assert success1 is True
+        assert error_msg1 is None
+        assert success2 is True
+        assert error_msg2 is None
+        assert mock_check_ffmpeg.call_count == 2
 
     def test_pause_recording_success(
         self, controller: RecordingController
