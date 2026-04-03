@@ -8,8 +8,50 @@ Unit тесты для MainWindow
 """
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
+
+from core.recording_types import AudioMode, CaptureMode
+from gui.models.recording_state import (
+    AudioSettings,
+    RecordingState,
+    VideoSettings,
+)
+
+
+def _build_window():
+    """Создать MainWindow без запуска тяжёлого __init__."""
+    from gui.main_window import MainWindow
+
+    window = MainWindow.__new__(MainWindow)
+    window._state = RecordingState()
+    window._settings_controller = MagicMock()
+    window._recording_controller = MagicMock()
+    window._capture_view = MagicMock()
+    window._video_view = MagicMock()
+    window._output_view = MagicMock()
+    window._api_settings_view = MagicMock()
+    window._api_controls = {}
+    window._api_server = None
+    window._ws_controller = None
+    window.start_btn = MagicMock()
+    window.stop_btn = MagicMock()
+    window.pause_btn = MagicMock()
+    window.status_label = MagicMock()
+    window.time_label = MagicMock()
+    window.status_bar = MagicMock()
+    window._ws_status_label = MagicMock()
+    window.recording_started = MagicMock()
+    window.recording_stopped = MagicMock()
+    window.recording_paused = MagicMock()
+    window.recording_resumed = MagicMock()
+    window.error_occurred = MagicMock()
+    window.recordings_list = MagicMock()
+    window._recordings_filter_input = MagicMock()
+    window._diagnostics_view = MagicMock()
+    return window
 
 
 class TestMainWindowBasics:
@@ -507,6 +549,532 @@ class TestMainWindowElapsedtime:
 
         assert state.recording_start_time is not None
         assert before <= state.recording_start_time <= after
+
+
+class TestMainWindowMethods:
+    """Тесты методов MainWindow без полного GUI-init."""
+
+    def test_apply_settings_to_views_applies_rect_capture_and_output(
+        self,
+    ) -> None:
+        """Настройки capture/output переносятся в соответствующие view."""
+        window = _build_window()
+        window._state.capture.capture_type = CaptureMode.RECT
+        window._state.capture.window_title = "Editor"
+        window._state.capture.rect_coords = (10, 20, 300, 200)
+        window._state.output.default_path = "D:/Recordings"
+        window._refresh_recent_recordings = MagicMock()
+
+        window._apply_settings_to_views()
+
+        window._capture_view.set_capture_type.assert_called_once_with(
+            CaptureMode.RECT
+        )
+        window._capture_view.set_window_title.assert_called_once_with("Editor")
+        window._capture_view.set_rect_coords.assert_called_once_with(
+            (10, 20, 300, 200)
+        )
+        window._video_view.set_settings.assert_called_once_with(
+            window._state.video
+        )
+        window._output_view.set_output_path.assert_called_once_with(
+            "D:/Recordings"
+        )
+        window._refresh_recent_recordings.assert_called_once()
+
+    def test_refresh_recent_recordings_adds_only_existing_matching_items(
+        self, tmp_path: Path
+    ) -> None:
+        """В список попадают только существующие записи, прошедшие фильтр."""
+        from core.recording_state import RecentRecording
+
+        window = _build_window()
+        existing = tmp_path / "capture.mp4"
+        existing.write_bytes(b"data")
+        missing = tmp_path / "missing.mp4"
+        window._state.recent_recordings = [
+            RecentRecording(path=existing, size=42, date="2026-04-03"),
+            RecentRecording(path=missing, size=100, date="2026-04-03"),
+        ]
+        window._recordings_filter_input.text.return_value = "capture"
+
+        class FakeListWidgetItem:
+            def __init__(self, text: str) -> None:
+                self.text = text
+                self.payload = None
+
+            def setData(self, _role, payload: str) -> None:
+                self.payload = payload
+
+        added_items: list[FakeListWidgetItem] = []
+        window.recordings_list.addItem.side_effect = added_items.append
+
+        with (
+            patch("gui.main_window.QListWidgetItem", FakeListWidgetItem),
+            patch("gui.main_window.format_filesize", return_value="42 B"),
+        ):
+            window._refresh_recent_recordings()
+
+        window.recordings_list.clear.assert_called_once()
+        assert len(added_items) == 1
+        assert added_items[0].text == "capture.mp4 - 42 B - 2026-04-03"
+        assert added_items[0].payload == str(existing)
+
+    @pytest.mark.parametrize(
+        ("filename", "date_text", "filter_text", "expected"),
+        [
+            ("capture.mp4", "2026-04-03", "", True),
+            ("capture.mp4", "2026-04-03", "CAPTURE", True),
+            ("capture.mp4", "2026-04-03", "2026-04", True),
+            ("capture.mp4", "2026-04-03", "other", False),
+        ],
+    )
+    def test_recording_matches_filter(
+        self,
+        filename: str,
+        date_text: str,
+        filter_text: str,
+        expected: bool,
+    ) -> None:
+        """Фильтр учитывает имя файла и дату без учёта регистра."""
+        from gui.main_window import MainWindow
+
+        assert (
+            MainWindow._recording_matches_filter(
+                filename,
+                date_text,
+                filter_text,
+            )
+            is expected
+        )
+
+    def test_clear_recordings_filter_resets_field_and_refreshes(self) -> None:
+        """Сброс фильтра очищает поле и обновляет список."""
+        window = _build_window()
+        window._refresh_recent_recordings = MagicMock()
+
+        window._clear_recordings_filter()
+
+        window._recordings_filter_input.setText.assert_called_once_with("")
+        window._refresh_recent_recordings.assert_called_once()
+
+    def test_on_view_signal_handlers_forward_to_settings_controller(
+        self,
+    ) -> None:
+        """Сигналы view проксируются в SettingsController."""
+        window = _build_window()
+        settings = VideoSettings(
+            fps=60, codec="libx265", bitrate="5M", format="avi"
+        )
+
+        window._on_capture_type_changed(CaptureMode.WINDOW)
+        window._on_window_selected("Editor")
+        window._on_rect_selected((1, 2, 3, 4))
+        window._on_audio_type_changed(AudioMode.SYSTEM)
+        window._on_mic_device_changed(7)
+        window._on_video_settings_changed(settings)
+        window._on_output_path_changed("D:/out.mp4")
+
+        window._settings_controller.update_capture_settings.assert_any_call(
+            capture_type=CaptureMode.WINDOW
+        )
+        window._settings_controller.update_capture_settings.assert_any_call(
+            window_title="Editor"
+        )
+        window._settings_controller.update_capture_settings.assert_any_call(
+            rect_coords=(1, 2, 3, 4)
+        )
+        window._settings_controller.update_audio_settings.assert_any_call(
+            audio_type=AudioMode.SYSTEM
+        )
+        window._settings_controller.update_audio_settings.assert_any_call(
+            mic_device_index=7
+        )
+        window._settings_controller.update_video_settings.assert_called_once_with(
+            fps=60,
+            codec="libx265",
+            bitrate="5M",
+            format="avi",
+        )
+        window._output_view.set_default_format.assert_called_once_with("avi")
+        window._settings_controller.update_output_settings.assert_called_once_with(
+            output_path="D:/out.mp4"
+        )
+
+    def test_start_recording_shows_error_for_rect_without_coords(self) -> None:
+        """Для RECT без координат запуск записи блокируется."""
+        window = _build_window()
+        window._capture_view.get_capture_type.return_value = CaptureMode.RECT
+        window._capture_view.get_rect_coords.return_value = None
+        window._show_error = MagicMock()
+
+        window._start_recording()
+
+        window._show_error.assert_called_once()
+        window._recording_controller.start_recording.assert_not_called()
+
+    def test_start_recording_uses_fallback_full_screen_rect(self) -> None:
+        """Без rect_coords используется fallback на размер экрана."""
+        window = _build_window()
+        window._capture_view.get_capture_type.return_value = CaptureMode.FULL
+        window._capture_view.get_rect_coords.return_value = None
+        window._capture_view.get_window_title.return_value = ""
+        window._video_view.get_settings.return_value = VideoSettings()
+        window._settings_controller.get_output_path.return_value = Path(
+            "D:/capture.mp4"
+        )
+        window._recording_controller.start_recording.return_value = (
+            True,
+            None,
+        )
+        window._on_recording_started = MagicMock()
+
+        class FakeGeometry:
+            def width(self) -> int:
+                return 1600
+
+            def height(self) -> int:
+                return 900
+
+        fake_screen = SimpleNamespace(geometry=lambda: FakeGeometry())
+
+        with patch(
+            "PyQt6.QtGui.QGuiApplication.primaryScreen",
+            return_value=fake_screen,
+        ):
+            window._start_recording()
+
+        call = window._recording_controller.start_recording.call_args.kwargs
+        assert call["capture"].rect_coords == (0, 0, 1600, 900)
+        window._on_recording_started.assert_called_once_with(
+            Path("D:/capture.mp4")
+        )
+
+    def test_stop_recording_reports_missing_output(self) -> None:
+        """Если backend не вернул путь, показывается ошибка."""
+        window = _build_window()
+        window._state.start_recording(Path("D:/capture.mp4"))
+        window._recording_controller.stop_recording.return_value = None
+        window._show_error = MagicMock()
+
+        window._stop_recording()
+
+        window._show_error.assert_called_once()
+
+    def test_toggle_pause_calls_expected_controller_branch(self) -> None:
+        """Переключение паузы вызывает pause или resume ветку."""
+        window = _build_window()
+        window._on_recording_paused = MagicMock()
+        window._on_recording_resumed = MagicMock()
+
+        window._toggle_pause()
+        window._recording_controller.pause_recording.assert_called_once()
+        window._on_recording_paused.assert_called_once()
+
+        window._state.start_recording(Path("D:/capture.mp4"))
+        window._state.pause_recording()
+        window._toggle_pause()
+        window._recording_controller.resume_recording.assert_called_once()
+        window._on_recording_resumed.assert_called_once()
+
+    def test_on_recording_started_and_resumed_update_controls(self) -> None:
+        """UI обновляется при старте, паузе и возобновлении записи."""
+        window = _build_window()
+        output = Path("D:/capture.mp4")
+
+        window._on_recording_started(output)
+        window._on_recording_paused()
+        window._on_recording_resumed()
+
+        window.start_btn.setEnabled.assert_called_with(False)
+        window.stop_btn.setEnabled.assert_called_with(True)
+        window.pause_btn.setText.assert_any_call("Пауза")
+        window.pause_btn.setText.assert_any_call("Продолжить")
+        window.status_label.setText.assert_any_call("Запись")
+        window.status_label.setText.assert_any_call("Пауза")
+        window.recording_started.emit.assert_called_once_with(str(output))
+        window.recording_paused.emit.assert_called_once()
+        window.recording_resumed.emit.assert_called_once()
+
+    def test_on_recording_stopped_adds_recent_recording_for_existing_file(
+        self, tmp_path: Path
+    ) -> None:
+        """Остановка записи добавляет существующий файл в recent recordings."""
+        window = _build_window()
+        output = tmp_path / "capture.mp4"
+        output.write_bytes(b"abc")
+        window._refresh_recent_recordings = MagicMock()
+
+        window._on_recording_stopped(output)
+
+        window._settings_controller.add_recent_recording.assert_called_once_with(
+            output,
+            3,
+        )
+        window._refresh_recent_recordings.assert_called_once()
+        window.recording_stopped.emit.assert_called_once_with(str(output))
+
+    def test_update_status_formats_elapsed_time(self) -> None:
+        """Таймер статуса форматирует elapsed time во время записи."""
+        window = _build_window()
+        window._state.start_recording(Path("D:/capture.mp4"))
+        window._recording_controller.elapsed_time = 12.34
+
+        with patch("gui.main_window.format_time", return_value="00:12"):
+            window._update_status()
+
+        window.time_label.setText.assert_called_once_with("00:12")
+
+    def test_invoke_api_control_handles_none_exception_and_plain_value(
+        self,
+    ) -> None:
+        """Вызов API control нормализует ответы и ошибки."""
+        window = _build_window()
+        window._show_error = MagicMock()
+        window._api_controls = {
+            "ping": lambda: "pong",
+            "boom": lambda: (_ for _ in ()).throw(RuntimeError("fail")),
+        }
+
+        assert window._invoke_api_control("missing") is None
+        assert window._invoke_api_control("ping") == {
+            "success": True,
+            "data": "pong",
+        }
+        assert window._invoke_api_control("boom") is None
+        window._show_error.assert_called_once_with("fail")
+
+    def test_refresh_api_status_uses_result_and_fallback_server(self) -> None:
+        """Статус API берётся из control-а или из резервного сервера."""
+        window = _build_window()
+        window._invoke_api_control = MagicMock(
+            side_effect=[
+                {
+                    "configured": {"port": 8080, "api_key": "secret"},
+                    "running": True,
+                    "url": "http://127.0.0.1:8080",
+                },
+                None,
+            ]
+        )
+        window._api_server = MagicMock()
+        window._api_server.is_running.return_value = False
+        window._api_settings_view.is_editing_settings.return_value = False
+
+        window._refresh_api_status()
+        window._refresh_api_status()
+
+        window._api_settings_view.set_settings.assert_called_once_with(
+            port=8080,
+            token="secret",
+        )
+        window._api_settings_view.set_status.assert_any_call(
+            True,
+            "Запущен: http://127.0.0.1:8080",
+        )
+        window._api_settings_view.set_status.assert_any_call(
+            False,
+            "Сервер остановлен",
+        )
+
+    def test_api_button_handlers_route_success_and_failure(self) -> None:
+        """Хендлеры API-кнопок обновляют статусбар и ошибки."""
+        window = _build_window()
+        window._show_error = MagicMock()
+        window._refresh_api_status = MagicMock()
+        window._start_websocket_after_api = MagicMock()
+        window.disconnect_websocket = MagicMock()
+        window._invoke_api_control = MagicMock(
+            side_effect=[
+                {"success": True, "restart_required": True},
+                {
+                    "success": True,
+                    "configured": {"api_key": "t"},
+                    "url": "http://x",
+                },
+                {"success": True},
+                {"success": False, "error": "restart failed"},
+            ]
+        )
+
+        window._on_api_settings_apply(9000, "tok")
+        window._on_api_start()
+        window._on_api_stop()
+        window._on_api_restart()
+
+        assert window.status_bar.showMessage.call_count >= 3
+        window._start_websocket_after_api.assert_called_once()
+        window.disconnect_websocket.assert_called()
+        window._show_error.assert_called_with("restart failed")
+
+    def test_start_websocket_after_api_initializes_only_when_url_and_token(
+        self,
+    ) -> None:
+        """WebSocket стартует только при наличии URL и токена."""
+        window = _build_window()
+        window.init_websocket_client = MagicMock()
+        window.connect_websocket = MagicMock()
+
+        window._start_websocket_after_api(
+            {
+                "configured": {"api_key": "token"},
+                "url": "http://127.0.0.1:5000",
+            }
+        )
+        window._ws_controller = MagicMock()
+        window._start_websocket_after_api(
+            {
+                "configured": {"api_key": "token"},
+                "url": "http://127.0.0.1:5000",
+            }
+        )
+        window._start_websocket_after_api({"configured": {}, "url": ""})
+
+        window.init_websocket_client.assert_called_once_with(
+            "http://127.0.0.1:5000",
+            "token",
+        )
+        assert window.connect_websocket.call_count == 2
+
+    def test_websocket_helpers_update_status_and_emit_events(self) -> None:
+        """WebSocket-хелперы обновляют label и проксируют события."""
+        window = _build_window()
+
+        window._on_ws_status_changed("connected")
+        window._on_ws_event_received(
+            "recording.started", {"output_path": "D:/capture.mp4"}
+        )
+        window._on_ws_event_received("recording.paused", {})
+        window._on_ws_event_received("recording.resumed", {})
+        window._on_ws_event_received("recording.error", {"error": "boom"})
+
+        window._ws_status_label.setText.assert_called_with("WS: ●")
+        window.recording_started.emit.assert_called_once_with("D:/capture.mp4")
+        window.recording_paused.emit.assert_called_once()
+        window.recording_resumed.emit.assert_called_once()
+        window.error_occurred.emit.assert_called_once_with("boom")
+
+    def test_open_recording_helpers_use_selected_items(self) -> None:
+        """Открытие записей использует выбранный и последний элементы."""
+        window = _build_window()
+        window._open_file = MagicMock()
+        fake_item = MagicMock()
+        fake_item.data.return_value = "D:/capture.mp4"
+        window.recordings_list.currentItem.return_value = fake_item
+        window.recordings_list.item.return_value = fake_item
+
+        window._open_recording(fake_item)
+        window._open_selected_recording()
+        window._open_latest_recording()
+
+        assert window._open_file.call_count == 3
+
+    @pytest.mark.parametrize(
+        ("requested", "fmt", "expected"),
+        [
+            (None, "mp4", Path("D:/default.mp4")),
+            ("  ", "mp4", Path("D:/default.mp4")),
+            ("relative_video", "mkv", Path("relative_video.mkv")),
+            ("relative_video.mp4", "mkv", Path("relative_video.mp4")),
+        ],
+    )
+    def test_resolve_requested_output_path_basic_variants(
+        self,
+        requested: str | None,
+        fmt: str,
+        expected: Path,
+    ) -> None:
+        """output_path из API нормализуется в итоговый путь файла."""
+        window = _build_window()
+        window._settings_controller.get_output_path.return_value = Path(
+            "D:/default.mp4"
+        )
+
+        result = window._resolve_requested_output_path(requested, fmt)
+
+        assert result == expected
+
+    def test_resolve_requested_output_path_for_directory_hint(self) -> None:
+        """Путь с завершающим слешем трактуется как директория."""
+        window = _build_window()
+
+        with patch("gui.main_window.datetime") as mocked_datetime:
+            mocked_datetime.now.return_value.strftime.return_value = (
+                "20260403_123456"
+            )
+            result = window._resolve_requested_output_path("D:/out/", "mp4")
+
+        assert result == Path("D:/out/recording_20260403_123456.mp4")
+
+    def test_start_recording_with_params_success_and_invalid_rect(
+        self,
+    ) -> None:
+        """API-старт записи обрабатывает успешный и невалидный rect кейсы."""
+        window = _build_window()
+        window._video_view.get_settings.return_value = VideoSettings()
+        window._recording_controller.start_recording.return_value = (
+            True,
+            None,
+        )
+        window._resolve_requested_output_path = MagicMock(
+            return_value=Path("D:/capture.mp4")
+        )
+        window._on_recording_started = MagicMock()
+
+        result = window.start_recording_with_params(
+            {
+                "area": "rect",
+                "rect": [10, 20, 110, 220],
+                "audio": "system",
+                "fps": 60,
+                "codec": "libx265",
+                "bitrate": "5M",
+            }
+        )
+        invalid = window.start_recording_with_params(
+            {"area": "rect", "rect": [1, 2, 3]}
+        )
+
+        assert result == {
+            "success": True,
+            "output_path": str(Path("D:/capture.mp4")),
+        }
+        call = window._recording_controller.start_recording.call_args.kwargs
+        assert call["capture"].rect_coords == (10, 20, 110, 220)
+        assert isinstance(call["audio"], AudioSettings)
+        assert invalid["success"] is False
+        assert "4 координаты" in invalid["error"]
+
+    def test_stop_recording_toggle_pause_and_get_recordings_api_methods(
+        self,
+    ) -> None:
+        """API-методы stop/pause/read работают с текущим состоянием."""
+        window = _build_window()
+        window._on_recording_stopped = MagicMock()
+        window._on_recording_paused = MagicMock()
+        window._recording_controller.stop_recording.return_value = Path(
+            "D:/capture.mp4"
+        )
+
+        assert window.stop_recording()["success"] is False
+        assert window.toggle_pause()["success"] is False
+
+        window._state.start_recording(Path("D:/capture.mp4"))
+        stop_result = window.stop_recording()
+        pause_result = window.toggle_pause()
+
+        with patch("gui.main_window.get_config") as mocked_get_config:
+            mocked_get_config.return_value.settings.recent_recordings = [
+                {"path": "D:/capture.mp4"}
+            ]
+            recordings = window.get_recordings()
+
+        assert stop_result == {
+            "success": True,
+            "filepath": str(Path("D:/capture.mp4")),
+        }
+        assert pause_result == {"success": True, "is_paused": True}
+        assert recordings == [{"path": "D:/capture.mp4"}]
 
     def test_recording_start_time_cleared_on_stop(self) -> None:
         """Проверка очистки времени начала при остановке."""
