@@ -2,6 +2,7 @@
 Тесты графического выбора области захвата.
 """
 
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -9,10 +10,14 @@ from config import ConfigManager
 from gui.controllers.settings_controller import SettingsController
 from gui.models.recording_state import CaptureType, RecordingState
 from gui.views.area_selector import (
+    AreaSelectorDialog,
     describe_rect,
     format_rect_coords,
+    is_valid_selection,
     move_rect,
     normalize_rect_coords,
+    point_in_rect,
+    point_in_resize_handle,
     resize_rect,
 )
 from gui.views.capture_view import CaptureView
@@ -48,6 +53,179 @@ class TestAreaSelectorHelpers:
     def test_format_rect_coords(self) -> None:
         """Координаты форматируются в строку для GUI."""
         assert format_rect_coords((1, 2, 3, 4)) == "1, 2, 3, 4"
+
+    def test_point_in_rect(self) -> None:
+        """Точка внутри области определяется корректно."""
+        assert point_in_rect((50, 60), (10, 20, 100, 120))
+
+    def test_point_in_resize_handle(self) -> None:
+        """Правый нижний маркер resize распознаётся по координатам."""
+        assert point_in_resize_handle((100, 120), (10, 20, 100, 120))
+
+    def test_is_valid_selection(self) -> None:
+        """Слишком маленькая область считается невалидной."""
+        assert not is_valid_selection((0, 0, 3, 3))
+        assert is_valid_selection((0, 0, 10, 10))
+
+
+class _FakeMouseEvent:
+    """Упрощённое mouse event для тестов selector-а."""
+
+    def __init__(
+        self,
+        x: int,
+        y: int,
+        button: object,
+        use_position: bool = False,
+    ) -> None:
+        self._x = x
+        self._y = y
+        self._button = button
+        if use_position:
+            self.position = lambda: SimpleNamespace(  # noqa: B023
+                x=lambda: self._x,
+                y=lambda: self._y,
+            )
+
+    def button(self) -> object:
+        """Вернуть кнопку мыши."""
+        return self._button
+
+    def pos(self) -> SimpleNamespace:
+        """Вернуть координаты через совместимый pos()."""
+        return SimpleNamespace(x=lambda: self._x, y=lambda: self._y)
+
+
+class _FakeKeyEvent:
+    """Упрощённое key event для тестов selector-а."""
+
+    def __init__(self, key: object) -> None:
+        self._key = key
+
+    def key(self) -> object:
+        """Вернуть код клавиши."""
+        return self._key
+
+
+class TestAreaSelectorDialog:
+    """Тесты поведения диалога выбора области."""
+
+    def _create_dialog(self) -> AreaSelectorDialog:
+        """Создать selector с безопасно замоканным окном."""
+        with (
+            patch.object(
+                AreaSelectorDialog,
+                "_get_screen_bounds",
+                return_value=(0, 0, 1920, 1080),
+            ),
+            patch.object(AreaSelectorDialog, "_setup_window"),
+        ):
+            dialog = AreaSelectorDialog()
+        dialog.update = MagicMock()
+        dialog.accept = MagicMock()
+        dialog.reject = MagicMock()
+        dialog.selection_completed = MagicMock()
+        return dialog
+
+    def test_select_area_returns_selection_for_accepted_dialog(self) -> None:
+        """select_area возвращает выбранный rect после успешного confirm."""
+
+        def fake_init(
+            self,
+            initial_rect=None,
+            parent=None,
+        ) -> None:
+            self._selection = initial_rect
+
+        with (
+            patch.object(AreaSelectorDialog, "__init__", fake_init),
+            patch.object(
+                AreaSelectorDialog, "exec", return_value=1, create=True
+            ),
+            patch.object(
+                AreaSelectorDialog,
+                "get_selected_rect",
+                return_value=(10, 20, 100, 200),
+            ),
+        ):
+            assert AreaSelectorDialog.select_area(
+                initial_rect=(1, 2, 3, 4)
+            ) == (10, 20, 100, 200)
+
+    def test_get_selected_rect_returns_none_for_too_small_rect(self) -> None:
+        """Невалидная область не должна считаться выбранной."""
+        dialog = self._create_dialog()
+        dialog._selection = (1, 1, 4, 4)
+        assert dialog.get_selected_rect() is None
+
+    def test_event_point_supports_position_api(self) -> None:
+        """Selector читает координаты из position() в стиле Qt6."""
+        dialog = self._create_dialog()
+        event = _FakeMouseEvent(30, 40, button=1, use_position=True)
+        assert dialog._event_point(event) == (30, 40)
+
+    def test_mouse_press_move_and_release_create_selection(self) -> None:
+        """Последовательность drag создаёт и фиксирует область."""
+        dialog = self._create_dialog()
+        left_button = object()
+        qt_patch = SimpleNamespace(
+            MouseButton=SimpleNamespace(LeftButton=left_button)
+        )
+
+        with patch("gui.views.area_selector.Qt", qt_patch):
+            dialog.mousePressEvent(_FakeMouseEvent(10, 20, left_button))
+            dialog.mouseMoveEvent(_FakeMouseEvent(110, 220, left_button))
+            dialog.mouseReleaseEvent(_FakeMouseEvent(110, 220, left_button))
+
+        assert dialog.get_selected_rect() == (10, 20, 110, 220)
+        assert dialog.update.called
+
+    def test_mouse_press_inside_selection_switches_to_move_mode(self) -> None:
+        """Клик внутри рамки включает режим перемещения."""
+        dialog = self._create_dialog()
+        dialog._selection = (10, 20, 110, 220)
+        left_button = object()
+        qt_patch = SimpleNamespace(
+            MouseButton=SimpleNamespace(LeftButton=left_button)
+        )
+
+        with patch("gui.views.area_selector.Qt", qt_patch):
+            dialog.mousePressEvent(_FakeMouseEvent(30, 50, left_button))
+
+        assert dialog._drag_mode == "move"
+        assert dialog._move_offset == (20, 30)
+
+    def test_mouse_double_click_accepts_when_inside_selection(self) -> None:
+        """Двойной клик внутри области подтверждает выбор."""
+        dialog = self._create_dialog()
+        dialog._selection = (10, 20, 110, 220)
+
+        dialog.mouseDoubleClickEvent(_FakeMouseEvent(50, 70, button=1))
+
+        dialog.selection_completed.emit.assert_called_once_with(
+            (10, 20, 110, 220)
+        )
+        dialog.accept.assert_called_once()
+
+    def test_key_press_handles_escape_and_enter(self) -> None:
+        """Escape отменяет, Enter подтверждает выбранную область."""
+        dialog = self._create_dialog()
+        dialog._selection = (10, 20, 110, 220)
+        qt_patch = SimpleNamespace(
+            Key=SimpleNamespace(
+                Key_Escape="esc", Key_Return="ret", Key_Enter="ent"
+            )
+        )
+
+        with patch("gui.views.area_selector.Qt", qt_patch):
+            dialog.keyPressEvent(_FakeKeyEvent("esc"))
+            dialog.keyPressEvent(_FakeKeyEvent("ret"))
+
+        dialog.reject.assert_called_once()
+        dialog.selection_completed.emit.assert_called_once_with(
+            (10, 20, 110, 220)
+        )
+        dialog.accept.assert_called_once()
 
 
 class TestCaptureViewGraphicSelection:
