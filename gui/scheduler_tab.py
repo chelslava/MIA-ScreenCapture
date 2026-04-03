@@ -6,7 +6,7 @@
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from PyQt6.QtCore import QDate, Qt, QTime, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -592,7 +592,7 @@ class SchedulerTab(QWidget):
         """Форматирование расписания для отображения."""
         if task.schedule_type == ScheduleType.ONCE:
             if task.start_time:
-                return task.start_time.strftime("%Y-%m-%d %H:%M")
+                return cast(str, task.start_time.strftime("%Y-%m-%d %H:%M"))
         elif task.schedule_type == ScheduleType.DAILY:
             return f"Ежедневно в {task.time_of_day}"
         elif task.schedule_type == ScheduleType.WEEKLY:
