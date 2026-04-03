@@ -65,7 +65,7 @@ class RecordingController:
     def elapsed_time(self) -> float:
         """Получить время записи."""
         if self._video_recorder:
-            return self._video_recorder.elapsed_time
+            return float(self._video_recorder.elapsed_time)
         return 0.0
 
     def build_capture_area(self, capture: CaptureSettings) -> CaptureArea:
@@ -366,6 +366,19 @@ class RecordingController:
         logger.info(f"Запись остановлена: {output_path}")
         return output_path
 
+    def request_stop_cancellation(self) -> bool:
+        """
+        Запросить отмену долгой остановки/финализации записи.
+
+        Returns:
+            `True`, если запрос отмены отправлен.
+        """
+        if self._encoder and self._encoder.is_finalizing:
+            self._encoder.cancel()
+            logger.info("Запрошена отмена финализации записи")
+            return True
+        return False
+
     def cancel_recording(self) -> None:
         """Отмена записи без сохранения."""
         self._cleanup()
@@ -410,5 +423,5 @@ class RecordingController:
     def dropped_audio_chunks(self) -> int:
         """Количество потерянных аудио-чанков."""
         if self._audio_recorder:
-            return self._audio_recorder.dropped_chunks
+            return int(self._audio_recorder.dropped_chunks)
         return 0

@@ -7,7 +7,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -740,6 +740,7 @@ class TestRecordingEncoder:
             temp_dir / "final_temp.mp4",
             keep_originals=False,
             progress_callback=None,
+            cancel_event=ANY,
         )
         mock_move.assert_called_once_with(temp_dir / "final_temp.mp4")
         assert not temp_dir.exists()
@@ -780,6 +781,7 @@ class TestRecordingEncoder:
             temp_video,
             temp_dir / "final_temp.mp4",
             progress_callback=None,
+            cancel_event=ANY,
         )
         mock_move.assert_called_once_with(temp_dir / "final_temp.mp4")
         assert not temp_dir.exists()
@@ -813,3 +815,18 @@ class TestRecordingEncoder:
             recording_encoder.cancel()
 
         mock_cleanup.assert_called_once()
+
+    def test_cancel_during_finalization_only_sets_cancel_flag(
+        self, tmp_path: Path
+    ) -> None:
+        """Во время финализации cancel не должен преждевременно чистить файлы."""
+        with patch("recorder.encoder.Encoder", return_value=MagicMock()):
+            recording_encoder = RecordingEncoder(tmp_path / "output.mp4")
+
+        recording_encoder._is_finalizing = True
+
+        with patch.object(recording_encoder, "_cleanup") as mock_cleanup:
+            recording_encoder.cancel()
+
+        assert recording_encoder._cancel_requested.is_set() is True
+        mock_cleanup.assert_not_called()

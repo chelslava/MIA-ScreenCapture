@@ -9,6 +9,7 @@
 import os
 import platform
 import subprocess
+import threading
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -69,6 +70,7 @@ class MainWindow(QMainWindow):
     recording_resumed = pyqtSignal()
     error_occurred = pyqtSignal(str)
     close_requested = pyqtSignal(object)
+    stop_operation_finished = pyqtSignal(object, object)
 
     def __init__(self, headless: bool = False):
         """
@@ -82,6 +84,8 @@ class MainWindow(QMainWindow):
         self._headless = headless
         self._api_controls: dict[str, Callable[..., Any]] = {}
         self._api_server: Any | None = None
+        self._stop_operation_thread: threading.Thread | None = None
+        self._stop_operation_in_progress = False
 
         # Инициализация модели и контроллеров
         self._state = RecordingState()
@@ -330,6 +334,7 @@ class MainWindow(QMainWindow):
         self._output_view.output_path_changed.connect(
             self._on_output_path_changed
         )
+        self.stop_operation_finished.connect(self._on_stop_operation_finished)
 
         # Сигналы ApiSettingsView
         self._api_settings_view.apply_requested.connect(
@@ -491,24 +496,94 @@ class MainWindow(QMainWindow):
 
     def _stop_recording(self) -> None:
         """Остановка записи."""
-        if not self._state.is_recording() and not self._state.is_paused():
+        if self._stop_operation_in_progress:
+            self._cancel_stop_operation()
             return
 
-        output_path = self._recording_controller.stop_recording()
-
-        if output_path:
-            self._on_recording_stopped(output_path)
-        else:
-            self._show_error("Не удалось сохранить запись")
+        if not self._state.is_recording() and not self._state.is_paused():
+            return
+        self._begin_stop_operation()
 
     def _toggle_pause(self) -> None:
         """Переключение состояния паузы."""
+        if self._stop_operation_in_progress:
+            return
         if self._state.is_paused():
             self._recording_controller.resume_recording()
             self._on_recording_resumed()
         else:
             self._recording_controller.pause_recording()
             self._on_recording_paused()
+
+    def _begin_stop_operation(self) -> None:
+        """Запустить остановку записи в фоне."""
+        self._stop_operation_in_progress = True
+        self.start_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.stop_btn.setText("Отменить остановку")
+        self.status_label.setText("Остановка...")
+        self.status_label.setStyleSheet("color: orange; font-weight: bold;")
+        self.status_bar.showMessage("Финализация записи...", 0)
+
+        self._stop_operation_thread = threading.Thread(
+            target=self._stop_recording_worker,
+            daemon=True,
+        )
+        self._stop_operation_thread.start()
+
+    def _stop_recording_worker(self) -> None:
+        """Фоновый worker остановки записи."""
+        output_path = self._recording_controller.stop_recording()
+        error_message = (
+            None if output_path is not None else "Не удалось сохранить запись"
+        )
+        self.stop_operation_finished.emit(output_path, error_message)
+
+    def _cancel_stop_operation(self) -> None:
+        """Запросить отмену долгой остановки записи."""
+        if not self._stop_operation_in_progress:
+            return
+
+        if self._recording_controller.request_stop_cancellation():
+            self.status_label.setText("Отмена остановки...")
+            self.status_bar.showMessage(
+                "Запрошена отмена остановки записи",
+                5000,
+            )
+            self.stop_btn.setEnabled(False)
+            return
+
+        self.status_bar.showMessage(
+            "Остановка ещё не дошла до стадии, которую можно отменить",
+            5000,
+        )
+
+    def _on_stop_operation_finished(
+        self,
+        output_path: Path | None,
+        error_message: str | None,
+    ) -> None:
+        """Завершить UI-часть операции остановки записи."""
+        self._stop_operation_in_progress = False
+        self._stop_operation_thread = None
+        self.stop_btn.setText("Стоп")
+
+        if output_path is not None:
+            self._on_recording_stopped(output_path)
+            return
+
+        self.start_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+        self.status_label.setText("Готов")
+        self.status_label.setStyleSheet("")
+        self.time_label.setText("00:00")
+        self._recording_indicator.hide_indicator()
+        self.status_bar.showMessage(
+            error_message or "Остановка записи не завершена",
+            5000,
+        )
 
     # === Обработчики событий записи ===
 

@@ -388,6 +388,30 @@ class TestRecordingController:
 
         assert controller.state.status == RecordingStatus.IDLE
 
+    def test_request_stop_cancellation_during_finalization(
+        self, controller: RecordingController
+    ) -> None:
+        """Во время финализации должен отправляться запрос отмены."""
+        controller._encoder = MagicMock()
+        controller._encoder.is_finalizing = True
+
+        result = controller.request_stop_cancellation()
+
+        assert result is True
+        controller._encoder.cancel.assert_called_once()
+
+    def test_request_stop_cancellation_without_finalization(
+        self, controller: RecordingController
+    ) -> None:
+        """Без активной финализации отменять нечего."""
+        controller._encoder = MagicMock()
+        controller._encoder.is_finalizing = False
+
+        result = controller.request_stop_cancellation()
+
+        assert result is False
+        controller._encoder.cancel.assert_not_called()
+
 
 class TestSettingsController:
     """Тесты контроллера настроек."""

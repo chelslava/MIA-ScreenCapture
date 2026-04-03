@@ -53,6 +53,9 @@ def _build_window():
     window._recordings_filter_input = MagicMock()
     window._diagnostics_view = MagicMock()
     window._recording_indicator = MagicMock()
+    window._stop_operation_in_progress = False
+    window._stop_operation_thread = None
+    window.stop_operation_finished = MagicMock()
     return window
 
 
@@ -759,12 +762,23 @@ class TestMainWindowMethods:
         """Если backend не вернул путь, показывается ошибка."""
         window = _build_window()
         window._state.start_recording(Path("D:/capture.mp4"))
-        window._recording_controller.stop_recording.return_value = None
-        window._show_error = MagicMock()
+        window._begin_stop_operation = MagicMock()
 
         window._stop_recording()
 
-        window._show_error.assert_called_once()
+        window._begin_stop_operation.assert_called_once()
+
+    def test_stop_recording_requests_cancel_when_operation_in_progress(
+        self,
+    ) -> None:
+        """Повторное нажатие стопа должно просить отмену остановки."""
+        window = _build_window()
+        window._stop_operation_in_progress = True
+        window._cancel_stop_operation = MagicMock()
+
+        window._stop_recording()
+
+        window._cancel_stop_operation.assert_called_once()
 
     def test_toggle_pause_calls_expected_controller_branch(self) -> None:
         """Переключение паузы вызывает pause или resume ветку."""
@@ -827,6 +841,68 @@ class TestMainWindowMethods:
         )
         window._refresh_recent_recordings.assert_called_once()
         window.recording_stopped.emit.assert_called_once_with(str(output))
+        window._recording_indicator.hide_indicator.assert_called_once()
+
+    def test_begin_stop_operation_updates_ui_and_spawns_thread(self) -> None:
+        """Начало stop operation переводит UI в stopping-состояние."""
+        window = _build_window()
+
+        class FakeThread:
+            def __init__(self, target, daemon):
+                self.target = target
+                self.daemon = daemon
+                self.started = False
+
+            def start(self):
+                self.started = True
+
+        with patch("gui.main_window.threading.Thread", FakeThread):
+            window._begin_stop_operation()
+
+        assert window._stop_operation_in_progress is True
+        window.pause_btn.setEnabled.assert_called_with(False)
+        window.stop_btn.setText.assert_called_with("Отменить остановку")
+        window.status_label.setText.assert_called_with("Остановка...")
+
+    def test_cancel_stop_operation_requests_controller_cancellation(
+        self,
+    ) -> None:
+        """Отмена долгой остановки делегируется контроллеру."""
+        window = _build_window()
+        window._stop_operation_in_progress = True
+        window._recording_controller.request_stop_cancellation.return_value = (
+            True
+        )
+
+        window._cancel_stop_operation()
+
+        window._recording_controller.request_stop_cancellation.assert_called_once()
+        window.stop_btn.setEnabled.assert_called_with(False)
+
+    def test_on_stop_operation_finished_success_calls_recording_stopped(
+        self,
+    ) -> None:
+        """Успешное завершение stop operation должно завершать lifecycle."""
+        window = _build_window()
+        window._stop_operation_in_progress = True
+        window._on_recording_stopped = MagicMock()
+        output = Path("D:/capture.mp4")
+
+        window._on_stop_operation_finished(output, None)
+
+        assert window._stop_operation_in_progress is False
+        window._on_recording_stopped.assert_called_once_with(output)
+
+    def test_on_stop_operation_finished_error_restores_idle_ui(self) -> None:
+        """Ошибка stop operation должна вернуть UI в idle-состояние."""
+        window = _build_window()
+        window._stop_operation_in_progress = True
+
+        window._on_stop_operation_finished(None, "Не удалось сохранить запись")
+
+        assert window._stop_operation_in_progress is False
+        window.start_btn.setEnabled.assert_called_with(True)
+        window.stop_btn.setEnabled.assert_called_with(False)
         window._recording_indicator.hide_indicator.assert_called_once()
 
     def test_update_status_formats_elapsed_time(self) -> None:
