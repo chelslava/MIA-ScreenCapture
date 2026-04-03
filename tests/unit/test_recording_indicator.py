@@ -2,6 +2,8 @@
 Тесты визуального индикатора активной записи.
 """
 
+import importlib
+
 from core.recording_state import CaptureSettings
 from core.recording_types import CaptureMode
 from gui import views as gui_views
@@ -16,6 +18,7 @@ class TestResolveIndicatorRect:
 
     def test_recording_indicator_exported_from_gui_views(self) -> None:
         """Индикатор доступен через пакетный импорт gui.views."""
+        importlib.reload(gui_views)
         assert gui_views.RecordingIndicatorOverlay is RecordingIndicatorOverlay
 
     def test_resolve_full_screen_rect(self) -> None:
