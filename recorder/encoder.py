@@ -10,6 +10,8 @@
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -92,6 +94,7 @@ class Encoder:
         output_path: Path,
         keep_originals: bool = True,
         progress_callback: Callable[[float], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> tuple[bool, str | None]:
         """
         Объединение видеофайла и аудиофайла в один выходной файл.
@@ -154,7 +157,14 @@ class Encoder:
             ]
 
             logger.info(f"Запуск FFmpeg: {' '.join(cmd)}")
-            result = self._run_ffmpeg_long_process(cmd, timeout=3600)
+            result = self._run_ffmpeg_long_process(
+                cmd,
+                timeout=3600,
+                cancel_event=cancel_event,
+            )
+
+            if result.cancelled:
+                return False, "Операция кодирования отменена пользователем"
 
             if result.returncode != 0:
                 error_msg = result.stderr_tail or "Неизвестная ошибка FFmpeg"
@@ -191,6 +201,7 @@ class Encoder:
         output_path: Path,
         settings: EncodingSettings | None = None,
         progress_callback: Callable[[float], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> tuple[bool, str | None]:
         """
         Перекодирование видео с указанными настройками.
@@ -240,7 +251,14 @@ class Encoder:
             ]
 
             logger.info(f"Кодирование видео: {' '.join(cmd)}")
-            result = self._run_ffmpeg_long_process(cmd, timeout=3600)
+            result = self._run_ffmpeg_long_process(
+                cmd,
+                timeout=3600,
+                cancel_event=cancel_event,
+            )
+
+            if result.cancelled:
+                return False, "Операция кодирования отменена пользователем"
 
             if result.returncode != 0:
                 return (
@@ -257,6 +275,7 @@ class Encoder:
     class _FFmpegProcessResult:
         returncode: int
         stderr_tail: str | None
+        cancelled: bool = False
 
     def _read_file_tail(self, path: Path, max_bytes: int) -> str:
         """Читает хвост текстового файла безопасно по размеру."""
@@ -271,7 +290,10 @@ class Encoder:
         return data.decode("utf-8", errors="replace").strip()
 
     def _run_ffmpeg_long_process(
-        self, cmd: list[str], timeout: int
+        self,
+        cmd: list[str],
+        timeout: int,
+        cancel_event: threading.Event | None = None,
     ) -> _FFmpegProcessResult:
         """
         Выполняет долгий FFmpeg-процесс без накопления stderr в памяти.
@@ -288,23 +310,60 @@ class Encoder:
                 delete=False,
             ) as stderr_file:
                 stderr_temp_path = Path(stderr_file.name)
-                if creationflags:
-                    process = subprocess.run(
-                        cmd,
-                        stdout=subprocess.DEVNULL,
-                        stderr=stderr_file,
-                        timeout=timeout,
-                        creationflags=creationflags,
-                    )
+                cancelled = False
+                process: Any
+                if cancel_event is None:
+                    if creationflags:
+                        process = subprocess.run(
+                            cmd,
+                            stdout=subprocess.DEVNULL,
+                            stderr=stderr_file,
+                            timeout=timeout,
+                            creationflags=creationflags,
+                        )
+                    else:
+                        process = subprocess.run(
+                            cmd,
+                            stdout=subprocess.DEVNULL,
+                            stderr=stderr_file,
+                            timeout=timeout,
+                        )
                 else:
-                    process = subprocess.run(
-                        cmd,
-                        stdout=subprocess.DEVNULL,
-                        stderr=stderr_file,
-                        timeout=timeout,
-                    )
+                    popen_kwargs: dict[str, Any] = {
+                        "stdout": subprocess.DEVNULL,
+                        "stderr": stderr_file,
+                    }
+                    if creationflags:
+                        popen_kwargs["creationflags"] = creationflags
+
+                    process = subprocess.Popen(cmd, **popen_kwargs)
+                    deadline = time.monotonic() + timeout
+
+                    while True:
+                        if cancel_event.is_set():
+                            cancelled = True
+                            process.terminate()
+                            try:
+                                process.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                                process.wait(timeout=5)
+                            break
+
+                        if process.poll() is not None:
+                            break
+
+                        if time.monotonic() >= deadline:
+                            process.kill()
+                            raise subprocess.TimeoutExpired(
+                                cmd=cmd, timeout=timeout
+                            )
+
+                        time.sleep(0.1)
             stderr_tail = None
-            if process.returncode != 0 and stderr_temp_path is not None:
+            if (
+                process.returncode != 0 or cancelled
+            ) and stderr_temp_path is not None:
                 stderr_tail = self._read_file_tail(
                     stderr_temp_path,
                     max_bytes=_FFMPEG_ERROR_TAIL_BYTES,
@@ -316,6 +375,7 @@ class Encoder:
             return self._FFmpegProcessResult(
                 returncode=process.returncode,
                 stderr_tail=stderr_tail,
+                cancelled=cancelled,
             )
         finally:
             if stderr_temp_path is not None:
@@ -537,6 +597,13 @@ class RecordingEncoder:
         self._temp_dir: Path | None = None
         self._temp_video: Path | None = None
         self._temp_audio: Path | None = None
+        self._cancel_requested = threading.Event()
+        self._is_finalizing = False
+
+    @property
+    def is_finalizing(self) -> bool:
+        """Показывает, идёт ли финализация записи."""
+        return self._is_finalizing
 
     def setup(self) -> tuple[Path, Path]:
         """
@@ -575,6 +642,8 @@ class RecordingEncoder:
         if self._temp_dir is None:
             return False, "Нет временной директории для обработки"
 
+        self._cancel_requested.clear()
+        self._is_finalizing = True
         try:
             temp_output_path = self._temp_dir / (
                 f"final_temp{self.output_path.suffix}"
@@ -587,6 +656,7 @@ class RecordingEncoder:
                     temp_output_path,
                     keep_originals=False,
                     progress_callback=progress_callback,
+                    cancel_event=self._cancel_requested,
                 )
             else:
                 # Просто копирование видео в вывод
@@ -594,6 +664,7 @@ class RecordingEncoder:
                     self._temp_video,
                     temp_output_path,
                     progress_callback=progress_callback,
+                    cancel_event=self._cancel_requested,
                 )
 
             if success:
@@ -605,6 +676,7 @@ class RecordingEncoder:
             return success, error
 
         finally:
+            self._is_finalizing = False
             # Очистка временных файлов
             self._cleanup()
 
@@ -666,5 +738,9 @@ class RecordingEncoder:
 
     def cancel(self) -> None:
         """Отмена записи и очистка."""
+        self._cancel_requested.set()
+        if self._is_finalizing:
+            logger.info("Запрошена отмена текущей финализации записи")
+            return
         self._cleanup()
         logger.info("Запись отменена, временные файлы очищены")
