@@ -6,6 +6,7 @@
 Отделяет бизнес-логику от UI.
 """
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,13 +20,15 @@ from core.recording_types import AudioMode, CaptureMode
 from logger_config import get_module_logger
 from recorder.audio_recorder import AudioRecorder, SystemAudioRecorder
 from recorder.encoder import EncodingSettings, RecordingEncoder
-from recorder.utils import check_disk_space
+from recorder.utils import check_disk_space, check_ffmpeg
 from recorder.video_recorder import CaptureArea, VideoRecorder
 
 if TYPE_CHECKING:
     pass
 
 logger = get_module_logger(__name__)
+
+_FFMPEG_CHECK_TTL_SECONDS = 30.0
 
 
 class RecordingController:
@@ -51,6 +54,7 @@ class RecordingController:
         self._encoder: RecordingEncoder | None = None
         self._temp_video: Path | None = None
         self._temp_audio: Path | None = None
+        self._ffmpeg_check_cache: tuple[float, bool, str | None] | None = None
 
     @property
     def state(self) -> RecordingState:
@@ -89,6 +93,23 @@ class RecordingController:
 
         return CaptureArea.full_screen()
 
+    def _ensure_ffmpeg_available(self) -> tuple[bool, str | None]:
+        """
+        Проверить доступность FFmpeg с кэшированием результата.
+
+        Returns:
+            Кортеж `(доступен, версия)`.
+        """
+        now = time.monotonic()
+        if self._ffmpeg_check_cache is not None:
+            checked_at, available, version = self._ffmpeg_check_cache
+            if now - checked_at < _FFMPEG_CHECK_TTL_SECONDS:
+                return available, version
+
+        available, version = check_ffmpeg()
+        self._ffmpeg_check_cache = (now, available, version)
+        return available, version
+
     def start_recording(
         self,
         output_path: Path,
@@ -110,6 +131,20 @@ class RecordingController:
         Returns:
             Кортеж (успех, сообщение об ошибке или None)
         """
+        ffmpeg_available, ffmpeg_version = self._ensure_ffmpeg_available()
+        if not ffmpeg_available:
+            error_msg = (
+                "FFmpeg недоступен. Проверьте установку FFmpeg и наличие "
+                "исполняемого файла в PATH."
+            )
+            logger.error(error_msg)
+            return False, error_msg
+
+        if ffmpeg_version:
+            logger.debug(
+                "Pre-start health-check FFmpeg OK: %s", ffmpeg_version
+            )
+
         try:
             if output_path.exists() and output_path.is_dir():
                 if output_path.suffix:
