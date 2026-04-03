@@ -10,6 +10,17 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+_CRON_DAY_OF_WEEK_MAP = {
+    "0": "sun",
+    "1": "mon",
+    "2": "tue",
+    "3": "wed",
+    "4": "thu",
+    "5": "fri",
+    "6": "sat",
+    "7": "sun",
+}
+
 
 class TriggerTaskProtocol(Protocol):
     """Минимальный контракт задачи для сборки триггера."""
@@ -27,6 +38,51 @@ def _schedule_type_value(task: TriggerTaskProtocol) -> str:
     schedule_type = task.schedule_type
     value = getattr(schedule_type, "value", schedule_type)
     return str(value).lower()
+
+
+def _normalize_cron_day_value(value: str) -> str:
+    """Нормализует numeric day-of-week в cron-совместимое имя дня."""
+    normalized = value.strip().lower()
+    return _CRON_DAY_OF_WEEK_MAP.get(normalized, normalized)
+
+
+def _normalize_cron_day_token(token: str) -> str:
+    """Нормализует отдельный токен day-of-week из cron-выражения."""
+    normalized = token.strip().lower()
+    if not normalized or normalized in {"*", "?"}:
+        return normalized
+
+    if "/" in normalized:
+        base, step = normalized.split("/", 1)
+        return f"{_normalize_cron_day_token(base)}/{step}"
+
+    if "-" in normalized:
+        start, end = normalized.split("-", 1)
+        return (
+            f"{_normalize_cron_day_value(start)}-"
+            f"{_normalize_cron_day_value(end)}"
+        )
+
+    return _normalize_cron_day_value(normalized)
+
+
+def normalize_crontab_expression(expression: str) -> str:
+    """
+    Нормализует cron-выражение под семантику стандартного crontab.
+
+    APScheduler использует `mon=0`, тогда как обычный cron использует
+    `sun=0|7`, `mon=1`, ... `sat=6`. Для поля day-of-week переводим
+    числовые значения в символьные имена дней.
+    """
+    fields = expression.split()
+    if len(fields) != 5:
+        return expression
+
+    minute, hour, day, month, day_of_week = fields
+    normalized_tokens = [
+        _normalize_cron_day_token(token) for token in day_of_week.split(",")
+    ]
+    return " ".join([minute, hour, day, month, ",".join(normalized_tokens)])
 
 
 def create_trigger(
@@ -63,6 +119,8 @@ def create_trigger(
         )
 
     elif schedule_type == "cron" and task.cron_expression:
-        return CronTrigger.from_crontab(task.cron_expression)
+        return CronTrigger.from_crontab(
+            normalize_crontab_expression(task.cron_expression)
+        )
 
     return None

@@ -29,6 +29,8 @@ logger = get_module_logger(__name__)
 
 _CAPTURE_STOP_TIMEOUT_SECONDS = 15
 _CAPTURE_FORCE_JOIN_TIMEOUT_SECONDS = 2
+_WINDOW_CAPTURE_RECONNECT_TIMEOUT_SECONDS = 5.0
+_WINDOW_CAPTURE_RECONNECT_POLL_SECONDS = 0.25
 
 
 class RecordingState(Enum):
@@ -372,6 +374,168 @@ class VideoRecorder:
         self._on_error: Callable | None = None
         self._last_captured_frame: np.ndarray | None = None
 
+    def _set_capture_lost(self, value: bool) -> None:
+        """
+        Потокобезопасно обновить флаг потери захвата.
+
+        Args:
+            value: Новое значение флага.
+        """
+        with self._capture_lost_lock:
+            self._capture_lost = value
+
+    def _notify_error(self, message: str) -> None:
+        """
+        Безопасно уведомить внешний callback об ошибке.
+
+        Args:
+            message: Текст ошибки.
+        """
+        if self._on_error:
+            try:
+                self._on_error(message)
+            except Exception as e:
+                logger.error(f"Ошибка в on_error callback: {e}")
+
+    def _write_last_frame_on_capture_loss(self, frame: np.ndarray) -> None:
+        """
+        Попытаться сохранить последний полученный кадр перед остановкой.
+
+        Args:
+            frame: Последний доступный кадр.
+        """
+        try:
+            if self._ffmpeg_writer is not None:
+                self._ffmpeg_writer.write(frame)
+            elif self._video_writer is not None:
+                self._video_writer.write(frame)
+            self._last_captured_frame = frame
+        except Exception as e:
+            logger.warning(
+                "Не удалось записать последний кадр при потере захвата: %s",
+                e,
+            )
+
+    def _can_attempt_window_reconnect(self) -> bool:
+        """
+        Проверить, допустимо ли восстановление window capture.
+
+        Returns:
+            `True`, если текущая область — окно с известным заголовком.
+        """
+        return bool(
+            self._capture_area is not None
+            and self._capture_area.type == "window"
+            and self._capture_area.window_title
+        )
+
+    def _try_reconnect_window_capture(
+        self,
+        on_capture_lost: Callable[[str], None],
+    ) -> _WindowsCaptureSession | None:
+        """
+        Попытаться восстановить потерянный window capture.
+
+        Args:
+            on_capture_lost: Callback, который будет передан новой session.
+
+        Returns:
+            Новая capture session при успехе, иначе `None`.
+        """
+        if not self._can_attempt_window_reconnect():
+            return None
+
+        capture_area = self._capture_area
+        if capture_area is None or not capture_area.window_title:
+            return None
+
+        logger.warning(
+            "Попытка восстановить захват окна '%s' в течение %.1f сек",
+            capture_area.window_title,
+            _WINDOW_CAPTURE_RECONNECT_TIMEOUT_SECONDS,
+        )
+
+        deadline = (
+            time.perf_counter() + _WINDOW_CAPTURE_RECONNECT_TIMEOUT_SECONDS
+        )
+        attempt = 0
+
+        while time.perf_counter() < deadline:
+            if self._shutdown_event.is_set() or self._state in (
+                RecordingState.IDLE,
+                RecordingState.STOPPING,
+            ):
+                logger.info(
+                    "Восстановление захвата окна отменено из-за остановки записи"
+                )
+                return None
+
+            attempt += 1
+            try:
+                recovered_area = CaptureArea.from_window(
+                    capture_area.window_title,
+                    raise_if_not_found=True,
+                )
+            except ValueError:
+                logger.info(
+                    "Окно '%s' пока недоступно, попытка восстановления #%s",
+                    capture_area.window_title,
+                    attempt,
+                )
+                time.sleep(_WINDOW_CAPTURE_RECONNECT_POLL_SECONDS)
+                continue
+
+            if (
+                recovered_area.width != capture_area.width
+                or recovered_area.height != capture_area.height
+            ):
+                logger.warning(
+                    "Окно '%s' найдено, но размер изменился: %sx%s -> %sx%s",
+                    capture_area.window_title,
+                    capture_area.width,
+                    capture_area.height,
+                    recovered_area.width,
+                    recovered_area.height,
+                )
+                time.sleep(_WINDOW_CAPTURE_RECONNECT_POLL_SECONDS)
+                continue
+
+            recovered_session = _WindowsCaptureSession(
+                on_closed_callback=on_capture_lost
+            )
+            try:
+                recovered_session.start(recovered_area)
+            except Exception as e:
+                logger.warning(
+                    "Не удалось перезапустить захват окна '%s' (попытка %s): %s",
+                    capture_area.window_title,
+                    attempt,
+                    e,
+                )
+                try:
+                    recovered_session.stop()
+                except Exception:
+                    pass
+                time.sleep(_WINDOW_CAPTURE_RECONNECT_POLL_SECONDS)
+                continue
+
+            logger.info(
+                "Захват окна '%s' успешно восстановлен после %s попыток",
+                capture_area.window_title,
+                attempt,
+            )
+            self._capture_area = recovered_area
+            self._capture_session = recovered_session
+            self._set_capture_lost(False)
+            return recovered_session
+
+        logger.error(
+            "Не удалось восстановить захват окна '%s' за %.1f сек",
+            capture_area.window_title,
+            _WINDOW_CAPTURE_RECONNECT_TIMEOUT_SECONDS,
+        )
+        return None
+
     @property
     def state(self) -> RecordingState:
         """Получение текущего состояния записи."""
@@ -620,21 +784,20 @@ class VideoRecorder:
         frame_interval: float = 1.0 / self.fps
         last_frame_time: float = time.perf_counter()
         fatal_write_error = False
+        capture_lost_requires_cleanup = False
+        capture_lost_message = (
+            "Захват потерян (окно закрыто или монитор отключен)"
+        )
 
         def on_capture_lost(message: str) -> None:
+            nonlocal capture_lost_message
+            capture_lost_message = message
             logger.error(f"Capture lost: {message}")
-            with self._capture_lost_lock:
-                self._capture_lost = True
-            if self._on_error:
-                try:
-                    self._on_error(message)
-                except Exception as e:
-                    logger.error(f"Ошибка в on_error callback: {e}")
+            self._set_capture_lost(True)
 
         session = _WindowsCaptureSession(on_closed_callback=on_capture_lost)
         self._capture_session = session
-        with self._capture_lost_lock:
-            self._capture_lost = False
+        self._set_capture_lost(False)
 
         try:
             session.start(self._capture_area)  # type: ignore[arg-type]
@@ -649,9 +812,24 @@ class VideoRecorder:
                 # Проверка потери захвата
                 if session.is_capture_lost:
                     logger.warning("Capture lost detected in capture loop")
-                    with self._capture_lost_lock:
-                        self._capture_lost = True
-                    break
+                    self._set_capture_lost(True)
+                    try:
+                        session.stop()
+                    except Exception as e:
+                        logger.warning(
+                            "Ошибка остановки потерянной capture session: %s",
+                            e,
+                        )
+                    recovered_session = self._try_reconnect_window_capture(
+                        on_capture_lost
+                    )
+                    if recovered_session is None:
+                        capture_lost_requires_cleanup = True
+                        self._notify_error(capture_lost_message)
+                        break
+                    session = recovered_session
+                    last_frame_time = time.perf_counter()
+                    continue
 
                 # Контроль частоты кадров с высокой точностью
                 current_time = time.perf_counter()
@@ -668,9 +846,24 @@ class VideoRecorder:
                     # Проверка потери захвата перед чтением
                     if session.is_capture_lost:
                         logger.warning("Capture lost before frame read")
-                        with self._capture_lost_lock:
-                            self._capture_lost = True
-                        break
+                        self._set_capture_lost(True)
+                        try:
+                            session.stop()
+                        except Exception as e:
+                            logger.warning(
+                                "Ошибка остановки capture session до recovery: %s",
+                                e,
+                            )
+                        recovered_session = self._try_reconnect_window_capture(
+                            on_capture_lost
+                        )
+                        if recovered_session is None:
+                            capture_lost_requires_cleanup = True
+                            self._notify_error(capture_lost_message)
+                            break
+                        session = recovered_session
+                        last_frame_time = time.perf_counter()
+                        continue
 
                     frame = session.read_frame(
                         timeout=max(frame_interval, 0.01)
@@ -679,20 +872,32 @@ class VideoRecorder:
                     # Проверка потери захвата после чтения
                     if session.is_capture_lost:
                         logger.warning("Capture lost after frame read")
-                        with self._capture_lost_lock:
-                            self._capture_lost = True
+                        self._set_capture_lost(True)
                         if frame is not None:
-                            # Попытка записать последний кадр
-                            if self._ffmpeg_writer is not None:
-                                self._ffmpeg_writer.write(frame)
-                        break
+                            self._write_last_frame_on_capture_loss(frame)
+                        try:
+                            session.stop()
+                        except Exception as e:
+                            logger.warning(
+                                "Ошибка остановки capture session после потери: %s",
+                                e,
+                            )
+                        recovered_session = self._try_reconnect_window_capture(
+                            on_capture_lost
+                        )
+                        if recovered_session is None:
+                            capture_lost_requires_cleanup = True
+                            self._notify_error(capture_lost_message)
+                            break
+                        session = recovered_session
+                        last_frame_time = time.perf_counter()
+                        continue
 
                     if frame is None:
                         continue
 
                     # Сброс флага потери при успешном захвате
-                    with self._capture_lost_lock:
-                        self._capture_lost = False
+                    self._set_capture_lost(False)
 
                     # Запись кадра
                     if self._ffmpeg_writer is not None:
@@ -745,6 +950,10 @@ class VideoRecorder:
             self._capture_session = None
 
         if fatal_write_error:
+            self._cleanup()
+            return
+
+        if capture_lost_requires_cleanup:
             self._cleanup()
             return
 
