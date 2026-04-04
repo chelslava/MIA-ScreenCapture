@@ -479,7 +479,7 @@ class TestVideoViewGetters:
     def test_get_codec(self, qapp: QApplication) -> None:
         """Проверка получения кодека."""
         view = VideoView()
-        view._codec_combo.setCurrentIndex(1)  # mp4v
+        view._codec_combo.setCurrentIndex(5)  # mp4v
         assert view.get_codec() == "mp4v"
 
     def test_get_bitrate(self, qapp: QApplication) -> None:
@@ -498,7 +498,7 @@ class TestVideoViewGetters:
         """Проверка получения настроек."""
         view = VideoView()
         view._fps_spin.setValue(60)
-        view._codec_combo.setCurrentIndex(1)  # mp4v
+        view._codec_combo.setCurrentIndex(5)  # mp4v
         view._bitrate_combo.setCurrentIndex(2)  # 4M
         view._format_combo.setCurrentIndex(1)  # avi
 
@@ -593,7 +593,7 @@ class TestVideoViewSignals:
             signal_received.append(codec)
 
         view.codec_changed.connect(on_codec_changed)
-        view._codec_combo.setCurrentIndex(1)
+        view._codec_combo.setCurrentIndex(5)
 
         assert "mp4v" in signal_received
 

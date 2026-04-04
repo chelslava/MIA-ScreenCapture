@@ -27,6 +27,9 @@
 - Проверка доступности FFmpeg кэшируется на короткий TTL в
   `RecordingController`, чтобы единообразно покрывать GUI/API/scheduler
   path без лишних повторных вызовов `ffmpeg -version`.
+- Конфигурация видеокодеков GUI вынесена в единый каталог
+  `gui.models.video_codecs`; `VideoView` больше не хранит локальные
+  дублирующиеся маппинги `display <-> codec id`.
 
 ### Tests
 - Добавлены unit-тесты на stop/cancel flow долгой остановки записи в
@@ -38,6 +41,8 @@
 - Добавлены unit-тесты на reconnect/finalization сценарии при потере
   захвата экрана.
 - Добавлен regression test на cron weekday semantics в scheduler.
+- Добавлены unit-тесты каталога видеокодеков и актуализированы
+  проверки `VideoView` под единый порядок кодеков.
 
 ## [1.4.7] - 2026-04-03
 
