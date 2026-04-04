@@ -17,6 +17,11 @@ from PyQt6.QtWidgets import (
 )
 
 from gui.models.recording_state import VideoSettings
+from gui.models.video_codecs import (
+    codec_id_from_display_name,
+    display_name_from_codec_id,
+    get_available_codec_display_names,
+)
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -70,16 +75,7 @@ class VideoView(QWidget):
         # Кодек
         group_layout.addWidget(QLabel("Кодек:"), 0, 2)
         self._codec_combo = QComboBox()
-        self._codec_combo.addItems(
-            [
-                "libx264 (CPU)",
-                "h264_nvenc (NVIDIA GPU)",
-                "h264_qsv (Intel GPU)",
-                "libx265 (HEVC CPU)",
-                "hevc_nvenc (NVIDIA HEVC)",
-                "mp4v",
-            ]
-        )
+        self._codec_combo.addItems(get_available_codec_display_names())
         group_layout.addWidget(self._codec_combo, 0, 3)
 
         # Битрейт
@@ -172,7 +168,7 @@ class VideoView(QWidget):
         """Отправка сигнала с текущими настройками."""
         settings = VideoSettings(
             fps=self._fps_spin.value(),
-            codec=self._codec_combo.currentText(),
+            codec=self.get_codec(),
             bitrate=self._bitrate_combo.currentText(),
             format=self._format_combo.currentText(),
             preset=self._get_preset_value(),
@@ -190,21 +186,14 @@ class VideoView(QWidget):
 
     def get_codec(self) -> str:
         """
-        Получить выбранный кодек.
+        Получить идентификатор выбранного кодека.
 
         Returns:
-            Название кодека
+            Идентификатор кодека FFmpeg
         """
-        text = self._codec_combo.currentText()
-        codec_map = {
-            "libx264 (CPU)": "libx264",
-            "h264_nvenc (NVIDIA GPU)": "h264_nvenc",
-            "h264_qsv (Intel GPU)": "h264_qsv",
-            "libx265 (HEVC CPU)": "libx265",
-            "hevc_nvenc (NVIDIA HEVC)": "hevc_nvenc",
-            "mp4v": "mp4v",
-        }
-        return codec_map.get(text, "libx264")
+        current_text: str = self._codec_combo.currentText()
+        codec_id: str = codec_id_from_display_name(current_text)
+        return codec_id
 
     def get_bitrate(self) -> str:
         """
@@ -213,7 +202,8 @@ class VideoView(QWidget):
         Returns:
             Значение битрейта
         """
-        return self._bitrate_combo.currentText()
+        bitrate: str = self._bitrate_combo.currentText()
+        return bitrate
 
     def get_format(self) -> str:
         """
@@ -222,7 +212,8 @@ class VideoView(QWidget):
         Returns:
             Формат файла
         """
-        return self._format_combo.currentText()
+        video_format: str = self._format_combo.currentText()
+        return video_format
 
     def get_preset(self) -> str:
         """
@@ -259,20 +250,12 @@ class VideoView(QWidget):
 
     def set_codec(self, codec: str) -> None:
         """
-        Установить кодек.
+        Установить кодек по его идентификатору.
 
         Args:
-            codec: Название кодека
+            codec: Идентификатор кодека FFmpeg
         """
-        codec_to_text = {
-            "libx264": "libx264 (CPU)",
-            "h264_nvenc": "h264_nvenc (NVIDIA GPU)",
-            "h264_qsv": "h264_qsv (Intel GPU)",
-            "libx265": "libx265 (HEVC CPU)",
-            "hevc_nvenc": "hevc_nvenc (NVIDIA HEVC)",
-            "mp4v": "mp4v",
-        }
-        text = codec_to_text.get(codec, "libx264 (CPU)")
+        text: str = display_name_from_codec_id(codec)
         index = self._codec_combo.findText(text)
         if index >= 0:
             self._codec_combo.setCurrentIndex(index)
