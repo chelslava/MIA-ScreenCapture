@@ -157,13 +157,13 @@ class GuiRuntimeCoordinator:
         self._app._tray_icon.show()
 
         self._app._tray_icon.start_requested.connect(
-            self._app._main_window._start_recording
+            self._app.request_start_recording
         )
         self._app._tray_icon.stop_requested.connect(
-            self._app._main_window._stop_recording
+            self._app.request_stop_recording
         )
         self._app._tray_icon.pause_requested.connect(
-            self._app._main_window._toggle_pause
+            self._app.request_toggle_pause_recording
         )
         self._app._tray_icon.show_window_requested.connect(
             self._app._show_window
@@ -198,9 +198,8 @@ class GuiRuntimeCoordinator:
         assert self._app._main_window is not None
 
         self._app._setup_hotkeys()
-        self._app._start_api_server()
-        self._app._main_window._api_server = self._app._api_server
-        self._app._main_window._api_controls = self._app.get_api_controls()
+        self._app.start_api_server()
+        self._app._main_window.bind_application_facade(self._app)
         self._app._main_window._refresh_api_status()
         self._app._start_scheduler()
 
@@ -222,9 +221,20 @@ class RecordingRuntimeCoordinator:
             )
         return self._app._recording_service.get_status()
 
-    def start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
+    def start_recording(
+        self,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Запускает запись через GUI или headless сервис."""
         if self._app._main_window:
+            if params is None:
+                return cast(
+                    dict[str, Any],
+                    self._app._run_on_gui_thread(
+                        self._app._main_window.start_recording,
+                        timeout=_GUI_START_TIMEOUT_SECONDS,
+                    ),
+                )
             return cast(
                 dict[str, Any],
                 self._app._run_on_gui_thread(
@@ -233,6 +243,11 @@ class RecordingRuntimeCoordinator:
                     ),
                     timeout=_GUI_START_TIMEOUT_SECONDS,
                 ),
+            )
+        if params is None:
+            params = cast(
+                dict[str, Any],
+                self._app._config.get("recording", {}),
             )
         return self._app._recording_service.start_recording(params)
 
@@ -351,10 +366,6 @@ class ApiRuntimeCoordinator:
         """Открывает каталог API-логов."""
         self._manager.open_api_logs_folder()
 
-    def get_api_controls(self) -> dict[str, Any]:
-        """Возвращает набор callbacks для GUI API-вкладки."""
-        return self._manager.get_api_controls()
-
     def setup_api_callbacks(self) -> None:
         """Регистрирует callbacks API."""
         self._manager.setup_api_callbacks()
@@ -387,7 +398,6 @@ class VideoRecorderApp:
         self._tray_icon: TrayIcon | None = None
         self._api_server: APIServer | None = None
         self._scheduler: TaskScheduler | None = None
-        self._api_controls: dict[str, Any] | None = None
 
         # Состояние
         self._running = False
@@ -410,6 +420,123 @@ class VideoRecorderApp:
         self._api_runtime_coordinator = ApiRuntimeCoordinator(
             self._api_runtime_manager
         )
+
+    def request_start_recording(self) -> dict[str, Any]:
+        """Интерактивный запуск записи из tray/hotkeys."""
+        return self.start_recording()
+
+    def request_stop_recording(self) -> dict[str, Any]:
+        """Интерактивный запрос остановки записи из tray/hotkeys."""
+        if self._main_window:
+            return cast(
+                dict[str, Any],
+                self._run_on_gui_thread(
+                    self._main_window.request_stop_recording,
+                    timeout=_GUI_DEFAULT_TIMEOUT_SECONDS,
+                ),
+            )
+        return self.stop_recording()
+
+    def request_toggle_pause_recording(self) -> dict[str, Any]:
+        """Интерактивное переключение паузы из tray/hotkeys."""
+        if self._main_window:
+            return cast(
+                dict[str, Any],
+                self._run_on_gui_thread(
+                    self._main_window.request_toggle_pause,
+                    timeout=_GUI_DEFAULT_TIMEOUT_SECONDS,
+                ),
+            )
+        return self.toggle_pause()
+
+    def get_status(self) -> dict[str, Any]:
+        """Возвращает публичный статус записи."""
+        return self._get_status()
+
+    def start_recording(
+        self,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Запускает запись через публичный фасад приложения."""
+        if params is None:
+            return self._recording_runtime_coordinator.start_recording()
+        return self._start_recording(params)
+
+    def stop_recording(self) -> dict[str, Any]:
+        """Останавливает запись через публичный фасад приложения."""
+        return self._stop_recording()
+
+    def toggle_pause(self) -> dict[str, Any]:
+        """Переключает паузу через публичный фасад приложения."""
+        return self._toggle_pause()
+
+    def get_recordings(self) -> list[Any]:
+        """Возвращает список последних записей."""
+        return self._get_recordings()
+
+    def get_schedule(self) -> list[Any]:
+        """Возвращает список задач планировщика."""
+        return self._get_schedule()
+
+    def create_schedule(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Создаёт задачу планировщика."""
+        return self._create_schedule(data)
+
+    def delete_schedule(self, task_id: str) -> dict[str, Any]:
+        """Удаляет задачу планировщика."""
+        return self._delete_schedule(task_id)
+
+    def update_schedule(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Обновляет задачу планировщика."""
+        return self._update_schedule(data)
+
+    def toggle_schedule(
+        self,
+        task_id: str,
+        enabled: bool,
+    ) -> dict[str, Any]:
+        """Переключает состояние задачи планировщика."""
+        return self._toggle_schedule(task_id, enabled)
+
+    def get_devices(self) -> dict[str, list[Any]]:
+        """Возвращает список доступных аудиоустройств."""
+        return self._get_devices()
+
+    def get_windows(self) -> list[Any]:
+        """Возвращает список доступных окон."""
+        return self._get_windows()
+
+    def get_config_snapshot(self) -> dict[str, Any]:
+        """Возвращает snapshot текущей конфигурации."""
+        return self._get_config()
+
+    def update_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Обновляет конфигурацию через публичный фасад."""
+        return self._update_config(data)
+
+    def start_api_server(self, force: bool = False) -> dict[str, Any]:
+        """Запускает API сервер через публичный фасад."""
+        return self._start_api_server(force=force)
+
+    def get_api_status(self) -> dict[str, Any]:
+        """Возвращает статус API через публичный фасад."""
+        return self._get_api_status()
+
+    def apply_api_settings(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Применяет настройки API через публичный фасад."""
+        return self._apply_api_settings(data)
+
+    def stop_api_server(self) -> dict[str, Any]:
+        """Останавливает API сервер через публичный фасад."""
+        return self._stop_api_server()
+
+    def restart_api_server(self) -> dict[str, Any]:
+        """Перезапускает API сервер через публичный фасад."""
+        return self._restart_api_server()
+
+    def open_api_logs_folder(self) -> None:
+        """Открывает каталог логов API через публичный фасад."""
+        self._api_runtime_coordinator.open_api_logs_folder()
 
     def _get_api_headers(self) -> dict:
         """
@@ -764,15 +891,6 @@ class VideoRecorderApp:
         """Открывает папку с логами API через менеджер runtime."""
         self._api_runtime_coordinator.open_api_logs_folder()
 
-    def get_api_controls(self) -> dict[str, Any]:
-        """
-        Получение набора колбэков для вкладки API.
-
-        Returns:
-            Словарь с готовыми методами для привязки к GUI.
-        """
-        return self._api_runtime_coordinator.get_api_controls()
-
     def _setup_api_callbacks(self) -> None:
         """Настраивает обратные вызовы API через менеджер runtime."""
         self._api_runtime_coordinator.setup_api_callbacks()
@@ -802,14 +920,14 @@ class VideoRecorderApp:
         """Переключение записи по горячей клавише."""
         if self._main_window:
             if self._main_window.get_status().get("is_recording", False):
-                self._main_window._stop_recording()
+                self.request_stop_recording()
             else:
-                self._main_window._start_recording()
+                self.request_start_recording()
 
     def _pause_recording_hotkey(self) -> None:
         """Пауза записи по горячей клавише."""
         if self._main_window:
-            self._main_window._toggle_pause()
+            self.request_toggle_pause_recording()
 
     def _start_scheduler(self) -> None:
         """Запуск планировщика задач."""

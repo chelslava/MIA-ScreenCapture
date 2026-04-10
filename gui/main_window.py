@@ -13,7 +13,7 @@ import threading
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -52,6 +52,9 @@ from recorder.utils import check_ffmpeg, format_filesize, format_time
 
 logger = get_module_logger(__name__)
 
+if TYPE_CHECKING:
+    from core.application_facade import ApplicationFacade
+
 
 class MainWindow(QMainWindow):
     """
@@ -82,8 +85,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self._headless = headless
-        self._api_controls: dict[str, Callable[..., Any]] = {}
-        self._api_server: Any | None = None
+        self._application_facade: ApplicationFacade | None = None
         self._stop_operation_thread: threading.Thread | None = None
         self._stop_operation_in_progress = False
 
@@ -446,6 +448,18 @@ class MainWindow(QMainWindow):
 
     # === Управление записью ===
 
+    def bind_application_facade(
+        self,
+        application_facade: "ApplicationFacade",
+    ) -> None:
+        """
+        Подключает фасад приложения к окну.
+
+        Args:
+            application_facade: Публичный runtime/API фасад.
+        """
+        self._application_facade = application_facade
+
     def _start_recording(self) -> None:
         """Запуск записи."""
         if self._state.is_recording():
@@ -494,6 +508,26 @@ class MainWindow(QMainWindow):
         else:
             self._show_error(error_msg or "Не удалось запустить запись")
 
+    def start_recording(self) -> dict[str, Any]:
+        """
+        Публичный запуск записи с текущими UI-настройками.
+
+        Returns:
+            Результат запуска записи.
+        """
+        if self._state.is_recording():
+            return {"success": False, "error": "Запись уже идёт"}
+
+        self._start_recording()
+        if self._state.is_recording():
+            return {
+                "success": True,
+                "output_path": str(self._state.current_output)
+                if self._state.current_output is not None
+                else None,
+            }
+        return {"success": False, "error": "Не удалось запустить запись"}
+
     def _stop_recording(self) -> None:
         """Остановка записи."""
         if self._stop_operation_in_progress:
@@ -503,6 +537,16 @@ class MainWindow(QMainWindow):
         if not self._state.is_recording() and not self._state.is_paused():
             return
         self._begin_stop_operation()
+
+    def request_stop_recording(self) -> dict[str, Any]:
+        """
+        Публичный запрос остановки записи из интерактивного UI.
+
+        Returns:
+            Снимок текущего статуса.
+        """
+        self._stop_recording()
+        return self.get_status()
 
     def _toggle_pause(self) -> None:
         """Переключение состояния паузы."""
@@ -514,6 +558,16 @@ class MainWindow(QMainWindow):
         else:
             self._recording_controller.pause_recording()
             self._on_recording_paused()
+
+    def request_toggle_pause(self) -> dict[str, Any]:
+        """
+        Публичное переключение паузы из интерактивного UI.
+
+        Returns:
+            Снимок текущего статуса.
+        """
+        self._toggle_pause()
+        return self.get_status()
 
     def _begin_stop_operation(self) -> None:
         """Запустить остановку записи в фоне."""
@@ -650,13 +704,32 @@ class MainWindow(QMainWindow):
             elapsed = self._recording_controller.elapsed_time
             self.time_label.setText(format_time(elapsed))
 
+    def _get_api_control_handler(
+        self,
+        control_name: str,
+    ) -> Callable[..., Any] | None:
+        """Возвращает API-обработчик из публичного фасада приложения."""
+        application_facade = self._application_facade
+        if application_facade is None:
+            return None
+
+        handler_map: dict[str, Callable[..., Any]] = {
+            "get_status": application_facade.get_api_status,
+            "apply_settings": application_facade.apply_api_settings,
+            "start": lambda: application_facade.start_api_server(force=True),
+            "stop": application_facade.stop_api_server,
+            "restart": application_facade.restart_api_server,
+            "open_logs": application_facade.open_api_logs_folder,
+        }
+        return handler_map.get(control_name)
+
     def _invoke_api_control(
         self,
         control_name: str,
         *args: Any,
     ) -> dict[str, Any] | None:
         """Вызов обработчика API из главного приложения."""
-        handler = self._api_controls.get(control_name)
+        handler = self._get_api_control_handler(control_name)
         if handler is None:
             return None
 
@@ -679,9 +752,13 @@ class MainWindow(QMainWindow):
         status = self._invoke_api_control("get_status")
         if status is None:
             api_running = False
-            if self._api_server is not None:
+            if self._application_facade is not None:
                 try:
-                    api_running = self._api_server.is_running()
+                    api_running = bool(
+                        self._application_facade.get_api_status().get(
+                            "running", False
+                        )
+                    )
                 except Exception:
                     api_running = False
             message = "Сервер запущен" if api_running else "Сервер остановлен"
@@ -990,10 +1067,13 @@ class MainWindow(QMainWindow):
             logger.info(f"output_path: {output_path}")
 
             api_running = False
-            api_server = getattr(self, "_api_server", None)
-            if api_server is not None:
+            if self._application_facade is not None:
                 try:
-                    api_running = api_server.is_running()
+                    api_running = bool(
+                        self._application_facade.get_api_status().get(
+                            "running", False
+                        )
+                    )
                 except Exception:
                     api_running = False
 

@@ -114,6 +114,81 @@ class MockApp:
     def _update_config(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"success": True}
 
+    def get_status(self) -> dict[str, Any]:
+        return self._get_status()
+
+    def start_recording(
+        self, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return self._start_recording(params)
+
+    def stop_recording(self) -> dict[str, Any]:
+        return self._stop_recording()
+
+    def toggle_pause(self) -> dict[str, Any]:
+        return self._toggle_pause()
+
+    def get_recordings(self) -> list[Any]:
+        return self._get_recordings()
+
+    def get_schedule(self) -> dict[str, Any]:
+        return self._get_schedule()
+
+    def create_schedule(self, data: dict[str, Any]) -> dict[str, Any]:
+        return self._create_schedule(data)
+
+    def delete_schedule(self, task_id: str) -> dict[str, Any]:
+        return self._delete_schedule(task_id)
+
+    def update_schedule(self, data: dict[str, Any]) -> dict[str, Any]:
+        return self._update_schedule(data)
+
+    def toggle_schedule(
+        self,
+        task_id: str,
+        enabled: bool,
+    ) -> dict[str, Any]:
+        return self._toggle_schedule(task_id, enabled)
+
+    def get_devices(self) -> list[Any]:
+        return self._get_devices()
+
+    def get_windows(self) -> list[Any]:
+        return self._get_windows()
+
+    def get_config_snapshot(self) -> dict[str, Any]:
+        return self._get_config()
+
+    def update_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        return self._update_config(data)
+
+    def request_start_recording(self) -> dict[str, Any]:
+        return self.start_recording()
+
+    def request_stop_recording(self) -> dict[str, Any]:
+        return self.stop_recording()
+
+    def request_toggle_pause_recording(self) -> dict[str, Any]:
+        return self.toggle_pause()
+
+    def get_api_status(self) -> dict[str, Any]:
+        return {"running": False}
+
+    def apply_api_settings(self, data: dict[str, Any]) -> dict[str, Any]:
+        return {"success": True, "data": data}
+
+    def start_api_server(self, force: bool = False) -> dict[str, Any]:
+        return {"success": True, "force": force}
+
+    def stop_api_server(self) -> dict[str, Any]:
+        return {"success": True}
+
+    def restart_api_server(self) -> dict[str, Any]:
+        return {"success": True}
+
+    def open_api_logs_folder(self) -> None:
+        return None
+
 
 @pytest.fixture
 def mock_app() -> MockApp:
@@ -597,44 +672,6 @@ class TestRestartApiServer:
                 mock_start.assert_called_once_with(force=True)
 
 
-class TestGetApiControls:
-    """Проверки получения контролов API."""
-
-    def test_get_api_controls_returns_callbacks(
-        self, manager: ApiRuntimeManager
-    ) -> None:
-        """Возвращает словарь с callbacks."""
-        controls = manager.get_api_controls()
-        assert "get_status" in controls
-        assert "apply_settings" in controls
-        assert "start" in controls
-        assert "stop" in controls
-        assert "restart" in controls
-        assert "open_logs" in controls
-
-    def test_get_status_callback(self, manager: ApiRuntimeManager) -> None:
-        """Callback get_status работает."""
-        controls = manager.get_api_controls()
-        with patch.object(
-            manager,
-            "get_api_status",
-            return_value={"running": False, "host": "127.0.0.1"},
-        ):
-            result = controls["get_status"]()
-            assert result["running"] is False
-
-    def test_start_callback_calls_with_force(
-        self, manager: ApiRuntimeManager
-    ) -> None:
-        """Callback start вызывает start_api_server с force=True."""
-        controls = manager.get_api_controls()
-        with patch.object(
-            manager, "start_api_server", return_value={"success": True}
-        ) as mock:
-            controls["start"]()
-            mock.assert_called_once_with(force=True)
-
-
 class TestSetupApiCallbacks:
     """Проверки регистрации callbacks API."""
 
@@ -672,3 +709,34 @@ class TestSetupApiCallbacks:
         ]
         for action in expected_actions:
             assert action in mock_server._callbacks
+
+    def test_setup_uses_public_facade_callbacks(
+        self, manager: ApiRuntimeManager, mock_app: MockApp
+    ) -> None:
+        """Runtime callbacks должны ссылаться на публичный фасад."""
+        mock_server = MockApiServer()
+        mock_app._api_server = mock_server
+
+        manager.setup_api_callbacks()
+
+        expected_methods = {
+            "status": mock_app.get_status,
+            "start": mock_app.start_recording,
+            "stop": mock_app.stop_recording,
+            "pause": mock_app.toggle_pause,
+            "recordings": mock_app.get_recordings,
+            "get_schedule": mock_app.get_schedule,
+            "create_schedule": mock_app.create_schedule,
+            "delete_schedule": mock_app.delete_schedule,
+            "update_schedule": mock_app.update_schedule,
+            "toggle_schedule": mock_app.toggle_schedule,
+            "devices": mock_app.get_devices,
+            "windows": mock_app.get_windows,
+            "get_config": mock_app.get_config_snapshot,
+            "update_config": mock_app.update_config,
+        }
+
+        for action, expected in expected_methods.items():
+            callback = mock_server._callbacks[action]
+            assert callback.__self__ is expected.__self__
+            assert callback.__func__ is expected.__func__

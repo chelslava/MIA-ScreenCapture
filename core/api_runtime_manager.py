@@ -8,6 +8,7 @@ from typing import Any, Protocol
 import api.auth as api_auth
 import config as config_module
 from core.api_lifecycle_manager import ApiLifecycleManager, ApiLifecycleState
+from core.application_facade import ApplicationFacade
 from logger_config import (
     get_api_log_dir,
     get_module_logger,
@@ -48,7 +49,7 @@ class _ApiServerProtocol(Protocol):
         """Обновляет runtime API ключ."""
 
 
-class _ApiRuntimeAppProtocol(Protocol):
+class _ApiRuntimeAppProtocol(ApplicationFacade, Protocol):
     """Минимальный контракт приложения для API runtime-менеджера."""
 
     _config: dict[str, Any]
@@ -56,48 +57,6 @@ class _ApiRuntimeAppProtocol(Protocol):
     _api_server: Any | None
     _main_window: Any | None
     _websocket_manager: Any
-
-    def _get_status(self, *args: Any, **kwargs: Any) -> Any:
-        """Возвращает статус записи."""
-
-    def _start_recording(self, *args: Any, **kwargs: Any) -> Any:
-        """Запускает запись."""
-
-    def _stop_recording(self, *args: Any, **kwargs: Any) -> Any:
-        """Останавливает запись."""
-
-    def _toggle_pause(self, *args: Any, **kwargs: Any) -> Any:
-        """Переключает паузу записи."""
-
-    def _get_recordings(self, *args: Any, **kwargs: Any) -> Any:
-        """Возвращает список записей."""
-
-    def _get_schedule(self, *args: Any, **kwargs: Any) -> Any:
-        """Возвращает расписание."""
-
-    def _create_schedule(self, *args: Any, **kwargs: Any) -> Any:
-        """Создаёт задачу расписания."""
-
-    def _delete_schedule(self, *args: Any, **kwargs: Any) -> Any:
-        """Удаляет задачу расписания."""
-
-    def _update_schedule(self, *args: Any, **kwargs: Any) -> Any:
-        """Обновляет задачу расписания."""
-
-    def _toggle_schedule(self, *args: Any, **kwargs: Any) -> Any:
-        """Переключает задачу расписания."""
-
-    def _get_devices(self, *args: Any, **kwargs: Any) -> Any:
-        """Возвращает список устройств."""
-
-    def _get_windows(self, *args: Any, **kwargs: Any) -> Any:
-        """Возвращает список окон."""
-
-    def _get_config(self, *args: Any, **kwargs: Any) -> Any:
-        """Возвращает конфигурацию."""
-
-    def _update_config(self, *args: Any, **kwargs: Any) -> Any:
-        """Обновляет конфигурацию."""
 
 
 class ApiRuntimeManager:
@@ -228,8 +187,6 @@ class ApiRuntimeManager:
             # Запуск сервера.
             self._app._api_server.start()
             self._set_lifecycle_state("running")
-            if self._app._main_window is not None:
-                self._app._main_window._api_server = self._app._api_server
             logger.info(
                 f"API сервер запущен на {self._app._api_server.get_url()}"
             )
@@ -415,8 +372,6 @@ class ApiRuntimeManager:
 
         self._app._api_server.stop()
         self._app._api_server = None
-        if self._app._main_window is not None:
-            self._app._main_window._api_server = None
         self._set_lifecycle_state("stopped")
         return {"success": True, "running": False}
 
@@ -429,51 +384,42 @@ class ApiRuntimeManager:
         """Открывает папку с логами API."""
         open_api_logs_folder()
 
-    def get_api_controls(self) -> dict[str, Any]:
-        """Возвращает callbacks для UI управления API."""
-        return {
-            "get_status": self.get_api_status,
-            "apply_settings": self.apply_api_settings,
-            "start": lambda: self.start_api_server(force=True),
-            "stop": self.stop_api_server,
-            "restart": self.restart_api_server,
-            "open_logs": self.open_api_logs_folder,
-        }
-
     def setup_api_callbacks(self) -> None:
         """Подключает runtime callbacks к API серверу."""
         if not self._app._api_server:
             return
 
-        self._app._api_server.set_callback("status", self._app._get_status)
-        self._app._api_server.set_callback("start", self._app._start_recording)
-        self._app._api_server.set_callback("stop", self._app._stop_recording)
-        self._app._api_server.set_callback("pause", self._app._toggle_pause)
+        self._app._api_server.set_callback("status", self._app.get_status)
+        self._app._api_server.set_callback("start", self._app.start_recording)
+        self._app._api_server.set_callback("stop", self._app.stop_recording)
+        self._app._api_server.set_callback("pause", self._app.toggle_pause)
         self._app._api_server.set_callback(
-            "recordings", self._app._get_recordings
+            "recordings", self._app.get_recordings
         )
         self._app._api_server.set_callback(
-            "get_schedule", self._app._get_schedule
+            "get_schedule", self._app.get_schedule
         )
         self._app._api_server.set_callback(
             "create_schedule",
-            self._app._create_schedule,
+            self._app.create_schedule,
         )
         self._app._api_server.set_callback(
             "delete_schedule",
-            self._app._delete_schedule,
+            self._app.delete_schedule,
         )
         self._app._api_server.set_callback(
             "update_schedule",
-            self._app._update_schedule,
+            self._app.update_schedule,
         )
         self._app._api_server.set_callback(
             "toggle_schedule",
-            self._app._toggle_schedule,
+            self._app.toggle_schedule,
         )
-        self._app._api_server.set_callback("devices", self._app._get_devices)
-        self._app._api_server.set_callback("windows", self._app._get_windows)
-        self._app._api_server.set_callback("get_config", self._app._get_config)
+        self._app._api_server.set_callback("devices", self._app.get_devices)
+        self._app._api_server.set_callback("windows", self._app.get_windows)
         self._app._api_server.set_callback(
-            "update_config", self._app._update_config
+            "get_config", self._app.get_config_snapshot
+        )
+        self._app._api_server.set_callback(
+            "update_config", self._app.update_config
         )

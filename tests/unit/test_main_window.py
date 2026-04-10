@@ -34,8 +34,7 @@ def _build_window():
     window._video_view = MagicMock()
     window._output_view = MagicMock()
     window._api_settings_view = MagicMock()
-    window._api_controls = {}
-    window._api_server = None
+    window._application_facade = None
     window._ws_controller = None
     window.start_btn = MagicMock()
     window.stop_btn = MagicMock()
@@ -922,10 +921,13 @@ class TestMainWindowMethods:
         """Вызов API control нормализует ответы и ошибки."""
         window = _build_window()
         window._show_error = MagicMock()
-        window._api_controls = {
+        handler_map = {
             "ping": lambda: "pong",
             "boom": lambda: (_ for _ in ()).throw(RuntimeError("fail")),
         }
+        window._get_api_control_handler = MagicMock(
+            side_effect=lambda name: handler_map.get(name)
+        )
 
         assert window._invoke_api_control("missing") is None
         assert window._invoke_api_control("ping") == {
@@ -935,8 +937,61 @@ class TestMainWindowMethods:
         assert window._invoke_api_control("boom") is None
         window._show_error.assert_called_once_with("fail")
 
-    def test_refresh_api_status_uses_result_and_fallback_server(self) -> None:
-        """Статус API берётся из control-а или из резервного сервера."""
+    def test_bind_application_facade_routes_api_controls(self) -> None:
+        """При наличии фасада API-кнопки должны ходить через него."""
+        window = _build_window()
+        facade = SimpleNamespace(
+            get_api_status=MagicMock(return_value={"running": True}),
+            apply_api_settings=MagicMock(return_value={"success": True}),
+            start_api_server=MagicMock(return_value={"success": True}),
+            stop_api_server=MagicMock(return_value={"success": True}),
+            restart_api_server=MagicMock(return_value={"success": True}),
+            open_api_logs_folder=MagicMock(return_value=None),
+        )
+
+        window.bind_application_facade(facade)
+
+        assert window._invoke_api_control("get_status") == {"running": True}
+        assert window._invoke_api_control(
+            "apply_settings", {"port": 5001}
+        ) == {"success": True}
+        assert window._invoke_api_control("start") == {"success": True}
+        assert window._invoke_api_control("stop") == {"success": True}
+        assert window._invoke_api_control("restart") == {"success": True}
+        assert window._invoke_api_control("open_logs") == {
+            "success": True,
+            "data": None,
+        }
+
+        facade.apply_api_settings.assert_called_once_with({"port": 5001})
+        facade.start_api_server.assert_called_once_with(force=True)
+        facade.stop_api_server.assert_called_once_with()
+        facade.restart_api_server.assert_called_once_with()
+        facade.open_api_logs_folder.assert_called_once_with()
+
+    def test_request_stop_and_pause_use_interactive_flow(self) -> None:
+        """Интерактивные методы должны возвращать snapshot после действия."""
+        window = _build_window()
+        status_snapshot = {
+            "is_recording": True,
+            "is_paused": False,
+            "elapsed_time": 1.0,
+            "current_file": "D:/capture.mp4",
+        }
+        window._stop_recording = MagicMock()
+        window._toggle_pause = MagicMock()
+        window.get_status = MagicMock(return_value=status_snapshot)
+
+        stop_result = window.request_stop_recording()
+        pause_result = window.request_toggle_pause()
+
+        window._stop_recording.assert_called_once_with()
+        window._toggle_pause.assert_called_once_with()
+        assert stop_result == status_snapshot
+        assert pause_result == status_snapshot
+
+    def test_refresh_api_status_uses_result_and_facade_fallback(self) -> None:
+        """Статус API берётся из control-а или из фасада."""
         window = _build_window()
         window._invoke_api_control = MagicMock(
             side_effect=[
@@ -948,8 +1003,9 @@ class TestMainWindowMethods:
                 None,
             ]
         )
-        window._api_server = MagicMock()
-        window._api_server.is_running.return_value = False
+        window._application_facade = SimpleNamespace(
+            get_api_status=MagicMock(return_value={"running": False})
+        )
         window._api_settings_view.is_editing_settings.return_value = False
 
         window._refresh_api_status()

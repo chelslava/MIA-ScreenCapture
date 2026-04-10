@@ -306,6 +306,41 @@ class TestMainApiRuntime:
             "update_config",
         }
 
+    def test_start_api_server_registers_public_facade_callbacks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Runtime API должен регистрировать публичный фасад приложения."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        monkeypatch.setenv("MIA_API_KEY", "env-token")
+        monkeypatch.setattr("api.server.APIServer", FakeApiServer)
+        monkeypatch.setattr("api.routes.register_routes", lambda *args: None)
+
+        result = app._start_api_server(force=True)
+
+        assert result["success"] is True
+        assert isinstance(app._api_server, FakeApiServer)
+        expected_methods = {
+            "status": app.get_status,
+            "start": app.start_recording,
+            "stop": app.stop_recording,
+            "pause": app.toggle_pause,
+            "recordings": app.get_recordings,
+            "get_schedule": app.get_schedule,
+            "create_schedule": app.create_schedule,
+            "delete_schedule": app.delete_schedule,
+            "update_schedule": app.update_schedule,
+            "toggle_schedule": app.toggle_schedule,
+            "devices": app.get_devices,
+            "windows": app.get_windows,
+            "get_config": app.get_config_snapshot,
+            "update_config": app.update_config,
+        }
+
+        for action, expected in expected_methods.items():
+            callback = app._api_server.callbacks[action]
+            assert callback.__self__ is expected.__self__
+            assert callback.__func__ is expected.__func__
+
     def test_start_api_server_stores_generated_key_in_env(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -501,19 +536,16 @@ class TestMainApiRuntime:
     def test_stop_api_server_clears_server_reference(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Остановка сервера должна освобождать ссылки на экземпляр."""
+        """Остановка API должна очищать runtime-ссылку у приложения."""
         app, _ = _build_app(monkeypatch, api_key="config-token")
         server = FakeApiServer(api_key="config-token")
         server._running = True
         app._api_server = server
-        app._main_window = SimpleNamespace(_api_server=server)
-
         result = app._stop_api_server()
 
         assert result == {"success": True, "running": False}
         assert server.stop_calls == 1
         assert app._api_server is None
-        assert app._main_window._api_server is None
 
     def test_restart_api_server_delegates_to_runtime_manager(
         self, monkeypatch: pytest.MonkeyPatch
@@ -529,48 +561,6 @@ class TestMainApiRuntime:
 
         restart_mock.assert_called_once_with()
         assert result == {"success": True, "status": {"running": True}}
-
-    def test_get_api_controls_returns_expected_actions(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """GUI должен получать полный набор API-контролов."""
-        app, _ = _build_app(monkeypatch, api_key="config-token")
-
-        start_mock = MagicMock(return_value={"success": True})
-        stop_mock = MagicMock(return_value={"success": True})
-        apply_settings_mock = MagicMock(return_value={"success": True})
-        get_status_mock = MagicMock(return_value={"success": True})
-        open_logs_mock = MagicMock()
-
-        app._api_runtime_manager.start_api_server = start_mock
-        app._api_runtime_manager.stop_api_server = stop_mock
-        app._api_runtime_manager.apply_api_settings = apply_settings_mock
-        app._api_runtime_manager.get_api_status = get_status_mock
-        app._api_runtime_manager.open_api_logs_folder = open_logs_mock
-
-        controls = app.get_api_controls()
-
-        assert set(controls.keys()) == {
-            "get_status",
-            "apply_settings",
-            "start",
-            "stop",
-            "restart",
-            "open_logs",
-        }
-
-        controls["get_status"]()
-        controls["apply_settings"]({"port": 5011})
-        controls["start"]()
-        controls["stop"]()
-        controls["restart"]()
-        controls["open_logs"]()
-
-        get_status_mock.assert_called_once_with()
-        apply_settings_mock.assert_called_once_with({"port": 5011})
-        assert start_mock.call_count == 2
-        assert stop_mock.call_count == 2
-        open_logs_mock.assert_called_once_with()
 
     def test_stop_recording_uses_extended_gui_timeout(
         self, monkeypatch: pytest.MonkeyPatch
@@ -605,6 +595,62 @@ class TestMainApiRuntime:
 
         stop_mock.assert_called_once_with()
         assert result == {"success": True}
+
+    def test_request_methods_delegate_to_gui_public_interactive_api(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Tray/hotkeys должны идти через публичные interactive-методы."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        stop_result = {"success": True, "is_recording": True}
+        pause_result = {"success": True, "is_paused": True}
+        start_result = {"success": True, "output_path": "D:/capture.mp4"}
+        app._main_window = SimpleNamespace(
+            request_stop_recording=MagicMock(return_value=stop_result),
+            request_toggle_pause=MagicMock(return_value=pause_result),
+        )
+        app.start_recording = MagicMock(return_value=start_result)
+        run_on_gui_thread_mock = MagicMock(
+            side_effect=[stop_result, pause_result]
+        )
+        app._run_on_gui_thread = run_on_gui_thread_mock
+
+        assert app.request_start_recording() == start_result
+        assert app.request_stop_recording() == stop_result
+        assert app.request_toggle_pause_recording() == pause_result
+
+        app.start_recording.assert_called_once_with()
+        assert run_on_gui_thread_mock.call_count == 2
+        stop_call = run_on_gui_thread_mock.call_args_list[0]
+        pause_call = run_on_gui_thread_mock.call_args_list[1]
+        assert stop_call.args[0] is app._main_window.request_stop_recording
+        assert stop_call.kwargs["timeout"] == 10.0
+        assert pause_call.args[0] is app._main_window.request_toggle_pause
+        assert pause_call.kwargs["timeout"] == 10.0
+
+    def test_hotkeys_route_through_request_methods(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Hotkeys не должны дергать private-методы окна напрямую."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app.request_start_recording = MagicMock()
+        app.request_stop_recording = MagicMock()
+        app.request_toggle_pause_recording = MagicMock()
+        app._main_window = SimpleNamespace(
+            get_status=MagicMock(
+                side_effect=[
+                    {"is_recording": False},
+                    {"is_recording": True},
+                ]
+            )
+        )
+
+        app._toggle_recording_hotkey()
+        app._toggle_recording_hotkey()
+        app._pause_recording_hotkey()
+
+        app.request_start_recording.assert_called_once_with()
+        app.request_stop_recording.assert_called_once_with()
+        app.request_toggle_pause_recording.assert_called_once_with()
 
     def test_start_scheduler_uses_configured_max_concurrency(
         self, monkeypatch: pytest.MonkeyPatch
