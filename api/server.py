@@ -29,6 +29,7 @@ from api.idempotency_store import APIIdempotencyStore
 from api.observability import APIServerObservability
 from api.operation_store import APIOperationStore
 from api.request_lifecycle import register_request_lifecycle
+from api.runtime_models import APIOperation
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -377,9 +378,9 @@ class APIServer:
         request_id: str | None = None,
         trace_id: str | None = None,
         client_ip: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> APIOperation:
         """Запускает фоновую операцию API."""
-        return self._operations.submit(
+        return self._operations.submit_typed(
             operation_type,
             runner,
             request_id=request_id,
@@ -390,17 +391,17 @@ class APIServer:
     def get_background_operation(
         self,
         operation_id: str,
-    ) -> dict[str, Any] | None:
+    ) -> APIOperation | None:
         """Возвращает состояние фоновой операции."""
-        return self._operations.get(operation_id)
+        return self._operations.get_typed(operation_id)
 
     def wait_for_background_operation(
         self,
         operation_id: str,
         timeout: float,
-    ) -> dict[str, Any] | None:
+    ) -> APIOperation | None:
         """Ожидает завершения фоновой операции."""
-        return self._operations.wait(operation_id, timeout)
+        return self._operations.wait_typed(operation_id, timeout)
 
     def begin_idempotency_request(
         self,

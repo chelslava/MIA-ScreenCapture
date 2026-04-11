@@ -99,6 +99,25 @@ class APIOperationStore:
             )
         return self.get(operation_id) or operation.to_dict()
 
+    def submit_typed(
+        self,
+        operation_type: str,
+        runner: Callable[[], Any],
+        *,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+        client_ip: str | None = None,
+    ) -> APIOperation:
+        """Запускает фоновую операцию и возвращает typed snapshot."""
+        operation = self.submit(
+            operation_type,
+            runner,
+            request_id=request_id,
+            trace_id=trace_id,
+            client_ip=client_ip,
+        )
+        return APIOperation.from_dict(operation)
+
     def _run_operation(
         self,
         operation_id: str,
@@ -142,6 +161,15 @@ class APIOperationStore:
                 return None
             return operation.to_dict()
 
+    def get_typed(self, operation_id: str) -> APIOperation | None:
+        """Возвращает typed snapshot операции по id."""
+        with self._lock:
+            self._cleanup_expired_locked()
+            operation = self._operations.get(operation_id)
+            if operation is None:
+                return None
+            return APIOperation.from_dict(operation.to_dict())
+
     def wait(
         self,
         operation_id: str,
@@ -154,6 +182,17 @@ class APIOperationStore:
             return self.get(operation_id)
         event.wait(timeout=timeout)
         return self.get(operation_id)
+
+    def wait_typed(
+        self,
+        operation_id: str,
+        timeout: float,
+    ) -> APIOperation | None:
+        """Ожидает завершение операции и возвращает typed snapshot."""
+        operation = self.wait(operation_id, timeout)
+        if operation is None:
+            return None
+        return APIOperation.from_dict(operation)
 
     def _cleanup_expired_locked(self) -> None:
         now = datetime.now(UTC).timestamp()

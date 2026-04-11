@@ -344,7 +344,7 @@ def _serialize_operation(
 
 
 def _background_operation_status_response(
-    operation: dict[str, Any] | None,
+    operation: dict[str, Any] | APIOperation | None,
 ) -> tuple[Any, int]:
     """Формирует ответ с состоянием фоновой операции."""
     if operation is None:
@@ -377,7 +377,12 @@ def _stop_operation_response(
         trace_id=request_context.trace_id,
         client_ip=request_context.client_ip,
     )
-    operation_id = operation.get("id")
+    operation_model = (
+        operation
+        if isinstance(operation, APIOperation)
+        else APIOperation.from_dict(operation)
+    )
+    operation_id = operation_model.operation_id
     if not operation_id:
         return _internal_error_response()
 
@@ -392,39 +397,45 @@ def _stop_operation_response(
             "Не удалось отследить состояние операции",
         )
 
-    if completed.get("status") == "running":
+    completed_model = (
+        completed
+        if isinstance(completed, APIOperation)
+        else APIOperation.from_dict(completed)
+    )
+
+    if completed_model.status == "running":
         return (
             jsonify(
                 {
                     "success": True,
-                    "data": _serialize_operation(completed),
+                    "data": _serialize_operation(completed_model),
                 }
             ),
             202,
         )
 
-    if completed.get("status") == "failed":
+    if completed_model.status == "failed":
         return _error_response(
             500,
             "internal_error",
-            str(completed.get("error") or "Не удалось остановить запись"),
+            str(completed_model.error or "Не удалось остановить запись"),
         )
 
-    result = completed.get("result")
+    result = completed_model.result
     if isinstance(result, dict):
         payload_data = dict(result)
     elif result is None:
         payload_data = {}
     else:
         payload_data = {"value": result}
-    payload_data["operation_id"] = completed.get("id")
-    payload_data["status"] = completed.get("status")
-    if completed.get("request_id") is not None:
-        payload_data["request_id"] = completed.get("request_id")
-    if completed.get("trace_id") is not None:
-        payload_data["trace_id"] = completed.get("trace_id")
-    if completed.get("client_ip") is not None:
-        payload_data["client_ip"] = completed.get("client_ip")
+    payload_data["operation_id"] = completed_model.operation_id
+    payload_data["status"] = completed_model.status
+    if completed_model.request_id is not None:
+        payload_data["request_id"] = completed_model.request_id
+    if completed_model.trace_id is not None:
+        payload_data["trace_id"] = completed_model.trace_id
+    if completed_model.client_ip is not None:
+        payload_data["client_ip"] = completed_model.client_ip
     return jsonify(
         {"success": payload_data.get("success", True), "data": payload_data}
     ), 200
