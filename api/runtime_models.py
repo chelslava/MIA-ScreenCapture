@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 OperationStatus = Literal["running", "succeeded", "failed"]
 IdempotencyStatus = Literal["running", "completed"]
+IdempotencyBeginState = Literal[
+    "started",
+    "conflict",
+    "in_progress",
+    "replay",
+]
 
 
 @dataclass(slots=True)
@@ -143,6 +149,41 @@ class IdempotencyEntry:
     created_at_monotonic: float
     updated_at_monotonic: float
     response: IdempotencyResponse | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class IdempotencyBeginResult:
+    """Результат `begin(...)` для идемпотентного запроса."""
+
+    state: IdempotencyBeginState
+    response: IdempotencyResponse | None = None
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> IdempotencyBeginResult:
+        """Построить typed result из dict-compatible payload."""
+        response_payload = payload.get("response")
+        response = None
+        if isinstance(response_payload, dict):
+            response = IdempotencyResponse(
+                status_code=int(response_payload.get("status_code", 200)),
+                body_bytes=bytes(response_payload.get("body_bytes", b"")),
+                mimetype=str(
+                    response_payload.get("mimetype", "application/json")
+                ),
+            )
+        raw_state = str(payload.get("state", "conflict"))
+        if raw_state in {"started", "conflict", "in_progress", "replay"}:
+            state = cast(IdempotencyBeginState, raw_state)
+        else:
+            state = "conflict"
+        return cls(state=state, response=response)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Сериализовать typed begin result в совместимый dict."""
+        payload: dict[str, Any] = {"state": self.state}
+        if self.response is not None:
+            payload["response"] = self.response.to_dict()
+        return payload
 
 
 @dataclass(frozen=True, slots=True)

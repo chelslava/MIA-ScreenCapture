@@ -748,7 +748,7 @@ class TestAPIIdempotencyStore:
         fingerprint = "fp-1"
 
         started = store.begin(key, fingerprint)
-        assert started["state"] == "started"
+        assert started.state == "started"
 
         store.complete(
             key=key,
@@ -758,9 +758,10 @@ class TestAPIIdempotencyStore:
         )
         replay = store.begin(key, fingerprint)
 
-        assert replay["state"] == "replay"
-        assert replay["response"]["status_code"] == 200
-        assert replay["response"]["body_bytes"] == b'{"success":true}'
+        assert replay.state == "replay"
+        assert replay.response is not None
+        assert replay.response.status_code == 200
+        assert replay.response.body_bytes == b'{"success":true}'
         store.stop()
 
     def test_conflict_for_same_key_with_other_fingerprint(self) -> None:
@@ -770,10 +771,10 @@ class TestAPIIdempotencyStore:
         key = "idem-key-2"
 
         started = store.begin(key, "fp-a")
-        assert started["state"] == "started"
+        assert started.state == "started"
 
         conflict = store.begin(key, "fp-b")
-        assert conflict["state"] == "conflict"
+        assert conflict.state == "conflict"
         store.stop()
 
     def test_cleanup_removes_expired_entries(self) -> None:
@@ -803,14 +804,14 @@ class TestAPIIdempotencyStore:
         key = "idem-key-abort"
 
         started = store.begin(key, "fp-abort")
-        assert started["state"] == "started"
+        assert started.state == "started"
 
         in_progress = store.begin(key, "fp-abort")
-        assert in_progress["state"] == "in_progress"
+        assert in_progress.state == "in_progress"
 
         store.abort(key)
         restarted = store.begin(key, "fp-abort")
-        assert restarted["state"] == "started"
+        assert restarted.state == "started"
         store.stop()
 
     def test_complete_5xx_drops_entry_without_replay(self) -> None:
@@ -821,7 +822,7 @@ class TestAPIIdempotencyStore:
         key = "idem-key-5xx"
 
         started = store.begin(key, "fp-5xx")
-        assert started["state"] == "started"
+        assert started.state == "started"
 
         store.complete(
             key=key,
@@ -830,7 +831,7 @@ class TestAPIIdempotencyStore:
             mimetype="application/json",
         )
         restarted = store.begin(key, "fp-5xx")
-        assert restarted["state"] == "started"
+        assert restarted.state == "started"
         store.stop()
 
 

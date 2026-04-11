@@ -29,7 +29,7 @@ from api.idempotency_store import APIIdempotencyStore
 from api.observability import APIServerObservability
 from api.operation_store import APIOperationStore
 from api.request_lifecycle import register_request_lifecycle
-from api.runtime_models import APIOperation
+from api.runtime_models import APIOperation, IdempotencyBeginResult
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -407,7 +407,7 @@ class APIServer:
         self,
         key: str,
         fingerprint: str,
-    ) -> dict[str, Any]:
+    ) -> IdempotencyBeginResult:
         """Начинает идемпотентный запрос или возвращает cached-результат."""
         return self._idempotency.begin(key, fingerprint)
 

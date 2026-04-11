@@ -24,7 +24,11 @@ from api.routes_resources import (
     register_resource_routes,
 )
 from api.routes_schedule import register_schedule_routes
-from api.runtime_models import APIOperation, APIOperationPayload
+from api.runtime_models import (
+    APIOperation,
+    APIOperationPayload,
+    IdempotencyBeginResult,
+)
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -223,7 +227,12 @@ def _execute_with_idempotency(
     state = server.begin_idempotency_request(
         key, _build_idempotency_fingerprint()
     )
-    state_name = state.get("state")
+    state_model = (
+        state
+        if isinstance(state, IdempotencyBeginResult)
+        else IdempotencyBeginResult.from_dict(state)
+    )
+    state_name = state_model.state
     if state_name == "conflict":
         return _idempotency_response(
             409,
@@ -237,7 +246,7 @@ def _execute_with_idempotency(
             "Запрос с этим Idempotency-Key уже выполняется",
         )
     if state_name == "replay":
-        replay = state.get("response") or {}
+        replay = state_model.response.to_dict() if state_model.response else {}
         response = current_app.response_class(
             replay.get("body_bytes", b""),
             status=int(replay.get("status_code", 200)),

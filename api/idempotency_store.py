@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
 
-from api.runtime_models import IdempotencyEntry, IdempotencyResponse
+from api.runtime_models import (
+    IdempotencyBeginResult,
+    IdempotencyEntry,
+    IdempotencyResponse,
+)
 
 _IDEMPOTENCY_RESULT_TTL_SECONDS = 3600.0
 _IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS = 30.0
@@ -36,7 +39,7 @@ class APIIdempotencyStore:
         self,
         key: str,
         fingerprint: str,
-    ) -> dict[str, Any]:
+    ) -> IdempotencyBeginResult:
         """Регистрирует начало операции или возвращает cached-результат."""
         now = time.monotonic()
         with self._lock:
@@ -49,18 +52,18 @@ class APIIdempotencyStore:
                     created_at_monotonic=now,
                     updated_at_monotonic=now,
                 )
-                return {"state": "started"}
+                return IdempotencyBeginResult(state="started")
 
             if entry.fingerprint != fingerprint:
-                return {"state": "conflict"}
+                return IdempotencyBeginResult(state="conflict")
 
             if entry.status == "running":
-                return {"state": "in_progress"}
+                return IdempotencyBeginResult(state="in_progress")
 
-            return {
-                "state": "replay",
-                "response": entry.response.to_dict() if entry.response else {},
-            }
+            return IdempotencyBeginResult(
+                state="replay",
+                response=entry.response,
+            )
 
     def complete(
         self,
