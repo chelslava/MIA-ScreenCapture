@@ -68,6 +68,23 @@ class APIOperation:
             error=error_message,
         )
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> APIOperation:
+        """Построить internal model из dict-compatible snapshot."""
+        return cls(
+            operation_id=str(payload.get("id", "")),
+            operation_type=str(payload.get("type", "")),
+            status=payload.get("status", "failed"),
+            created_at=str(payload.get("created_at", "")),
+            updated_at=str(payload.get("updated_at", "")),
+            completed_at=payload.get("completed_at"),
+            result=payload.get("result"),
+            error=payload.get("error"),
+            request_id=payload.get("request_id"),
+            trace_id=payload.get("trace_id"),
+            client_ip=payload.get("client_ip"),
+        )
+
     def complete(
         self,
         status: OperationStatus,
@@ -271,3 +288,59 @@ class ObservabilityBaseline:
             "meets_targets": dict(self.meets_targets),
             "generated_at": self.generated_at,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class APIOperationPayload:
+    """Публичный payload фоновой операции для route responses."""
+
+    operation_id: str
+    operation_type: str
+    status: OperationStatus
+    created_at: str
+    updated_at: str
+    completed_at: str | None = None
+    result: Any | None = None
+    error: str | None = None
+    request_id: str | None = None
+    trace_id: str | None = None
+    client_ip: str | None = None
+
+    @classmethod
+    def from_operation(cls, operation: APIOperation) -> APIOperationPayload:
+        """Построить публичный payload из internal operation model."""
+        return cls(
+            operation_id=operation.operation_id,
+            operation_type=operation.operation_type,
+            status=operation.status,
+            created_at=operation.created_at,
+            updated_at=operation.updated_at,
+            completed_at=operation.completed_at,
+            result=operation.result,
+            error=operation.error,
+            request_id=operation.request_id,
+            trace_id=operation.trace_id,
+            client_ip=operation.client_ip,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Сериализовать payload в совместимый dict."""
+        payload = {
+            "operation_id": self.operation_id,
+            "type": self.operation_type,
+            "status": self.status,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "completed_at": self.completed_at,
+        }
+        if self.result is not None:
+            payload["result"] = self.result
+        if self.error is not None:
+            payload["error"] = self.error
+        if self.request_id is not None:
+            payload["request_id"] = self.request_id
+        if self.trace_id is not None:
+            payload["trace_id"] = self.trace_id
+        if self.client_ip is not None:
+            payload["client_ip"] = self.client_ip
+        return payload

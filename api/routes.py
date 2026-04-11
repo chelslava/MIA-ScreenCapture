@@ -24,6 +24,7 @@ from api.routes_resources import (
     register_resource_routes,
 )
 from api.routes_schedule import register_schedule_routes
+from api.runtime_models import APIOperation, APIOperationPayload
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -330,27 +331,16 @@ def handle_validation_error(error: ValidationError) -> tuple:
     )
 
 
-def _serialize_operation(operation: dict[str, Any]) -> dict[str, Any]:
+def _serialize_operation(
+    operation: dict[str, Any] | APIOperation,
+) -> dict[str, Any]:
     """Преобразует внутреннее представление операции в API payload."""
-    payload = {
-        "operation_id": operation.get("id"),
-        "type": operation.get("type"),
-        "status": operation.get("status"),
-        "created_at": operation.get("created_at"),
-        "updated_at": operation.get("updated_at"),
-        "completed_at": operation.get("completed_at"),
-    }
-    if operation.get("result") is not None:
-        payload["result"] = operation.get("result")
-    if operation.get("error") is not None:
-        payload["error"] = operation.get("error")
-    if operation.get("request_id") is not None:
-        payload["request_id"] = operation.get("request_id")
-    if operation.get("trace_id") is not None:
-        payload["trace_id"] = operation.get("trace_id")
-    if operation.get("client_ip") is not None:
-        payload["client_ip"] = operation.get("client_ip")
-    return payload
+    operation_model = (
+        operation
+        if isinstance(operation, APIOperation)
+        else APIOperation.from_dict(operation)
+    )
+    return APIOperationPayload.from_operation(operation_model).to_dict()
 
 
 def _background_operation_status_response(

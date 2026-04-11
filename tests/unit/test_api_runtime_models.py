@@ -1,6 +1,8 @@
 """Тесты типизированных внутренних моделей runtime API."""
 
 from api.runtime_models import (
+    APIOperation,
+    APIOperationPayload,
     ObservabilityBaseline,
     ObservabilityCurrent,
     ObservabilityLatencyStats,
@@ -52,3 +54,24 @@ class TestObservabilityRuntimeModels:
         assert payload["sample_size"] == 5
         assert payload["slo_targets"]["p95_latency_ms"] == 100.0
         assert payload["meets_targets"]["latency"] is True
+
+
+class TestOperationRuntimeModels:
+    """Проверки typed operation payload serialization."""
+
+    def test_operation_payload_to_dict(self) -> None:
+        """Operation payload должен сериализоваться в прежний контракт."""
+        operation = APIOperation.create_running(
+            "op-1",
+            "stop",
+            request_id="req-1",
+            trace_id="trace-1",
+        )
+        operation.complete("succeeded", result={"success": True})
+
+        payload = APIOperationPayload.from_operation(operation).to_dict()
+
+        assert payload["operation_id"] == "op-1"
+        assert payload["type"] == "stop"
+        assert payload["status"] == "succeeded"
+        assert payload["result"]["success"] is True
