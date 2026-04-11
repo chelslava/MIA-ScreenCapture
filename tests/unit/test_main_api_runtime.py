@@ -169,6 +169,26 @@ def _build_app(
 class TestMainApiRuntime:
     """Тесты runtime-управления API сервера из main.py."""
 
+    def test_gui_runtime_components_use_public_api_refresh(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """GUI runtime coordinator не должен трогать private refresh окна."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app._main_window = SimpleNamespace(
+            bind_application_facade=MagicMock(),
+            refresh_api_status_view=MagicMock(),
+        )
+        app._setup_hotkeys = MagicMock()
+        app.start_api_server = MagicMock()
+        app._start_scheduler = MagicMock()
+
+        coordinator = main.GuiRuntimeCoordinator(app)
+        coordinator._bind_runtime_components()
+
+        app._main_window.bind_application_facade.assert_called_once_with(app)
+        app._main_window.refresh_api_status_view.assert_called_once_with()
+
     def test_run_gui_delegates_to_gui_runtime_coordinator(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -1,0 +1,5 @@
+"""Общие runtime-константы для GUI orchestration."""
+
+GUI_DEFAULT_TIMEOUT_SECONDS = 10.0
+GUI_START_TIMEOUT_SECONDS = 20.0
+GUI_STOP_TIMEOUT_SECONDS = 60.0

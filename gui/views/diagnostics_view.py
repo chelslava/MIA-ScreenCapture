@@ -5,7 +5,7 @@
 Вкладка для проверки состояния системы и устранения неполадок.
 """
 
-import os
+from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -18,8 +18,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from core.readiness import ReadinessSnapshot, RecordingReadinessService
+from core.recording_state import AudioSettings, CaptureSettings
+from core.recording_types import AudioMode, CaptureMode
+from gui.accessibility import apply_accessible_metadata
+from gui.styles.theme import Theme
 from logger_config import get_module_logger
-from recorder.utils import check_ffmpeg, get_audio_devices
 
 logger = get_module_logger(__name__)
 
@@ -33,6 +37,7 @@ class DiagnosticsView(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._output_path = ""
+        self._readiness_service = RecordingReadinessService()
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -40,7 +45,7 @@ class DiagnosticsView(QWidget):
 
         # Заголовок
         title = QLabel("Диагностика системы")
-        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        title.setStyleSheet(Theme.title_style())
         layout.addWidget(title)
 
         # Scroll area для проверок
@@ -64,6 +69,11 @@ class DiagnosticsView(QWidget):
             "Аудиоустройства", "Проверка доступных устройств записи"
         )
         self._checks_layout.addWidget(self._audio_group)
+
+        self._capture_group = self._create_check_group(
+            "Окно захвата", "Проверка доступности выбранного окна"
+        )
+        self._checks_layout.addWidget(self._capture_group)
 
         self._api_group = self._create_check_group(
             "API сервер", "Проверка готовности API сервера"
@@ -92,6 +102,22 @@ class DiagnosticsView(QWidget):
         buttons_layout.addWidget(self._logs_btn)
 
         layout.addLayout(buttons_layout)
+        self._apply_accessibility_metadata()
+
+    def _apply_accessibility_metadata(self) -> None:
+        """Назначение accessibility metadata для controls диагностики."""
+        apply_accessible_metadata(
+            self._recheck_btn,
+            "Повторить диагностику",
+            "Перезапускает проверку готовности среды и зависимостей.",
+            "Повторно запускает диагностику.",
+        )
+        apply_accessible_metadata(
+            self._logs_btn,
+            "Открыть логи приложения",
+            "Открывает директорию с логами приложения.",
+            "Открывает логи приложения.",
+        )
 
     def _on_recheck_clicked(self) -> None:
         """Обработка нажатия кнопки проверки."""
@@ -110,12 +136,12 @@ class DiagnosticsView(QWidget):
         group_layout = QVBoxLayout(group)
 
         desc_label = QLabel(description)
-        desc_label.setStyleSheet("color: gray; font-size: 11px;")
+        desc_label.setStyleSheet(Theme.secondary_hint_style())
         group_layout.addWidget(desc_label)
 
         status_layout = QHBoxLayout()
         status_label = QLabel("Не проверено")
-        status_label.setStyleSheet("font-weight: bold;")
+        status_label.setStyleSheet(Theme.status_style("muted"))
         status_label.setObjectName("status_label")
         status_layout.addWidget(status_label)
         status_layout.addStretch()
@@ -136,14 +162,18 @@ class DiagnosticsView(QWidget):
     def run_checks(
         self,
         api_enabled: bool = False,
-        output_path: str = "",
+        output_path: str | Path = "",
+        capture: CaptureSettings | None = None,
+        audio: AudioSettings | None = None,
     ) -> dict[str, bool]:
         """
         Запуск всех проверок.
 
         Args:
             api_enabled: Включён ли API сервер
-            output_path: Путь к папке вывода
+            output_path: Путь к выходному файлу или папке вывода
+            capture: Настройки текущего захвата
+            audio: Настройки текущего аудио
 
         Returns:
             Словарь с результатами проверок
@@ -151,24 +181,22 @@ class DiagnosticsView(QWidget):
         results: dict[str, bool] = {}
 
         try:
-            # Проверка FFmpeg
-            ffmpeg_ok = self._check_ffmpeg()
-            results["ffmpeg"] = ffmpeg_ok
-            self._update_group_status(
-                self._ffmpeg_group,
-                ffmpeg_ok,
-                "Найден" if ffmpeg_ok else "Не найден",
+            capture_settings = capture or CaptureSettings()
+            audio_settings = audio or AudioSettings()
+            resolved_output_path = Path(str(output_path))
+            self._output_path = str(resolved_output_path)
+            snapshot = self._readiness_service.evaluate(
+                capture=capture_settings,
+                audio=audio_settings,
+                output_path=resolved_output_path,
             )
-
-            # Проверка аудиоустройств
-            audio_ok, audio_count = self._check_audio_devices()
-            results["audio"] = audio_ok
-            self._update_group_status(
-                self._audio_group,
-                audio_ok,
-                f"Найдено устройств: {audio_count}"
-                if audio_ok
-                else "Нет устройств",
+            results.update(
+                self._apply_readiness_snapshot(
+                    snapshot,
+                    api_enabled=api_enabled,
+                    capture=capture_settings,
+                    audio=audio_settings,
+                )
             )
 
             # Проверка API
@@ -178,71 +206,110 @@ class DiagnosticsView(QWidget):
                 api_enabled,
                 "Запущен" if api_enabled else "Не запущен",
             )
-
-            # Проверка папки вывода
-            self._output_path = output_path
-            output_ok = self._check_output_path(output_path)
-            results["output"] = output_ok
-            self._update_group_status(
-                self._output_group,
-                output_ok,
-                "Доступна" if output_ok else "Недоступна или не указана",
-            )
         except Exception as e:
             logger.error(f"Ошибка при выполнении проверок: {e}")
 
         return results
 
-    def _check_ffmpeg(self) -> bool:
-        """Проверка наличия FFmpeg."""
-        try:
-            return bool(check_ffmpeg())
-        except Exception as e:
-            logger.error(f"Ошибка проверки FFmpeg: {e}")
-            return False
+    def _apply_readiness_snapshot(
+        self,
+        snapshot: ReadinessSnapshot,
+        api_enabled: bool,
+        capture: CaptureSettings,
+        audio: AudioSettings,
+    ) -> dict[str, bool]:
+        """Применить readiness snapshot к группам диагностики."""
+        results: dict[str, bool] = {}
 
-    def _check_audio_devices(self) -> tuple[bool, int]:
-        """Проверка аудиоустройств."""
-        try:
-            devices = get_audio_devices()
-            count = len(devices) if devices else 0
-            return count > 0, count
-        except Exception as e:
-            logger.error(f"Ошибка проверки аудиоустройств: {e}")
-            return False, 0
+        ffmpeg_issue = snapshot.find_issue("ffmpeg_missing")
+        results["ffmpeg"] = ffmpeg_issue is None
+        self._update_group_status(
+            self._ffmpeg_group,
+            ffmpeg_issue is None,
+            "Найден" if ffmpeg_issue is None else ffmpeg_issue.title,
+        )
 
-    def _check_output_path(self, path: str) -> bool:
-        """Проверка папки вывода."""
-        if not path:
-            return False
-        try:
-            from pathlib import Path
+        output_issue = snapshot.find_issue(
+            "output_path_invalid",
+            "disk_space_low",
+        )
+        results["output"] = output_issue is None
+        self._update_group_status(
+            self._output_group,
+            output_issue is None,
+            "Доступна" if output_issue is None else output_issue.title,
+        )
 
-            p = Path(path)
-            if not p.exists():
-                p.mkdir(parents=True, exist_ok=True)
-            return p.is_dir() and os.access(path, os.W_OK)
-        except Exception as e:
-            logger.error(f"Ошибка проверки папки вывода: {e}")
-            return False
+        capture_issue = snapshot.find_issue(
+            "window_not_selected",
+            "window_missing",
+        )
+        capture_ok = (
+            capture.capture_type != CaptureMode.WINDOW or capture_issue is None
+        )
+        results["capture"] = capture_ok
+        capture_message = "Не требуется для текущего режима"
+        if capture.capture_type == CaptureMode.WINDOW:
+            capture_message = (
+                "Окно доступно" if capture_issue is None else capture_issue.title
+            )
+        self._update_group_status(
+            self._capture_group,
+            capture_ok,
+            capture_message,
+        )
+
+        audio_issue = snapshot.find_issue(
+            "microphone_missing",
+            "microphone_selected_missing",
+            "microphone_name_missing",
+            "microphone_default",
+        )
+        audio_ok = audio_issue is None or audio_issue.severity == "warning"
+        results["audio"] = audio_ok
+        if audio.audio_type in (AudioMode.NONE, AudioMode.SYSTEM):
+            self._update_group_status(
+                self._audio_group,
+                True,
+                "Не требуется для текущего режима",
+            )
+        elif audio_issue is None:
+            self._update_group_status(
+                self._audio_group,
+                True,
+                "Микрофон готов",
+            )
+        else:
+            self._update_group_status(
+                self._audio_group,
+                audio_ok,
+                audio_issue.title,
+                warning=audio_issue.severity == "warning",
+            )
+
+        return results
 
     def _update_group_status(
-        self, group: QGroupBox, ok: bool, message: str
+        self,
+        group: QGroupBox,
+        ok: bool,
+        message: str,
+        warning: bool = False,
     ) -> None:
         """Обновление статуса группы."""
         status_label = group.findChild(QLabel, "")
         for child in group.findChildren(QLabel):
             if child.text() not in ("", group.title()):
-                if "color: gray" not in child.styleSheet():
+                if Theme.COLORS["muted"] not in child.styleSheet():
                     status_label = child
                     break
 
         if status_label:
             status_label.setText(message)
-            color = "green" if ok else "red"
-            status_label.setStyleSheet(f"font-weight: bold; color: {color};")
+            tone = "warning" if warning else ("success" if ok else "danger")
+            status_label.setStyleSheet(Theme.status_style(tone))
 
         # Показать кнопку исправления если есть проблема
         fix_btn = group.findChild(QPushButton)
         if fix_btn:
-            fix_btn.setVisible(not ok)
+            fix_btn.setVisible((not ok) or warning)

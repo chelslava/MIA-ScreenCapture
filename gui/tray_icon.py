@@ -12,6 +12,7 @@ from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QMenu, QMessageBox, QSystemTrayIcon
 
+from gui.desktop_actions import DesktopActionId, get_desktop_action_spec
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -116,20 +117,26 @@ class TrayIcon(QSystemTrayIcon):
         menu.addSeparator()
 
         # Действие запуска
-        self._start_action = QAction("Начать запись", self)
+        start_spec = get_desktop_action_spec(DesktopActionId.START_RECORDING)
+        self._start_action = QAction(start_spec.title, self)
         self._start_action.triggered.connect(self.start_requested)
+        self._configure_tray_action(self._start_action, start_spec)
         menu.addAction(self._start_action)
 
         # Действие остановки
-        self._stop_action = QAction("Остановить запись", self)
+        stop_spec = get_desktop_action_spec(DesktopActionId.STOP_RECORDING)
+        self._stop_action = QAction(stop_spec.title, self)
         self._stop_action.triggered.connect(self.stop_requested)
         self._stop_action.setEnabled(False)
+        self._configure_tray_action(self._stop_action, stop_spec)
         menu.addAction(self._stop_action)
 
         # Действие паузы
-        self._pause_action = QAction("Пауза", self)
+        pause_spec = get_desktop_action_spec(DesktopActionId.TOGGLE_PAUSE)
+        self._pause_action = QAction(pause_spec.title, self)
         self._pause_action.triggered.connect(self.pause_requested)
         self._pause_action.setEnabled(False)
+        self._configure_tray_action(self._pause_action, pause_spec)
         menu.addAction(self._pause_action)
 
         menu.addSeparator()
@@ -140,6 +147,19 @@ class TrayIcon(QSystemTrayIcon):
         menu.addAction(self._exit_action)
 
         self.setContextMenu(menu)
+
+    def _configure_tray_action(self, action: QAction, action_spec) -> None:
+        """Назначить shortcut и подсказки для tray QAction."""
+        if action_spec.shortcut:
+            set_shortcut = getattr(action, "setShortcut", None)
+            if callable(set_shortcut):
+                set_shortcut(action_spec.shortcut)
+        set_tooltip = getattr(action, "setToolTip", None)
+        if callable(set_tooltip):
+            set_tooltip(action_spec.description)
+        set_status_tip = getattr(action, "setStatusTip", None)
+        if callable(set_status_tip):
+            set_status_tip(action_spec.description)
 
     def _on_exit(self) -> None:
         """Обработка действия выхода."""

@@ -6,6 +6,7 @@
 """
 
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtGui import QFontDatabase, QGuiApplication
@@ -22,6 +23,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui.accessibility import apply_accessible_metadata
+from gui.styles.theme import Theme
 from logger_config import (
     get_api_log_dir,
     get_module_logger,
@@ -32,6 +35,11 @@ logger = get_module_logger(__name__)
 
 _LOG_REFRESH_INTERVAL_MS = 1000
 _MAX_LOG_BLOCKS = 5000
+_AUTO_REFRESH_PAUSED_TEXT = "Автообновление включится при открытии вкладки"
+_LOG_LOADING_TEXT = "Загрузка журнала API..."
+_LOG_EMPTY_TEXT = (
+    "Журнал API пока не создан. Запустите сервер, чтобы начать запись."
+)
 
 
 class ApiSettingsView(QWidget):
@@ -54,10 +62,12 @@ class ApiSettingsView(QWidget):
         self._current_log_path: Path | None = None
         self._log_offset = 0
         self._server_running = False
+        self._auto_refresh_enabled = False
+        self._log_loaded_once = False
 
         self._setup_ui()
         self._setup_timer()
-        self.refresh_logs()
+        self._set_log_status(_AUTO_REFRESH_PAUSED_TEXT)
 
     def _setup_ui(self) -> None:
         """Настройка интерфейса вкладки."""
@@ -65,7 +75,7 @@ class ApiSettingsView(QWidget):
         layout.setSpacing(12)
 
         title = QLabel("API сервер")
-        title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        title.setStyleSheet(Theme.title_style())
         layout.addWidget(title)
 
         layout.addWidget(self._create_settings_group())
@@ -128,11 +138,11 @@ class ApiSettingsView(QWidget):
         layout.addLayout(buttons_layout)
 
         self._status_label = QLabel("Статус: неизвестно")
-        self._status_label.setStyleSheet("font-weight: bold;")
+        self._status_label.setStyleSheet(Theme.status_style("muted"))
         layout.addWidget(self._status_label)
 
         self._server_state_label = QLabel("Сервер готов к запуску")
-        self._server_state_label.setStyleSheet("color: gray;")
+        self._server_state_label.setStyleSheet(Theme.secondary_text_style())
         layout.addWidget(self._server_state_label)
 
         self._update_server_controls(False)
@@ -146,7 +156,7 @@ class ApiSettingsView(QWidget):
         header_layout = QHBoxLayout()
 
         self._log_source_label = QLabel("Файл логов: не найден")
-        self._log_source_label.setStyleSheet("color: gray;")
+        self._log_source_label.setStyleSheet(Theme.secondary_text_style())
         header_layout.addWidget(self._log_source_label)
         header_layout.addStretch()
 
@@ -165,17 +175,89 @@ class ApiSettingsView(QWidget):
         )
         layout.addWidget(self._log_view)
 
-        self._log_status_label = QLabel("Автообновление включено")
-        self._log_status_label.setStyleSheet("color: gray;")
+        self._log_status_label = QLabel(_AUTO_REFRESH_PAUSED_TEXT)
+        self._log_status_label.setStyleSheet(Theme.secondary_text_style())
         layout.addWidget(self._log_status_label)
 
+        self._apply_accessibility_metadata()
         return group
+
+    def _apply_accessibility_metadata(self) -> None:
+        """Назначение accessibility metadata для controls вкладки API."""
+        apply_accessible_metadata(
+            self._port_spinbox,
+            "Порт API",
+            "Позволяет выбрать порт API сервера.",
+            "Поддерживаются значения от 1 до 65535.",
+        )
+        apply_accessible_metadata(
+            self._token_edit,
+            "API токен",
+            "Поле для ввода токена доступа к API серверу.",
+            "Введите токен API.",
+        )
+        apply_accessible_metadata(
+            self._apply_btn,
+            "Сохранить настройки API",
+            "Сохраняет порт и токен API сервера.",
+            "Сохраняет настройки API.",
+        )
+        apply_accessible_metadata(
+            self._copy_token_btn,
+            "Копировать API токен",
+            "Копирует текущий токен API в буфер обмена.",
+            "Копирует токен в буфер обмена.",
+        )
+        apply_accessible_metadata(
+            self._open_logs_btn,
+            "Открыть папку логов API",
+            "Открывает директорию с логами API сервера.",
+            "Открывает папку логов API.",
+        )
+        apply_accessible_metadata(
+            self._start_btn,
+            "Запустить API сервер",
+            "Запускает встроенный API сервер.",
+            "Запускает API сервер.",
+        )
+        apply_accessible_metadata(
+            self._stop_btn,
+            "Остановить API сервер",
+            "Останавливает встроенный API сервер.",
+            "Останавливает API сервер.",
+        )
+        apply_accessible_metadata(
+            self._restart_btn,
+            "Перезапустить API сервер",
+            "Перезапускает встроенный API сервер.",
+            "Перезапускает API сервер.",
+        )
+        apply_accessible_metadata(
+            self._refresh_btn,
+            "Обновить логи API",
+            "Перечитывает текущий журнал API сервера.",
+            "Обновляет логи API.",
+        )
+        apply_accessible_metadata(
+            self._status_label,
+            "Статус API сервера",
+            "Показывает результат последнего действия и текущий статус API.",
+        )
+        apply_accessible_metadata(
+            self._log_view,
+            "Журнал API",
+            "Показывает текущий лог API сервера в режиме только чтения.",
+        )
+        apply_accessible_metadata(
+            self._log_status_label,
+            "Статус обновления журнала API",
+            "Показывает состояние загрузки, ошибки и автообновления журнала.",
+        )
 
     def _setup_timer(self) -> None:
         """Настройка таймера обновления логов."""
         self._log_timer = QTimer(self)
         self._log_timer.timeout.connect(self._on_timer_tick)
-        self._log_timer.start(_LOG_REFRESH_INTERVAL_MS)
 
     def _on_timer_tick(self) -> None:
         """Периодическое обновление логов и статуса API."""
@@ -204,7 +286,7 @@ class ApiSettingsView(QWidget):
     def _on_refresh_clicked(self) -> None:
         """Обработка ручного обновления логов."""
         self.refresh_requested.emit()
-        self.refresh_logs()
+        self.refresh_logs(show_loading_state=True)
 
     def _on_open_logs_clicked(self) -> None:
         """Открытие папки с логами API."""
@@ -217,16 +299,14 @@ class ApiSettingsView(QWidget):
             self._status_label.setText(
                 "Статус: токен не задан. Сначала введите и сохраните его."
             )
-            self._status_label.setStyleSheet(
-                "font-weight: bold; color: orange;"
-            )
+            self._status_label.setStyleSheet(Theme.status_style("warning"))
             return
 
         clipboard = QGuiApplication.clipboard()
         assert clipboard is not None
         clipboard.setText(token)
         self._status_label.setText("Статус: токен скопирован в буфер обмена.")
-        self._status_label.setStyleSheet("font-weight: bold; color: green;")
+        self._status_label.setStyleSheet(Theme.status_style("success"))
 
     def get_settings(self) -> tuple[int, str]:
         """
@@ -272,10 +352,14 @@ class ApiSettingsView(QWidget):
             message = "Сервер запущен" if running else "Сервер остановлен"
 
         self._status_label.setText(f"Статус: {message}")
-        color = "green" if running else "gray"
-        self._status_label.setStyleSheet(f"font-weight: bold; color: {color};")
+        tone = "success" if running else "muted"
+        self._status_label.setStyleSheet(Theme.status_style(tone))
         self._server_state_label.setText(message)
-        self._server_state_label.setStyleSheet(f"color: {color};")
+        self._server_state_label.setStyleSheet(
+            Theme.secondary_text_style()
+            if not running
+            else f"color: {Theme.COLORS['success']};"
+        )
 
     def set_log_text(self, text: str) -> None:
         """
@@ -303,17 +387,15 @@ class ApiSettingsView(QWidget):
             self._log_view.setPlainText(cleaned_text)
         self._scroll_logs_to_end()
 
-    def refresh_logs(self) -> None:
+    def refresh_logs(self, show_loading_state: bool = False) -> None:
         """Обновление логов API из файла."""
+        if show_loading_state:
+            self._show_loading_state()
         try:
             log_path = self._resolve_current_log_path()
             if log_path is None:
                 self._log_source_label.setText("Журнал API: файл не найден")
-                if not self._log_view.toPlainText():
-                    self._log_view.setPlainText(
-                        "Журнал API пока не создан. "
-                        "Запустите сервер, чтобы начать запись."
-                    )
+                self._set_empty_state(_LOG_EMPTY_TEXT)
                 return
 
             self._log_source_label.setText(f"Файл логов: {log_path.name}")
@@ -321,14 +403,52 @@ class ApiSettingsView(QWidget):
                 self._current_log_path = log_path
                 self._log_offset = 0
                 self._load_full_log(log_path)
+                self._set_log_status("Журнал API обновлён")
                 return
 
             self._append_new_log_data(log_path)
+            self._set_log_status("Журнал API обновлён")
         except Exception as e:
             logger.error(f"Не удалось обновить журнал API: {e}")
-            self._log_status_label.setText(
-                f"Не удалось обновить журнал API: {e}"
-            )
+            self._set_error_state(f"Не удалось обновить журнал API: {e}")
+
+    def set_auto_refresh_enabled(self, enabled: bool) -> None:
+        """
+        Включить или выключить автообновление логов.
+
+        Args:
+            enabled: Требуемое состояние автообновления.
+        """
+        if self._auto_refresh_enabled == enabled:
+            return
+
+        self._auto_refresh_enabled = enabled
+        if enabled:
+            self._log_timer.start(_LOG_REFRESH_INTERVAL_MS)
+            self._set_log_status("Автообновление включено")
+            self.refresh_logs(show_loading_state=not self._log_loaded_once)
+            return
+
+        self._stop_auto_refresh()
+        self._set_log_status(_AUTO_REFRESH_PAUSED_TEXT)
+
+    def showEvent(self, event: Any) -> None:
+        """Активирует lifecycle-aware auto-refresh при показе вкладки."""
+        self.set_auto_refresh_enabled(True)
+        try:
+            super().showEvent(event)
+        except AttributeError:
+            return
+
+    def hideEvent(self, event: Any) -> None:
+        """Отключает автообновление, когда вкладка скрыта."""
+        self._stop_auto_refresh()
+        self._auto_refresh_enabled = False
+        self._set_log_status(_AUTO_REFRESH_PAUSED_TEXT)
+        try:
+            super().hideEvent(event)
+        except AttributeError:
+            return
 
     def _resolve_current_log_path(self) -> Path | None:
         """Определение актуального файла логов API."""
@@ -349,11 +469,8 @@ class ApiSettingsView(QWidget):
     def _load_full_log(self, log_path: Path) -> None:
         """Загрузка файла логов целиком после смены источника."""
         if not log_path.exists():
-            self._log_view.setPlainText(
-                "Файл журнала API пока не создан. Запустите сервер."
-            )
+            self._set_empty_state("Файл журнала API пока не создан. Запустите сервер.")
             self._log_offset = 0
-            self._scroll_logs_to_end()
             return
 
         with open(log_path, "rb") as file:
@@ -362,6 +479,7 @@ class ApiSettingsView(QWidget):
         text = data.decode("utf-8", errors="replace")
         self._log_view.setPlainText(text or "Журнал API пуст.")
         self._log_offset = len(data)
+        self._log_loaded_once = True
         self._scroll_logs_to_end()
 
     def _append_new_log_data(self, log_path: Path) -> None:
@@ -385,6 +503,7 @@ class ApiSettingsView(QWidget):
             return
 
         self._log_offset = self._log_offset + len(data)
+        self._log_loaded_once = True
         self.append_log_text(data.decode("utf-8", errors="replace"))
 
     def _update_server_controls(self, running: bool) -> None:
@@ -392,6 +511,46 @@ class ApiSettingsView(QWidget):
         self._start_btn.setEnabled(not running)
         self._stop_btn.setEnabled(running)
         self._restart_btn.setEnabled(running)
+
+    def _stop_auto_refresh(self) -> None:
+        """Остановить таймер автообновления, если он доступен."""
+        stop = getattr(self._log_timer, "stop", None)
+        if callable(stop):
+            stop()
+
+    def _show_loading_state(self) -> None:
+        """Показать пользователю состояние загрузки журнала."""
+        self._set_log_status(_LOG_LOADING_TEXT)
+        if not self._log_view.toPlainText():
+            self._log_view.setPlainText(_LOG_LOADING_TEXT)
+
+    def _set_empty_state(self, message: str) -> None:
+        """Показать состояние отсутствия данных."""
+        self._log_loaded_once = True
+        self._log_view.setPlainText(message)
+        self._set_log_status("Журнал API пуст или ещё не создан")
+
+    def _set_error_state(self, message: str) -> None:
+        """Показать состояние ошибки загрузки журнала."""
+        if not self._log_view.toPlainText():
+            self._log_view.setPlainText(message)
+        self._set_log_status(message, color="red")
+
+    def _set_log_status(self, message: str, color: str = "gray") -> None:
+        """Обновить подпись состояния журнала."""
+        self._log_status_label.setText(message)
+        tone = "muted"
+        if color == "red":
+            tone = "danger"
+        elif color == "orange":
+            tone = "warning"
+        elif color == "green":
+            tone = "success"
+        self._log_status_label.setStyleSheet(
+            Theme.secondary_text_style()
+            if tone == "muted"
+            else f"color: {Theme.COLORS[tone]};"
+        )
 
     def _scroll_logs_to_end(self) -> None:
         """Прокрутка окна логов к последней строке."""

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui.accessibility import apply_accessible_metadata
 from gui.models.recording_state import VideoSettings
 from gui.models.video_codecs import (
     codec_id_from_display_name,
@@ -120,7 +121,41 @@ class VideoView(QWidget):
         self._format_combo.currentTextChanged.connect(self._on_format_changed)
         self._preset_combo.currentIndexChanged.connect(self._on_preset_changed)
 
+        self._apply_accessibility_metadata()
         layout.addWidget(group)
+
+    def _apply_accessibility_metadata(self) -> None:
+        """Назначение accessibility metadata для видеонастроек."""
+        apply_accessible_metadata(
+            self._fps_spin,
+            "Частота кадров",
+            "Позволяет выбрать FPS для записи видео.",
+            "Диапазон от 1 до 120 кадров в секунду.",
+        )
+        apply_accessible_metadata(
+            self._codec_combo,
+            "Видеокодек",
+            "Позволяет выбрать кодек кодирования видео.",
+            "Выберите программный или аппаратный кодек.",
+        )
+        apply_accessible_metadata(
+            self._bitrate_combo,
+            "Битрейт видео",
+            "Позволяет выбрать или ввести битрейт записи.",
+            "Можно выбрать пресет или ввести своё значение.",
+        )
+        apply_accessible_metadata(
+            self._format_combo,
+            "Формат видеофайла",
+            "Позволяет выбрать итоговый контейнер выходного файла.",
+            "Поддерживаются mp4, avi и mkv.",
+        )
+        apply_accessible_metadata(
+            self._preset_combo,
+            "Скорость кодирования",
+            "Позволяет выбрать баланс скорости и качества кодирования.",
+            "Быстрые preset снижают нагрузку, медленные улучшают качество.",
+        )
 
     def _on_fps_changed(self, value: int) -> None:
         """Обработка изменения FPS."""

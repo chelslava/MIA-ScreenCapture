@@ -30,6 +30,34 @@
 - Конфигурация видеокодеков GUI вынесена в единый каталог
   `gui.models.video_codecs`; `VideoView` больше не хранит локальные
   дублирующиеся маппинги `display <-> codec id`.
+- GUI стал менее poll-driven при загрузке системных данных:
+  `MainWindow` больше не держит постоянный timer времени в idle,
+  вкладка API включает автообновление логов только когда активна,
+  списки окон и микрофонов обновляются в фоне, а первичная проверка
+  FFmpeg вынесена из blocking startup path.
+- Добавлен первый слой pre-start readiness:
+  старт записи теперь использует единый readiness snapshot, блокирующие
+  проблемы останавливают запуск до обращения к runtime, а диагностика
+  использует ту же health-модель для FFmpeg, окна захвата, микрофона и
+  пути вывода.
+- Добавлен первый слой keyboard-first desktop actions:
+  в `MainWindow` появился единый action registry для start/pause/stop,
+  открытия последних записей и навигации по ключевым вкладкам; для
+  основных действий добавлены shortcuts, tab order и базовые accessible
+  metadata.
+- Базовые accessibility metadata расширены на secondary views:
+  API, захват, аудио, видео, вывод и диагностика теперь помечают
+  ключевые controls и status labels через `accessibleName` /
+  `accessibleDescription`, а типовые recoverable ошибки в GUI start/API
+  flows дублируются non-modal feedback через status bar и сигнал ошибок.
+- Начат первый slice централизованной темы GUI:
+  добавлен `gui.styles.theme.Theme`, а common title/status styles для
+  `MainWindow`, `ApiSettingsView`, `CaptureView`, `AudioView` и
+  `DiagnosticsView` переведены с inline-строк на общий theme helper.
+- Добавлен первый slice централизованного управления recording UI state:
+  `MainWindow` теперь использует единый `_update_ui_state(...)` для idle /
+  recording / paused / stopping состояний вместо разрозненных ручных
+  обновлений кнопок и status labels.
 
 ### Tests
 - Добавлены unit-тесты на stop/cancel flow долгой остановки записи в
@@ -43,6 +71,18 @@
 - Добавлен regression test на cron weekday semantics в scheduler.
 - Добавлены unit-тесты каталога видеокодеков и актуализированы
   проверки `VideoView` под единый порядок кодеков.
+- Добавлены lifecycle/regression тесты для `ApiSettingsView`,
+  `MainWindow`, `CaptureView` и `AudioView` под visibility-aware
+  обновление статуса и асинхронную загрузку системных данных.
+- Добавлены unit-тесты readiness-сервиса и preflight-блокировок
+  `MainWindow` для GUI/API start paths.
+- Добавлены unit-тесты для desktop action registry и базовой keyboard /
+  accessibility конфигурации `MainWindow`.
+- Добавлены view-level accessibility tests для secondary views и
+  regression tests на non-modal error feedback в `MainWindow`.
+- Добавлены unit-тесты theme helper layer для централизованных GUI-стилей.
+- Добавлены regression tests на централизованный helper состояния кнопок
+  и статуса в `MainWindow`.
 
 ## [1.4.7] - 2026-04-03
 

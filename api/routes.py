@@ -17,13 +17,13 @@ from api.auth import require_api_key
 from api.error_mapping import map_exception_to_api_error
 from api.rate_limiter import rate_limit
 from api.request_context import ensure_request_context
-from api.schemas import (
-    CreateScheduleRequest,
-    StartRecordingRequest,
-    ToggleScheduleRequest,
-    UpdateConfigRequest,
-    UpdateScheduleRequest,
+from api.routes_config import register_config_routes
+from api.routes_recording import register_recording_routes
+from api.routes_resources import (
+    register_observability_routes,
+    register_resource_routes,
 )
+from api.routes_schedule import register_schedule_routes
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -540,416 +540,67 @@ def _register_recording_routes(
     server: Any,
 ) -> tuple[Any, Any, Any]:
     """Регистрирует маршруты управления записью."""
-
-    @api_v1.route("/start", methods=["POST"])
-    @rate_limit
-    @require_api_key
-    def start_recording() -> Any:
-        """Начало новой записи."""
-        try:
-
-            def _handler() -> Any:
-                data, parse_error = _parse_request_json()
-                if parse_error is not None:
-                    return parse_error
-                assert data is not None
-
-                try:
-                    validated = StartRecordingRequest(**data)
-                except ValidationError as e:
-                    return handle_validation_error(e)
-
-                callback_data = validated.model_dump(exclude_none=True)
-
-                callback = server.get_callback("start")
-                if callback:
-                    result = callback(callback_data)
-                    if result.get("success"):
-                        return jsonify({"success": True, "data": result})
-                    return jsonify(
-                        {
-                            "success": False,
-                            "error": result.get(
-                                "error", "Не удалось начать запись"
-                            ),
-                        }
-                    ), 400
-
-                return _internal_error_response()
-
-            return _execute_with_idempotency(server, _handler)
-        except Exception as e:
-            logger.exception(f"Ошибка начала записи: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("stop", methods=["POST"])
-    @rate_limit
-    @require_api_key
-    def stop_recording() -> Any:
-        """Остановка текущей записи."""
-        try:
-            return _execute_with_idempotency(
-                server,
-                lambda: _stop_operation_response(server),
-            )
-        except Exception as e:
-            logger.exception(f"Ошибка остановки записи: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("pause", methods=["POST"])
-    @rate_limit
-    @require_api_key
-    def pause_recording() -> Any:
-        """Пауза или возобновление текущей записи."""
-        try:
-
-            def _handler() -> Any:
-                callback = server.get_callback("pause")
-                if callback:
-                    result = callback()
-                    return jsonify({"success": True, "data": result})
-                return _internal_error_response()
-
-            return _execute_with_idempotency(server, _handler)
-        except Exception as e:
-            logger.exception(f"Ошибка паузы записи: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("recordings", methods=["GET"])
-    @require_api_key
-    def get_recordings() -> Any:
-        """Получение списка недавних записей."""
-        try:
-            callback = server.get_callback("recordings")
-            if callback:
-                recordings = callback()
-                return jsonify({"success": True, "data": recordings})
-            return _internal_error_response()
-
-        except Exception as e:
-            logger.exception(f"Ошибка получения записей: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("events/recent", methods=["GET"])
-    @require_api_key
-    def get_recent_events() -> Any:
-        """Получение недавних real-time событий записи."""
-        try:
-            limit_raw = request.args.get("limit", "50")
-            try:
-                limit = int(limit_raw)
-            except ValueError:
-                return _error_response(
-                    400,
-                    "validation_error",
-                    "Параметр limit должен быть числом",
-                )
-
-            manager = server.get_websocket_manager()
-            if manager is None:
-                return jsonify({"success": True, "data": []})
-
-            events = manager.get_recent_events(limit=limit)
-            return jsonify({"success": True, "data": events})
-        except Exception as e:
-            logger.exception(f"Ошибка получения событий: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("events/stats", methods=["GET"])
-    @require_api_key
-    def get_events_stats() -> Any:
-        """Получение статистики real-time event-менеджера."""
-        try:
-            manager = server.get_websocket_manager()
-            if manager is None:
-                return jsonify(
-                    {
-                        "success": True,
-                        "data": {"transport_ready": False},
-                    }
-                )
-            return jsonify({"success": True, "data": manager.get_stats()})
-        except Exception as e:
-            logger.exception(f"Ошибка получения статистики событий: {e}")
-            return _exception_response(e)
-
-    return start_recording, stop_recording, pause_recording
+    return register_recording_routes(
+        api_v1,
+        server,
+        logger=logger,
+        parse_request_json=_parse_request_json,
+        handle_validation_error=handle_validation_error,
+        execute_with_idempotency=_execute_with_idempotency,
+        stop_operation_response=_stop_operation_response,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+        error_response=_error_response,
+    )
 
 
 def _register_schedule_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты планировщика."""
-
-    @api_v1.route("schedule", methods=["GET"])
-    @require_api_key
-    def get_schedule() -> Any:
-        """Получение списка запланированных задач."""
-        try:
-            callback = server.get_callback("get_schedule")
-            if callback:
-                tasks = callback()
-                return jsonify({"success": True, "data": tasks})
-            return _internal_error_response()
-
-        except Exception as e:
-            logger.exception(f"Ошибка получения расписания: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("schedule", methods=["POST"])
-    @rate_limit
-    @require_api_key
-    def create_schedule() -> Any:
-        """Создание новой запланированной задачи."""
-        try:
-
-            def _handler() -> Any:
-                data, parse_error = _parse_request_json()
-                if parse_error is not None:
-                    return parse_error
-                assert data is not None
-
-                try:
-                    validated = CreateScheduleRequest(**data)
-                except ValidationError as e:
-                    return handle_validation_error(e)
-
-                callback_data = validated.model_dump(exclude_none=True)
-
-                if validated.params:
-                    callback_data["params"] = validated.params.model_dump(
-                        exclude_none=True
-                    )
-
-                callback = server.get_callback("create_schedule")
-                if callback:
-                    result = callback(callback_data)
-                    if result.get("success"):
-                        return jsonify({"success": True, "data": result})
-                    return jsonify(
-                        {
-                            "success": False,
-                            "error": result.get(
-                                "error", "Не удалось создать задачу"
-                            ),
-                        }
-                    ), 400
-
-                return _internal_error_response()
-
-            return _execute_with_idempotency(server, _handler)
-        except Exception as e:
-            logger.exception(f"Ошибка создания расписания: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("schedule/<task_id>", methods=["DELETE"])
-    @rate_limit
-    @require_api_key
-    def delete_schedule(task_id: str) -> Any:
-        """Удаление запланированной задачи."""
-        try:
-
-            def _handler() -> Any:
-                callback = server.get_callback("delete_schedule")
-                if callback:
-                    result = callback(task_id)
-                    return jsonify(
-                        {
-                            "success": result.get("success", True),
-                            "data": result,
-                        }
-                    )
-                return _internal_error_response()
-
-            return _execute_with_idempotency(server, _handler)
-        except Exception as e:
-            logger.exception(f"Ошибка удаления расписания: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("schedule/<task_id>", methods=["PUT"])
-    @rate_limit
-    @require_api_key
-    def update_schedule(task_id: str) -> Any:
-        """Обновление запланированной задачи."""
-        try:
-
-            def _handler() -> Any:
-                data, parse_error = _parse_request_json()
-                if parse_error is not None:
-                    return parse_error
-                assert data is not None
-                data["id"] = task_id
-
-                try:
-                    validated = UpdateScheduleRequest(**data)
-                except ValidationError as e:
-                    return handle_validation_error(e)
-
-                callback_data = validated.model_dump(exclude_none=True)
-
-                callback = server.get_callback("update_schedule")
-                if callback:
-                    result = callback(callback_data)
-                    return jsonify(
-                        {
-                            "success": result.get("success", True),
-                            "data": result,
-                        }
-                    )
-                return _internal_error_response()
-
-            return _execute_with_idempotency(server, _handler)
-        except Exception as e:
-            logger.exception(f"Ошибка обновления расписания: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("schedule/<task_id>/toggle", methods=["POST"])
-    @rate_limit
-    @require_api_key
-    def toggle_schedule(task_id: str) -> Any:
-        """Включение или отключение запланированной задачи."""
-        try:
-
-            def _handler() -> Any:
-                data, parse_error = _parse_request_json()
-                if parse_error is not None:
-                    return parse_error
-                assert data is not None
-
-                try:
-                    validated = ToggleScheduleRequest(**data)
-                except ValidationError as e:
-                    return handle_validation_error(e)
-
-                callback = server.get_callback("toggle_schedule")
-                if callback:
-                    result = callback(task_id, validated.enabled)
-                    return jsonify({"success": True, "data": result})
-                return _internal_error_response()
-
-            return _execute_with_idempotency(server, _handler)
-        except Exception as e:
-            logger.exception(f"Ошибка переключения расписания: {e}")
-            return _exception_response(e)
+    return register_schedule_routes(
+        api_v1,
+        server,
+        logger=logger,
+        parse_request_json=_parse_request_json,
+        handle_validation_error=handle_validation_error,
+        execute_with_idempotency=_execute_with_idempotency,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+    )
 
 
 def _register_resource_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты ресурсов окружения."""
-
-    @api_v1.route("devices", methods=["GET"])
-    @require_api_key
-    def get_devices() -> Any:
-        """Получение доступных аудиоустройств."""
-        try:
-            callback = server.get_callback("devices")
-            if callback:
-                devices = callback()
-                return jsonify({"success": True, "data": devices})
-            return _internal_error_response()
-
-        except Exception as e:
-            logger.exception(f"Ошибка получения устройств: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("windows", methods=["GET"])
-    @require_api_key
-    def get_windows() -> Any:
-        """Получение доступных окон для захвата."""
-        try:
-            callback = server.get_callback("windows")
-            if callback:
-                windows = callback()
-                return jsonify({"success": True, "data": windows})
-            return _internal_error_response()
-
-        except Exception as e:
-            logger.exception(f"Ошибка получения окон: {e}")
-            return _exception_response(e)
+    return register_resource_routes(
+        api_v1,
+        server,
+        logger=logger,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+    )
 
 
 def _register_config_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты конфигурации."""
-
-    @api_v1.route("config", methods=["GET"])
-    @require_api_key
-    def get_config() -> Any:
-        """Получение текущей конфигурации."""
-        try:
-            callback = server.get_callback("get_config")
-            if callback:
-                config = callback()
-                return jsonify({"success": True, "data": config})
-            return _internal_error_response()
-
-        except Exception as e:
-            logger.exception(f"Ошибка получения конфигурации: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("config", methods=["PUT"])
-    @rate_limit
-    @require_api_key
-    def update_config() -> Any:
-        """Обновление конфигурации."""
-        try:
-
-            def _handler() -> Any:
-                data, parse_error = _parse_request_json()
-                if parse_error is not None:
-                    return parse_error
-                assert data is not None
-
-                try:
-                    validated = UpdateConfigRequest(**data)
-                except ValidationError as e:
-                    return handle_validation_error(e)
-
-                callback_data = validated.model_dump(
-                    exclude_none=True,
-                    exclude={"video", "audio", "output", "app"},
-                )
-
-                callback = server.get_callback("update_config")
-                if callback:
-                    result = callback(callback_data)
-                    return jsonify({"success": True, "data": result})
-                return _internal_error_response()
-
-            return _execute_with_idempotency(server, _handler)
-        except Exception as e:
-            logger.exception(f"Ошибка обновления конфигурации: {e}")
-            return _exception_response(e)
+    return register_config_routes(
+        api_v1,
+        server,
+        logger=logger,
+        parse_request_json=_parse_request_json,
+        handle_validation_error=handle_validation_error,
+        execute_with_idempotency=_execute_with_idempotency,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+    )
 
 
 def _register_observability_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты observability."""
-
-    @api_v1.route("observability/metrics", methods=["GET"])
-    @require_api_key
-    def get_observability_metrics() -> Any:
-        """Получение эксплуатационных метрик API."""
-        try:
-            return jsonify(
-                {
-                    "success": True,
-                    "data": server.get_observability_metrics(),
-                }
-            )
-        except Exception as e:
-            logger.exception(f"Ошибка получения observability metrics: {e}")
-            return _exception_response(e)
-
-    @api_v1.route("observability/baseline", methods=["GET"])
-    @require_api_key
-    def get_observability_baseline() -> Any:
-        """Получение baseline SLO по эксплуатационным метрикам."""
-        try:
-            return jsonify(
-                {
-                    "success": True,
-                    "data": server.get_observability_baseline(),
-                }
-            )
-        except Exception as e:
-            logger.exception(f"Ошибка получения observability baseline: {e}")
-            return _exception_response(e)
+    return register_observability_routes(
+        api_v1,
+        server,
+        logger=logger,
+        exception_response=_exception_response,
+    )
 
 
 def register_routes(app, server) -> None:

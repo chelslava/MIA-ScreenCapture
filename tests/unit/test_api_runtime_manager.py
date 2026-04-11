@@ -165,6 +165,21 @@ class MockApp:
     def request_start_recording(self) -> dict[str, Any]:
         return self.start_recording()
 
+    def get_runtime_config(self) -> dict[str, Any]:
+        return self._config
+
+    def get_runtime_mode(self) -> str:
+        return self._mode
+
+    def get_api_server_instance(self) -> Any | None:
+        return self._api_server
+
+    def set_api_server_instance(self, server: Any | None) -> None:
+        self._api_server = server
+
+    def get_websocket_manager_instance(self) -> Any:
+        return self._websocket_manager
+
     def request_stop_recording(self) -> dict[str, Any]:
         return self.stop_recording()
 

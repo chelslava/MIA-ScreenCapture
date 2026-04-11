@@ -2,6 +2,8 @@
 Представление области захвата.
 """
 
+import threading
+
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -16,7 +18,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui.accessibility import apply_accessible_metadata
 from gui.models.recording_state import CaptureType
+from gui.styles.theme import Theme
 from gui.views.area_selector import (
     AreaSelectorDialog,
     SelectionPreviewWidget,
@@ -24,6 +28,9 @@ from gui.views.area_selector import (
     format_rect_coords,
 )
 from recorder.utils import get_available_windows, get_screen_size
+
+_WINDOWS_LOADING_TEXT = "Загрузка списка окон..."
+_WINDOWS_EMPTY_TEXT = "Окна для захвата не найдены."
 
 
 class CaptureView(QWidget):
@@ -39,6 +46,7 @@ class CaptureView(QWidget):
     capture_type_changed = pyqtSignal(CaptureType)
     window_selected = pyqtSignal(str)
     rect_selected = pyqtSignal(tuple)
+    windows_load_completed = pyqtSignal(int, object, object)
 
     def __init__(self, parent: QWidget | None = None):
         """
@@ -50,6 +58,10 @@ class CaptureView(QWidget):
         super().__init__(parent)
         self._rect_coords: tuple[int, int, int, int] | None = None
         self._screen_size = get_screen_size()
+        self._window_request_id = 0
+        self._pending_window_title = ""
+        self._window_provider = get_available_windows
+        self.windows_load_completed.connect(self._on_windows_load_completed)
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -74,16 +86,20 @@ class CaptureView(QWidget):
         window_layout = QHBoxLayout()
         self._window_combo = QComboBox()
         self._window_combo.setMinimumWidth(200)
-        self._refresh_windows()
+        self._window_combo.setEnabled(False)
 
-        refresh_btn = QPushButton("Обновить")
-        refresh_btn.clicked.connect(self._refresh_windows)
-        refresh_btn.setMaximumWidth(80)
+        self._refresh_windows_btn = QPushButton("Обновить")
+        self._refresh_windows_btn.clicked.connect(self._refresh_windows)
+        self._refresh_windows_btn.setMaximumWidth(80)
 
         window_layout.addWidget(QLabel("Окно:"))
         window_layout.addWidget(self._window_combo)
-        window_layout.addWidget(refresh_btn)
+        window_layout.addWidget(self._refresh_windows_btn)
         group_layout.addLayout(window_layout)
+
+        self._window_status_label = QLabel(_WINDOWS_LOADING_TEXT)
+        self._window_status_label.setStyleSheet(Theme.secondary_text_style())
+        group_layout.addWidget(self._window_status_label)
 
         self._rect_radio = QRadioButton("Прямоугольник")
         self._button_group.addButton(self._rect_radio, 2)
@@ -115,16 +131,159 @@ class CaptureView(QWidget):
         self._button_group.buttonClicked.connect(self._on_button_clicked)
         self._window_combo.currentTextChanged.connect(self._on_window_changed)
 
+        self._apply_accessibility_metadata()
         self._update_enabled_state()
+        self._refresh_windows()
         layout.addWidget(group)
+
+    def _apply_accessibility_metadata(self) -> None:
+        """Назначение accessibility metadata для controls захвата."""
+        apply_accessible_metadata(
+            self._full_screen_radio,
+            "Захват всего экрана",
+            "Выбирает режим записи всего экрана.",
+        )
+        apply_accessible_metadata(
+            self._window_radio,
+            "Захват окна",
+            "Выбирает режим записи отдельного окна.",
+        )
+        apply_accessible_metadata(
+            self._window_combo,
+            "Список доступных окон",
+            "Позволяет выбрать окно для записи в режиме window capture.",
+            "Выберите окно из списка.",
+        )
+        apply_accessible_metadata(
+            self._refresh_windows_btn,
+            "Обновить список окон",
+            "Перечитывает список доступных окон для захвата.",
+            "Обновляет список окон.",
+        )
+        apply_accessible_metadata(
+            self._window_status_label,
+            "Статус загрузки окон",
+            "Показывает загрузку, ошибки и доступность списка окон.",
+        )
+        apply_accessible_metadata(
+            self._rect_radio,
+            "Захват прямоугольной области",
+            "Выбирает режим записи прямоугольной области экрана.",
+        )
+        apply_accessible_metadata(
+            self._rect_edit,
+            "Координаты области захвата",
+            "Показывает выбранные координаты прямоугольной области.",
+        )
+        apply_accessible_metadata(
+            self._select_rect_btn,
+            "Выбрать область захвата",
+            "Открывает инструмент выбора прямоугольной области.",
+            "Открывает выбор области захвата.",
+        )
+        apply_accessible_metadata(
+            self._rect_summary_label,
+            "Сводка по области захвата",
+            "Показывает краткое описание выбранной прямоугольной области.",
+        )
 
     def _refresh_windows(self) -> None:
         """Обновление списка доступных окон."""
-        self._window_combo.clear()
-        windows = get_available_windows()
+        self._window_request_id += 1
+        request_id = self._window_request_id
+        self._set_windows_loading_state()
+        threading.Thread(
+            target=self._load_windows_worker,
+            args=(request_id,),
+            daemon=True,
+        ).start()
 
-        for win in windows:
-            self._window_combo.addItem(win["title"])
+    def _load_windows_worker(self, request_id: int) -> None:
+        """Загрузить список окон в фоне и вернуть результат в UI."""
+        try:
+            windows = self._window_provider()
+            self.windows_load_completed.emit(request_id, windows, None)
+        except Exception as error:
+            self.windows_load_completed.emit(request_id, None, str(error))
+
+    def _on_windows_load_completed(
+        self,
+        request_id: int,
+        windows: object,
+        error: object,
+    ) -> None:
+        """Применить результат фоновой загрузки списка окон."""
+        if request_id != self._window_request_id:
+            return
+
+        if error is not None:
+            self._set_windows_error_state(str(error))
+            return
+
+        window_list = [
+            item.get("title", "")
+            for item in (windows if isinstance(windows, list) else [])
+            if isinstance(item, dict) and item.get("title")
+        ]
+
+        current_title = self.get_window_title()
+        self._window_combo.clear()
+        for title in window_list:
+            self._window_combo.addItem(title)
+
+        if not window_list:
+            self._pending_window_title = current_title
+            self._set_windows_empty_state()
+            return
+
+        self._set_windows_ready_state(len(window_list))
+        restored = self._restore_window_title(current_title)
+        if not restored and hasattr(self._window_combo, "setCurrentIndex"):
+            self._window_combo.setCurrentIndex(0)
+        self._update_enabled_state()
+
+    def _restore_window_title(self, title: str) -> bool:
+        """Восстановить выбранный заголовок окна после refresh."""
+        target_title = title or self._pending_window_title
+        if not target_title:
+            return False
+
+        index = self._window_combo.findText(target_title)
+        if index < 0:
+            return False
+
+        self._window_combo.setCurrentIndex(index)
+        self._pending_window_title = ""
+        return True
+
+    def _set_windows_loading_state(self) -> None:
+        """Показать состояние загрузки списка окон."""
+        self._window_status_label.setText(_WINDOWS_LOADING_TEXT)
+        self._window_status_label.setStyleSheet(Theme.secondary_text_style())
+        self._window_combo.setEnabled(False)
+
+    def _set_windows_empty_state(self) -> None:
+        """Показать состояние отсутствия доступных окон."""
+        self._window_status_label.setText(_WINDOWS_EMPTY_TEXT)
+        self._window_status_label.setStyleSheet(
+            f"color: {Theme.COLORS['warning']};"
+        )
+        self._window_combo.setEnabled(False)
+
+    def _set_windows_error_state(self, message: str) -> None:
+        """Показать ошибку загрузки списка окон."""
+        self._window_status_label.setText(
+            f"Не удалось загрузить окна: {message}"
+        )
+        self._window_status_label.setStyleSheet(
+            f"color: {Theme.COLORS['danger']};"
+        )
+        self._window_combo.setEnabled(False)
+
+    def _set_windows_ready_state(self, count: int) -> None:
+        """Показать успешную загрузку списка окон."""
+        self._window_status_label.setText(f"Доступно окон: {count}")
+        self._window_status_label.setStyleSheet(Theme.secondary_text_style())
 
     def _select_rectangle(self) -> None:
         """Открыть overlay для графического выбора области."""
@@ -161,7 +320,9 @@ class CaptureView(QWidget):
         is_window = self._window_radio.isChecked()
         is_rect = self._rect_radio.isChecked()
 
-        self._window_combo.setEnabled(is_window)
+        self._window_combo.setEnabled(
+            is_window and self._window_combo.count() > 0
+        )
         self._rect_edit.setEnabled(is_rect)
         self._rect_summary_label.setEnabled(is_rect)
         self._rect_preview.setEnabled(is_rect)
@@ -186,7 +347,10 @@ class CaptureView(QWidget):
         Returns:
             Заголовок окна.
         """
-        return self._window_combo.currentText()
+        current_title = self._window_combo.currentText()
+        if current_title:
+            return current_title
+        return self._pending_window_title
 
     def get_rect_coords(self) -> tuple[int, int, int, int] | None:
         """
@@ -222,6 +386,7 @@ class CaptureView(QWidget):
         Args:
             title: Заголовок окна.
         """
+        self._pending_window_title = title
         if hasattr(self._window_combo, "findText"):
             index = self._window_combo.findText(title)
         else:
@@ -232,6 +397,7 @@ class CaptureView(QWidget):
                     break
         if index >= 0:
             self._window_combo.setCurrentIndex(index)
+            self._pending_window_title = ""
 
     def set_rect_coords(self, coords: tuple[int, int, int, int]) -> None:
         """

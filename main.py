@@ -15,7 +15,6 @@ MIA-ScreenCapture - Главная точка входа
     python main.py --status                 # Показать статус записи
 """
 
-import importlib.metadata
 import sys
 import threading
 from pathlib import Path
@@ -38,6 +37,11 @@ from api.auth import (
     API_KEY_HEADER,
 )
 from api.websocket import WebSocketManager
+from app_runtime.api_coordinator import ApiRuntimeCoordinator
+from app_runtime.constants import GUI_DEFAULT_TIMEOUT_SECONDS
+from app_runtime.gui_coordinator import GuiRuntimeCoordinator
+from app_runtime.recording_coordinator import RecordingRuntimeCoordinator
+from app_runtime.thread_executor import MainThreadExecutor
 from cli.parser import (
     parse_args,
     print_schedule_list,
@@ -58,317 +62,12 @@ from recorder.utils import (
 
 logger = get_module_logger(__name__)
 
-_GUI_DEFAULT_TIMEOUT_SECONDS = 10.0
-_GUI_START_TIMEOUT_SECONDS = 20.0
-_GUI_STOP_TIMEOUT_SECONDS = 60.0
-
 
 def _load_environment() -> None:
     """Загружает переменные окружения из `.env` при наличии файла."""
     env_path = Path(__file__).parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
-
-
-class _MainThreadExecutor:
-    """Выполнение callables в главном потоке Qt из фоновых потоков."""
-
-    def __init__(self) -> None:
-        from PyQt6.QtCore import QObject, Qt, pyqtSignal
-
-        class _ExecutorObject(QObject):
-            execute = pyqtSignal(object)
-
-        self._obj = _ExecutorObject()
-        self._obj.execute.connect(
-            self._run_callable,
-            Qt.ConnectionType.QueuedConnection,
-        )  # type: ignore[call-arg]
-
-    @staticmethod
-    def _run_callable(fn: Any) -> None:
-        fn()
-
-    def run_sync(self, fn: Any, timeout: float | None = 10.0) -> Any:
-        done = threading.Event()
-        result: dict[str, Any] = {}
-
-        def wrapped() -> None:
-            try:
-                result["value"] = fn()
-            except Exception as e:
-                result["error"] = e
-            finally:
-                done.set()
-
-        self._obj.execute.emit(wrapped)
-        if not done.wait(timeout):
-            raise TimeoutError("Таймаут выполнения в GUI потоке")
-        if "error" in result:
-            raise result["error"]
-        return result.get("value")
-
-
-class GuiRuntimeCoordinator:
-    """Координатор запуска GUI-рантайма приложения."""
-
-    def __init__(self, app: "VideoRecorderApp") -> None:
-        self._app = app
-
-    def run(self) -> int:
-        """Запускает GUI-режим и инициализирует связанные компоненты."""
-        from PyQt6.QtWidgets import QApplication
-
-        self._app._app = QApplication(sys.argv)
-        assert self._app._app is not None
-        self._app._gui_thread_id = threading.get_ident()
-        self._app._gui_executor = _MainThreadExecutor()
-        self._app._app.setApplicationName("MIA-ScreenCapture")
-        try:
-            version = importlib.metadata.version("mia-screencapture")
-        except importlib.metadata.PackageNotFoundError:
-            version = "dev"
-        self._app._app.setApplicationVersion(version)
-
-        self._setup_main_window()
-        self._setup_tray_icon()
-        self._bind_window_and_tray_signals()
-        self._bind_runtime_components()
-
-        assert self._app._main_window is not None
-        self._app._main_window.show()
-        self._app._running = True
-        return self._app._app.exec()
-
-    def _setup_main_window(self) -> None:
-        """Создаёт главное окно приложения."""
-        from gui.main_window import MainWindow
-
-        self._app._main_window = MainWindow()
-        assert self._app._main_window is not None
-
-    def _setup_tray_icon(self) -> None:
-        """Создаёт иконку в трее и подключает её сигналы."""
-        from gui.tray_icon import TrayIcon
-
-        assert self._app._main_window is not None
-        self._app._tray_icon = TrayIcon(self._app._main_window)
-        assert self._app._tray_icon is not None
-        self._app._tray_icon.show()
-
-        self._app._tray_icon.start_requested.connect(
-            self._app.request_start_recording
-        )
-        self._app._tray_icon.stop_requested.connect(
-            self._app.request_stop_recording
-        )
-        self._app._tray_icon.pause_requested.connect(
-            self._app.request_toggle_pause_recording
-        )
-        self._app._tray_icon.show_window_requested.connect(
-            self._app._show_window
-        )
-        self._app._tray_icon.exit_requested.connect(self._app._quit_app)
-
-    def _bind_window_and_tray_signals(self) -> None:
-        """Связывает сигналы главного окна и трея."""
-        assert self._app._main_window is not None
-        assert self._app._tray_icon is not None
-        tray_icon = self._app._tray_icon
-
-        self._app._main_window.recording_started.connect(
-            lambda p: tray_icon.on_recording_started(p)
-        )
-        self._app._main_window.recording_stopped.connect(
-            lambda p: tray_icon.on_recording_stopped(p)
-        )
-        self._app._main_window.recording_paused.connect(
-            tray_icon.on_recording_paused
-        )
-        self._app._main_window.recording_resumed.connect(
-            tray_icon.on_recording_resumed
-        )
-        self._app._main_window.error_occurred.connect(tray_icon.on_error)
-        self._app._main_window.close_requested.connect(
-            self._app._handle_close_requested
-        )
-
-    def _bind_runtime_components(self) -> None:
-        """Подключает API/планировщик и hotkeys к GUI."""
-        assert self._app._main_window is not None
-
-        self._app._setup_hotkeys()
-        self._app.start_api_server()
-        self._app._main_window.bind_application_facade(self._app)
-        self._app._main_window._refresh_api_status()
-        self._app._start_scheduler()
-
-
-class RecordingRuntimeCoordinator:
-    """Координатор runtime-операций записи для GUI/headless режимов."""
-
-    def __init__(self, app: "VideoRecorderApp") -> None:
-        self._app = app
-
-    def get_status(self) -> dict[str, Any]:
-        """Возвращает текущий статус записи."""
-        if self._app._main_window:
-            return cast(
-                dict[str, Any],
-                self._app._run_on_gui_thread(
-                    lambda: self._app._main_window.get_status()
-                ),
-            )
-        return self._app._recording_service.get_status()
-
-    def start_recording(
-        self,
-        params: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Запускает запись через GUI или headless сервис."""
-        if self._app._main_window:
-            if params is None:
-                return cast(
-                    dict[str, Any],
-                    self._app._run_on_gui_thread(
-                        self._app._main_window.start_recording,
-                        timeout=_GUI_START_TIMEOUT_SECONDS,
-                    ),
-                )
-            return cast(
-                dict[str, Any],
-                self._app._run_on_gui_thread(
-                    lambda: self._app._main_window.start_recording_with_params(
-                        params
-                    ),
-                    timeout=_GUI_START_TIMEOUT_SECONDS,
-                ),
-            )
-        if params is None:
-            params = cast(
-                dict[str, Any],
-                self._app._config.get("recording", {}),
-            )
-        return self._app._recording_service.start_recording(params)
-
-    def stop_recording(self) -> dict[str, Any]:
-        """Останавливает запись с fallback при таймауте GUI-потока."""
-        if self._app._main_window:
-            try:
-                return cast(
-                    dict[str, Any],
-                    self._app._run_on_gui_thread(
-                        lambda: self._app._main_window.stop_recording(),
-                        timeout=_GUI_STOP_TIMEOUT_SECONDS,
-                    ),
-                )
-            except TimeoutError:
-                logger.warning(
-                    "Таймаут остановки записи в GUI-потоке (%.1f c). "
-                    "Пробуем резервную остановку через сервис.",
-                    _GUI_STOP_TIMEOUT_SECONDS,
-                )
-                try:
-                    fallback_result = (
-                        self._app._recording_service.stop_recording()
-                    )
-                except Exception as e:
-                    logger.exception(
-                        "Резервная остановка после таймаута GUI завершилась "
-                        "ошибкой: %s",
-                        e,
-                    )
-                    return {
-                        "success": False,
-                        "error": (
-                            "Остановка записи превысила таймаут GUI-потока, "
-                            "резервная остановка не удалась"
-                        ),
-                    }
-
-                if fallback_result.get("success"):
-                    fallback_result.setdefault(
-                        "warning",
-                        (
-                            "Остановка завершена через резервный путь после "
-                            "таймаута GUI-потока"
-                        ),
-                    )
-                return fallback_result
-
-        return self._app._recording_service.stop_recording()
-
-    def toggle_pause(self) -> dict[str, Any]:
-        """Переключает паузу записи."""
-        if self._app._main_window:
-            return cast(
-                dict[str, Any],
-                self._app._run_on_gui_thread(
-                    lambda: self._app._main_window.toggle_pause()
-                ),
-            )
-        return self._app._recording_service.toggle_pause()
-
-    def get_recordings(self) -> list[Any]:
-        """Возвращает список последних записей."""
-        if self._app._main_window:
-            return cast(
-                list[Any],
-                self._app._run_on_gui_thread(
-                    lambda: self._app._main_window.get_recordings()
-                ),
-            )
-        return cast(
-            list[Any],
-            self._app._recording_service.get_recordings(),
-        )
-
-
-class ApiRuntimeCoordinator:
-    """Координатор runtime-операций API сервера."""
-
-    def __init__(self, manager: ApiRuntimeManager) -> None:
-        self._manager = manager
-
-    def sync_api_key_env(self, api_key: str | None) -> None:
-        """Синхронизирует API ключ через runtime-менеджер."""
-        self._manager.sync_api_key_env(api_key)
-
-    def get_effective_api_key(self) -> str | None:
-        """Возвращает актуальный API ключ."""
-        return self._manager.get_effective_api_key()
-
-    def start_api_server(self, force: bool = False) -> dict[str, Any]:
-        """Запускает API сервер."""
-        return self._manager.start_api_server(force=force)
-
-    def get_api_runtime_settings(self) -> dict[str, Any]:
-        """Возвращает runtime-настройки API."""
-        return self._manager.get_api_runtime_settings()
-
-    def get_api_status(self) -> dict[str, Any]:
-        """Возвращает статус API."""
-        return self._manager.get_api_status()
-
-    def apply_api_settings(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Применяет API-настройки."""
-        return self._manager.apply_api_settings(data)
-
-    def stop_api_server(self) -> dict[str, Any]:
-        """Останавливает API сервер."""
-        return self._manager.stop_api_server()
-
-    def restart_api_server(self) -> dict[str, Any]:
-        """Перезапускает API сервер."""
-        return self._manager.restart_api_server()
-
-    def open_api_logs_folder(self) -> None:
-        """Открывает каталог API-логов."""
-        self._manager.open_api_logs_folder()
-
-    def setup_api_callbacks(self) -> None:
-        """Регистрирует callbacks API."""
-        self._manager.setup_api_callbacks()
 
 
 class VideoRecorderApp:
@@ -412,7 +111,7 @@ class VideoRecorderApp:
         self._websocket_manager.attach_event_bus(
             self._recording_service.event_bus
         )
-        self._gui_executor: _MainThreadExecutor | None = None
+        self._gui_executor: MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
         self._gui_runtime_coordinator = GuiRuntimeCoordinator(self)
         self._recording_runtime_coordinator = RecordingRuntimeCoordinator(self)
@@ -425,6 +124,26 @@ class VideoRecorderApp:
         """Интерактивный запуск записи из tray/hotkeys."""
         return self.start_recording()
 
+    def get_runtime_config(self) -> dict[str, Any]:
+        """Возвращает CLI/runtime конфигурацию приложения."""
+        return self._config
+
+    def get_runtime_mode(self) -> str:
+        """Возвращает текущий режим запуска приложения."""
+        return str(self._mode)
+
+    def get_api_server_instance(self) -> "APIServer | None":
+        """Возвращает текущий runtime API server instance."""
+        return self._api_server
+
+    def set_api_server_instance(self, server: "APIServer | None") -> None:
+        """Устанавливает текущий runtime API server instance."""
+        self._api_server = server
+
+    def get_websocket_manager_instance(self) -> WebSocketManager:
+        """Возвращает WebSocket manager приложения."""
+        return self._websocket_manager
+
     def request_stop_recording(self) -> dict[str, Any]:
         """Интерактивный запрос остановки записи из tray/hotkeys."""
         if self._main_window:
@@ -432,7 +151,7 @@ class VideoRecorderApp:
                 dict[str, Any],
                 self._run_on_gui_thread(
                     self._main_window.request_stop_recording,
-                    timeout=_GUI_DEFAULT_TIMEOUT_SECONDS,
+                    timeout=GUI_DEFAULT_TIMEOUT_SECONDS,
                 ),
             )
         return self.stop_recording()
@@ -444,7 +163,7 @@ class VideoRecorderApp:
                 dict[str, Any],
                 self._run_on_gui_thread(
                     self._main_window.request_toggle_pause,
-                    timeout=_GUI_DEFAULT_TIMEOUT_SECONDS,
+                    timeout=GUI_DEFAULT_TIMEOUT_SECONDS,
                 ),
             )
         return self.toggle_pause()
@@ -825,31 +544,31 @@ class VideoRecorderApp:
         """Создание запланированной задачи через CLI."""
         from cli.scheduler import create_schedule
 
-        return cast(int, create_schedule(self._config))
+        return create_schedule(self._config)
 
     def _run_schedule_update(self) -> int:
         """Обновление запланированной задачи через CLI."""
         from cli.scheduler import update_schedule
 
-        return cast(int, update_schedule(self._config))
+        return update_schedule(self._config)
 
     def _run_schedule_delete(self) -> int:
         """Удаление запланированной задачи через CLI."""
         from cli.scheduler import delete_schedule
 
-        return cast(int, delete_schedule(self._config))
+        return delete_schedule(self._config)
 
     def _run_schedule_toggle(self) -> int:
         """Включение/выключение запланированной задачи через CLI."""
         from cli.scheduler import toggle_schedule
 
-        return cast(int, toggle_schedule(self._config))
+        return toggle_schedule(self._config)
 
     def _run_schedule_preview(self) -> int:
         """Просмотр предстоящих запусков через CLI."""
         from cli.scheduler import preview_upcoming_runs
 
-        return cast(int, preview_upcoming_runs(self._config))
+        return preview_upcoming_runs(self._config)
 
     def _run_list_presets(self) -> int:
         """Показ списка preset шаблонов."""
@@ -1021,7 +740,7 @@ class VideoRecorderApp:
     def _run_on_gui_thread(
         self,
         fn: Any,
-        timeout: float | None = _GUI_DEFAULT_TIMEOUT_SECONDS,
+        timeout: float | None = GUI_DEFAULT_TIMEOUT_SECONDS,
     ) -> Any:
         """Безопасный синхронный вызов функции в GUI-потоке."""
         if not self._main_window:
@@ -1188,7 +907,7 @@ class VideoRecorderApp:
             "api": APISettings,
             "scheduler": SchedulerSettings,
         }
-        section_schemas = {
+        section_schemas: dict[str, Any] = {
             "video": VideoSettingsSchema,
             "audio": AudioSettingsSchema,
             "capture": CaptureSettingsSchema,

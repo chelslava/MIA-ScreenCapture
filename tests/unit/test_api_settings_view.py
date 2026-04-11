@@ -32,9 +32,14 @@ class _FakeTimer:
         self.parent = parent
         self.timeout = _SignalStub()
         self.started_interval: int | None = None
+        self.stopped = False
 
     def start(self, interval: int) -> None:
         self.started_interval = interval
+        self.stopped = False
+
+    def stop(self) -> None:
+        self.stopped = True
 
 
 class _FakeCursor:
@@ -237,13 +242,14 @@ def test_refresh_logs_without_file(
 
     view = api_settings_view.ApiSettingsView()
 
-    view.refresh_logs()
+    view.refresh_logs(show_loading_state=True)
 
     assert view._log_source_label.text() == "Журнал API: файл не найден"
     assert (
         view._log_view.toPlainText()
         == "Журнал API пока не создан. Запустите сервер, чтобы начать запись."
     )
+    assert view._log_status_label.text() == "Журнал API пуст или ещё не создан"
 
 
 def test_set_status_updates_controls(
@@ -291,3 +297,70 @@ def test_refresh_logs_reload_after_file_truncate(
 
     view.refresh_logs()
     assert view._log_view.toPlainText().strip() == "new-line"
+
+
+def test_auto_refresh_disabled_until_view_is_shown(
+    qapp,
+    api_view_environment: types.SimpleNamespace,
+) -> None:
+    """Автообновление не стартует до показа вкладки."""
+
+    view = api_settings_view.ApiSettingsView()
+
+    assert view._log_timer.started_interval is None
+    assert (
+        view._log_status_label.text()
+        == "Автообновление включится при открытии вкладки"
+    )
+
+
+def test_show_and_hide_event_toggle_auto_refresh(
+    qapp,
+    api_view_environment: types.SimpleNamespace,
+) -> None:
+    """Показ вкладки включает автообновление, скрытие выключает."""
+
+    view = api_settings_view.ApiSettingsView()
+
+    view.showEvent(None)
+    assert view._log_timer.started_interval == 1000
+
+    view.hideEvent(None)
+    assert view._log_timer.stopped is True
+    assert (
+        view._log_status_label.text()
+        == "Автообновление включится при открытии вкладки"
+    )
+
+
+def test_refresh_logs_error_updates_error_state(
+    qapp,
+    api_view_environment: types.SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ошибка чтения журнала переводит виджет в error state."""
+
+    view = api_settings_view.ApiSettingsView()
+    monkeypatch.setattr(
+        view,
+        "_resolve_current_log_path",
+        lambda: (_ for _ in ()).throw(OSError("boom")),
+    )
+
+    view.refresh_logs(show_loading_state=True)
+
+    assert "boom" in view._log_status_label.text()
+
+
+def test_accessibility_metadata_is_assigned(
+    qapp,
+    api_view_environment: types.SimpleNamespace,
+) -> None:
+    """Ключевые controls вкладки API получают accessibility metadata."""
+
+    view = api_settings_view.ApiSettingsView()
+
+    assert view._port_spinbox._accessible_name == "Порт API"
+    assert view._token_edit._accessible_name == "API токен"
+    assert view._start_btn._accessible_name == "Запустить API сервер"
+    assert view._log_view._accessible_name == "Журнал API"

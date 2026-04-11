@@ -52,11 +52,20 @@ class _ApiServerProtocol(Protocol):
 class _ApiRuntimeAppProtocol(ApplicationFacade, Protocol):
     """Минимальный контракт приложения для API runtime-менеджера."""
 
-    _config: dict[str, Any]
-    _mode: str
-    _api_server: Any | None
-    _main_window: Any | None
-    _websocket_manager: Any
+    def get_runtime_config(self) -> dict[str, Any]:
+        """Возвращает CLI/runtime конфигурацию приложения."""
+
+    def get_runtime_mode(self) -> str:
+        """Возвращает текущий режим запуска приложения."""
+
+    def get_api_server_instance(self) -> Any | None:
+        """Возвращает текущий runtime API server instance."""
+
+    def set_api_server_instance(self, server: Any | None) -> None:
+        """Устанавливает текущий runtime API server instance."""
+
+    def get_websocket_manager_instance(self) -> Any:
+        """Возвращает WebSocket manager приложения."""
 
 
 class ApiRuntimeManager:
@@ -131,8 +140,8 @@ class ApiRuntimeManager:
             return {
                 "success": False,
                 "running": bool(
-                    self._app._api_server is not None
-                    and self._app._api_server.is_running()
+                    (server := self._app.get_api_server_instance()) is not None
+                    and server.is_running()
                 ),
                 "error": "API lifecycle busy",
             }
@@ -150,23 +159,23 @@ class ApiRuntimeManager:
             from api.server import APIServer
 
             if (
-                self._app._api_server is not None
-                and self._app._api_server.is_running()
+                (server := self._app.get_api_server_instance()) is not None
+                and server.is_running()
             ):
                 self._set_lifecycle_state("running")
                 logger.info("API сервер уже запущен")
                 return {"success": True, "status": self.get_api_status()}
 
-            self._app._api_server = APIServer(
+            api_server = APIServer(
                 host=api_config.get("host", "127.0.0.1"),
                 port=api_config.get("port", 5000),
                 server_threads=api_config.get("server_threads", 4),
                 api_key=api_config.get("api_key"),
             )
+            self._app.set_api_server_instance(api_server)
             self.sync_api_key_env(api_config.get("api_key"))
 
-            assert self._app._api_server is not None
-            resolved_api_key = self._app._api_server.get_runtime_api_key()
+            resolved_api_key = api_server.get_runtime_api_key()
             if resolved_api_key and resolved_api_key != api_config.get(
                 "api_key"
             ):
@@ -174,22 +183,20 @@ class ApiRuntimeManager:
                 api_settings.api_key = None
                 config_module.get_config().save()
             self.sync_api_key_env(resolved_api_key)
-            self._app._api_server.set_websocket_manager(
-                self._app._websocket_manager
+            api_server.set_websocket_manager(
+                self._app.get_websocket_manager_instance()
             )
 
             # Регистрация маршрутов API.
-            register_routes(self._app._api_server.app, self._app._api_server)
+            register_routes(api_server.app, api_server)
 
             # Настройка обратных вызовов API.
             self.setup_api_callbacks()
 
             # Запуск сервера.
-            self._app._api_server.start()
+            api_server.start()
             self._set_lifecycle_state("running")
-            logger.info(
-                f"API сервер запущен на {self._app._api_server.get_url()}"
-            )
+            logger.info(f"API сервер запущен на {api_server.get_url()}")
             return {"success": True, "status": self.get_api_status()}
         except Exception:
             self._set_lifecycle_state("stopped")
@@ -198,9 +205,9 @@ class ApiRuntimeManager:
     def get_api_runtime_settings(self) -> dict[str, Any]:
         """Возвращает runtime-настройки API для текущего режима запуска."""
         config_api = config_module.get_config().settings.api
-        cli_api = self._app._config.get("api", {})
+        cli_api = self._app.get_runtime_config().get("api", {})
 
-        if self._app._mode == "gui":
+        if self._app.get_runtime_mode() == "gui":
             return {
                 "enabled": config_api.enabled,
                 "host": config_api.host,
@@ -225,8 +232,8 @@ class ApiRuntimeManager:
         config_api = config_module.get_config().settings.api
         effective_api_key = self.get_effective_api_key()
         runtime_status = (
-            self._app._api_server.get_status()
-            if self._app._api_server is not None
+            server.get_status()
+            if (server := self._app.get_api_server_instance()) is not None
             else {
                 "running": False,
                 "host": config_api.host,
@@ -259,8 +266,8 @@ class ApiRuntimeManager:
         updated_fields: list[str] = []
         restart_required = False
         server_running = bool(
-            self._app._api_server is not None
-            and self._app._api_server.is_running()
+            (server := self._app.get_api_server_instance()) is not None
+            and server.is_running()
         )
         proposed = {
             "enabled": api_settings.enabled,
@@ -340,8 +347,9 @@ class ApiRuntimeManager:
             }
 
         if "api_key" in updated_fields:
-            if self._app._api_server is not None:
-                self._app._api_server.set_api_key(api_key)
+            server = self._app.get_api_server_instance()
+            if server is not None:
+                server.set_api_key(api_key)
             self.sync_api_key_env(api_key)
 
         return {
@@ -360,18 +368,19 @@ class ApiRuntimeManager:
             return {
                 "success": False,
                 "running": bool(
-                    self._app._api_server is not None
-                    and self._app._api_server.is_running()
+                    (server := self._app.get_api_server_instance()) is not None
+                    and server.is_running()
                 ),
                 "error": "API lifecycle busy",
             }
 
-        if self._app._api_server is None:
+        server = self._app.get_api_server_instance()
+        if server is None:
             self._set_lifecycle_state("stopped")
             return {"success": True, "running": False}
 
-        self._app._api_server.stop()
-        self._app._api_server = None
+        server.stop()
+        self._app.set_api_server_instance(None)
         self._set_lifecycle_state("stopped")
         return {"success": True, "running": False}
 
@@ -386,40 +395,25 @@ class ApiRuntimeManager:
 
     def setup_api_callbacks(self) -> None:
         """Подключает runtime callbacks к API серверу."""
-        if not self._app._api_server:
+        server = self._app.get_api_server_instance()
+        if not server:
             return
 
-        self._app._api_server.set_callback("status", self._app.get_status)
-        self._app._api_server.set_callback("start", self._app.start_recording)
-        self._app._api_server.set_callback("stop", self._app.stop_recording)
-        self._app._api_server.set_callback("pause", self._app.toggle_pause)
-        self._app._api_server.set_callback(
-            "recordings", self._app.get_recordings
-        )
-        self._app._api_server.set_callback(
-            "get_schedule", self._app.get_schedule
-        )
-        self._app._api_server.set_callback(
-            "create_schedule",
-            self._app.create_schedule,
-        )
-        self._app._api_server.set_callback(
-            "delete_schedule",
-            self._app.delete_schedule,
-        )
-        self._app._api_server.set_callback(
-            "update_schedule",
-            self._app.update_schedule,
-        )
-        self._app._api_server.set_callback(
-            "toggle_schedule",
-            self._app.toggle_schedule,
-        )
-        self._app._api_server.set_callback("devices", self._app.get_devices)
-        self._app._api_server.set_callback("windows", self._app.get_windows)
-        self._app._api_server.set_callback(
+        server.set_callback("status", self._app.get_status)
+        server.set_callback("start", self._app.start_recording)
+        server.set_callback("stop", self._app.stop_recording)
+        server.set_callback("pause", self._app.toggle_pause)
+        server.set_callback("recordings", self._app.get_recordings)
+        server.set_callback("get_schedule", self._app.get_schedule)
+        server.set_callback("create_schedule", self._app.create_schedule)
+        server.set_callback("delete_schedule", self._app.delete_schedule)
+        server.set_callback("update_schedule", self._app.update_schedule)
+        server.set_callback("toggle_schedule", self._app.toggle_schedule)
+        server.set_callback("devices", self._app.get_devices)
+        server.set_callback("windows", self._app.get_windows)
+        server.set_callback(
             "get_config", self._app.get_config_snapshot
         )
-        self._app._api_server.set_callback(
+        server.set_callback(
             "update_config", self._app.update_config
         )

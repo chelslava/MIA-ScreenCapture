@@ -13,7 +13,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from core.readiness import ReadinessIssue, ReadinessSnapshot
 from core.recording_types import AudioMode, CaptureMode
+from gui.desktop_actions import DesktopActionId
 from gui.models.recording_state import (
     AudioSettings,
     CaptureSettings,
@@ -30,7 +32,11 @@ def _build_window():
     window._state = RecordingState()
     window._settings_controller = MagicMock()
     window._recording_controller = MagicMock()
+    window._readiness_service = MagicMock(
+        evaluate=MagicMock(return_value=ReadinessSnapshot())
+    )
     window._capture_view = MagicMock()
+    window._audio_view = MagicMock()
     window._video_view = MagicMock()
     window._output_view = MagicMock()
     window._api_settings_view = MagicMock()
@@ -39,10 +45,17 @@ def _build_window():
     window.start_btn = MagicMock()
     window.stop_btn = MagicMock()
     window.pause_btn = MagicMock()
+    window._open_latest_btn = MagicMock()
+    window._open_folder_btn = MagicMock()
+    window._open_file_btn = MagicMock()
+    window._clear_list_btn = MagicMock()
     window.status_label = MagicMock()
     window.time_label = MagicMock()
     window.status_bar = MagicMock()
     window._ws_status_label = MagicMock()
+    window.tabs = MagicMock()
+    window._registered_shortcuts = {}
+    window._tab_navigation_order = []
     window.recording_started = MagicMock()
     window.recording_stopped = MagicMock()
     window.recording_paused = MagicMock()
@@ -52,6 +65,9 @@ def _build_window():
     window._recordings_filter_input = MagicMock()
     window._diagnostics_view = MagicMock()
     window._recording_indicator = MagicMock()
+    window._run_diagnostics = MagicMock()
+    window._update_timer = MagicMock()
+    window.dependency_check_completed = MagicMock()
     window._stop_operation_in_progress = False
     window._stop_operation_thread = None
     window.stop_operation_finished = MagicMock()
@@ -710,11 +726,11 @@ class TestMainWindowMethods:
         window = _build_window()
         window._capture_view.get_capture_type.return_value = CaptureMode.RECT
         window._capture_view.get_rect_coords.return_value = None
-        window._show_error = MagicMock()
+        window._show_non_modal_error = MagicMock()
 
         window._start_recording()
 
-        window._show_error.assert_called_once()
+        window._show_non_modal_error.assert_called_once()
         window._recording_controller.start_recording.assert_not_called()
 
     def test_start_recording_uses_fallback_full_screen_rect(self) -> None:
@@ -755,7 +771,127 @@ class TestMainWindowMethods:
         )
         assert called_output == Path("D:/capture.mp4")
         assert called_capture.capture_type == CaptureMode.FULL
-        assert called_capture.rect_coords == (0, 0, 1600, 900)
+
+    def test_start_recording_is_blocked_by_readiness_issues(self) -> None:
+        """Blocking readiness snapshot должен останавливать start flow."""
+        window = _build_window()
+        window._show_error = MagicMock()
+        window._capture_view.get_capture_type.return_value = CaptureMode.FULL
+        window._capture_view.get_rect_coords.return_value = (0, 0, 100, 100)
+        window._settings_controller.get_output_path.return_value = Path(
+            "D:/capture.mp4"
+        )
+        window._video_view.get_settings.return_value = VideoSettings()
+        window._readiness_service.evaluate.return_value = ReadinessSnapshot(
+            issues=(
+                ReadinessIssue(
+                    code="ffmpeg_missing",
+                    severity="blocking",
+                    title="FFmpeg недоступен",
+                    message="boom",
+                ),
+            )
+        )
+
+        window._start_recording()
+
+        window._recording_controller.start_recording.assert_not_called()
+        window.status_bar.showMessage.assert_called()
+        window.tabs.setCurrentWidget.assert_called_once_with(
+            window._diagnostics_view
+        )
+        window._run_diagnostics.assert_called_once_with()
+
+    def test_apply_action_metadata_sets_shortcut_and_accessibility(
+        self,
+    ) -> None:
+        """Action metadata должна попадать в shortcut и accessibility поля."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+        window._desktop_actions = MagicMock()
+        window._desktop_actions.get.return_value = SimpleNamespace(
+            title="Начать запись",
+            description="Запускает запись с текущими настройками.",
+            shortcut="Ctrl+R",
+        )
+
+        MainWindow._apply_action_metadata(
+            window,
+            window.start_btn,
+            DesktopActionId.START_RECORDING,
+        )
+
+        assert window.start_btn._accessible_name == "Начать запись"
+        assert (
+            window.start_btn._accessible_description
+            == "Запускает запись с текущими настройками."
+        )
+        assert window.start_btn._shortcut == "Ctrl+R"
+        assert (
+            window._registered_shortcuts[DesktopActionId.START_RECORDING.value]
+            == "Ctrl+R"
+        )
+
+    def test_configure_tab_order_tracks_keyboard_navigation(self) -> None:
+        """Tab order должен фиксироваться даже в mock-окружении."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+
+        MainWindow._configure_tab_order(window)
+
+        assert window._tab_navigation_order[0] is window.start_btn
+        assert window._tab_navigation_order[1] is window.pause_btn
+        assert window._tab_navigation_order[-1] is window._open_folder_btn
+
+    def test_run_diagnostics_uses_readiness_inputs(self) -> None:
+        """Диагностика должна использовать те же входные данные готовности."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+        capture = CaptureSettings(
+            capture_type=CaptureMode.WINDOW,
+            window_title="Browser",
+        )
+        audio = AudioSettings(
+            audio_type=AudioMode.MIC,
+            mic_device_index=3,
+        )
+        window._build_capture_settings_from_views = MagicMock(
+            return_value=capture
+        )
+        window._build_audio_settings_from_state = MagicMock(
+            return_value=audio
+        )
+        window._settings_controller.get_output_path.return_value = Path(
+            "D:/capture.mp4"
+        )
+        window._application_facade = SimpleNamespace(
+            get_api_status=MagicMock(return_value={"running": True})
+        )
+
+        MainWindow._run_diagnostics(window)
+
+        window._diagnostics_view.run_checks.assert_called_once_with(
+            api_enabled=True,
+            output_path=Path("D:/capture.mp4"),
+            capture=capture,
+            audio=audio,
+        )
+
+    def test_diagnostics_fix_refreshes_audio_and_windows(self) -> None:
+        """Fix actions на диагностике делегируют refresh соответствующим view."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+
+        MainWindow._on_diagnostics_fix(window, "Аудиоустройства")
+        MainWindow._on_diagnostics_fix(window, "Окно захвата")
+
+        assert window.tabs.setCurrentIndex.call_count == 2
+        window._audio_view._refresh_audio_devices.assert_called_once_with()
+        window._capture_view._refresh_windows.assert_called_once_with()
 
     def test_stop_recording_reports_missing_output(self) -> None:
         """Если backend не вернул путь, показывается ошибка."""
@@ -814,6 +950,8 @@ class TestMainWindowMethods:
         window.pause_btn.setText.assert_any_call("Продолжить")
         window.status_label.setText.assert_any_call("Запись")
         window.status_label.setText.assert_any_call("Пауза")
+        window._update_timer.start.assert_any_call(100)
+        window._update_timer.stop.assert_called()
         window.recording_started.emit.assert_called_once_with(str(output))
         window.recording_paused.emit.assert_called_once()
         window.recording_resumed.emit.assert_called_once()
@@ -838,6 +976,7 @@ class TestMainWindowMethods:
             output,
             3,
         )
+        window._update_timer.stop.assert_called_once()
         window._refresh_recent_recordings.assert_called_once()
         window.recording_stopped.emit.assert_called_once_with(str(output))
         window._recording_indicator.hide_indicator.assert_called_once()
@@ -915,12 +1054,63 @@ class TestMainWindowMethods:
 
         window.time_label.setText.assert_called_once_with("00:12")
 
+    def test_check_dependencies_runs_in_background(self) -> None:
+        """Проверка зависимостей не должна блокировать UI-поток."""
+        from gui.main_window import MainWindow
+
+        started: dict[str, bool] = {"value": False}
+
+        class FakeThread:
+            def __init__(self, target, daemon):
+                self.target = target
+                self.daemon = daemon
+
+            def start(self):
+                started["value"] = True
+
+        window = _build_window()
+
+        with patch("gui.main_window.threading.Thread", FakeThread):
+            MainWindow._check_dependencies(window)
+
+        assert started["value"] is True
+
+    def test_dependency_check_completion_shows_warning_when_ffmpeg_missing(
+        self,
+    ) -> None:
+        """Результат фоновой проверки показывает warning при отсутствии FFmpeg."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+
+        with patch("gui.main_window.QMessageBox.warning") as warning:
+            MainWindow._on_dependency_check_completed(
+                window,
+                (False, None),
+                None,
+            )
+
+        warning.assert_called_once()
+
+    def test_hide_and_show_event_toggle_status_timer(self) -> None:
+        """Скрытие окна останавливает timer, показ возвращает его при записи."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+        window._state.start_recording(Path("D:/capture.mp4"))
+
+        MainWindow.hideEvent(window, None)
+        MainWindow.showEvent(window, None)
+
+        window._update_timer.stop.assert_called_once()
+        window._update_timer.start.assert_called_once_with(100)
+
     def test_invoke_api_control_handles_none_exception_and_plain_value(
         self,
     ) -> None:
         """Вызов API control нормализует ответы и ошибки."""
         window = _build_window()
-        window._show_error = MagicMock()
+        window._show_non_modal_error = MagicMock()
         handler_map = {
             "ping": lambda: "pong",
             "boom": lambda: (_ for _ in ()).throw(RuntimeError("fail")),
@@ -935,7 +1125,7 @@ class TestMainWindowMethods:
             "data": "pong",
         }
         assert window._invoke_api_control("boom") is None
-        window._show_error.assert_called_once_with("fail")
+        window._show_non_modal_error.assert_called_once_with("fail")
 
     def test_bind_application_facade_routes_api_controls(self) -> None:
         """При наличии фасада API-кнопки должны ходить через него."""
@@ -1027,7 +1217,7 @@ class TestMainWindowMethods:
     def test_api_button_handlers_route_success_and_failure(self) -> None:
         """Хендлеры API-кнопок обновляют статусбар и ошибки."""
         window = _build_window()
-        window._show_error = MagicMock()
+        window._show_non_modal_error = MagicMock()
         window._refresh_api_status = MagicMock()
         window._start_websocket_after_api = MagicMock()
         window.disconnect_websocket = MagicMock()
@@ -1052,7 +1242,44 @@ class TestMainWindowMethods:
         assert window.status_bar.showMessage.call_count >= 3
         window._start_websocket_after_api.assert_called_once()
         window.disconnect_websocket.assert_called()
-        window._show_error.assert_called_with("restart failed")
+        window._show_non_modal_error.assert_called_with("restart failed")
+
+    def test_show_non_modal_error_updates_status_bar_and_signal(self) -> None:
+        """Non-modal error должен обновлять status bar и эмитить сигнал."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+
+        MainWindow._show_non_modal_error(window, "boom", duration_ms=1234)
+
+        window.status_label.setText.assert_called_once_with("Ошибка")
+        window.status_bar.showMessage.assert_called_once_with("boom", 1234)
+        window.error_occurred.emit.assert_called_once_with("boom")
+
+    @pytest.mark.parametrize(
+        ("ui_state", "expected_status", "expected_pause_text"),
+        [
+            ("idle", "Готов", "Пауза"),
+            ("recording", "Запись", "Пауза"),
+            ("paused", "Пауза", "Продолжить"),
+            ("stopping", "Остановка...", "Пауза"),
+        ],
+    )
+    def test_update_ui_state_centralizes_button_and_status_updates(
+        self,
+        ui_state: str,
+        expected_status: str,
+        expected_pause_text: str,
+    ) -> None:
+        """Центральный helper должен управлять button/status state."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+
+        MainWindow._update_ui_state(window, ui_state)
+
+        window.status_label.setText.assert_called_with(expected_status)
+        window.pause_btn.setText.assert_called_with(expected_pause_text)
 
     def test_start_websocket_after_api_initializes_only_when_url_and_token(
         self,
@@ -1191,6 +1418,38 @@ class TestMainWindowMethods:
         assert isinstance(call["audio"], AudioSettings)
         assert invalid["success"] is False
         assert "4 координаты" in invalid["error"]
+
+    def test_start_recording_with_params_respects_readiness_blockers(
+        self,
+    ) -> None:
+        """API-путь старта должен уважать тот же readiness snapshot."""
+        window = _build_window()
+        window._video_view.get_settings.return_value = VideoSettings()
+        window._resolve_requested_output_path = MagicMock(
+            return_value=Path("D:/capture.mp4")
+        )
+        window._readiness_service.evaluate.return_value = ReadinessSnapshot(
+            issues=(
+                ReadinessIssue(
+                    code="window_missing",
+                    severity="blocking",
+                    title="Окно захвата недоступно",
+                    message="Окно не найдено.",
+                ),
+            )
+        )
+
+        result = window.start_recording_with_params(
+            {
+                "area": "window",
+                "window_title": "Browser",
+                "audio": "none",
+            }
+        )
+
+        assert result["success"] is False
+        assert "Окно захвата недоступно" in result["error"]
+        window._recording_controller.start_recording.assert_not_called()
 
     def test_stop_recording_toggle_pause_and_get_recordings_api_methods(
         self,

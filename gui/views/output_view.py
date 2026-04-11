@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui.accessibility import apply_accessible_metadata
 from gui.models.recording_state import OutputSettings
 from logger_config import get_module_logger
 
@@ -63,11 +64,28 @@ class OutputView(QWidget):
         self._output_edit.textChanged.connect(self._on_output_changed)
         group_layout.addWidget(self._output_edit)
 
-        browse_btn = QPushButton("Обзор")
-        browse_btn.clicked.connect(self._browse_output)
-        group_layout.addWidget(browse_btn)
+        self._browse_btn = QPushButton("Обзор")
+        self._browse_btn.clicked.connect(self._browse_output)
+        group_layout.addWidget(self._browse_btn)
+
+        self._apply_accessibility_metadata()
 
         layout.addWidget(group)
+
+    def _apply_accessibility_metadata(self) -> None:
+        """Назначение accessibility metadata для ключевых контролов."""
+        apply_accessible_metadata(
+            self._output_edit,
+            "Путь вывода записи",
+            "Поле для пути к файлу или директории сохранения записи.",
+            "Введите путь сохранения записи.",
+        )
+        apply_accessible_metadata(
+            self._browse_btn,
+            "Выбрать путь вывода",
+            "Открывает диалог выбора файла для сохранения записи.",
+            "Открывает диалог выбора пути сохранения.",
+        )
 
     def _browse_output(self) -> None:
         """Выбор места сохранения выходного файла."""

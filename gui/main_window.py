@@ -10,6 +10,7 @@ import os
 import platform
 import subprocess
 import threading
+import webbrowser
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -32,16 +33,24 @@ from PyQt6.QtWidgets import (
 )
 
 from config import get_config
+from core.readiness import RecordingReadinessService
 from core.recording_types import AudioMode, CaptureMode
 from gui.controllers.recording_controller import RecordingController
 from gui.controllers.settings_controller import SettingsController
 from gui.controllers.websocket_controller import WebSocketClientController
+from gui.desktop_actions import (
+    DesktopAction,
+    DesktopActionId,
+    DesktopActionRegistry,
+    get_desktop_action_spec,
+)
 from gui.models.recording_state import (
     AudioSettings,
     CaptureSettings,
     RecordingState,
     VideoSettings,
 )
+from gui.styles.theme import Theme
 from gui.views.audio_view import AudioView
 from gui.views.capture_view import CaptureView
 from gui.views.output_view import OutputView
@@ -51,6 +60,7 @@ from logger_config import get_module_logger
 from recorder.utils import check_ffmpeg, format_filesize, format_time
 
 logger = get_module_logger(__name__)
+_STATUS_UPDATE_INTERVAL_MS = 100
 
 if TYPE_CHECKING:
     from core.application_facade import ApplicationFacade
@@ -74,6 +84,7 @@ class MainWindow(QMainWindow):
     error_occurred = pyqtSignal(str)
     close_requested = pyqtSignal(object)
     stop_operation_finished = pyqtSignal(object, object)
+    dependency_check_completed = pyqtSignal(object, object)
 
     def __init__(self, headless: bool = False):
         """
@@ -95,6 +106,10 @@ class MainWindow(QMainWindow):
         self._settings_controller = SettingsController(
             self._state, get_config()
         )
+        self._readiness_service = RecordingReadinessService()
+        self._desktop_actions = DesktopActionRegistry()
+        self._registered_shortcuts: dict[str, str] = {}
+        self._tab_navigation_order: list[QWidget] = []
         self._ws_controller: WebSocketClientController | None = None
         self._recording_indicator = RecordingIndicatorOverlay()
 
@@ -105,6 +120,7 @@ class MainWindow(QMainWindow):
         # Настройка окна
         self._setup_window()
         self._setup_ui()
+        self._setup_desktop_actions()
         self._connect_signals()
 
         # Загрузка настроек
@@ -114,9 +130,6 @@ class MainWindow(QMainWindow):
 
         # Проверка зависимостей
         self._check_dependencies()
-
-        # Запуск таймера обновления
-        self._update_timer.start(100)  # 10 FPS обновление
 
         logger.info("Главное окно инициализировано")
 
@@ -239,19 +252,16 @@ class MainWindow(QMainWindow):
 
         self.start_btn = QPushButton("Начать запись")
         self.start_btn.setMinimumHeight(40)
-        self.start_btn.clicked.connect(self._start_recording)
         layout.addWidget(self.start_btn)
 
         self.pause_btn = QPushButton("Пауза")
         self.pause_btn.setMinimumHeight(40)
         self.pause_btn.setEnabled(False)
-        self.pause_btn.clicked.connect(self._toggle_pause)
         layout.addWidget(self.pause_btn)
 
         self.stop_btn = QPushButton("Стоп")
         self.stop_btn.setMinimumHeight(40)
         self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self._stop_recording)
         layout.addWidget(self.stop_btn)
 
         return layout
@@ -276,9 +286,11 @@ class MainWindow(QMainWindow):
         )
         filter_layout.addWidget(self._recordings_filter_input)
 
-        clear_filter_btn = QPushButton("Сбросить")
-        clear_filter_btn.clicked.connect(self._clear_recordings_filter)
-        filter_layout.addWidget(clear_filter_btn)
+        self._clear_filter_btn = QPushButton("Сбросить")
+        self._clear_filter_btn.clicked.connect(
+            self._clear_recordings_filter
+        )
+        filter_layout.addWidget(self._clear_filter_btn)
         group_layout.addLayout(filter_layout)
 
         self.recordings_list = QListWidget()
@@ -288,21 +300,19 @@ class MainWindow(QMainWindow):
         # Кнопки
         btn_layout = QHBoxLayout()
 
-        open_latest_btn = QPushButton("Открыть последний")
-        open_latest_btn.clicked.connect(self._open_latest_recording)
-        btn_layout.addWidget(open_latest_btn)
+        self._open_latest_btn = QPushButton("Открыть последний")
+        btn_layout.addWidget(self._open_latest_btn)
 
-        open_folder_btn = QPushButton("Открыть папку")
-        open_folder_btn.clicked.connect(self._open_recording_folder)
-        btn_layout.addWidget(open_folder_btn)
+        self._open_folder_btn = QPushButton("Открыть папку")
+        btn_layout.addWidget(self._open_folder_btn)
 
-        open_file_btn = QPushButton("Открыть файл")
-        open_file_btn.clicked.connect(self._open_selected_recording)
-        btn_layout.addWidget(open_file_btn)
+        self._open_file_btn = QPushButton("Открыть файл")
+        self._open_file_btn.clicked.connect(self._open_selected_recording)
+        btn_layout.addWidget(self._open_file_btn)
 
-        clear_list_btn = QPushButton("Очистить список")
-        clear_list_btn.clicked.connect(self._clear_recent_recordings)
-        btn_layout.addWidget(clear_list_btn)
+        self._clear_list_btn = QPushButton("Очистить список")
+        self._clear_list_btn.clicked.connect(self._clear_recent_recordings)
+        btn_layout.addWidget(self._clear_list_btn)
 
         group_layout.addLayout(btn_layout)
 
@@ -312,6 +322,33 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         """Подключение сигналов от представлений."""
+        # Ключевые desktop actions
+        self.start_btn.clicked.connect(
+            lambda: self._desktop_actions.execute(
+                DesktopActionId.START_RECORDING
+            )
+        )
+        self.pause_btn.clicked.connect(
+            lambda: self._desktop_actions.execute(
+                DesktopActionId.TOGGLE_PAUSE
+            )
+        )
+        self.stop_btn.clicked.connect(
+            lambda: self._desktop_actions.execute(
+                DesktopActionId.STOP_RECORDING
+            )
+        )
+        self._open_latest_btn.clicked.connect(
+            lambda: self._desktop_actions.execute(
+                DesktopActionId.OPEN_LATEST_RECORDING
+            )
+        )
+        self._open_folder_btn.clicked.connect(
+            lambda: self._desktop_actions.execute(
+                DesktopActionId.OPEN_RECORDING_FOLDER
+            )
+        )
+
         # Сигналы CaptureView
         self._capture_view.capture_type_changed.connect(
             self._on_capture_type_changed
@@ -337,6 +374,9 @@ class MainWindow(QMainWindow):
             self._on_output_path_changed
         )
         self.stop_operation_finished.connect(self._on_stop_operation_finished)
+        self.dependency_check_completed.connect(
+            self._on_dependency_check_completed
+        )
 
         # Сигналы ApiSettingsView
         self._api_settings_view.apply_requested.connect(
@@ -349,12 +389,266 @@ class MainWindow(QMainWindow):
             self._refresh_api_status
         )
 
+    def _setup_desktop_actions(self) -> None:
+        """Создать action registry, shortcuts и accessibility metadata."""
+        start_spec = get_desktop_action_spec(DesktopActionId.START_RECORDING)
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.START_RECORDING,
+                title=start_spec.title,
+                description=start_spec.description,
+                callback=self._start_recording,
+                shortcut=start_spec.shortcut,
+                enabled_when=lambda: not self._state.is_recording(),
+            )
+        )
+        pause_spec = get_desktop_action_spec(DesktopActionId.TOGGLE_PAUSE)
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.TOGGLE_PAUSE,
+                title=pause_spec.title,
+                description=pause_spec.description,
+                callback=self._toggle_pause,
+                shortcut=pause_spec.shortcut,
+                enabled_when=lambda: self._state.is_recording()
+                or self._state.is_paused(),
+            )
+        )
+        stop_spec = get_desktop_action_spec(DesktopActionId.STOP_RECORDING)
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.STOP_RECORDING,
+                title=stop_spec.title,
+                description=stop_spec.description,
+                callback=self._stop_recording,
+                shortcut=stop_spec.shortcut,
+                enabled_when=lambda: self._state.is_recording()
+                or self._state.is_paused(),
+            )
+        )
+        latest_spec = get_desktop_action_spec(
+            DesktopActionId.OPEN_LATEST_RECORDING
+        )
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.OPEN_LATEST_RECORDING,
+                title=latest_spec.title,
+                description=latest_spec.description,
+                callback=self._open_latest_recording,
+                shortcut=latest_spec.shortcut,
+            )
+        )
+        folder_spec = get_desktop_action_spec(
+            DesktopActionId.OPEN_RECORDING_FOLDER
+        )
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.OPEN_RECORDING_FOLDER,
+                title=folder_spec.title,
+                description=folder_spec.description,
+                callback=self._open_recording_folder,
+                shortcut=folder_spec.shortcut,
+            )
+        )
+        recording_tab_spec = get_desktop_action_spec(
+            DesktopActionId.SHOW_RECORDING_TAB
+        )
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.SHOW_RECORDING_TAB,
+                title=recording_tab_spec.title,
+                description=recording_tab_spec.description,
+                callback=lambda: self.tabs.setCurrentIndex(0),
+                shortcut=recording_tab_spec.shortcut,
+            )
+        )
+        diagnostics_tab_spec = get_desktop_action_spec(
+            DesktopActionId.SHOW_DIAGNOSTICS_TAB
+        )
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.SHOW_DIAGNOSTICS_TAB,
+                title=diagnostics_tab_spec.title,
+                description=diagnostics_tab_spec.description,
+                callback=lambda: self.tabs.setCurrentWidget(
+                    self._diagnostics_view
+                ),
+                shortcut=diagnostics_tab_spec.shortcut,
+            )
+        )
+        api_tab_spec = get_desktop_action_spec(DesktopActionId.SHOW_API_TAB)
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.SHOW_API_TAB,
+                title=api_tab_spec.title,
+                description=api_tab_spec.description,
+                callback=lambda: self.tabs.setCurrentWidget(
+                    self._api_settings_view
+                ),
+                shortcut=api_tab_spec.shortcut,
+            )
+        )
+
+        self._apply_action_metadata(
+            self.start_btn,
+            DesktopActionId.START_RECORDING,
+        )
+        self._apply_action_metadata(
+            self.pause_btn,
+            DesktopActionId.TOGGLE_PAUSE,
+        )
+        self._apply_action_metadata(
+            self.stop_btn,
+            DesktopActionId.STOP_RECORDING,
+        )
+        self._apply_action_metadata(
+            self._open_latest_btn,
+            DesktopActionId.OPEN_LATEST_RECORDING,
+        )
+        self._apply_action_metadata(
+            self._open_folder_btn,
+            DesktopActionId.OPEN_RECORDING_FOLDER,
+        )
+
+        self._apply_accessible_metadata(
+            self.tabs,
+            "Основные вкладки приложения",
+            "Позволяет переключаться между записью, планировщиком, "
+            "диагностикой и API.",
+        )
+        self._apply_accessible_metadata(
+            self.status_label,
+            "Статус записи",
+            "Показывает текущее состояние записи и readiness-подсказки.",
+        )
+        self._apply_accessible_metadata(
+            self._ws_status_label,
+            "Статус WebSocket",
+            "Показывает состояние соединения с API сервером.",
+        )
+        self._apply_accessible_metadata(
+            self.time_label,
+            "Таймер записи",
+            "Показывает длительность текущей записи.",
+        )
+        self._apply_accessible_metadata(
+            self.recordings_list,
+            "Список последних записей",
+            "Содержит последние записанные файлы и позволяет открыть их.",
+        )
+        self._apply_accessible_metadata(
+            self._recordings_filter_input,
+            "Фильтр записей",
+            "Фильтрует список последних записей по имени и дате.",
+        )
+
+        self._configure_tab_order()
+        self._register_qt_shortcuts()
+
+    def _apply_action_metadata(
+        self,
+        widget: QWidget,
+        action_id: DesktopActionId,
+    ) -> None:
+        """Применить tooltip/accessibility metadata для desktop-действия."""
+        action = self._desktop_actions.get(action_id)
+        tooltip = action.description
+        if action.shortcut:
+            tooltip = f"{tooltip} Горячая клавиша: {action.shortcut}."
+            self._registered_shortcuts[action_id.value] = action.shortcut
+        self._apply_accessible_metadata(
+            widget,
+            action.title,
+            action.description,
+        )
+        widget._tooltip = tooltip  # type: ignore[attr-defined]
+        set_tooltip = getattr(widget, "setToolTip", None)
+        if callable(set_tooltip):
+            set_tooltip(tooltip)
+
+        set_shortcut = getattr(widget, "setShortcut", None)
+        if callable(set_shortcut) and action.shortcut:
+            set_shortcut(action.shortcut)
+        if action.shortcut:
+            widget._shortcut = action.shortcut  # type: ignore[attr-defined]
+
+    def _apply_accessible_metadata(
+        self,
+        widget: QWidget,
+        accessible_name: str,
+        accessible_description: str,
+    ) -> None:
+        """Назначить accessible metadata с fallback для unit-test моков."""
+        widget._accessible_name = accessible_name  # type: ignore[attr-defined]
+        widget._accessible_description = accessible_description  # type: ignore[attr-defined]
+        set_name = getattr(widget, "setAccessibleName", None)
+        if callable(set_name):
+            set_name(accessible_name)
+
+        set_description = getattr(widget, "setAccessibleDescription", None)
+        if callable(set_description):
+            set_description(accessible_description)
+
+    def _configure_tab_order(self) -> None:
+        """Настроить логичный tab order для сценариев без мыши."""
+        tab_order = [
+            self.start_btn,
+            self.pause_btn,
+            self.stop_btn,
+            self._recordings_filter_input,
+            self.recordings_list,
+            self._open_latest_btn,
+            self._open_folder_btn,
+        ]
+        self._tab_navigation_order = tab_order
+        set_tab_order = getattr(self, "setTabOrder", None)
+        if callable(set_tab_order):
+            for current_widget, next_widget in zip(
+                tab_order,
+                tab_order[1:],
+                strict=False,
+            ):
+                set_tab_order(current_widget, next_widget)
+
+    def _register_qt_shortcuts(self) -> None:
+        """Зарегистрировать оконные shortcuts для key actions."""
+        self._qt_shortcuts: list[Any] = []
+        try:
+            from PyQt6.QtGui import QKeySequence, QShortcut
+        except Exception:
+            return
+
+        for action in self._desktop_actions.all():
+            if not action.shortcut:
+                continue
+            try:
+                shortcut = QShortcut(QKeySequence(action.shortcut), self)
+                shortcut.activated.connect(
+                    lambda action_id=action.action_id: self._desktop_actions.execute(
+                        action_id
+                    )
+                )
+                self._qt_shortcuts.append(shortcut)
+            except Exception:
+                continue
+
     def _apply_settings_to_views(self) -> None:
         """Применение настроек к представлениям."""
         self._capture_view.set_capture_type(self._state.capture.capture_type)
         self._capture_view.set_window_title(self._state.capture.window_title)
         if self._state.capture.capture_type == CaptureMode.RECT:
             self._capture_view.set_rect_coords(self._state.capture.rect_coords)
+
+        # Настройки аудио
+        self._audio_view.set_audio_type(self._state.audio.audio_type)
+        if self._state.audio.mic_device_index is not None:
+            self._audio_view.set_mic_device_index(
+                self._state.audio.mic_device_index
+            )
+        if self._state.audio.mic_device_name:
+            self._audio_view.set_mic_device_name(
+                self._state.audio.mic_device_name
+            )
 
         # Настройки видео
         self._video_view.set_settings(self._state.video)
@@ -465,35 +759,23 @@ class MainWindow(QMainWindow):
         if self._state.is_recording():
             return
 
-        # Получение настроек из представлений
-        capture_type = self._capture_view.get_capture_type()
-        rect_coords = self._capture_view.get_rect_coords()
-
-        # Проверка координат для прямоугольной области
-        if capture_type == CaptureMode.RECT and rect_coords is None:
-            self._show_error("Введите корректные координаты области захвата")
+        capture = self._build_capture_settings_from_views()
+        if capture is None:
+            self._show_non_modal_error(
+                "Введите корректные координаты области захвата"
+            )
             return
 
-        # Fallback на полное разрешение экрана
-        if rect_coords is None:
-            from PyQt6.QtGui import QGuiApplication
-
-            screen = QGuiApplication.primaryScreen()
-            if screen:
-                geometry = screen.geometry()
-                rect_coords = (0, 0, geometry.width(), geometry.height())
-            else:
-                rect_coords = (0, 0, 1920, 1080)
-
-        capture = CaptureSettings(
-            capture_type=capture_type,
-            window_title=self._capture_view.get_window_title(),
-            rect_coords=rect_coords,
-        )
-
-        audio = self._state.audio
+        audio = self._build_audio_settings_from_state()
         video = self._video_view.get_settings()
         output_path = self._settings_controller.get_output_path()
+        readiness = self._readiness_service.evaluate(
+            capture=capture,
+            audio=audio,
+            output_path=output_path,
+        )
+        if not self._apply_readiness_snapshot(readiness):
+            return
 
         # Запуск записи через контроллер
         success, error_msg = self._recording_controller.start_recording(
@@ -506,7 +788,70 @@ class MainWindow(QMainWindow):
         if success:
             self._on_recording_started(output_path, capture)
         else:
-            self._show_error(error_msg or "Не удалось запустить запись")
+            self._show_non_modal_error(
+                error_msg or "Не удалось запустить запись"
+            )
+
+    def _apply_readiness_snapshot(self, snapshot) -> bool:
+        """
+        Применить readiness snapshot к стартовому сценарию записи.
+
+        Args:
+            snapshot: Результат preflight-проверки.
+
+        Returns:
+            `True`, если старт можно продолжать.
+        """
+        if snapshot.is_ready:
+            if snapshot.warning_issues:
+                self.status_bar.showMessage(
+                    f"Проверка готовности: {snapshot.summary_text()}",
+                    7000,
+                )
+            return True
+
+        self.status_label.setText("Не готово к записи")
+        self.status_label.setStyleSheet(Theme.status_style("warning"))
+        self.status_bar.showMessage(
+            f"Старт заблокирован: {snapshot.summary_text()}",
+            10000,
+        )
+        if hasattr(self, "tabs") and hasattr(self, "_diagnostics_view"):
+            self.tabs.setCurrentWidget(self._diagnostics_view)
+            self._run_diagnostics()
+        return False
+
+    def _build_capture_settings_from_views(self) -> CaptureSettings | None:
+        """Собрать текущие настройки захвата из GUI."""
+        capture_type = self._capture_view.get_capture_type()
+        rect_coords = self._capture_view.get_rect_coords()
+
+        if capture_type == CaptureMode.RECT and rect_coords is None:
+            return None
+
+        if rect_coords is None:
+            from PyQt6.QtGui import QGuiApplication
+
+            screen = QGuiApplication.primaryScreen()
+            if screen:
+                geometry = screen.geometry()
+                rect_coords = (0, 0, geometry.width(), geometry.height())
+            else:
+                rect_coords = (0, 0, 1920, 1080)
+
+        return CaptureSettings(
+            capture_type=capture_type,
+            window_title=self._capture_view.get_window_title(),
+            rect_coords=rect_coords,
+        )
+
+    def _build_audio_settings_from_state(self) -> AudioSettings:
+        """Собрать текущие настройки аудио из состояния приложения."""
+        return AudioSettings(
+            audio_type=self._state.audio.audio_type,
+            mic_device_index=self._state.audio.mic_device_index,
+            mic_device_name=self._state.audio.mic_device_name,
+        )
 
     def start_recording(self) -> dict[str, Any]:
         """
@@ -572,12 +917,7 @@ class MainWindow(QMainWindow):
     def _begin_stop_operation(self) -> None:
         """Запустить остановку записи в фоне."""
         self._stop_operation_in_progress = True
-        self.start_btn.setEnabled(False)
-        self.pause_btn.setEnabled(False)
-        self.stop_btn.setEnabled(True)
-        self.stop_btn.setText("Отменить остановку")
-        self.status_label.setText("Остановка...")
-        self.status_label.setStyleSheet("color: orange; font-weight: bold;")
+        self._update_ui_state("stopping")
         self.status_bar.showMessage("Финализация записи...", 0)
 
         self._stop_operation_thread = threading.Thread(
@@ -627,12 +967,7 @@ class MainWindow(QMainWindow):
             self._on_recording_stopped(output_path)
             return
 
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
-        self.pause_btn.setEnabled(False)
-        self.status_label.setText("Готов")
-        self.status_label.setStyleSheet("")
-        self.time_label.setText("00:00")
+        self._update_ui_state("idle")
         self._recording_indicator.hide_indicator()
         self.status_bar.showMessage(
             error_message or "Остановка записи не завершена",
@@ -647,13 +982,8 @@ class MainWindow(QMainWindow):
         capture: CaptureSettings | None = None,
     ) -> None:
         """Обработка запуска записи."""
-        self.start_btn.setEnabled(False)
-        self.stop_btn.setEnabled(True)
-        self.pause_btn.setEnabled(True)
-        self.pause_btn.setText("Пауза")
-
-        self.status_label.setText("Запись")
-        self.status_label.setStyleSheet("color: red; font-weight: bold;")
+        self._set_status_updates_enabled(True)
+        self._update_ui_state("recording")
         if capture is not None:
             self._recording_indicator.show_for_capture(capture)
 
@@ -662,13 +992,8 @@ class MainWindow(QMainWindow):
 
     def _on_recording_stopped(self, output_path: Path) -> None:
         """Обработка остановки записи."""
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
-        self.pause_btn.setEnabled(False)
-
-        self.status_label.setText("Готов")
-        self.status_label.setStyleSheet("")
-        self.time_label.setText("00:00")
+        self._set_status_updates_enabled(False)
+        self._update_ui_state("idle")
         self._recording_indicator.hide_indicator()
 
         # Добавление в список последних записей
@@ -682,18 +1007,16 @@ class MainWindow(QMainWindow):
 
     def _on_recording_paused(self) -> None:
         """Обработка приостановки записи."""
-        self.pause_btn.setText("Продолжить")
-        self.status_label.setText("Пауза")
-        self.status_label.setStyleSheet("color: orange; font-weight: bold;")
+        self._set_status_updates_enabled(False)
+        self._update_ui_state("paused")
         self._recording_indicator.set_paused(True)
 
         self.recording_paused.emit()
 
     def _on_recording_resumed(self) -> None:
         """Обработка возобновления записи."""
-        self.pause_btn.setText("Пауза")
-        self.status_label.setText("Запись")
-        self.status_label.setStyleSheet("color: red; font-weight: bold;")
+        self._set_status_updates_enabled(True)
+        self._update_ui_state("recording")
         self._recording_indicator.set_paused(False)
 
         self.recording_resumed.emit()
@@ -703,6 +1026,90 @@ class MainWindow(QMainWindow):
         if self._state.is_recording():
             elapsed = self._recording_controller.elapsed_time
             self.time_label.setText(format_time(elapsed))
+
+    def _set_status_updates_enabled(self, enabled: bool) -> None:
+        """
+        Включить или выключить обновление времени записи.
+
+        Args:
+            enabled: Нужно ли держать timer активным.
+        """
+        if enabled:
+            self._update_timer.start(_STATUS_UPDATE_INTERVAL_MS)
+            return
+
+        self._update_timer.stop()
+
+    def _update_ui_state(self, state: str) -> None:
+        """
+        Централизованно обновить состояние recording UI controls.
+
+        Args:
+            state: Один из `idle`, `recording`, `paused`, `stopping`.
+        """
+        state_config = {
+            "idle": {
+                "start_enabled": True,
+                "stop_enabled": False,
+                "pause_enabled": False,
+                "pause_text": "Пауза",
+                "stop_text": "Стоп",
+                "status_text": "Готов",
+                "status_style": "",
+                "time_text": "00:00",
+            },
+            "recording": {
+                "start_enabled": False,
+                "stop_enabled": True,
+                "pause_enabled": True,
+                "pause_text": "Пауза",
+                "stop_text": "Стоп",
+                "status_text": "Запись",
+                "status_style": Theme.status_style("danger"),
+                "time_text": None,
+            },
+            "paused": {
+                "start_enabled": False,
+                "stop_enabled": True,
+                "pause_enabled": True,
+                "pause_text": "Продолжить",
+                "stop_text": "Стоп",
+                "status_text": "Пауза",
+                "status_style": Theme.status_style("warning"),
+                "time_text": None,
+            },
+            "stopping": {
+                "start_enabled": False,
+                "stop_enabled": True,
+                "pause_enabled": False,
+                "pause_text": "Пауза",
+                "stop_text": "Отменить остановку",
+                "status_text": "Остановка...",
+                "status_style": Theme.status_style("warning"),
+                "time_text": None,
+            },
+        }
+        config = state_config.get(state, state_config["idle"])
+
+        start_enabled = bool(config["start_enabled"])
+        stop_enabled = bool(config["stop_enabled"])
+        pause_enabled = bool(config["pause_enabled"])
+        pause_text = str(config["pause_text"])
+        stop_text = str(config["stop_text"])
+        status_text = str(config["status_text"])
+        status_style = str(config["status_style"])
+        time_text = config["time_text"]
+
+        self.start_btn.setEnabled(start_enabled)
+        self.stop_btn.setEnabled(stop_enabled)
+        self.pause_btn.setEnabled(pause_enabled)
+        self.pause_btn.setText(pause_text)
+        self.stop_btn.setText(stop_text)
+        self.status_label.setText(status_text)
+        self.status_label.setStyleSheet(status_style)
+
+        if time_text is not None:
+            self.time_label.setText(str(time_text))
 
     def _get_api_control_handler(
         self,
@@ -737,7 +1144,7 @@ class MainWindow(QMainWindow):
             result = handler(*args)
         except Exception as e:
             logger.error(f"Ошибка вызова API control '{control_name}': {e}")
-            self._show_error(str(e))
+            self._show_non_modal_error(str(e))
             return None
 
         if isinstance(result, dict):
@@ -781,13 +1188,17 @@ class MainWindow(QMainWindow):
             message = "Сервер остановлен"
         self._api_settings_view.set_status(running, message)
 
+    def refresh_api_status_view(self) -> None:
+        """Публичное обновление API статуса для runtime-слоя."""
+        self._refresh_api_status()
+
     def _on_api_settings_apply(self, port: int, token: str) -> None:
         """Сохранение настроек API из вкладки."""
         result = self._invoke_api_control(
             "apply_settings", {"port": port, "token": token}
         )
         if result is None:
-            self._show_error("Управление API недоступно")
+            self._show_non_modal_error("Управление API недоступно")
             return
         if result.get("success"):
             message = "Настройки API сохранены"
@@ -796,7 +1207,7 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(message, 5000)
             self._refresh_api_status()
             return
-        self._show_error(
+        self._show_non_modal_error(
             result.get("error", "Не удалось сохранить настройки API")
         )
 
@@ -804,14 +1215,14 @@ class MainWindow(QMainWindow):
         """Запуск API сервера из вкладки."""
         result = self._invoke_api_control("start")
         if result is None:
-            self._show_error("Управление API недоступно")
+            self._show_non_modal_error("Управление API недоступно")
             return
         if result.get("success"):
             self.status_bar.showMessage("API сервер запущен", 5000)
             self._refresh_api_status()
             self._start_websocket_after_api(result)
             return
-        self._show_error(
+        self._show_non_modal_error(
             result.get("error", "Не удалось запустить API сервер")
         )
 
@@ -830,14 +1241,14 @@ class MainWindow(QMainWindow):
         """Остановка API сервера из вкладки."""
         result = self._invoke_api_control("stop")
         if result is None:
-            self._show_error("Управление API недоступно")
+            self._show_non_modal_error("Управление API недоступно")
             return
         if result.get("success"):
             self.disconnect_websocket()
             self.status_bar.showMessage("API сервер остановлен", 5000)
             self._refresh_api_status()
             return
-        self._show_error(
+        self._show_non_modal_error(
             result.get("error", "Не удалось остановить API сервер")
         )
 
@@ -845,7 +1256,7 @@ class MainWindow(QMainWindow):
         """Перезапуск API сервера из вкладки."""
         result = self._invoke_api_control("restart")
         if result is None:
-            self._show_error("Управление API недоступно")
+            self._show_non_modal_error("Управление API недоступно")
             return
         if result.get("success"):
             self.disconnect_websocket()
@@ -853,7 +1264,7 @@ class MainWindow(QMainWindow):
             self._refresh_api_status()
             self._start_websocket_after_api(result)
             return
-        self._show_error(
+        self._show_non_modal_error(
             result.get("error", "Не удалось перезапустить API сервер")
         )
 
@@ -907,9 +1318,14 @@ class MainWindow(QMainWindow):
             status, ("WS: ?", "#6b7280", "Неизвестно")
         )
         self._ws_status_label.setText(text)
-        self._ws_status_label.setStyleSheet(
-            f"color: {color}; font-weight: bold;"
-        )
+        tone = "muted"
+        if color == "green":
+            tone = "success"
+        elif color == "orange":
+            tone = "warning"
+        elif color == "red":
+            tone = "danger"
+        self._ws_status_label.setStyleSheet(Theme.status_style(tone))
         self._ws_status_label.setToolTip(tooltip)
 
     def _on_ws_event_received(self, event_type: str, payload: dict) -> None:
@@ -991,9 +1407,52 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Ошибка", message)
         self.error_occurred.emit(message)
 
+    def _show_non_modal_error(
+        self,
+        message: str,
+        duration_ms: int = 10000,
+    ) -> None:
+        """
+        Показ ошибки без обязательного modal dialog.
+
+        Args:
+            message: Текст ошибки.
+            duration_ms: Длительность сообщения в status bar.
+        """
+        self.status_label.setText("Ошибка")
+        self.status_label.setStyleSheet(Theme.status_style("danger"))
+        self.status_bar.showMessage(message, duration_ms)
+        self.error_occurred.emit(message)
+
     def _check_dependencies(self) -> None:
         """Проверка необходимых зависимостей."""
-        ffmpeg_available, version = check_ffmpeg()
+        threading.Thread(
+            target=self._check_dependencies_worker,
+            daemon=True,
+        ).start()
+
+    def _check_dependencies_worker(self) -> None:
+        """Выполнить проверку зависимостей в фоне."""
+        try:
+            result = check_ffmpeg()
+            self.dependency_check_completed.emit(result, None)
+        except Exception as error:
+            self.dependency_check_completed.emit(None, str(error))
+
+    def _on_dependency_check_completed(
+        self,
+        result: object,
+        error: object,
+    ) -> None:
+        """Применить результат фоновой проверки зависимостей."""
+        if error is not None:
+            logger.error("Ошибка проверки зависимостей: %s", error)
+            return
+
+        if not isinstance(result, tuple) or not result:
+            return
+
+        ffmpeg_available = bool(result[0])
         if not ffmpeg_available:
             QMessageBox.warning(
                 self,
@@ -1008,6 +1467,23 @@ class MainWindow(QMainWindow):
         from PyQt6.QtCore import QRect
 
         return QRect(0, 0, 1920, 1080)
+
+    def showEvent(self, event: Any) -> None:
+        """Возобновить timer времени записи при показе окна."""
+        if self._state.is_recording():
+            self._set_status_updates_enabled(True)
+        try:
+            super().showEvent(event)
+        except AttributeError:
+            return
+
+    def hideEvent(self, event: Any) -> None:
+        """Остановить timer времени записи, когда окно скрыто."""
+        self._set_status_updates_enabled(False)
+        try:
+            super().hideEvent(event)
+        except AttributeError:
+            return
 
     def closeEvent(self, event) -> None:
         """Обработка события закрытия окна."""
@@ -1062,10 +1538,6 @@ class MainWindow(QMainWindow):
         """Запуск диагностики системы."""
         logger.info("_run_diagnostics вызван")
         try:
-            config = get_config()
-            output_path = config.settings.output.default_path
-            logger.info(f"output_path: {output_path}")
-
             api_running = False
             if self._application_facade is not None:
                 try:
@@ -1077,10 +1549,16 @@ class MainWindow(QMainWindow):
                 except Exception:
                     api_running = False
 
+            capture = self._build_capture_settings_from_views()
+            audio = self._build_audio_settings_from_state()
+            output_path = self._settings_controller.get_output_path()
+
             logger.info(f"api_running: {api_running}")
             self._diagnostics_view.run_checks(
                 api_enabled=api_running,
                 output_path=output_path,
+                capture=capture,
+                audio=audio,
             )
             logger.info("Диагностика завершена")
         except Exception as e:
@@ -1090,6 +1568,14 @@ class MainWindow(QMainWindow):
         """Обработка нажатия кнопки исправления."""
         if check_name == "Папка вывода":
             self._select_output_folder()
+        elif check_name == "Аудиоустройства":
+            self.tabs.setCurrentIndex(0)
+            self._audio_view._refresh_audio_devices()
+        elif check_name == "Окно захвата":
+            self.tabs.setCurrentIndex(0)
+            self._capture_view._refresh_windows()
+        elif check_name == "FFmpeg":
+            webbrowser.open("https://ffmpeg.org/download.html")
 
     def _select_output_folder(self) -> None:
         """Выбор папки для сохранения записей."""
@@ -1188,6 +1674,17 @@ class MainWindow(QMainWindow):
                 params.get("output_path"),
                 video_settings.format,
             )
+            readiness = self._readiness_service.evaluate(
+                capture=capture,
+                audio=audio_settings,
+                output_path=output_path,
+            )
+            if not readiness.is_ready:
+                return {
+                    "success": False,
+                    "error": readiness.summary_text(),
+                    "details": [issue.message for issue in readiness.issues],
+                }
 
             # Запуск записи
             success, error_msg = self._recording_controller.start_recording(
