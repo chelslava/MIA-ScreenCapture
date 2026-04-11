@@ -126,3 +126,148 @@ class IdempotencyEntry:
     created_at_monotonic: float
     updated_at_monotonic: float
     response: IdempotencyResponse | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ObservabilityLatencyStats:
+    """Сводка latency-метрик API."""
+
+    count: int
+    avg_ms: float
+    p50_ms: float
+    p95_ms: float
+    p99_ms: float
+    max_ms: float
+
+    def to_dict(self) -> dict[str, float | int]:
+        """Сериализовать latency-статистику в совместимый dict."""
+        return {
+            "count": self.count,
+            "avg_ms": self.avg_ms,
+            "p50_ms": self.p50_ms,
+            "p95_ms": self.p95_ms,
+            "p99_ms": self.p99_ms,
+            "max_ms": self.max_ms,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ObservabilityResourceStats:
+    """Сводка resource-метрик API процесса."""
+
+    rss_mb: float
+    threads: int
+    cpu_percent: float
+
+    def to_dict(self) -> dict[str, float | int]:
+        """Сериализовать resource-статистику в совместимый dict."""
+        return {
+            "rss_mb": self.rss_mb,
+            "threads": self.threads,
+            "cpu_percent": self.cpu_percent,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ObservabilityPathStat:
+    """Одна запись top-path статистики."""
+
+    path: str
+    count: int
+
+    def to_dict(self) -> dict[str, str | int]:
+        """Сериализовать path statistic в совместимый dict."""
+        return {
+            "path": self.path,
+            "count": self.count,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ObservabilitySnapshot:
+    """Типизированный snapshot эксплуатационных метрик API."""
+
+    uptime_seconds: float
+    requests_total: int
+    requests_inflight: int
+    requests_per_second: float
+    errors_total: int
+    error_rate_percent: float
+    status_codes: dict[str, int]
+    methods: dict[str, int]
+    top_paths: tuple[ObservabilityPathStat, ...]
+    latency_ms: ObservabilityLatencyStats
+    resources: ObservabilityResourceStats
+    generated_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Сериализовать snapshot в совместимый dict."""
+        return {
+            "uptime_seconds": self.uptime_seconds,
+            "requests_total": self.requests_total,
+            "requests_inflight": self.requests_inflight,
+            "requests_per_second": self.requests_per_second,
+            "errors_total": self.errors_total,
+            "error_rate_percent": self.error_rate_percent,
+            "status_codes": dict(self.status_codes),
+            "methods": dict(self.methods),
+            "top_paths": [item.to_dict() for item in self.top_paths],
+            "latency_ms": self.latency_ms.to_dict(),
+            "resources": self.resources.to_dict(),
+            "generated_at": self.generated_at,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ObservabilityTargets:
+    """Целевые SLO observability."""
+
+    p95_latency_ms: float
+    error_rate_percent: float
+
+    def to_dict(self) -> dict[str, float]:
+        """Сериализовать SLO targets в совместимый dict."""
+        return {
+            "p95_latency_ms": self.p95_latency_ms,
+            "error_rate_percent": self.error_rate_percent,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ObservabilityCurrent:
+    """Текущее observability состояние для baseline-ответа."""
+
+    p95_latency_ms: float
+    error_rate_percent: float
+    requests_per_second: float
+    rss_mb: float
+
+    def to_dict(self) -> dict[str, float]:
+        """Сериализовать текущее observability состояние в dict."""
+        return {
+            "p95_latency_ms": self.p95_latency_ms,
+            "error_rate_percent": self.error_rate_percent,
+            "requests_per_second": self.requests_per_second,
+            "rss_mb": self.rss_mb,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ObservabilityBaseline:
+    """Типизированный baseline observability/SLO."""
+
+    sample_size: int
+    slo_targets: ObservabilityTargets
+    current: ObservabilityCurrent
+    meets_targets: dict[str, bool]
+    generated_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Сериализовать baseline в совместимый dict."""
+        return {
+            "sample_size": self.sample_size,
+            "slo_targets": self.slo_targets.to_dict(),
+            "current": self.current.to_dict(),
+            "meets_targets": dict(self.meets_targets),
+            "generated_at": self.generated_at,
+        }

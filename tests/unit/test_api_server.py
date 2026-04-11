@@ -653,8 +653,8 @@ class TestAPIServerObservability:
 
         stats = observability._latency_stats()
 
-        assert stats["count"] == 3
-        assert stats["max_ms"] == 30.0
+        assert stats.count == 3
+        assert stats.max_ms == 30.0
 
 
 class TestAPIServerOperations:

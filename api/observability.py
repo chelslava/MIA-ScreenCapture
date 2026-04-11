@@ -10,6 +10,16 @@ from typing import Any
 
 import psutil
 
+from api.runtime_models import (
+    ObservabilityBaseline,
+    ObservabilityCurrent,
+    ObservabilityLatencyStats,
+    ObservabilityPathStat,
+    ObservabilityResourceStats,
+    ObservabilitySnapshot,
+    ObservabilityTargets,
+)
+
 
 class APIServerObservability:
     """Потокобезопасный сбор базовых эксплуатационных метрик API."""
@@ -75,34 +85,27 @@ class APIServerObservability:
             sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
         )
 
-    def _latency_stats(self) -> dict[str, float | int]:
+    def _latency_stats(self) -> ObservabilityLatencyStats:
         with self._lock:
             samples = sorted(self._latency_ms)
         if not samples:
-            return {
-                "count": 0,
-                "avg_ms": 0.0,
-                "p50_ms": 0.0,
-                "p95_ms": 0.0,
-                "p99_ms": 0.0,
-                "max_ms": 0.0,
-            }
-        return {
-            "count": len(samples),
-            "avg_ms": round(sum(samples) / len(samples), 3),
-            "p50_ms": round(self._percentile(samples, 50), 3),
-            "p95_ms": round(self._percentile(samples, 95), 3),
-            "p99_ms": round(self._percentile(samples, 99), 3),
-            "max_ms": round(samples[-1], 3),
-        }
+            return ObservabilityLatencyStats(0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return ObservabilityLatencyStats(
+            count=len(samples),
+            avg_ms=round(sum(samples) / len(samples), 3),
+            p50_ms=round(self._percentile(samples, 50), 3),
+            p95_ms=round(self._percentile(samples, 95), 3),
+            p99_ms=round(self._percentile(samples, 99), 3),
+            max_ms=round(samples[-1], 3),
+        )
 
-    def _resource_stats(self) -> dict[str, float | int]:
+    def _resource_stats(self) -> ObservabilityResourceStats:
         memory_info = self._process.memory_info()
-        return {
-            "rss_mb": round(memory_info.rss / (1024 * 1024), 3),
-            "threads": self._process.num_threads(),
-            "cpu_percent": round(self._process.cpu_percent(interval=None), 3),
-        }
+        return ObservabilityResourceStats(
+            rss_mb=round(memory_info.rss / (1024 * 1024), 3),
+            threads=self._process.num_threads(),
+            cpu_percent=round(self._process.cpu_percent(interval=None), 3),
+        )
 
     def get_metrics_snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -128,45 +131,49 @@ class APIServerObservability:
             else 0.0
         )
 
-        return {
-            "uptime_seconds": round(uptime, 3),
-            "requests_total": requests_total,
-            "requests_inflight": requests_inflight,
-            "requests_per_second": requests_per_second,
-            "errors_total": errors_total,
-            "error_rate_percent": error_rate_percent,
-            "status_codes": status_counts,
-            "methods": method_counts,
-            "top_paths": [
-                {"path": path, "count": count} for path, count in top_paths
-            ],
-            "latency_ms": latency,
-            "resources": resources,
-            "generated_at": datetime.now(UTC).isoformat(),
-        }
+        snapshot = ObservabilitySnapshot(
+            uptime_seconds=round(uptime, 3),
+            requests_total=requests_total,
+            requests_inflight=requests_inflight,
+            requests_per_second=requests_per_second,
+            errors_total=errors_total,
+            error_rate_percent=error_rate_percent,
+            status_codes=status_counts,
+            methods=method_counts,
+            top_paths=tuple(
+                ObservabilityPathStat(path=path, count=count)
+                for path, count in top_paths
+            ),
+            latency_ms=latency,
+            resources=resources,
+            generated_at=datetime.now(UTC).isoformat(),
+        )
+        return snapshot.to_dict()
 
     def get_baseline(self) -> dict[str, Any]:
         """Возвращает baseline SLO и текущее observability состояние."""
         metrics = self.get_metrics_snapshot()
-        slo_targets = {
-            "p95_latency_ms": 100.0,
-            "error_rate_percent": 1.0,
-        }
-        current = {
-            "p95_latency_ms": metrics["latency_ms"]["p95_ms"],
-            "error_rate_percent": metrics["error_rate_percent"],
-            "requests_per_second": metrics["requests_per_second"],
-            "rss_mb": metrics["resources"]["rss_mb"],
-        }
-        return {
-            "sample_size": metrics["latency_ms"]["count"],
-            "slo_targets": slo_targets,
-            "current": current,
-            "meets_targets": {
-                "latency": current["p95_latency_ms"]
-                <= slo_targets["p95_latency_ms"],
-                "error_rate": current["error_rate_percent"]
-                <= slo_targets["error_rate_percent"],
+        slo_targets = ObservabilityTargets(
+            p95_latency_ms=100.0,
+            error_rate_percent=1.0,
+        )
+        current = ObservabilityCurrent(
+            p95_latency_ms=metrics["latency_ms"]["p95_ms"],
+            error_rate_percent=metrics["error_rate_percent"],
+            requests_per_second=metrics["requests_per_second"],
+            rss_mb=metrics["resources"]["rss_mb"],
+        )
+        baseline = ObservabilityBaseline(
+            sample_size=metrics["latency_ms"]["count"],
+            slo_targets=slo_targets,
+            current=current,
+            meets_targets={
+                "latency": current.p95_latency_ms <= slo_targets.p95_latency_ms,
+                "error_rate": (
+                    current.error_rate_percent
+                    <= slo_targets.error_rate_percent
+                ),
             },
-            "generated_at": metrics["generated_at"],
-        }
+            generated_at=str(metrics["generated_at"]),
+        )
+        return baseline.to_dict()
