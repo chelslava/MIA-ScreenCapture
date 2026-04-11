@@ -469,7 +469,9 @@ class ApiSettingsView(QWidget):
     def _load_full_log(self, log_path: Path) -> None:
         """Загрузка файла логов целиком после смены источника."""
         if not log_path.exists():
-            self._set_empty_state("Файл журнала API пока не создан. Запустите сервер.")
+            self._set_empty_state(
+                "Файл журнала API пока не создан. Запустите сервер."
+            )
             self._log_offset = 0
             return
 

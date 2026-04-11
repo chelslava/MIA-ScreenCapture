@@ -168,7 +168,8 @@ class APIServerObservability:
             slo_targets=slo_targets,
             current=current,
             meets_targets={
-                "latency": current.p95_latency_ms <= slo_targets.p95_latency_ms,
+                "latency": current.p95_latency_ms
+                <= slo_targets.p95_latency_ms,
                 "error_rate": (
                     current.error_rate_percent
                     <= slo_targets.error_rate_percent

@@ -159,9 +159,8 @@ class ApiRuntimeManager:
             from api.server import APIServer
 
             if (
-                (server := self._app.get_api_server_instance()) is not None
-                and server.is_running()
-            ):
+                server := self._app.get_api_server_instance()
+            ) is not None and server.is_running():
                 self._set_lifecycle_state("running")
                 logger.info("API сервер уже запущен")
                 return {"success": True, "status": self.get_api_status()}
@@ -411,9 +410,5 @@ class ApiRuntimeManager:
         server.set_callback("toggle_schedule", self._app.toggle_schedule)
         server.set_callback("devices", self._app.get_devices)
         server.set_callback("windows", self._app.get_windows)
-        server.set_callback(
-            "get_config", self._app.get_config_snapshot
-        )
-        server.set_callback(
-            "update_config", self._app.update_config
-        )
+        server.set_callback("get_config", self._app.get_config_snapshot)
+        server.set_callback("update_config", self._app.update_config)

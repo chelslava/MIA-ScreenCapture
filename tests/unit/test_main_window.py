@@ -861,9 +861,7 @@ class TestMainWindowMethods:
         window._build_capture_settings_from_views = MagicMock(
             return_value=capture
         )
-        window._build_audio_settings_from_state = MagicMock(
-            return_value=audio
-        )
+        window._build_audio_settings_from_state = MagicMock(return_value=audio)
         window._settings_controller.get_output_path.return_value = Path(
             "D:/capture.mp4"
         )

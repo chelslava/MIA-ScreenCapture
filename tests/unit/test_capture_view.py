@@ -128,7 +128,9 @@ class TestCaptureViewAsyncLoading:
 
         view._on_windows_load_completed(view._window_request_id, [], None)
 
-        assert view._window_status_label.text() == "Окна для захвата не найдены."
+        assert (
+            view._window_status_label.text() == "Окна для захвата не найдены."
+        )
         assert view._window_combo.count() == 0
 
     def test_stale_window_result_is_ignored(

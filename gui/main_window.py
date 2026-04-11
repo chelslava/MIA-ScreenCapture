@@ -287,9 +287,7 @@ class MainWindow(QMainWindow):
         filter_layout.addWidget(self._recordings_filter_input)
 
         self._clear_filter_btn = QPushButton("Сбросить")
-        self._clear_filter_btn.clicked.connect(
-            self._clear_recordings_filter
-        )
+        self._clear_filter_btn.clicked.connect(self._clear_recordings_filter)
         filter_layout.addWidget(self._clear_filter_btn)
         group_layout.addLayout(filter_layout)
 
@@ -329,9 +327,7 @@ class MainWindow(QMainWindow):
             )
         )
         self.pause_btn.clicked.connect(
-            lambda: self._desktop_actions.execute(
-                DesktopActionId.TOGGLE_PAUSE
-            )
+            lambda: self._desktop_actions.execute(DesktopActionId.TOGGLE_PAUSE)
         )
         self.stop_btn.clicked.connect(
             lambda: self._desktop_actions.execute(
@@ -410,8 +406,9 @@ class MainWindow(QMainWindow):
                 description=pause_spec.description,
                 callback=self._toggle_pause,
                 shortcut=pause_spec.shortcut,
-                enabled_when=lambda: self._state.is_recording()
-                or self._state.is_paused(),
+                enabled_when=lambda: (
+                    self._state.is_recording() or self._state.is_paused()
+                ),
             )
         )
         stop_spec = get_desktop_action_spec(DesktopActionId.STOP_RECORDING)
@@ -422,8 +419,9 @@ class MainWindow(QMainWindow):
                 description=stop_spec.description,
                 callback=self._stop_recording,
                 shortcut=stop_spec.shortcut,
-                enabled_when=lambda: self._state.is_recording()
-                or self._state.is_paused(),
+                enabled_when=lambda: (
+                    self._state.is_recording() or self._state.is_paused()
+                ),
             )
         )
         latest_spec = get_desktop_action_spec(
@@ -624,8 +622,8 @@ class MainWindow(QMainWindow):
             try:
                 shortcut = QShortcut(QKeySequence(action.shortcut), self)
                 shortcut.activated.connect(
-                    lambda action_id=action.action_id: self._desktop_actions.execute(
-                        action_id
+                    lambda action_id=action.action_id: (
+                        self._desktop_actions.execute(action_id)
                     )
                 )
                 self._qt_shortcuts.append(shortcut)

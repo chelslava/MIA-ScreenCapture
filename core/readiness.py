@@ -249,8 +249,13 @@ class RecordingReadinessService:
             )
             return
 
-        available_names = {str(device.get("name", "")) for device in input_devices}
-        if audio.mic_device_name and audio.mic_device_name not in available_names:
+        available_names = {
+            str(device.get("name", "")) for device in input_devices
+        }
+        if (
+            audio.mic_device_name
+            and audio.mic_device_name not in available_names
+        ):
             issues.append(
                 ReadinessIssue(
                     code="microphone_name_missing",

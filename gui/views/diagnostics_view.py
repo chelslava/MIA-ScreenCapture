@@ -251,7 +251,9 @@ class DiagnosticsView(QWidget):
         capture_message = "Не требуется для текущего режима"
         if capture.capture_type == CaptureMode.WINDOW:
             capture_message = (
-                "Окно доступно" if capture_issue is None else capture_issue.title
+                "Окно доступно"
+                if capture_issue is None
+                else capture_issue.title
             )
         self._update_group_status(
             self._capture_group,

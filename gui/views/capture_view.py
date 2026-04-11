@@ -98,7 +98,10 @@ class CaptureView(QWidget):
         group_layout.addLayout(window_layout)
 
         self._window_status_label = QLabel(_WINDOWS_LOADING_TEXT)
-        self._window_status_label.setStyleSheet(Theme.secondary_text_style())
+        Theme.apply_style(
+            self._window_status_label,
+            Theme.secondary_text_style(),
+        )
         group_layout.addWidget(self._window_status_label)
 
         self._rect_radio = QRadioButton("Прямоугольник")
@@ -259,14 +262,18 @@ class CaptureView(QWidget):
     def _set_windows_loading_state(self) -> None:
         """Показать состояние загрузки списка окон."""
         self._window_status_label.setText(_WINDOWS_LOADING_TEXT)
-        self._window_status_label.setStyleSheet(Theme.secondary_text_style())
+        Theme.apply_style(
+            self._window_status_label,
+            Theme.secondary_text_style(),
+        )
         self._window_combo.setEnabled(False)
 
     def _set_windows_empty_state(self) -> None:
         """Показать состояние отсутствия доступных окон."""
         self._window_status_label.setText(_WINDOWS_EMPTY_TEXT)
-        self._window_status_label.setStyleSheet(
-            f"color: {Theme.COLORS['warning']};"
+        Theme.apply_style(
+            self._window_status_label,
+            f"color: {Theme.COLORS['warning']};",
         )
         self._window_combo.setEnabled(False)
 
@@ -275,15 +282,19 @@ class CaptureView(QWidget):
         self._window_status_label.setText(
             f"Не удалось загрузить окна: {message}"
         )
-        self._window_status_label.setStyleSheet(
-            f"color: {Theme.COLORS['danger']};"
+        Theme.apply_style(
+            self._window_status_label,
+            f"color: {Theme.COLORS['danger']};",
         )
         self._window_combo.setEnabled(False)
 
     def _set_windows_ready_state(self, count: int) -> None:
         """Показать успешную загрузку списка окон."""
         self._window_status_label.setText(f"Доступно окон: {count}")
-        self._window_status_label.setStyleSheet(Theme.secondary_text_style())
+        Theme.apply_style(
+            self._window_status_label,
+            Theme.secondary_text_style(),
+        )
 
     def _select_rectangle(self) -> None:
         """Открыть overlay для графического выбора области."""

@@ -52,9 +52,7 @@ class TestDesktopActionRegistry:
     def test_default_specs_expose_shortcuts_for_key_actions(self) -> None:
         """Статические action specs должны содержать ожидаемые shortcuts."""
         assert (
-            get_desktop_action_spec(
-                DesktopActionId.START_RECORDING
-            ).shortcut
+            get_desktop_action_spec(DesktopActionId.START_RECORDING).shortcut
             == "Ctrl+R"
         )
         assert (

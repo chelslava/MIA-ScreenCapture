@@ -39,3 +39,17 @@ class Theme:
         """
         color = cls.COLORS.get(tone, cls.COLORS["muted"])
         return f"font-weight: bold; color: {color};"
+
+    @staticmethod
+    def apply_style(widget: object, style: str) -> None:
+        """
+        Безопасно применить stylesheet к Qt-виджету или тестовому mock.
+
+        Args:
+            widget: Целевой виджет.
+            style: Строка stylesheet.
+        """
+        widget._style_sheet = style  # type: ignore[attr-defined]
+        setter = getattr(widget, "setStyleSheet", None)
+        if callable(setter):
+            setter(style)
