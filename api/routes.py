@@ -7,7 +7,7 @@
 
 import hashlib
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from flask import current_app, g, jsonify, request
 from pydantic import ValidationError
@@ -349,7 +349,10 @@ def _serialize_operation(
         if isinstance(operation, APIOperation)
         else APIOperation.from_dict(operation)
     )
-    return APIOperationPayload.from_operation(operation_model).to_dict()
+    return cast(
+        dict[str, Any],
+        APIOperationPayload.from_operation(operation_model).to_dict(),
+    )
 
 
 def _background_operation_status_response(
@@ -550,23 +553,26 @@ def _register_recording_routes(
     server: Any,
 ) -> tuple[Any, Any, Any]:
     """Регистрирует маршруты управления записью."""
-    return register_recording_routes(
-        api_v1,
-        server,
-        logger=logger,
-        parse_request_json=_parse_request_json,
-        handle_validation_error=handle_validation_error,
-        execute_with_idempotency=_execute_with_idempotency,
-        stop_operation_response=_stop_operation_response,
-        internal_error_response=_internal_error_response,
-        exception_response=_exception_response,
-        error_response=_error_response,
+    return cast(
+        tuple[Any, Any, Any],
+        register_recording_routes(
+            api_v1,
+            server,
+            logger=logger,
+            parse_request_json=_parse_request_json,
+            handle_validation_error=handle_validation_error,
+            execute_with_idempotency=_execute_with_idempotency,
+            stop_operation_response=_stop_operation_response,
+            internal_error_response=_internal_error_response,
+            exception_response=_exception_response,
+            error_response=_error_response,
+        ),
     )
 
 
 def _register_schedule_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты планировщика."""
-    return register_schedule_routes(
+    _ = register_schedule_routes(
         api_v1,
         server,
         logger=logger,
@@ -580,7 +586,7 @@ def _register_schedule_routes(api_v1: Any, server: Any) -> None:
 
 def _register_resource_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты ресурсов окружения."""
-    return register_resource_routes(
+    _ = register_resource_routes(
         api_v1,
         server,
         logger=logger,
@@ -591,7 +597,7 @@ def _register_resource_routes(api_v1: Any, server: Any) -> None:
 
 def _register_config_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты конфигурации."""
-    return register_config_routes(
+    _ = register_config_routes(
         api_v1,
         server,
         logger=logger,
@@ -605,7 +611,7 @@ def _register_config_routes(api_v1: Any, server: Any) -> None:
 
 def _register_observability_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты observability."""
-    return register_observability_routes(
+    _ = register_observability_routes(
         api_v1,
         server,
         logger=logger,

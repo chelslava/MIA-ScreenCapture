@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -637,7 +637,10 @@ class APIServer:
 
     def get_observability_metrics(self) -> dict[str, Any]:
         """Возвращает снапшот эксплуатационных метрик API."""
-        payload = self._observability.get_metrics_snapshot()
+        payload = cast(
+            dict[str, Any],
+            self._observability.get_metrics_snapshot(),
+        )
         payload["idempotency_store_size"] = self._idempotency.get_size()
         payload["background_operations"] = (
             self._operations.get_metrics_snapshot()
@@ -646,4 +649,4 @@ class APIServer:
 
     def get_observability_baseline(self) -> dict[str, Any]:
         """Возвращает baseline SLO по текущим эксплуатационным метрикам."""
-        return self._observability.get_baseline()
+        return cast(dict[str, Any], self._observability.get_baseline())

@@ -178,7 +178,10 @@ class VideoRecorderApp:
     ) -> dict[str, Any]:
         """Запускает запись через публичный фасад приложения."""
         if params is None:
-            return self._recording_runtime_coordinator.start_recording()
+            return cast(
+                dict[str, Any],
+                self._recording_runtime_coordinator.start_recording(),
+            )
         return self._start_recording(params)
 
     def stop_recording(self) -> dict[str, Any]:
@@ -275,7 +278,10 @@ class VideoRecorderApp:
 
     def _get_effective_api_key(self) -> str | None:
         """Возвращает актуальный API ключ через менеджер runtime."""
-        return self._api_runtime_coordinator.get_effective_api_key()
+        return cast(
+            str | None,
+            self._api_runtime_coordinator.get_effective_api_key(),
+        )
 
     def _handle_unauthorized_response(self) -> int:
         """
@@ -350,7 +356,7 @@ class VideoRecorderApp:
 
     def _run_gui(self) -> int:
         """Запуск с GUI."""
-        return self._gui_runtime_coordinator.run()
+        return cast(int, self._gui_runtime_coordinator.run())
 
     def _run_headless(self) -> int:
         """Запуск в режиме без интерфейса (только API)."""
@@ -544,31 +550,31 @@ class VideoRecorderApp:
         """Создание запланированной задачи через CLI."""
         from cli.scheduler import create_schedule
 
-        return create_schedule(self._config)
+        return cast(int, create_schedule(self._config))
 
     def _run_schedule_update(self) -> int:
         """Обновление запланированной задачи через CLI."""
         from cli.scheduler import update_schedule
 
-        return update_schedule(self._config)
+        return cast(int, update_schedule(self._config))
 
     def _run_schedule_delete(self) -> int:
         """Удаление запланированной задачи через CLI."""
         from cli.scheduler import delete_schedule
 
-        return delete_schedule(self._config)
+        return cast(int, delete_schedule(self._config))
 
     def _run_schedule_toggle(self) -> int:
         """Включение/выключение запланированной задачи через CLI."""
         from cli.scheduler import toggle_schedule
 
-        return toggle_schedule(self._config)
+        return cast(int, toggle_schedule(self._config))
 
     def _run_schedule_preview(self) -> int:
         """Просмотр предстоящих запусков через CLI."""
         from cli.scheduler import preview_upcoming_runs
 
-        return preview_upcoming_runs(self._config)
+        return cast(int, preview_upcoming_runs(self._config))
 
     def _run_list_presets(self) -> int:
         """Показ списка preset шаблонов."""
@@ -579,23 +585,38 @@ class VideoRecorderApp:
 
     def _start_api_server(self, force: bool = False) -> dict[str, Any]:
         """Запускает API сервер через менеджер runtime."""
-        return self._api_runtime_coordinator.start_api_server(force=force)
+        return cast(
+            dict[str, Any],
+            self._api_runtime_coordinator.start_api_server(force=force),
+        )
 
     def _get_api_runtime_settings(self) -> dict[str, Any]:
         """Возвращает runtime-настройки API через менеджер."""
-        return self._api_runtime_coordinator.get_api_runtime_settings()
+        return cast(
+            dict[str, Any],
+            self._api_runtime_coordinator.get_api_runtime_settings(),
+        )
 
     def _get_api_status(self) -> dict[str, Any]:
         """Возвращает статус API через менеджер runtime."""
-        return self._api_runtime_coordinator.get_api_status()
+        return cast(
+            dict[str, Any],
+            self._api_runtime_coordinator.get_api_status(),
+        )
 
     def _apply_api_settings(self, data: dict[str, Any]) -> dict[str, Any]:
         """Применяет настройки API через менеджер runtime."""
-        return self._api_runtime_coordinator.apply_api_settings(data)
+        return cast(
+            dict[str, Any],
+            self._api_runtime_coordinator.apply_api_settings(data),
+        )
 
     def _stop_api_server(self) -> dict[str, Any]:
         """Останавливает API сервер через менеджер runtime."""
-        return self._api_runtime_coordinator.stop_api_server()
+        return cast(
+            dict[str, Any],
+            self._api_runtime_coordinator.stop_api_server(),
+        )
 
     def _restart_api_server(self) -> dict[str, Any]:
         """
@@ -604,7 +625,10 @@ class VideoRecorderApp:
         Returns:
             Словарь с результатом операции.
         """
-        return self._api_runtime_coordinator.restart_api_server()
+        return cast(
+            dict[str, Any],
+            self._api_runtime_coordinator.restart_api_server(),
+        )
 
     def _open_api_logs_folder(self) -> None:
         """Открывает папку с логами API через менеджер runtime."""
@@ -753,23 +777,38 @@ class VideoRecorderApp:
 
     def _get_status(self) -> dict[str, Any]:
         """Получение статуса записи."""
-        return self._recording_runtime_coordinator.get_status()
+        return cast(
+            dict[str, Any],
+            self._recording_runtime_coordinator.get_status(),
+        )
 
     def _start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
         """Запуск записи."""
-        return self._recording_runtime_coordinator.start_recording(params)
+        return cast(
+            dict[str, Any],
+            self._recording_runtime_coordinator.start_recording(params),
+        )
 
     def _stop_recording(self) -> dict[str, Any]:
         """Остановка записи."""
-        return self._recording_runtime_coordinator.stop_recording()
+        return cast(
+            dict[str, Any],
+            self._recording_runtime_coordinator.stop_recording(),
+        )
 
     def _toggle_pause(self) -> dict[str, Any]:
         """Переключение состояния паузы."""
-        return self._recording_runtime_coordinator.toggle_pause()
+        return cast(
+            dict[str, Any],
+            self._recording_runtime_coordinator.toggle_pause(),
+        )
 
     def _get_recordings(self) -> list:
         """Получение недавних записей."""
-        return self._recording_runtime_coordinator.get_recordings()
+        return cast(
+            list[Any],
+            self._recording_runtime_coordinator.get_recordings(),
+        )
 
     def _get_schedule(self) -> list:
         """Получение запланированных задач."""

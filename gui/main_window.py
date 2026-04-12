@@ -559,7 +559,7 @@ class MainWindow(QMainWindow):
             action.title,
             action.description,
         )
-        widget._tooltip = tooltip  # type: ignore[attr-defined]
+        widget._tooltip = tooltip
         set_tooltip = getattr(widget, "setToolTip", None)
         if callable(set_tooltip):
             set_tooltip(tooltip)
@@ -568,7 +568,7 @@ class MainWindow(QMainWindow):
         if callable(set_shortcut) and action.shortcut:
             set_shortcut(action.shortcut)
         if action.shortcut:
-            widget._shortcut = action.shortcut  # type: ignore[attr-defined]
+            widget._shortcut = action.shortcut
 
     def _apply_accessible_metadata(
         self,
@@ -577,8 +577,8 @@ class MainWindow(QMainWindow):
         accessible_description: str,
     ) -> None:
         """Назначить accessible metadata с fallback для unit-test моков."""
-        widget._accessible_name = accessible_name  # type: ignore[attr-defined]
-        widget._accessible_description = accessible_description  # type: ignore[attr-defined]
+        widget._accessible_name = accessible_name
+        widget._accessible_description = accessible_description
         set_name = getattr(widget, "setAccessibleName", None)
         if callable(set_name):
             set_name(accessible_name)
