@@ -250,9 +250,7 @@ class TestMainApiRuntime:
         assert app.get_devices() == {"input": [], "output": []}
         assert app.get_windows() == [{"title": "Window"}]
         assert app.get_config_snapshot() == {"video": {"fps": 30}}
-        assert app.update_config({"video": {"fps": 60}}) == {
-            "success": True
-        }
+        assert app.update_config({"video": {"fps": 60}}) == {"success": True}
         assert app.start_api_server(force=True) == {"success": True}
         assert app.get_api_status() == {"running": False}
         assert app.apply_api_settings({"port": 5001}) == {"success": True}
@@ -269,7 +267,9 @@ class TestMainApiRuntime:
     ) -> None:
         """Private runtime wrappers должны делегировать coordinators/CLI."""
         app, _ = _build_app(monkeypatch, api_key="config-token")
-        app._gui_runtime_coordinator = SimpleNamespace(run=MagicMock(return_value=7))
+        app._gui_runtime_coordinator = SimpleNamespace(
+            run=MagicMock(return_value=7)
+        )
         app._api_runtime_coordinator = SimpleNamespace(
             get_effective_api_key=MagicMock(return_value="secret"),
             start_api_server=MagicMock(return_value={"success": True}),
