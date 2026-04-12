@@ -202,6 +202,131 @@ class TestMainApiRuntime:
         assert result == 123
         run_mock.assert_called_once_with()
 
+    def test_runtime_accessors_expose_current_runtime_objects(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Runtime accessors должны отдавать текущие app-level объекты."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        api_server = object()
+
+        app.set_api_server_instance(api_server)
+
+        assert app.get_runtime_config() == {"mode": "gui", "api": {}}
+        assert app.get_runtime_mode() == "gui"
+        assert app.get_api_server_instance() is api_server
+        assert app.get_websocket_manager_instance() is app._websocket_manager
+
+    def test_public_facade_wrappers_delegate_to_private_methods(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Публичные facade wrappers должны делегировать private методам."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app._get_status = MagicMock(return_value={"status": "ok"})
+        app._get_recordings = MagicMock(return_value=[{"path": "demo.mp4"}])
+        app._get_schedule = MagicMock(return_value=[{"id": "task-1"}])
+        app._create_schedule = MagicMock(return_value={"success": True})
+        app._delete_schedule = MagicMock(return_value={"success": True})
+        app._update_schedule = MagicMock(return_value={"success": True})
+        app._toggle_schedule = MagicMock(return_value={"success": True})
+        app._get_devices = MagicMock(return_value={"input": [], "output": []})
+        app._get_windows = MagicMock(return_value=[{"title": "Window"}])
+        app._get_config = MagicMock(return_value={"video": {"fps": 30}})
+        app._update_config = MagicMock(return_value={"success": True})
+        app._start_api_server = MagicMock(return_value={"success": True})
+        app._get_api_status = MagicMock(return_value={"running": False})
+        app._apply_api_settings = MagicMock(return_value={"success": True})
+        app._stop_api_server = MagicMock(return_value={"success": True})
+        app._restart_api_server = MagicMock(return_value={"success": True})
+
+        assert app.get_status() == {"status": "ok"}
+        assert app.get_recordings() == [{"path": "demo.mp4"}]
+        assert app.get_schedule() == [{"id": "task-1"}]
+        assert app.create_schedule({"name": "task"}) == {"success": True}
+        assert app.delete_schedule("task-1") == {"success": True}
+        assert app.update_schedule({"id": "task-1"}) == {"success": True}
+        assert app.toggle_schedule("task-1", True) == {"success": True}
+        assert app.get_devices() == {"input": [], "output": []}
+        assert app.get_windows() == [{"title": "Window"}]
+        assert app.get_config_snapshot() == {"video": {"fps": 30}}
+        assert app.update_config({"video": {"fps": 60}}) == {
+            "success": True
+        }
+        assert app.start_api_server(force=True) == {"success": True}
+        assert app.get_api_status() == {"running": False}
+        assert app.apply_api_settings({"port": 5001}) == {"success": True}
+        assert app.stop_api_server() == {"success": True}
+        assert app.restart_api_server() == {"success": True}
+
+        app._create_schedule.assert_called_once_with({"name": "task"})
+        app._delete_schedule.assert_called_once_with("task-1")
+        app._toggle_schedule.assert_called_once_with("task-1", True)
+
+    def test_private_runtime_wrappers_delegate_to_coordinators_and_cli(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Private runtime wrappers должны делегировать coordinators/CLI."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app._gui_runtime_coordinator = SimpleNamespace(run=MagicMock(return_value=7))
+        app._api_runtime_coordinator = SimpleNamespace(
+            get_effective_api_key=MagicMock(return_value="secret"),
+            start_api_server=MagicMock(return_value={"success": True}),
+            get_api_runtime_settings=MagicMock(return_value={"port": 5000}),
+            get_api_status=MagicMock(return_value={"running": True}),
+            apply_api_settings=MagicMock(return_value={"success": True}),
+            stop_api_server=MagicMock(return_value={"success": True}),
+            restart_api_server=MagicMock(return_value={"success": True}),
+        )
+        app._recording_runtime_coordinator = SimpleNamespace(
+            get_status=MagicMock(return_value={"is_recording": False}),
+            start_recording=MagicMock(return_value={"success": True}),
+            stop_recording=MagicMock(return_value={"success": True}),
+            toggle_pause=MagicMock(return_value={"success": True}),
+            get_recordings=MagicMock(return_value=[]),
+        )
+
+        monkeypatch.setattr(
+            "cli.scheduler.create_schedule",
+            lambda _config: 1,
+        )
+        monkeypatch.setattr(
+            "cli.scheduler.update_schedule",
+            lambda _config: 2,
+        )
+        monkeypatch.setattr(
+            "cli.scheduler.delete_schedule",
+            lambda _config: 3,
+        )
+        monkeypatch.setattr(
+            "cli.scheduler.toggle_schedule",
+            lambda _config: 4,
+        )
+        monkeypatch.setattr(
+            "cli.scheduler.preview_upcoming_runs",
+            lambda _config: 5,
+        )
+
+        assert app._get_effective_api_key() == "secret"
+        assert app._run_gui() == 7
+        assert app._start_api_server(force=True) == {"success": True}
+        assert app._get_api_runtime_settings() == {"port": 5000}
+        assert app._get_api_status() == {"running": True}
+        assert app._apply_api_settings({"port": 5001}) == {"success": True}
+        assert app._stop_api_server() == {"success": True}
+        assert app._restart_api_server() == {"success": True}
+        assert app._get_status() == {"is_recording": False}
+        assert app._start_recording({"area": "full"}) == {"success": True}
+        assert app._stop_recording() == {"success": True}
+        assert app._toggle_pause() == {"success": True}
+        assert app._get_recordings() == []
+        assert app._run_schedule_create() == 1
+        assert app._run_schedule_update() == 2
+        assert app._run_schedule_delete() == 3
+        assert app._run_schedule_toggle() == 4
+        assert app._run_schedule_preview() == 5
+
     def test_start_api_server_delegates_to_api_runtime_coordinator(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
