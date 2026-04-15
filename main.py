@@ -18,7 +18,7 @@ MIA-ScreenCapture - Главная точка входа
 import sys
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent))
@@ -63,6 +63,69 @@ from recorder.utils import (
 )
 
 logger = get_module_logger(__name__)
+
+
+class _GuiRuntimeCoordinatorProtocol(Protocol):
+    """Минимальный контракт GUI runtime coordinator."""
+
+    def run(self) -> int:
+        """Запускает GUI runtime."""
+
+
+class _RecordingRuntimeCoordinatorProtocol(Protocol):
+    """Минимальный контракт recording runtime coordinator."""
+
+    def get_status(self) -> dict[str, Any]:
+        """Возвращает статус записи."""
+
+    def start_recording(
+        self,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Запускает запись."""
+
+    def stop_recording(self) -> dict[str, Any]:
+        """Останавливает запись."""
+
+    def toggle_pause(self) -> dict[str, Any]:
+        """Переключает паузу записи."""
+
+    def get_recordings(self) -> list[Any]:
+        """Возвращает недавние записи."""
+
+
+class _ApiRuntimeCoordinatorProtocol(Protocol):
+    """Минимальный контракт API runtime coordinator."""
+
+    def sync_api_key_env(self, api_key: str | None) -> None:
+        """Синхронизирует API ключ."""
+
+    def get_effective_api_key(self) -> str | None:
+        """Возвращает актуальный API ключ."""
+
+    def start_api_server(self, force: bool = False) -> dict[str, Any]:
+        """Запускает API сервер."""
+
+    def get_api_runtime_settings(self) -> dict[str, Any]:
+        """Возвращает runtime-настройки API."""
+
+    def get_api_status(self) -> dict[str, Any]:
+        """Возвращает статус API."""
+
+    def apply_api_settings(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Применяет API-настройки."""
+
+    def stop_api_server(self) -> dict[str, Any]:
+        """Останавливает API сервер."""
+
+    def restart_api_server(self) -> dict[str, Any]:
+        """Перезапускает API сервер."""
+
+    def open_api_logs_folder(self) -> None:
+        """Открывает каталог API-логов."""
+
+    def setup_api_callbacks(self) -> None:
+        """Регистрирует callbacks API."""
 
 
 def _load_environment() -> None:
@@ -115,15 +178,19 @@ class VideoRecorderApp:
         )
         self._gui_executor: MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
-        self._gui_runtime_coordinator = GuiRuntimeCoordinator(self)
-        self._recording_runtime_coordinator = RecordingRuntimeCoordinator(self)
+        self._gui_runtime_coordinator: _GuiRuntimeCoordinatorProtocol = (
+            GuiRuntimeCoordinator(self)
+        )
+        self._recording_runtime_coordinator: _RecordingRuntimeCoordinatorProtocol = RecordingRuntimeCoordinator(
+            self
+        )
         self._application_service: ApplicationFacade = ApplicationService(self)
         self._api_runtime_manager = ApiRuntimeManager(
             self,
             self._application_service,
         )
-        self._api_runtime_coordinator = ApiRuntimeCoordinator(
-            self._api_runtime_manager
+        self._api_runtime_coordinator: _ApiRuntimeCoordinatorProtocol = (
+            ApiRuntimeCoordinator(self._api_runtime_manager)
         )
 
     def get_application_facade(self) -> ApplicationFacade:
@@ -554,31 +621,31 @@ class VideoRecorderApp:
         """Создание запланированной задачи через CLI."""
         from cli.scheduler import create_schedule
 
-        return create_schedule(self._config)
+        return int(create_schedule(self._config))
 
     def _run_schedule_update(self) -> int:
         """Обновление запланированной задачи через CLI."""
         from cli.scheduler import update_schedule
 
-        return update_schedule(self._config)
+        return int(update_schedule(self._config))
 
     def _run_schedule_delete(self) -> int:
         """Удаление запланированной задачи через CLI."""
         from cli.scheduler import delete_schedule
 
-        return delete_schedule(self._config)
+        return int(delete_schedule(self._config))
 
     def _run_schedule_toggle(self) -> int:
         """Включение/выключение запланированной задачи через CLI."""
         from cli.scheduler import toggle_schedule
 
-        return toggle_schedule(self._config)
+        return int(toggle_schedule(self._config))
 
     def _run_schedule_preview(self) -> int:
         """Просмотр предстоящих запусков через CLI."""
         from cli.scheduler import preview_upcoming_runs
 
-        return preview_upcoming_runs(self._config)
+        return int(preview_upcoming_runs(self._config))
 
     def _run_list_presets(self) -> int:
         """Показ списка preset шаблонов."""
