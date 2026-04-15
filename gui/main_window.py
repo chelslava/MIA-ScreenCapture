@@ -61,7 +61,7 @@ from gui.views.output_view import OutputView
 from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_indicator import RecordingIndicatorOverlay
 from gui.views.video_view import VideoView
-from logger_config import get_module_logger
+from logger_config import get_module_logger, open_logs_folder
 from recorder.utils import check_ffmpeg, format_filesize, format_time
 
 logger = get_module_logger(__name__)
@@ -196,6 +196,11 @@ class MainWindow(QMainWindow):
         self._diagnostics_view = DiagnosticsView()
         self._diagnostics_view.recheck_requested.connect(self._run_diagnostics)
         self._diagnostics_view.fix_requested.connect(self._on_diagnostics_fix)
+        self._diagnostics_view.logs_requested.connect(
+            lambda: self._desktop_actions.execute(
+                DesktopActionId.OPEN_APP_LOGS
+            )
+        )
         self.tabs.addTab(self._diagnostics_view, "Диагностика")
 
         # Вкладка API
@@ -497,6 +502,20 @@ class MainWindow(QMainWindow):
                 shortcut=recording_tab_spec.shortcut,
             )
         )
+        scheduler_tab_spec = get_desktop_action_spec(
+            DesktopActionId.SHOW_SCHEDULER_TAB
+        )
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.SHOW_SCHEDULER_TAB,
+                title=scheduler_tab_spec.title,
+                description=scheduler_tab_spec.description,
+                callback=lambda: self.tabs.setCurrentWidget(
+                    self.scheduler_tab
+                ),
+                shortcut=scheduler_tab_spec.shortcut,
+            )
+        )
         diagnostics_tab_spec = get_desktop_action_spec(
             DesktopActionId.SHOW_DIAGNOSTICS_TAB
         )
@@ -521,6 +540,16 @@ class MainWindow(QMainWindow):
                     self._api_settings_view
                 ),
                 shortcut=api_tab_spec.shortcut,
+            )
+        )
+        app_logs_spec = get_desktop_action_spec(DesktopActionId.OPEN_APP_LOGS)
+        self._desktop_actions.register(
+            DesktopAction(
+                action_id=DesktopActionId.OPEN_APP_LOGS,
+                title=app_logs_spec.title,
+                description=app_logs_spec.description,
+                callback=self._open_application_logs,
+                shortcut=app_logs_spec.shortcut,
             )
         )
 
@@ -1595,6 +1624,18 @@ class MainWindow(QMainWindow):
             subprocess.run(["open", path])
         else:
             subprocess.run(["xdg-open", path])
+
+    def _open_application_logs(self) -> None:
+        """Открыть папку логов приложения без modal-диалога."""
+        try:
+            open_logs_folder()
+        except Exception as error:
+            logger.error("Не удалось открыть папку логов: %s", error)
+            self._show_non_modal_error(
+                f"Не удалось открыть папку логов: {error}"
+            )
+            return
+        self.status_bar.showMessage("Открыта папка логов приложения", 5000)
 
     def _show_error(self, message: str) -> None:
         """Показ сообщения об ошибке."""

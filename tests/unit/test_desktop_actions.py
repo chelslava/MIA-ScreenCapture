@@ -57,7 +57,17 @@ class TestDesktopActionRegistry:
         )
         assert (
             get_desktop_action_spec(
+                DesktopActionId.SHOW_SCHEDULER_TAB
+            ).shortcut
+            == "Alt+2"
+        )
+        assert (
+            get_desktop_action_spec(
                 DesktopActionId.SHOW_DIAGNOSTICS_TAB
             ).shortcut
             == "Alt+3"
+        )
+        assert (
+            get_desktop_action_spec(DesktopActionId.OPEN_APP_LOGS).shortcut
+            == "Ctrl+Alt+L"
         )

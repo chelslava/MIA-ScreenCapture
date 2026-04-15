@@ -100,6 +100,7 @@ def _build_scheduler_tab() -> scheduler_tab.SchedulerTab:
     tab = scheduler_tab.SchedulerTab.__new__(scheduler_tab.SchedulerTab)
     tab._tasks = []
     tab.table = _FakeTable()
+    tab.add_btn = _FakeButton()
     tab.edit_btn = _FakeButton()
     tab.delete_btn = _FakeButton()
     tab.toggle_btn = _FakeButton()
@@ -131,6 +132,17 @@ def test_selection_changes_button_states() -> None:
     assert tab.edit_btn.isEnabled() is True
     assert tab.delete_btn.isEnabled() is True
     assert tab.toggle_btn.isEnabled() is True
+
+
+def test_scheduler_tab_accessibility_metadata_is_assigned() -> None:
+    """Ключевые controls планировщика получают accessibility metadata."""
+    tab = _build_scheduler_tab()
+
+    scheduler_tab.SchedulerTab._apply_accessibility_metadata(tab)
+
+    assert tab.add_btn._accessible_name == "Добавить задачу планировщика"
+    assert tab.edit_btn._accessible_name == "Редактировать задачу планировщика"
+    assert tab.table._accessible_name == "Список задач планировщика"
 
 
 def test_set_tasks_refreshes_table_and_empty_label() -> None:

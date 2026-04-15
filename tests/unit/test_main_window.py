@@ -15,7 +15,7 @@ import pytest
 
 from core.readiness import ReadinessIssue, ReadinessSnapshot
 from core.recording_types import AudioMode, CaptureMode
-from gui.desktop_actions import DesktopActionId
+from gui.desktop_actions import DesktopActionId, DesktopActionRegistry
 from gui.models.recording_state import (
     AudioSettings,
     CaptureSettings,
@@ -43,6 +43,7 @@ def _build_window():
     window._api_settings_view = MagicMock()
     window._application_facade = None
     window._ws_controller = None
+    window.scheduler_tab = MagicMock()
     window.start_btn = MagicMock()
     window.stop_btn = MagicMock()
     window.pause_btn = MagicMock()
@@ -65,6 +66,7 @@ def _build_window():
     window.recordings_list = MagicMock()
     window._recordings_filter_input = MagicMock()
     window._diagnostics_view = MagicMock()
+    window._diagnostics_view.logs_requested = MagicMock()
     window._recording_indicator = MagicMock()
     window._run_diagnostics = MagicMock()
     window._refresh_readiness_summary = MagicMock()
@@ -1533,3 +1535,68 @@ class TestMainWindowMethods:
         state.stop_recording()
 
         assert state.recording_start_time is None
+
+    def test_setup_desktop_actions_registers_scheduler_and_logs_actions(
+        self,
+    ) -> None:
+        """В реестре должны быть action-ы перехода в планировщик и логи."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+        window._desktop_actions = DesktopActionRegistry()
+        window._open_application_logs = MagicMock()
+        window._configure_tab_order = MagicMock()
+        window._register_qt_shortcuts = MagicMock()
+
+        MainWindow._setup_desktop_actions(window)
+
+        assert (
+            window._desktop_actions.get(
+                DesktopActionId.SHOW_SCHEDULER_TAB
+            ).shortcut
+            == "Alt+2"
+        )
+        assert (
+            window._desktop_actions.get(DesktopActionId.OPEN_APP_LOGS).shortcut
+            == "Ctrl+Alt+L"
+        )
+
+        assert (
+            window._desktop_actions.execute(DesktopActionId.SHOW_SCHEDULER_TAB)
+            is True
+        )
+        window.tabs.setCurrentWidget.assert_called_with(window.scheduler_tab)
+
+        assert (
+            window._desktop_actions.execute(DesktopActionId.OPEN_APP_LOGS)
+            is True
+        )
+        window._open_application_logs.assert_called_once_with()
+
+    def test_open_application_logs_updates_non_modal_feedback(self) -> None:
+        """Открытие логов должно работать через status bar и без modal."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+        window._show_non_modal_error = MagicMock()
+
+        with patch("gui.main_window.open_logs_folder") as open_logs:
+            MainWindow._open_application_logs(window)
+
+        open_logs.assert_called_once_with()
+        window.status_bar.showMessage.assert_called_once_with(
+            "Открыта папка логов приложения",
+            5000,
+        )
+        window._show_non_modal_error.assert_not_called()
+
+        window.status_bar.showMessage.reset_mock()
+        with patch(
+            "gui.main_window.open_logs_folder",
+            side_effect=RuntimeError("boom"),
+        ):
+            MainWindow._open_application_logs(window)
+
+        window._show_non_modal_error.assert_called_once_with(
+            "Не удалось открыть папку логов: boom"
+        )

@@ -37,6 +37,7 @@ class DiagnosticsView(QWidget):
 
     recheck_requested = pyqtSignal()
     fix_requested = pyqtSignal(str)
+    logs_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -129,11 +130,9 @@ class DiagnosticsView(QWidget):
         self.recheck_requested.emit()
 
     def _on_open_logs(self) -> None:
-        """Открытие папки с логами."""
-        from logger_config import open_logs_folder
-
-        logger.info("Открытие папки логов")
-        open_logs_folder()
+        """Запросить открытие папки с логами у host-окна."""
+        logger.info("Запрос на открытие папки логов")
+        self.logs_requested.emit()
 
     def _create_check_group(self, title: str, description: str) -> QGroupBox:
         group = QGroupBox(title)

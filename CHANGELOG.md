@@ -53,6 +53,10 @@
   открытия последних записей и навигации по ключевым вкладкам; для
   основных действий добавлены shortcuts, tab order и базовые accessible
   metadata.
+- Keyboard/action слой расширен для issue #42:
+  добавлены shortcuts `Alt+2` (вкладка планировщика) и `Ctrl+Alt+L`
+  (папка логов приложения), а кнопка `Открыть логи` на диагностике теперь
+  делегирует действие через общий desktop action registry.
 - Базовые accessibility metadata расширены на secondary views:
   API, захват, аудио, видео, вывод и диагностика теперь помечают
   ключевые controls и status labels через `accessibleName` /
@@ -90,8 +94,13 @@
   tests для binding через общий service contract.
 - Добавлены unit-тесты для desktop action registry и базовой keyboard /
   accessibility конфигурации `MainWindow`.
+- Добавлены regression-тесты на action shortcuts `Alt+2` и
+  `Ctrl+Alt+L`, а также на non-modal feedback при открытии логов из
+  `MainWindow`.
 - Добавлены view-level accessibility tests для secondary views и
   regression tests на non-modal error feedback в `MainWindow`.
+- Добавлены тесты accessibility metadata для key controls вкладки
+  `Планировщик`.
 - Добавлены unit-тесты theme helper layer для централизованных GUI-стилей.
 - Добавлены regression tests на централизованный helper состояния кнопок
   и статуса в `MainWindow`.

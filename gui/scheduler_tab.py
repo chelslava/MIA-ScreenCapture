@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui.accessibility import apply_accessible_metadata
 from logger_config import get_module_logger
 from scheduler.task_scheduler import (
     ScheduleTask,
@@ -474,6 +475,44 @@ class SchedulerTab(QWidget):
         self.info_label = QLabel("Нет запланированных задач")
         self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.info_label)
+        self._apply_accessibility_metadata()
+
+    def _apply_accessibility_metadata(self) -> None:
+        """Назначение accessibility metadata для controls планировщика."""
+        apply_accessible_metadata(
+            self.add_btn,
+            "Добавить задачу планировщика",
+            "Открывает форму создания новой задачи расписания.",
+            "Добавляет новую задачу расписания.",
+        )
+        apply_accessible_metadata(
+            self.edit_btn,
+            "Редактировать задачу планировщика",
+            "Открывает форму редактирования выбранной задачи.",
+            "Редактирует выбранную задачу.",
+        )
+        apply_accessible_metadata(
+            self.delete_btn,
+            "Удалить задачу планировщика",
+            "Удаляет выбранную задачу после подтверждения.",
+            "Удаляет выбранную задачу.",
+        )
+        apply_accessible_metadata(
+            self.toggle_btn,
+            "Включить или отключить задачу планировщика",
+            "Переключает состояние выбранной задачи расписания.",
+            "Включает или отключает выбранную задачу.",
+        )
+        apply_accessible_metadata(
+            self.table,
+            "Список задач планировщика",
+            "Показывает все созданные задачи и их состояние.",
+        )
+        apply_accessible_metadata(
+            self.info_label,
+            "Статус списка задач планировщика",
+            "Показывает, есть ли в таблице задачи расписания.",
+        )
 
     def _on_selection_changed(self) -> None:
         """Обработка изменения выбора в таблице."""

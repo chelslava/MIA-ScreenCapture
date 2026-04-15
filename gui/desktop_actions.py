@@ -16,8 +16,10 @@ class DesktopActionId(StrEnum):
     OPEN_LATEST_RECORDING = "open_latest_recording"
     OPEN_RECORDING_FOLDER = "open_recording_folder"
     SHOW_RECORDING_TAB = "show_recording_tab"
+    SHOW_SCHEDULER_TAB = "show_scheduler_tab"
     SHOW_DIAGNOSTICS_TAB = "show_diagnostics_tab"
     SHOW_API_TAB = "show_api_tab"
+    OPEN_APP_LOGS = "open_app_logs"
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +80,11 @@ DESKTOP_ACTION_SPECS: dict[DesktopActionId, DesktopActionSpec] = {
         description="Открывает вкладку записи.",
         shortcut="Alt+1",
     ),
+    DesktopActionId.SHOW_SCHEDULER_TAB: DesktopActionSpec(
+        title="Перейти на вкладку планировщика",
+        description="Открывает вкладку планировщика.",
+        shortcut="Alt+2",
+    ),
     DesktopActionId.SHOW_DIAGNOSTICS_TAB: DesktopActionSpec(
         title="Перейти на вкладку диагностики",
         description="Открывает вкладку диагностики.",
@@ -87,6 +94,11 @@ DESKTOP_ACTION_SPECS: dict[DesktopActionId, DesktopActionSpec] = {
         title="Перейти на вкладку API",
         description="Открывает вкладку управления API.",
         shortcut="Alt+4",
+    ),
+    DesktopActionId.OPEN_APP_LOGS: DesktopActionSpec(
+        title="Открыть логи приложения",
+        description="Открывает папку с логами приложения.",
+        shortcut="Ctrl+Alt+L",
     ),
 }
 
