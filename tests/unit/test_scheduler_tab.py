@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -73,6 +74,95 @@ class _FakeLabel:
 
     def setVisible(self, value: bool) -> None:  # noqa: N802
         self.visible = value
+
+
+class _DialogLabel:
+    """Простая метка для тестов TaskDialog helper-методов."""
+
+    def __init__(self) -> None:
+        self.text_value = ""
+        self.visible = True
+
+    def setText(self, value: str) -> None:  # noqa: N802
+        self.text_value = value
+
+    def setVisible(self, value: bool) -> None:  # noqa: N802
+        self.visible = value
+
+
+class _DialogCombo:
+    """Простой combo-box с currentIndex API."""
+
+    def __init__(self, index: int = 0) -> None:
+        self._index = index
+
+    def currentIndex(self) -> int:  # noqa: N802
+        return self._index
+
+    def setCurrentIndex(self, index: int) -> None:  # noqa: N802
+        self._index = index
+
+
+class _DialogSpin:
+    """Простой spin-box с value API."""
+
+    def __init__(self, value: int = 0) -> None:
+        self._value = value
+
+    def value(self) -> int:  # noqa: N802
+        return self._value
+
+    def setValue(self, value: int) -> None:  # noqa: N802
+        self._value = value
+
+
+class _DialogLineEdit:
+    """Простой line edit для текстовых полей."""
+
+    def __init__(self, value: str = "") -> None:
+        self._value = value
+
+    def text(self) -> str:  # noqa: N802
+        return self._value
+
+    def setText(self, value: str) -> None:  # noqa: N802
+        self._value = value
+
+
+class _DialogTimeEdit:
+    """Простой time edit для QTime."""
+
+    def __init__(self, value) -> None:
+        self._value = value
+
+    def time(self):  # noqa: N802
+        return self._value
+
+    def setTime(self, value) -> None:  # noqa: N802
+        self._value = value
+
+
+class _DialogDateEdit:
+    """Простой date edit для QDate-like объекта."""
+
+    def __init__(self, value) -> None:
+        self._value = value
+
+    def date(self):  # noqa: N802
+        return self._value
+
+
+class _DialogCheck:
+    """Простой checkbox с setChecked/isChecked."""
+
+    def __init__(self, checked: bool = False) -> None:
+        self._checked = checked
+
+    def isChecked(self) -> bool:  # noqa: N802
+        return self._checked
+
+    def setChecked(self, checked: bool) -> None:  # noqa: N802
+        self._checked = checked
 
 
 def _make_task(
@@ -314,6 +404,7 @@ def test_task_dialog_accept_rejects_weekly_without_days(monkeypatch) -> None:
     dialog.day_checks = [SimpleNamespace(isChecked=lambda: False)] * 7
     dialog.interval_hours = SimpleNamespace(value=lambda: 1)
     dialog.interval_minutes = SimpleNamespace(value=lambda: 0)
+    dialog._set_inline_validation_message = lambda _message: None
 
     warning_calls: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
@@ -335,6 +426,7 @@ def test_task_dialog_accept_rejects_zero_interval(monkeypatch) -> None:
     dialog.day_checks = [SimpleNamespace(isChecked=lambda: True)] * 7
     dialog.interval_hours = SimpleNamespace(value=lambda: 0)
     dialog.interval_minutes = SimpleNamespace(value=lambda: 0)
+    dialog._set_inline_validation_message = lambda _message: None
 
     warning_calls: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
@@ -347,3 +439,130 @@ def test_task_dialog_accept_rejects_zero_interval(monkeypatch) -> None:
 
     assert len(warning_calls) == 1
     assert "интервал" in str(warning_calls[0][2]).lower()
+
+
+def test_task_dialog_validate_schedule_inputs_for_once_in_past() -> None:
+    """Разовая задача в прошлом должна валидироваться до submit."""
+    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog.type_combo = SimpleNamespace(currentIndex=lambda: 0)
+    dialog.day_checks = [SimpleNamespace(isChecked=lambda: True)] * 7
+    dialog.interval_hours = SimpleNamespace(value=lambda: 1)
+    dialog.interval_minutes = SimpleNamespace(value=lambda: 0)
+    dialog.cron_edit = SimpleNamespace(text=lambda: "")
+    past_time = datetime.now() - timedelta(days=1)
+    dialog.date_edit = _DialogDateEdit(
+        scheduler_tab.QDate(
+            past_time.year,
+            past_time.month,
+            past_time.day,
+        )
+    )
+    dialog.time_edit = _DialogTimeEdit(
+        scheduler_tab.QTime(past_time.hour, past_time.minute)
+    )
+
+    error = scheduler_tab.TaskDialog._validate_schedule_inputs(dialog)
+
+    assert error is not None
+    assert "будущем" in error.lower()
+
+
+def test_task_dialog_apply_preset_sets_fields_and_params(
+    monkeypatch,
+) -> None:
+    """Preset должен настраивать schedule и recording-параметры формы."""
+    monkeypatch.setattr(
+        scheduler_tab,
+        "QTime",
+        lambda hour, minute: SimpleNamespace(
+            hour=lambda: hour,
+            minute=lambda: minute,
+        ),
+    )
+
+    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog.type_combo = _DialogCombo()
+    dialog.name_edit = _DialogLineEdit()
+    dialog.time_edit = _DialogTimeEdit(scheduler_tab.QTime(0, 0))
+    dialog.day_checks = [_DialogCheck() for _ in range(7)]
+    dialog.interval_hours = _DialogSpin()
+    dialog.interval_minutes = _DialogSpin()
+    dialog.cron_edit = _DialogLineEdit()
+    dialog.area_combo = _DialogCombo()
+    dialog.audio_combo = _DialogCombo()
+    dialog.duration_spin = _DialogSpin()
+    dialog.duration_unit_combo = _DialogCombo()
+    dialog._refresh_schedule_preview = lambda: None
+
+    scheduler_tab.TaskDialog._apply_preset(
+        dialog,
+        {
+            "name": "Еженедельная встреча",
+            "trigger": "weekly",
+            "time": "14:30",
+            "days_of_week": [0, 2, 4],
+            "params": {
+                "area": "window",
+                "audio": "both",
+                "duration": 3600,
+            },
+        },
+    )
+
+    assert dialog.type_combo.currentIndex() == 2
+    assert dialog.name_edit.text() == "Еженедельная встреча"
+    assert dialog.time_edit.time().hour() == 14
+    assert dialog.time_edit.time().minute() == 30
+    assert [check.isChecked() for check in dialog.day_checks] == [
+        True,
+        False,
+        True,
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert dialog.area_combo.currentIndex() == 1
+    assert dialog.audio_combo.currentIndex() == 3
+    assert dialog.duration_spin.value() == 60
+    assert dialog.duration_unit_combo.currentIndex() == 1
+
+
+def test_task_dialog_refresh_schedule_preview_updates_labels() -> None:
+    """Preview должен показывать рассчитанные запуски и next_run задачи."""
+    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog._existing_next_run_text = "2026-04-16 09:00"
+    dialog._existing_next_run_label = _DialogLabel()
+    dialog._inline_validation_label = _DialogLabel()
+    dialog._schedule_preview_label = _DialogLabel()
+    dialog._validate_schedule_inputs = lambda: None
+    dialog._calculate_schedule_preview = lambda: (
+        [datetime(2026, 4, 16, 9, 0), datetime(2026, 4, 17, 9, 0)],
+        None,
+    )
+
+    scheduler_tab.TaskDialog._refresh_schedule_preview(dialog)
+
+    assert dialog._existing_next_run_label.visible is True
+    assert "Сохранённый next_run" in dialog._existing_next_run_label.text_value
+    assert "1. 2026-04-16 09:00" in dialog._schedule_preview_label.text_value
+    assert dialog._inline_validation_label.visible is False
+
+
+def test_task_dialog_refresh_schedule_preview_shows_inline_error() -> None:
+    """При ошибке в расписании preview должен показывать inline сообщение."""
+    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog._existing_next_run_text = ""
+    dialog._existing_next_run_label = _DialogLabel()
+    dialog._inline_validation_label = _DialogLabel()
+    dialog._schedule_preview_label = _DialogLabel()
+    dialog._validate_schedule_inputs = lambda: (
+        "Интервал должен быть больше нуля."
+    )
+    dialog._calculate_schedule_preview = lambda: ([], None)
+
+    scheduler_tab.TaskDialog._refresh_schedule_preview(dialog)
+
+    assert dialog._inline_validation_label.visible is True
+    assert "Интервал" in dialog._inline_validation_label.text_value
+    assert "Исправьте ошибки" in dialog._schedule_preview_label.text_value

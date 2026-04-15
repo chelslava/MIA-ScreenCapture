@@ -57,6 +57,10 @@
   добавлены shortcuts `Alt+2` (вкладка планировщика) и `Ctrl+Alt+L`
   (папка логов приложения), а кнопка `Открыть логи` на диагностике теперь
   делегирует действие через общий desktop action registry.
+- Диалог задач планировщика получил UX parity slice для issue #41:
+  добавлены CLI-совместимые presets, inline validation расписания до
+  submit, preview следующих запусков и отдельный hint с сохранённым
+  `next_run` при редактировании.
 - Базовые accessibility metadata расширены на secondary views:
   API, захват, аудио, видео, вывод и диагностика теперь помечают
   ключевые controls и status labels через `accessibleName` /
@@ -101,6 +105,8 @@
   regression tests на non-modal error feedback в `MainWindow`.
 - Добавлены тесты accessibility metadata для key controls вкладки
   `Планировщик`.
+- Добавлены unit-тесты TaskDialog на preset apply, inline validation и
+  preview ближайших запусков.
 - Добавлены unit-тесты theme helper layer для централизованных GUI-стилей.
 - Добавлены regression tests на централизованный helper состояния кнопок
   и статуса в `MainWindow`.
