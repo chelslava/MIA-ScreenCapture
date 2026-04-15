@@ -3,6 +3,7 @@
 import pytest
 from PyQt6.QtWidgets import QApplication
 
+from gui.scheduler_tab import SchedulerTab
 from gui.views.diagnostics_view import DiagnosticsView
 from gui.views.output_view import OutputView
 from gui.views.readiness_center_view import ReadinessCenterView
@@ -27,6 +28,9 @@ def view_accessibility_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def set_object_name(self, name: str) -> None:
         self._object_name = name
+
+    def set_alignment(self, alignment) -> None:
+        self._alignment = alignment
 
     monkeypatch.setattr(
         "gui.views.diagnostics_view.QLabel.setStyleSheet",
@@ -71,6 +75,11 @@ def view_accessibility_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "gui.views.readiness_center_view.QGroupBox.setStyleSheet",
         set_style_sheet,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gui.scheduler_tab.QLabel.setAlignment",
+        set_alignment,
         raising=False,
     )
 
@@ -131,3 +140,18 @@ class TestSecondaryViewAccessibility:
         assert (
             view._details_btn._accessible_name == "Открыть полную диагностику"
         )
+
+    def test_scheduler_tab_accessibility_metadata(
+        self,
+        qapp: QApplication,
+        view_accessibility_environment,
+    ) -> None:
+        """SchedulerTab получает metadata для toolbar и таблицы задач."""
+        view = SchedulerTab()
+
+        assert view.add_btn._accessible_name == "Добавить задачу планировщика"
+        assert (
+            view.edit_btn._accessible_name
+            == "Редактировать задачу планировщика"
+        )
+        assert view.table._accessible_name == "Список задач планировщика"
