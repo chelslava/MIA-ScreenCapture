@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-from core.readiness import RecordingReadinessService
+from core.readiness import (
+    RecordingReadinessService,
+    build_readiness_checks,
+    summarize_readiness_checks,
+)
 from gui.models.recording_state import (
     AudioSettings,
     AudioType,
@@ -82,3 +86,32 @@ class TestRecordingReadinessService:
 
         assert snapshot.is_ready is True
         assert snapshot.warning_issues[0].code == "microphone_default"
+
+    def test_build_readiness_checks_exposes_actionable_warning(self) -> None:
+        """Checklist должен сохранять warning и remediation-action."""
+        service = RecordingReadinessService()
+        service._ffmpeg_checker = lambda: (True, "7.0")
+        service._window_provider = lambda: []
+        service._audio_devices_provider = lambda: {
+            "input": [{"id": 1, "name": "Mic"}]
+        }
+        audio = AudioSettings(audio_type=AudioType.MIC)
+
+        snapshot = service.evaluate(
+            capture=CaptureSettings(),
+            audio=audio,
+            output_path=Path("capture.mp4"),
+        )
+        checks = build_readiness_checks(
+            snapshot=snapshot,
+            capture=CaptureSettings(),
+            audio=audio,
+        )
+        audio_check = next(check for check in checks if check.key == "audio")
+        status, summary = summarize_readiness_checks(checks)
+
+        assert audio_check.status == "warning"
+        assert audio_check.action is not None
+        assert audio_check.action.key == "focus_microphone_selection"
+        assert status == "warning"
+        assert "предупреждения" in summary.lower()

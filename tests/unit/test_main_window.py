@@ -39,6 +39,7 @@ def _build_window():
     window._audio_view = MagicMock()
     window._video_view = MagicMock()
     window._output_view = MagicMock()
+    window._readiness_center_view = MagicMock()
     window._api_settings_view = MagicMock()
     window._application_facade = None
     window._ws_controller = None
@@ -66,8 +67,13 @@ def _build_window():
     window._diagnostics_view = MagicMock()
     window._recording_indicator = MagicMock()
     window._run_diagnostics = MagicMock()
+    window._refresh_readiness_summary = MagicMock()
     window._update_timer = MagicMock()
     window.dependency_check_completed = MagicMock()
+    window.readiness_refresh_completed = MagicMock()
+    window._readiness_request_id = 0
+    window._latest_readiness_snapshot = None
+    window._latest_readiness_inputs = None
     window._stop_operation_in_progress = False
     window._stop_operation_thread = None
     window.stop_operation_finished = MagicMock()
@@ -876,6 +882,41 @@ class TestMainWindowMethods:
             output_path=Path("D:/capture.mp4"),
             capture=capture,
             audio=audio,
+            snapshot=None,
+        )
+
+    def test_run_diagnostics_reuses_cached_readiness_snapshot(self) -> None:
+        """Диагностика должна переиспользовать актуальный cached snapshot."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+        capture = CaptureSettings(
+            capture_type=CaptureMode.WINDOW,
+            window_title="Browser",
+        )
+        audio = AudioSettings(audio_type=AudioMode.MIC, mic_device_index=3)
+        snapshot = ReadinessSnapshot()
+        window._build_capture_settings_from_views = MagicMock(
+            return_value=capture
+        )
+        window._build_audio_settings_from_state = MagicMock(return_value=audio)
+        output_path = Path("D:/capture.mp4")
+        window._settings_controller.get_output_path.return_value = output_path
+        window._latest_readiness_snapshot = snapshot
+        window._latest_readiness_inputs = {
+            "capture": capture,
+            "audio": audio,
+            "output_path": output_path,
+        }
+
+        MainWindow._run_diagnostics(window)
+
+        window._diagnostics_view.run_checks.assert_called_once_with(
+            api_enabled=False,
+            output_path=output_path,
+            capture=capture,
+            audio=audio,
+            snapshot=snapshot,
         )
 
     def test_diagnostics_fix_refreshes_audio_and_windows(self) -> None:
@@ -1073,10 +1114,10 @@ class TestMainWindowMethods:
 
         assert started["value"] is True
 
-    def test_dependency_check_completion_shows_warning_when_ffmpeg_missing(
+    def test_dependency_check_completion_updates_non_modal_status_when_ffmpeg_missing(
         self,
     ) -> None:
-        """Результат фоновой проверки показывает warning при отсутствии FFmpeg."""
+        """Проверка FFmpeg обновляет status bar без modal-диалога."""
         from gui.main_window import MainWindow
 
         window = _build_window()
@@ -1088,7 +1129,10 @@ class TestMainWindowMethods:
                 None,
             )
 
-        warning.assert_called_once()
+        warning.assert_not_called()
+        window.status_label.setText.assert_called_once_with("Требует внимания")
+        window.status_bar.showMessage.assert_called_once()
+        window._refresh_readiness_summary.assert_called_once_with()
 
     def test_hide_and_show_event_toggle_status_timer(self) -> None:
         """Скрытие окна останавливает timer, показ возвращает его при записи."""

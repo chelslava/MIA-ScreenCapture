@@ -33,13 +33,17 @@
 - GUI стал менее poll-driven при загрузке системных данных:
   `MainWindow` больше не держит постоянный timer времени в idle,
   вкладка API включает автообновление логов только когда активна,
-  списки окон и микрофонов обновляются в фоне, а первичная проверка
-  FFmpeg вынесена из blocking startup path.
-- Добавлен первый слой pre-start readiness:
-  старт записи теперь использует единый readiness snapshot, блокирующие
-  проблемы останавливают запуск до обращения к runtime, а диагностика
-  использует ту же health-модель для FFmpeg, окна захвата, микрофона и
-  пути вывода.
+  чтение API-логов вынесено в фоновый worker, списки окон и микрофонов
+  обновляются в фоне, а первичная проверка FFmpeg вынесена из blocking
+  startup path.
+- Добавлен compact readiness center перед стартом записи:
+  вкладка `Запись` теперь показывает inline checklist готовности для
+  FFmpeg, пути вывода, окна захвата и микрофона, блокирующие проблемы
+  не пускают дальше runtime-path, а diagnostics использует тот же
+  readiness checklist и one-click remediation actions.
+- Стартовый warning про отсутствие FFmpeg переведён в non-modal UX:
+  вместо отдельного modal dialog пользователь получает подсказку через
+  readiness center, status bar и вкладку диагностики.
 - Добавлен первый слой keyboard-first desktop actions:
   в `MainWindow` появился единый action registry для start/pause/stop,
   открытия последних записей и навигации по ключевым вкладкам; для
@@ -76,6 +80,8 @@
   обновление статуса и асинхронную загрузку системных данных.
 - Добавлены unit-тесты readiness-сервиса и preflight-блокировок
   `MainWindow` для GUI/API start paths.
+- Добавлены unit-тесты compact readiness center и фонового чтения
+  API-логов.
 - Добавлены unit-тесты для desktop action registry и базовой keyboard /
   accessibility конфигурации `MainWindow`.
 - Добавлены view-level accessibility tests для secondary views и

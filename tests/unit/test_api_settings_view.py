@@ -42,6 +42,18 @@ class _FakeTimer:
         self.stopped = True
 
 
+class _NoopThread:
+    """Поток-заглушка без автоматического выполнения target."""
+
+    def __init__(self, target, args=(), daemon: bool = False) -> None:
+        self.target = target
+        self.args = args
+        self.daemon = daemon
+
+    def start(self) -> None:
+        """Не выполнять target автоматически в unit-тесте."""
+
+
 class _FakeCursor:
     """Тестовый курсор для окна логов."""
 
@@ -171,6 +183,11 @@ def api_view_environment(
     )
     monkeypatch.setattr(api_settings_view, "QTimer", _FakeTimer)
     monkeypatch.setattr(
+        api_settings_view.threading,
+        "Thread",
+        _NoopThread,
+    )
+    monkeypatch.setattr(
         api_settings_view,
         "QPlainTextEdit",
         _FakePlainTextEdit,
@@ -195,6 +212,12 @@ def api_view_environment(
     _FakeGuiApplication.clipboard_instance = _FakeClipboard()
 
     return types.SimpleNamespace(log_dir=log_dir)
+
+
+def _complete_log_refresh(view: api_settings_view.ApiSettingsView) -> None:
+    """Доставить в UI результат фонового чтения лога."""
+    result = view._read_log_update()
+    view._on_logs_load_completed(view._log_request_id, result, None)
 
 
 def test_copy_token_to_clipboard(
@@ -243,6 +266,7 @@ def test_refresh_logs_without_file(
     view = api_settings_view.ApiSettingsView()
 
     view.refresh_logs(show_loading_state=True)
+    _complete_log_refresh(view)
 
     assert view._log_source_label.text() == "Журнал API: файл не найден"
     assert (
@@ -290,12 +314,14 @@ def test_refresh_logs_reload_after_file_truncate(
     log_file.write_text("line-1\nline-2\n", encoding="utf-8")
 
     view.refresh_logs()
+    _complete_log_refresh(view)
     assert "line-2" in view._log_view.toPlainText()
 
     # Имитируем ротацию: новый файл меньше предыдущего оффсета.
     log_file.write_text("new-line\n", encoding="utf-8")
 
     view.refresh_logs()
+    _complete_log_refresh(view)
     assert view._log_view.toPlainText().strip() == "new-line"
 
 
@@ -348,8 +374,23 @@ def test_refresh_logs_error_updates_error_state(
     )
 
     view.refresh_logs(show_loading_state=True)
+    view._load_logs_worker(view._log_request_id)
 
     assert "boom" in view._log_status_label.text()
+
+
+def test_refresh_logs_starts_background_request(
+    qapp,
+    api_view_environment: types.SimpleNamespace,
+) -> None:
+    """Обновление логов запускает фоновый запрос и loading state."""
+
+    view = api_settings_view.ApiSettingsView()
+
+    view.refresh_logs(show_loading_state=True)
+
+    assert view._log_refresh_in_progress is True
+    assert view._log_status_label.text() == "Загрузка журнала API..."
 
 
 def test_accessibility_metadata_is_assigned(

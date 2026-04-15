@@ -17,6 +17,12 @@ from recorder.utils import (
 )
 
 ReadinessSeverity = Literal["blocking", "warning"]
+ReadinessCheckStatus = Literal[
+    "ready",
+    "warning",
+    "blocking",
+    "not_required",
+]
 _MIN_FREE_SPACE_MB = 100
 
 
@@ -29,6 +35,26 @@ class ReadinessIssue:
     title: str
     message: str
     next_step: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReadinessAction:
+    """Действие, помогающее исправить readiness-проблему."""
+
+    key: str
+    label: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReadinessCheck:
+    """Статус одного пункта readiness-checklist."""
+
+    key: str
+    title: str
+    status: ReadinessCheckStatus
+    message: str
+    next_step: str | None = None
+    action: ReadinessAction | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,3 +293,205 @@ class RecordingReadinessService:
                     next_step="Обновите список устройств и выберите микрофон.",
                 )
             )
+
+
+def resolve_readiness_action(issue_code: str) -> ReadinessAction | None:
+    """
+    Вернуть рекомендуемое remediation-action для readiness-проблемы.
+
+    Args:
+        issue_code: Код проблемы из readiness snapshot.
+
+    Returns:
+        Описание быстрого действия или `None`, если action не нужен.
+    """
+    action_map = {
+        "ffmpeg_missing": ReadinessAction(
+            key="open_ffmpeg_docs",
+            label="Открыть инструкцию",
+        ),
+        "output_path_invalid": ReadinessAction(
+            key="choose_output_path",
+            label="Выбрать папку",
+        ),
+        "disk_space_low": ReadinessAction(
+            key="choose_output_path",
+            label="Сменить папку",
+        ),
+        "window_not_selected": ReadinessAction(
+            key="focus_capture_window",
+            label="Выбрать окно",
+        ),
+        "window_missing": ReadinessAction(
+            key="refresh_windows",
+            label="Обновить окна",
+        ),
+        "microphone_missing": ReadinessAction(
+            key="refresh_audio_devices",
+            label="Обновить микрофоны",
+        ),
+        "microphone_selected_missing": ReadinessAction(
+            key="refresh_audio_devices",
+            label="Обновить микрофоны",
+        ),
+        "microphone_name_missing": ReadinessAction(
+            key="refresh_audio_devices",
+            label="Обновить микрофоны",
+        ),
+        "microphone_default": ReadinessAction(
+            key="focus_microphone_selection",
+            label="Выбрать микрофон",
+        ),
+    }
+    return action_map.get(issue_code)
+
+
+def build_readiness_checks(
+    snapshot: ReadinessSnapshot,
+    capture: CaptureSettings,
+    audio: AudioSettings,
+) -> tuple[ReadinessCheck, ...]:
+    """
+    Построить компактный checklist для GUI из readiness snapshot.
+
+    Args:
+        snapshot: Результат preflight-проверки.
+        capture: Текущие настройки захвата.
+        audio: Текущие настройки аудио.
+
+    Returns:
+        Упорядоченный набор check-элементов для inline readiness UI.
+    """
+    ffmpeg_issue = snapshot.find_issue("ffmpeg_missing")
+    output_issue = snapshot.find_issue(
+        "output_path_invalid",
+        "disk_space_low",
+    )
+    capture_issue = snapshot.find_issue(
+        "window_not_selected",
+        "window_missing",
+    )
+    audio_issue = snapshot.find_issue(
+        "microphone_missing",
+        "microphone_selected_missing",
+        "microphone_name_missing",
+        "microphone_default",
+    )
+
+    ffmpeg_check = ReadinessCheck(
+        key="ffmpeg",
+        title="FFmpeg",
+        status="blocking" if ffmpeg_issue is not None else "ready",
+        message=(
+            ffmpeg_issue.message
+            if ffmpeg_issue is not None
+            else "FFmpeg найден и готов к кодированию."
+        ),
+        next_step=ffmpeg_issue.next_step if ffmpeg_issue is not None else None,
+        action=(
+            resolve_readiness_action(ffmpeg_issue.code)
+            if ffmpeg_issue is not None
+            else None
+        ),
+    )
+
+    output_check = ReadinessCheck(
+        key="output",
+        title="Путь вывода",
+        status="blocking" if output_issue is not None else "ready",
+        message=(
+            output_issue.message
+            if output_issue is not None
+            else "Путь вывода доступен, свободного места достаточно."
+        ),
+        next_step=output_issue.next_step if output_issue is not None else None,
+        action=(
+            resolve_readiness_action(output_issue.code)
+            if output_issue is not None
+            else None
+        ),
+    )
+
+    if capture.capture_type != CaptureMode.WINDOW:
+        capture_check = ReadinessCheck(
+            key="capture",
+            title="Окно захвата",
+            status="not_required",
+            message="Для текущего режима записи отдельное окно не требуется.",
+        )
+    else:
+        capture_check = ReadinessCheck(
+            key="capture",
+            title="Окно захвата",
+            status="blocking" if capture_issue is not None else "ready",
+            message=(
+                capture_issue.message
+                if capture_issue is not None
+                else "Выбранное окно доступно для захвата."
+            ),
+            next_step=(
+                capture_issue.next_step if capture_issue is not None else None
+            ),
+            action=(
+                resolve_readiness_action(capture_issue.code)
+                if capture_issue is not None
+                else None
+            ),
+        )
+
+    if audio.audio_type in (AudioMode.NONE, AudioMode.SYSTEM):
+        audio_check = ReadinessCheck(
+            key="audio",
+            title="Микрофон",
+            status="not_required",
+            message="Для текущего аудиорежима микрофон не обязателен.",
+        )
+    elif audio_issue is None:
+        audio_check = ReadinessCheck(
+            key="audio",
+            title="Микрофон",
+            status="ready",
+            message="Микрофон готов к записи.",
+        )
+    else:
+        audio_check = ReadinessCheck(
+            key="audio",
+            title="Микрофон",
+            status=audio_issue.severity,
+            message=audio_issue.message,
+            next_step=audio_issue.next_step,
+            action=resolve_readiness_action(audio_issue.code),
+        )
+
+    return (
+        ffmpeg_check,
+        output_check,
+        capture_check,
+        audio_check,
+    )
+
+
+def summarize_readiness_checks(
+    checks: tuple[ReadinessCheck, ...],
+) -> tuple[ReadinessCheckStatus, str]:
+    """
+    Сформировать общий статус и summary по readiness checklist.
+
+    Args:
+        checks: Набор check-элементов readiness.
+
+    Returns:
+        Кортеж `(status, summary_text)`.
+    """
+    blocking_checks = [check for check in checks if check.status == "blocking"]
+    warning_checks = [check for check in checks if check.status == "warning"]
+
+    if blocking_checks:
+        titles = ", ".join(check.title for check in blocking_checks[:2])
+        return "blocking", f"Старт заблокирован: {titles}"
+
+    if warning_checks:
+        titles = ", ".join(check.title for check in warning_checks[:2])
+        return "warning", f"Есть предупреждения: {titles}"
+
+    return "ready", "Система готова к записи."

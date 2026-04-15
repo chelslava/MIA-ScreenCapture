@@ -18,9 +18,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from core.readiness import ReadinessSnapshot, RecordingReadinessService
+from core.readiness import (
+    ReadinessCheck,
+    ReadinessSnapshot,
+    RecordingReadinessService,
+    build_readiness_checks,
+)
 from core.recording_state import AudioSettings, CaptureSettings
-from core.recording_types import AudioMode, CaptureMode
 from gui.accessibility import apply_accessible_metadata
 from gui.styles.theme import Theme
 from logger_config import get_module_logger
@@ -149,15 +153,20 @@ class DiagnosticsView(QWidget):
         fix_btn = QPushButton("Исправить")
         fix_btn.setVisible(False)
         fix_btn.setObjectName("fix_btn")
-        fix_btn.clicked.connect(lambda: self._on_fix_clicked(title))
+        fix_btn._fallback_action = title  # type: ignore[attr-defined]
+        fix_btn.clicked.connect(
+            lambda _checked=False: self._on_fix_clicked(fix_btn)
+        )
         status_layout.addWidget(fix_btn)
 
         group_layout.addLayout(status_layout)
         return group
 
-    def _on_fix_clicked(self, check_name: str) -> None:
+    def _on_fix_clicked(self, button: QPushButton) -> None:
         """Обработка нажатия кнопки исправления."""
-        self.fix_requested.emit(check_name)
+        action = getattr(button, "_readiness_action", None)
+        fallback_action = getattr(button, "_fallback_action", "")
+        self.fix_requested.emit(str(action or fallback_action))
 
     def run_checks(
         self,
@@ -165,6 +174,7 @@ class DiagnosticsView(QWidget):
         output_path: str | Path = "",
         capture: CaptureSettings | None = None,
         audio: AudioSettings | None = None,
+        snapshot: ReadinessSnapshot | None = None,
     ) -> dict[str, bool]:
         """
         Запуск всех проверок.
@@ -174,6 +184,7 @@ class DiagnosticsView(QWidget):
             output_path: Путь к выходному файлу или папке вывода
             capture: Настройки текущего захвата
             audio: Настройки текущего аудио
+            snapshot: Готовый readiness snapshot, если он уже был собран.
 
         Returns:
             Словарь с результатами проверок
@@ -185,14 +196,14 @@ class DiagnosticsView(QWidget):
             audio_settings = audio or AudioSettings()
             resolved_output_path = Path(str(output_path))
             self._output_path = str(resolved_output_path)
-            snapshot = self._readiness_service.evaluate(
+            current_snapshot = snapshot or self._readiness_service.evaluate(
                 capture=capture_settings,
                 audio=audio_settings,
                 output_path=resolved_output_path,
             )
             results.update(
                 self._apply_readiness_snapshot(
-                    snapshot,
+                    current_snapshot,
                     api_enabled=api_enabled,
                     capture=capture_settings,
                     audio=audio_settings,
@@ -220,76 +231,54 @@ class DiagnosticsView(QWidget):
     ) -> dict[str, bool]:
         """Применить readiness snapshot к группам диагностики."""
         results: dict[str, bool] = {}
+        checks = {
+            check.key: check
+            for check in build_readiness_checks(snapshot, capture, audio)
+        }
 
-        ffmpeg_issue = snapshot.find_issue("ffmpeg_missing")
-        results["ffmpeg"] = ffmpeg_issue is None
-        self._update_group_status(
-            self._ffmpeg_group,
-            ffmpeg_issue is None,
-            "Найден" if ffmpeg_issue is None else ffmpeg_issue.title,
-        )
+        ffmpeg_check = checks["ffmpeg"]
+        results["ffmpeg"] = ffmpeg_check.status == "ready"
+        self._apply_check_to_group(self._ffmpeg_group, ffmpeg_check)
 
-        output_issue = snapshot.find_issue(
-            "output_path_invalid",
-            "disk_space_low",
-        )
-        results["output"] = output_issue is None
-        self._update_group_status(
-            self._output_group,
-            output_issue is None,
-            "Доступна" if output_issue is None else output_issue.title,
-        )
+        output_check = checks["output"]
+        results["output"] = output_check.status == "ready"
+        self._apply_check_to_group(self._output_group, output_check)
 
-        capture_issue = snapshot.find_issue(
-            "window_not_selected",
-            "window_missing",
-        )
-        capture_ok = (
-            capture.capture_type != CaptureMode.WINDOW or capture_issue is None
-        )
-        results["capture"] = capture_ok
-        capture_message = "Не требуется для текущего режима"
-        if capture.capture_type == CaptureMode.WINDOW:
-            capture_message = (
-                "Окно доступно"
-                if capture_issue is None
-                else capture_issue.title
-            )
-        self._update_group_status(
-            self._capture_group,
-            capture_ok,
-            capture_message,
-        )
+        capture_check = checks["capture"]
+        results["capture"] = capture_check.status != "blocking"
+        self._apply_check_to_group(self._capture_group, capture_check)
 
-        audio_issue = snapshot.find_issue(
-            "microphone_missing",
-            "microphone_selected_missing",
-            "microphone_name_missing",
-            "microphone_default",
-        )
-        audio_ok = audio_issue is None or audio_issue.severity == "warning"
-        results["audio"] = audio_ok
-        if audio.audio_type in (AudioMode.NONE, AudioMode.SYSTEM):
-            self._update_group_status(
-                self._audio_group,
-                True,
-                "Не требуется для текущего режима",
-            )
-        elif audio_issue is None:
-            self._update_group_status(
-                self._audio_group,
-                True,
-                "Микрофон готов",
-            )
-        else:
-            self._update_group_status(
-                self._audio_group,
-                audio_ok,
-                audio_issue.title,
-                warning=audio_issue.severity == "warning",
-            )
+        audio_check = checks["audio"]
+        results["audio"] = audio_check.status != "blocking"
+        self._apply_check_to_group(self._audio_group, audio_check)
 
         return results
+
+    def _apply_check_to_group(
+        self,
+        group: QGroupBox,
+        check: ReadinessCheck,
+    ) -> None:
+        """Применить общий readiness-check к группе диагностики."""
+        ok = check.status in ("ready", "not_required", "warning")
+        warning = check.status == "warning"
+        if check.status == "ready":
+            message = "Готово"
+        elif check.status == "not_required":
+            message = "Не требуется для текущего режима"
+        else:
+            message = check.message
+
+        action_label = check.action.label if check.action is not None else None
+        action_key = check.action.key if check.action is not None else None
+        self._update_group_status(
+            group,
+            ok,
+            message,
+            warning=warning,
+            action_label=action_label,
+            action_key=action_key,
+        )
 
     def _update_group_status(
         self,
@@ -297,6 +286,8 @@ class DiagnosticsView(QWidget):
         ok: bool,
         message: str,
         warning: bool = False,
+        action_label: str | None = None,
+        action_key: str | None = None,
     ) -> None:
         """Обновление статуса группы."""
         status_label = group.findChild(QLabel, "")
@@ -314,4 +305,9 @@ class DiagnosticsView(QWidget):
         # Показать кнопку исправления если есть проблема
         fix_btn = group.findChild(QPushButton)
         if fix_btn:
+            if action_label:
+                fix_btn.setText(action_label)
+            else:
+                fix_btn.setText("Исправить")
+            fix_btn._readiness_action = action_key  # type: ignore[attr-defined]
             fix_btn.setVisible((not ok) or warning)

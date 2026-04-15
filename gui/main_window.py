@@ -33,7 +33,11 @@ from PyQt6.QtWidgets import (
 )
 
 from config import get_config
-from core.readiness import RecordingReadinessService
+from core.readiness import (
+    ReadinessSnapshot,
+    RecordingReadinessService,
+    build_readiness_checks,
+)
 from core.recording_types import AudioMode, CaptureMode
 from gui.controllers.recording_controller import RecordingController
 from gui.controllers.settings_controller import SettingsController
@@ -54,6 +58,7 @@ from gui.styles.theme import Theme
 from gui.views.audio_view import AudioView
 from gui.views.capture_view import CaptureView
 from gui.views.output_view import OutputView
+from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_indicator import RecordingIndicatorOverlay
 from gui.views.video_view import VideoView
 from logger_config import get_module_logger
@@ -85,6 +90,13 @@ class MainWindow(QMainWindow):
     close_requested = pyqtSignal(object)
     stop_operation_finished = pyqtSignal(object, object)
     dependency_check_completed = pyqtSignal(object, object)
+    readiness_refresh_completed = pyqtSignal(
+        int,
+        object,
+        object,
+        object,
+        object,
+    )
 
     def __init__(self, headless: bool = False):
         """
@@ -112,6 +124,9 @@ class MainWindow(QMainWindow):
         self._tab_navigation_order: list[QWidget] = []
         self._ws_controller: WebSocketClientController | None = None
         self._recording_indicator = RecordingIndicatorOverlay()
+        self._readiness_request_id = 0
+        self._latest_readiness_snapshot: ReadinessSnapshot | None = None
+        self._latest_readiness_inputs: dict[str, object] | None = None
 
         # Таймер обновления статуса
         self._update_timer = QTimer()
@@ -130,6 +145,7 @@ class MainWindow(QMainWindow):
 
         # Проверка зависимостей
         self._check_dependencies()
+        self._refresh_readiness_summary()
 
         logger.info("Главное окно инициализировано")
 
@@ -239,6 +255,9 @@ class MainWindow(QMainWindow):
 
         self._output_view = OutputView()
         layout.addWidget(self._output_view)
+
+        self._readiness_center_view = ReadinessCenterView()
+        layout.addWidget(self._readiness_center_view)
 
         # Кнопки управления
         buttons_layout = self._create_control_buttons()
@@ -351,6 +370,9 @@ class MainWindow(QMainWindow):
         )
         self._capture_view.window_selected.connect(self._on_window_selected)
         self._capture_view.rect_selected.connect(self._on_rect_selected)
+        self._capture_view.windows_load_completed.connect(
+            lambda *_: self._refresh_readiness_summary()
+        )
 
         # Сигналы AudioView
         self._audio_view.audio_type_changed.connect(
@@ -358,6 +380,9 @@ class MainWindow(QMainWindow):
         )
         self._audio_view.mic_device_changed.connect(
             self._on_mic_device_changed
+        )
+        self._audio_view.devices_load_completed.connect(
+            lambda *_: self._refresh_readiness_summary()
         )
 
         # Сигналы VideoView
@@ -373,6 +398,9 @@ class MainWindow(QMainWindow):
         self.dependency_check_completed.connect(
             self._on_dependency_check_completed
         )
+        self.readiness_refresh_completed.connect(
+            self._on_readiness_refresh_completed
+        )
 
         # Сигналы ApiSettingsView
         self._api_settings_view.apply_requested.connect(
@@ -383,6 +411,15 @@ class MainWindow(QMainWindow):
         self._api_settings_view.restart_requested.connect(self._on_api_restart)
         self._api_settings_view.refresh_requested.connect(
             self._refresh_api_status
+        )
+        self._readiness_center_view.refresh_requested.connect(
+            self._refresh_readiness_summary
+        )
+        self._readiness_center_view.details_requested.connect(
+            self._show_readiness_details
+        )
+        self._readiness_center_view.action_requested.connect(
+            self._handle_readiness_action
         )
 
     def _setup_desktop_actions(self) -> None:
@@ -559,7 +596,8 @@ class MainWindow(QMainWindow):
             action.title,
             action.description,
         )
-        widget._tooltip = tooltip
+        widget_any = cast(Any, widget)
+        widget_any._tooltip = tooltip
         set_tooltip = getattr(widget, "setToolTip", None)
         if callable(set_tooltip):
             set_tooltip(tooltip)
@@ -568,7 +606,7 @@ class MainWindow(QMainWindow):
         if callable(set_shortcut) and action.shortcut:
             set_shortcut(action.shortcut)
         if action.shortcut:
-            widget._shortcut = action.shortcut
+            widget_any._shortcut = action.shortcut
 
     def _apply_accessible_metadata(
         self,
@@ -577,8 +615,9 @@ class MainWindow(QMainWindow):
         accessible_description: str,
     ) -> None:
         """Назначить accessible metadata с fallback для unit-test моков."""
-        widget._accessible_name = accessible_name
-        widget._accessible_description = accessible_description
+        widget_any = cast(Any, widget)
+        widget_any._accessible_name = accessible_name
+        widget_any._accessible_description = accessible_description
         set_name = getattr(widget, "setAccessibleName", None)
         if callable(set_name):
             set_name(accessible_name)
@@ -703,26 +742,31 @@ class MainWindow(QMainWindow):
         self._settings_controller.update_capture_settings(
             capture_type=capture_type
         )
+        self._refresh_readiness_summary()
 
     def _on_window_selected(self, window_title: str) -> None:
         """Обработка выбора окна."""
         self._settings_controller.update_capture_settings(
             window_title=window_title
         )
+        self._refresh_readiness_summary()
 
     def _on_rect_selected(self, coords: tuple[int, int, int, int]) -> None:
         """Обработка выбора прямоугольника."""
         self._settings_controller.update_capture_settings(rect_coords=coords)
+        self._refresh_readiness_summary()
 
     def _on_audio_type_changed(self, audio_type: AudioMode) -> None:
         """Обработка изменения типа аудио."""
         self._settings_controller.update_audio_settings(audio_type=audio_type)
+        self._refresh_readiness_summary()
 
     def _on_mic_device_changed(self, device_index: int) -> None:
         """Обработка выбора устройства микрофона."""
         self._settings_controller.update_audio_settings(
             mic_device_index=device_index
         )
+        self._refresh_readiness_summary()
 
     def _on_video_settings_changed(self, settings) -> None:
         """Обработка изменения настроек видео."""
@@ -737,6 +781,150 @@ class MainWindow(QMainWindow):
     def _on_output_path_changed(self, path: str) -> None:
         """Обработка изменения пути вывода."""
         self._settings_controller.update_output_settings(output_path=path)
+        self._refresh_readiness_summary()
+
+    def _refresh_readiness_summary(self) -> None:
+        """Асинхронно обновить compact readiness center."""
+        if not hasattr(self, "_readiness_center_view"):
+            return
+
+        capture = self._build_capture_settings_from_views()
+        if capture is None:
+            self._readiness_center_view.set_error_state(
+                "Сначала выберите корректную область прямоугольного захвата."
+            )
+            return
+
+        audio = self._build_audio_settings_from_state()
+        output_path = self._settings_controller.get_output_path()
+        self._readiness_request_id += 1
+        request_id = self._readiness_request_id
+        self._readiness_center_view.set_loading_state()
+
+        threading.Thread(
+            target=self._refresh_readiness_worker,
+            args=(request_id, capture, audio, output_path),
+            daemon=True,
+        ).start()
+
+    def _refresh_readiness_worker(
+        self,
+        request_id: int,
+        capture: CaptureSettings,
+        audio: AudioSettings,
+        output_path: Path,
+    ) -> None:
+        """Собрать readiness snapshot в фоне для inline summary."""
+        try:
+            snapshot = self._readiness_service.evaluate(
+                capture=capture,
+                audio=audio,
+                output_path=output_path,
+            )
+            self.readiness_refresh_completed.emit(
+                request_id,
+                snapshot,
+                None,
+                capture,
+                audio,
+            )
+        except Exception as error:
+            self.readiness_refresh_completed.emit(
+                request_id,
+                None,
+                str(error),
+                capture,
+                audio,
+            )
+
+    def _on_readiness_refresh_completed(
+        self,
+        request_id: int,
+        snapshot: object,
+        error: object,
+        capture: object,
+        audio: object,
+    ) -> None:
+        """Применить readiness snapshot к compact center."""
+        if request_id != self._readiness_request_id:
+            return
+
+        if error is not None:
+            self._readiness_center_view.set_error_state(str(error))
+            return
+
+        if not isinstance(snapshot, ReadinessSnapshot):
+            return
+
+        if not isinstance(capture, CaptureSettings) or not isinstance(
+            audio,
+            AudioSettings,
+        ):
+            return
+
+        checks = build_readiness_checks(snapshot, capture, audio)
+        self._latest_readiness_snapshot = snapshot
+        self._latest_readiness_inputs = {
+            "capture": capture,
+            "audio": audio,
+            "output_path": self._settings_controller.get_output_path(),
+        }
+        self._readiness_center_view.apply_checks(checks)
+
+    def _show_readiness_details(self) -> None:
+        """Открыть вкладку диагностики и запустить подробную проверку."""
+        if hasattr(self, "tabs") and hasattr(self, "_diagnostics_view"):
+            self.tabs.setCurrentWidget(self._diagnostics_view)
+        self._run_diagnostics()
+
+    def _handle_readiness_action(self, action_key: str) -> None:
+        """Выполнить one-click action из readiness center или диагностики."""
+        if action_key == "open_ffmpeg_docs":
+            webbrowser.open("https://ffmpeg.org/download.html")
+            return
+
+        if action_key == "choose_output_path":
+            self._select_output_folder()
+            return
+
+        if action_key == "refresh_windows":
+            self.tabs.setCurrentIndex(0)
+            self._capture_view._refresh_windows()
+            return
+
+        if action_key == "focus_capture_window":
+            self.tabs.setCurrentIndex(0)
+            self._capture_view.set_capture_type(CaptureMode.WINDOW)
+            focus = getattr(self._capture_view._window_combo, "setFocus", None)
+            if callable(focus):
+                focus()
+            return
+
+        if action_key == "refresh_audio_devices":
+            self.tabs.setCurrentIndex(0)
+            self._audio_view._refresh_audio_devices()
+            return
+
+        if action_key == "focus_microphone_selection":
+            self.tabs.setCurrentIndex(0)
+            focus = getattr(self._audio_view._mic_combo, "setFocus", None)
+            if callable(focus):
+                focus()
+            return
+
+        if action_key == "API сервер":
+            self.tabs.setCurrentWidget(self._api_settings_view)
+            return
+
+        fallback_action_map = {
+            "Папка вывода": "choose_output_path",
+            "Аудиоустройства": "refresh_audio_devices",
+            "Окно захвата": "refresh_windows",
+            "FFmpeg": "open_ffmpeg_docs",
+        }
+        resolved_action = fallback_action_map.get(action_key)
+        if resolved_action is not None:
+            self._handle_readiness_action(resolved_action)
 
     # === Управление записью ===
 
@@ -800,6 +988,14 @@ class MainWindow(QMainWindow):
         Returns:
             `True`, если старт можно продолжать.
         """
+        if hasattr(self, "_readiness_center_view"):
+            capture = (
+                self._build_capture_settings_from_views() or CaptureSettings()
+            )
+            audio = self._build_audio_settings_from_state()
+            checks = build_readiness_checks(snapshot, capture, audio)
+            self._readiness_center_view.apply_checks(checks)
+
         if snapshot.is_ready:
             if snapshot.warning_issues:
                 self.status_bar.showMessage(
@@ -1452,13 +1648,14 @@ class MainWindow(QMainWindow):
 
         ffmpeg_available = bool(result[0])
         if not ffmpeg_available:
-            QMessageBox.warning(
-                self,
-                "FFmpeg не найден",
-                "FFmpeg не установлен или не найден в PATH.\n\n"
-                "Пожалуйста, установите FFmpeg для кодирования видео.\n"
-                "Скачать: https://ffmpeg.org/download.html",
+            self.status_label.setText("Требует внимания")
+            self.status_label.setStyleSheet(Theme.status_style("warning"))
+            self.status_bar.showMessage(
+                "FFmpeg не найден. Проверьте readiness center "
+                "или откройте диагностику.",
+                12000,
             )
+            self._refresh_readiness_summary()
 
     def _get_default_geometry(self):
         """Возвращает геометрию по умолчанию при отсутствии экрана."""
@@ -1550,6 +1747,11 @@ class MainWindow(QMainWindow):
             capture = self._build_capture_settings_from_views()
             audio = self._build_audio_settings_from_state()
             output_path = self._settings_controller.get_output_path()
+            readiness_snapshot = self._resolve_cached_readiness_snapshot(
+                capture,
+                audio,
+                output_path,
+            )
 
             logger.info(f"api_running: {api_running}")
             self._diagnostics_view.run_checks(
@@ -1557,23 +1759,34 @@ class MainWindow(QMainWindow):
                 output_path=output_path,
                 capture=capture,
                 audio=audio,
+                snapshot=readiness_snapshot,
             )
             logger.info("Диагностика завершена")
         except Exception as e:
             logger.error(f"Ошибка диагностики: {e}")
 
+    def _resolve_cached_readiness_snapshot(
+        self,
+        capture: CaptureSettings | None,
+        audio: AudioSettings,
+        output_path: Path,
+    ) -> ReadinessSnapshot | None:
+        """Вернуть последний readiness snapshot, если он ещё актуален."""
+        latest_inputs = self._latest_readiness_inputs
+        if latest_inputs is None or self._latest_readiness_snapshot is None:
+            return None
+
+        if (
+            latest_inputs.get("capture") == capture
+            and latest_inputs.get("audio") == audio
+            and latest_inputs.get("output_path") == output_path
+        ):
+            return self._latest_readiness_snapshot
+        return None
+
     def _on_diagnostics_fix(self, check_name: str) -> None:
         """Обработка нажатия кнопки исправления."""
-        if check_name == "Папка вывода":
-            self._select_output_folder()
-        elif check_name == "Аудиоустройства":
-            self.tabs.setCurrentIndex(0)
-            self._audio_view._refresh_audio_devices()
-        elif check_name == "Окно захвата":
-            self.tabs.setCurrentIndex(0)
-            self._capture_view._refresh_windows()
-        elif check_name == "FFmpeg":
-            webbrowser.open("https://ffmpeg.org/download.html")
+        self._handle_readiness_action(check_name)
 
     def _select_output_folder(self) -> None:
         """Выбор папки для сохранения записей."""

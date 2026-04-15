@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QApplication
 
 from gui.views.diagnostics_view import DiagnosticsView
 from gui.views.output_view import OutputView
+from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.video_view import VideoView
 
 
@@ -62,6 +63,16 @@ def view_accessibility_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         set_object_name,
         raising=False,
     )
+    monkeypatch.setattr(
+        "gui.views.readiness_center_view.QLabel.setStyleSheet",
+        set_style_sheet,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gui.views.readiness_center_view.QGroupBox.setStyleSheet",
+        set_style_sheet,
+        raising=False,
+    )
 
 
 class TestSecondaryViewAccessibility:
@@ -100,3 +111,23 @@ class TestSecondaryViewAccessibility:
 
         assert view._recheck_btn._accessible_name == "Повторить диагностику"
         assert view._logs_btn._accessible_name == "Открыть логи приложения"
+
+    def test_readiness_center_accessibility_metadata(
+        self,
+        qapp: QApplication,
+        view_accessibility_environment,
+    ) -> None:
+        """ReadinessCenterView получает metadata для summary и действий."""
+        view = ReadinessCenterView()
+
+        assert (
+            view._summary_label._accessible_name
+            == "Сводка готовности к записи"
+        )
+        assert (
+            view._refresh_btn._accessible_name
+            == "Повторить readiness-проверку"
+        )
+        assert (
+            view._details_btn._accessible_name == "Открыть полную диагностику"
+        )

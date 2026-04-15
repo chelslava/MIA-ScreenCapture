@@ -5,6 +5,8 @@
 Представление для управления API сервером, его настройками и логами.
 """
 
+import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,19 @@ _LOG_EMPTY_TEXT = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class LogRefreshResult:
+    """Результат фонового чтения API-лога."""
+
+    log_path: Path | None
+    source_label: str
+    mode: str
+    text: str
+    next_offset: int
+    log_loaded_once: bool
+    status_message: str
+
+
 class ApiSettingsView(QWidget):
     """Виджет настройки API сервера."""
 
@@ -50,6 +65,7 @@ class ApiSettingsView(QWidget):
     stop_requested = pyqtSignal()
     restart_requested = pyqtSignal()
     refresh_requested = pyqtSignal()
+    logs_load_completed = pyqtSignal(int, object, object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """
@@ -61,10 +77,13 @@ class ApiSettingsView(QWidget):
         super().__init__(parent)
         self._current_log_path: Path | None = None
         self._log_offset = 0
+        self._log_request_id = 0
+        self._log_refresh_in_progress = False
         self._server_running = False
         self._auto_refresh_enabled = False
         self._log_loaded_once = False
 
+        self.logs_load_completed.connect(self._on_logs_load_completed)
         self._setup_ui()
         self._setup_timer()
         self._set_log_status(_AUTO_REFRESH_PAUSED_TEXT)
@@ -389,28 +408,19 @@ class ApiSettingsView(QWidget):
 
     def refresh_logs(self, show_loading_state: bool = False) -> None:
         """Обновление логов API из файла."""
+        if self._log_refresh_in_progress:
+            return
+
+        self._log_request_id += 1
+        request_id = self._log_request_id
+        self._log_refresh_in_progress = True
         if show_loading_state:
             self._show_loading_state()
-        try:
-            log_path = self._resolve_current_log_path()
-            if log_path is None:
-                self._log_source_label.setText("Журнал API: файл не найден")
-                self._set_empty_state(_LOG_EMPTY_TEXT)
-                return
-
-            self._log_source_label.setText(f"Файл логов: {log_path.name}")
-            if log_path != self._current_log_path:
-                self._current_log_path = log_path
-                self._log_offset = 0
-                self._load_full_log(log_path)
-                self._set_log_status("Журнал API обновлён")
-                return
-
-            self._append_new_log_data(log_path)
-            self._set_log_status("Журнал API обновлён")
-        except Exception as e:
-            logger.error(f"Не удалось обновить журнал API: {e}")
-            self._set_error_state(f"Не удалось обновить журнал API: {e}")
+        threading.Thread(
+            target=self._load_logs_worker,
+            args=(request_id,),
+            daemon=True,
+        ).start()
 
     def set_auto_refresh_enabled(self, enabled: bool) -> None:
         """
@@ -466,47 +476,127 @@ class ApiSettingsView(QWidget):
 
         return None
 
-    def _load_full_log(self, log_path: Path) -> None:
-        """Загрузка файла логов целиком после смены источника."""
-        if not log_path.exists():
-            self._set_empty_state(
-                "Файл журнала API пока не создан. Запустите сервер."
+    def _load_logs_worker(self, request_id: int) -> None:
+        """Прочитать логи в фоне и вернуть результат в UI-поток."""
+        try:
+            result = self._read_log_update()
+            self.logs_load_completed.emit(request_id, result, None)
+        except Exception as error:
+            self.logs_load_completed.emit(request_id, None, str(error))
+
+    def _read_log_update(self) -> LogRefreshResult:
+        """Подготовить обновление лога без прямого доступа к UI."""
+        current_path = self._current_log_path
+        current_offset = self._log_offset
+        log_loaded_once = self._log_loaded_once
+        log_path = self._resolve_current_log_path()
+
+        if log_path is None:
+            return LogRefreshResult(
+                log_path=None,
+                source_label="Журнал API: файл не найден",
+                mode="empty",
+                text=_LOG_EMPTY_TEXT,
+                next_offset=0,
+                log_loaded_once=True,
+                status_message="Журнал API пуст или ещё не создан",
             )
-            self._log_offset = 0
-            return
+
+        if log_path != current_path:
+            text, next_offset = self._read_full_log_text(log_path)
+            return LogRefreshResult(
+                log_path=log_path,
+                source_label=f"Файл логов: {log_path.name}",
+                mode="replace",
+                text=text,
+                next_offset=next_offset,
+                log_loaded_once=True,
+                status_message="Журнал API обновлён",
+            )
+
+        size = log_path.stat().st_size
+        if size < current_offset:
+            text, next_offset = self._read_full_log_text(log_path)
+            return LogRefreshResult(
+                log_path=log_path,
+                source_label=f"Файл логов: {log_path.name}",
+                mode="replace",
+                text=text,
+                next_offset=next_offset,
+                log_loaded_once=True,
+                status_message="Журнал API обновлён",
+            )
+
+        if size == current_offset:
+            return LogRefreshResult(
+                log_path=log_path,
+                source_label=f"Файл логов: {log_path.name}",
+                mode="noop",
+                text="",
+                next_offset=current_offset,
+                log_loaded_once=log_loaded_once,
+                status_message="Журнал API актуален",
+            )
+
+        with open(log_path, "rb") as file:
+            file.seek(current_offset)
+            data = file.read()
+
+        return LogRefreshResult(
+            log_path=log_path,
+            source_label=f"Файл логов: {log_path.name}",
+            mode="append",
+            text=data.decode("utf-8", errors="replace"),
+            next_offset=current_offset + len(data),
+            log_loaded_once=True,
+            status_message="Журнал API обновлён",
+        )
+
+    def _read_full_log_text(self, log_path: Path) -> tuple[str, int]:
+        """Прочитать весь лог-файл целиком и вернуть текст с новым offset."""
+        if not log_path.exists():
+            return "Журнал API пуст.", 0
 
         with open(log_path, "rb") as file:
             data = file.read()
 
         text = data.decode("utf-8", errors="replace")
-        self._log_view.setPlainText(text or "Журнал API пуст.")
-        self._log_offset = len(data)
-        self._log_loaded_once = True
-        self._scroll_logs_to_end()
+        return text or "Журнал API пуст.", len(data)
 
-    def _append_new_log_data(self, log_path: Path) -> None:
-        """Подгрузка новых строк из файла логов."""
-        if not log_path.exists():
+    def _on_logs_load_completed(
+        self,
+        request_id: int,
+        result: object,
+        error: object,
+    ) -> None:
+        """Применить результат фонового чтения API-логов."""
+        self._log_refresh_in_progress = False
+        if request_id != self._log_request_id:
             return
 
-        size = log_path.stat().st_size
-        if size < self._log_offset:
-            self._load_full_log(log_path)
+        if error is not None:
+            logger.error("Не удалось обновить журнал API: %s", error)
+            self._set_error_state(f"Не удалось обновить журнал API: {error}")
             return
 
-        if size == self._log_offset:
+        if not isinstance(result, LogRefreshResult):
             return
 
-        with open(log_path, "rb") as file:
-            file.seek(self._log_offset)
-            data = file.read()
+        self._current_log_path = result.log_path
+        self._log_offset = result.next_offset
+        self._log_loaded_once = result.log_loaded_once
+        self._log_source_label.setText(result.source_label)
 
-        if not data:
+        if result.mode == "empty":
+            self._set_empty_state(result.text)
             return
 
-        self._log_offset = self._log_offset + len(data)
-        self._log_loaded_once = True
-        self.append_log_text(data.decode("utf-8", errors="replace"))
+        if result.mode == "replace":
+            self.set_log_text(result.text)
+        elif result.mode == "append":
+            self.append_log_text(result.text)
+
+        self._set_log_status(result.status_message)
 
     def _update_server_controls(self, running: bool) -> None:
         """Обновление состояния кнопок управления сервером."""
