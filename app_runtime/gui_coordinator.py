@@ -56,18 +56,19 @@ class GuiRuntimeCoordinator:
         from gui.tray_icon import TrayIcon
 
         assert self._app._main_window is not None
+        facade = self._app.get_application_facade()
         self._app._tray_icon = TrayIcon(self._app._main_window)
         assert self._app._tray_icon is not None
         self._app._tray_icon.show()
 
         self._app._tray_icon.start_requested.connect(
-            self._app.request_start_recording
+            facade.request_start_recording
         )
         self._app._tray_icon.stop_requested.connect(
-            self._app.request_stop_recording
+            facade.request_stop_recording
         )
         self._app._tray_icon.pause_requested.connect(
-            self._app.request_toggle_pause_recording
+            facade.request_toggle_pause_recording
         )
         self._app._tray_icon.show_window_requested.connect(
             self._app._show_window
@@ -100,9 +101,10 @@ class GuiRuntimeCoordinator:
     def _bind_runtime_components(self) -> None:
         """Подключает API/планировщик и hotkeys к GUI."""
         assert self._app._main_window is not None
+        facade = self._app.get_application_facade()
 
         self._app._setup_hotkeys()
-        self._app.start_api_server()
-        self._app._main_window.bind_application_facade(self._app)
+        facade.start_api_server()
+        self._app._main_window.bind_application_facade(facade)
         self._app._main_window.refresh_api_status_view()
         self._app._start_scheduler()

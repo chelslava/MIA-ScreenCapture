@@ -41,6 +41,10 @@
   FFmpeg, пути вывода, окна захвата и микрофона, блокирующие проблемы
   не пускают дальше runtime-path, а diagnostics использует тот же
   readiness checklist и one-click remediation actions.
+- Введён concrete `ApplicationService` поверх `ApplicationFacade`:
+  GUI runtime, tray/hotkeys, scheduler и API callbacks теперь
+  привязываются к общему command/query service contract вместо
+  прямого связывания с composition-root объектом приложения.
 - Стартовый warning про отсутствие FFmpeg переведён в non-modal UX:
   вместо отдельного modal dialog пользователь получает подсказку через
   readiness center, status bar и вкладку диагностики.
@@ -82,6 +86,8 @@
   `MainWindow` для GUI/API start paths.
 - Добавлены unit-тесты compact readiness center и фонового чтения
   API-логов.
+- Добавлены unit-тесты concrete application facade и обновлены runtime
+  tests для binding через общий service contract.
 - Добавлены unit-тесты для desktop action registry и базовой keyboard /
   accessibility конфигурации `MainWindow`.
 - Добавлены view-level accessibility tests для secondary views и

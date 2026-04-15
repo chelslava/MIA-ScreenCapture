@@ -12,6 +12,8 @@ MIA-ScreenCapture состоит из слоев:
 ## Основные модули
 
 - `main.py`: точка входа и оркестрация всех компонентов.
+- `core/application_service.py`: concrete facade между GUI/runtime/API
+  consumers и внутренними координаторами приложения.
 - `gui/`: окна, вкладки, контролы, трей, горячие клавиши.
 - `api/`: аутентификация, маршруты, схемы валидации, swagger.
 - `recorder/`: видеозахват, аудиозапись, ffmpeg-пайплайн.
@@ -33,8 +35,18 @@ MIA-ScreenCapture состоит из слоев:
 1. При запуске создается `APIServer`.
 2. Настраивается API key аутентификация и rate limit.
 3. Регистрируются маршруты `/api/v1/*` и legacy `/api/*`.
-4. Для GUI доступны контролы: start/stop/restart/apply/get_status.
+4. API callbacks и GUI controls получают команды через общий
+   `ApplicationFacade` / `ApplicationService`.
 5. Все запросы логируются с `request_id`, latency и IP.
+
+## Application facade boundary
+
+- `ApplicationFacade` задаёт публичный command/query contract.
+- `ApplicationService` — concrete adapter, через который GUI runtime,
+  tray/hotkeys, scheduler и API callbacks обращаются к приложению.
+- `ApiRuntimeManager` использует facade отдельно от runtime-host state,
+  поэтому callback registration больше не зависит от конкретного
+  composition-root объекта.
 
 ## Валидация входных данных
 

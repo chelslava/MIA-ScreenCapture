@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from core.api_runtime_manager import ApiRuntimeManager
+from core.application_service import ApplicationService
 
 
 class MockApiServer:
@@ -212,18 +213,32 @@ def mock_app() -> MockApp:
 
 
 @pytest.fixture
-def manager(mock_app: MockApp) -> ApiRuntimeManager:
+def mock_facade(mock_app: MockApp) -> ApplicationService:
+    """Создаёт concrete facade поверх mock-приложения."""
+    return ApplicationService(mock_app)
+
+
+@pytest.fixture
+def manager(
+    mock_app: MockApp,
+    mock_facade: ApplicationService,
+) -> ApiRuntimeManager:
     """Создаёт менеджер API runtime."""
-    return ApiRuntimeManager(mock_app)
+    return ApiRuntimeManager(mock_app, mock_facade)
 
 
 class TestApiRuntimeManagerInit:
     """Проверки инициализации менеджера."""
 
-    def test_init_creates_manager(self, mock_app: MockApp) -> None:
+    def test_init_creates_manager(
+        self,
+        mock_app: MockApp,
+        mock_facade: ApplicationService,
+    ) -> None:
         """Менеджер создаётся с mock приложения."""
-        manager = ApiRuntimeManager(mock_app)
-        assert manager._app is mock_app
+        manager = ApiRuntimeManager(mock_app, mock_facade)
+        assert manager._host is mock_app
+        assert manager._application_facade is mock_facade
         assert manager._lifecycle is not None
 
     def test_initial_lifecycle_state_created(
@@ -726,7 +741,10 @@ class TestSetupApiCallbacks:
             assert action in mock_server._callbacks
 
     def test_setup_uses_public_facade_callbacks(
-        self, manager: ApiRuntimeManager, mock_app: MockApp
+        self,
+        manager: ApiRuntimeManager,
+        mock_app: MockApp,
+        mock_facade: ApplicationService,
     ) -> None:
         """Runtime callbacks должны ссылаться на публичный фасад."""
         mock_server = MockApiServer()
@@ -735,20 +753,20 @@ class TestSetupApiCallbacks:
         manager.setup_api_callbacks()
 
         expected_methods = {
-            "status": mock_app.get_status,
-            "start": mock_app.start_recording,
-            "stop": mock_app.stop_recording,
-            "pause": mock_app.toggle_pause,
-            "recordings": mock_app.get_recordings,
-            "get_schedule": mock_app.get_schedule,
-            "create_schedule": mock_app.create_schedule,
-            "delete_schedule": mock_app.delete_schedule,
-            "update_schedule": mock_app.update_schedule,
-            "toggle_schedule": mock_app.toggle_schedule,
-            "devices": mock_app.get_devices,
-            "windows": mock_app.get_windows,
-            "get_config": mock_app.get_config_snapshot,
-            "update_config": mock_app.update_config,
+            "status": mock_facade.get_status,
+            "start": mock_facade.start_recording,
+            "stop": mock_facade.stop_recording,
+            "pause": mock_facade.toggle_pause,
+            "recordings": mock_facade.get_recordings,
+            "get_schedule": mock_facade.get_schedule,
+            "create_schedule": mock_facade.create_schedule,
+            "delete_schedule": mock_facade.delete_schedule,
+            "update_schedule": mock_facade.update_schedule,
+            "toggle_schedule": mock_facade.toggle_schedule,
+            "devices": mock_facade.get_devices,
+            "windows": mock_facade.get_windows,
+            "get_config": mock_facade.get_config_snapshot,
+            "update_config": mock_facade.update_config,
         }
 
         for action, expected in expected_methods.items():

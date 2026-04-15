@@ -175,6 +175,7 @@ class TestMainApiRuntime:
     ) -> None:
         """GUI runtime coordinator не должен трогать private refresh окна."""
         app, _ = _build_app(monkeypatch, api_key="config-token")
+        facade = app.get_application_facade()
         app._main_window = SimpleNamespace(
             bind_application_facade=MagicMock(),
             refresh_api_status_view=MagicMock(),
@@ -186,7 +187,10 @@ class TestMainApiRuntime:
         coordinator = main.GuiRuntimeCoordinator(app)
         coordinator._bind_runtime_components()
 
-        app._main_window.bind_application_facade.assert_called_once_with(app)
+        app.start_api_server.assert_called_once_with(force=False)
+        app._main_window.bind_application_facade.assert_called_once_with(
+            facade
+        )
         app._main_window.refresh_api_status_view.assert_called_once_with()
 
     def test_run_gui_delegates_to_gui_runtime_coordinator(
@@ -216,50 +220,56 @@ class TestMainApiRuntime:
         assert app.get_runtime_mode() == "gui"
         assert app.get_api_server_instance() is api_server
         assert app.get_websocket_manager_instance() is app._websocket_manager
+        assert app.get_application_facade() is app._application_service
 
-    def test_public_facade_wrappers_delegate_to_private_methods(
+    def test_concrete_application_facade_uses_public_app_contract(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Публичные facade wrappers должны делегировать private методам."""
+        """Concrete facade должен делегировать публичному app contract."""
         app, _ = _build_app(monkeypatch, api_key="config-token")
-        app._get_status = MagicMock(return_value={"status": "ok"})
-        app._get_recordings = MagicMock(return_value=[{"path": "demo.mp4"}])
-        app._get_schedule = MagicMock(return_value=[{"id": "task-1"}])
-        app._create_schedule = MagicMock(return_value={"success": True})
-        app._delete_schedule = MagicMock(return_value={"success": True})
-        app._update_schedule = MagicMock(return_value={"success": True})
-        app._toggle_schedule = MagicMock(return_value={"success": True})
-        app._get_devices = MagicMock(return_value={"input": [], "output": []})
-        app._get_windows = MagicMock(return_value=[{"title": "Window"}])
-        app._get_config = MagicMock(return_value={"video": {"fps": 30}})
-        app._update_config = MagicMock(return_value={"success": True})
-        app._start_api_server = MagicMock(return_value={"success": True})
-        app._get_api_status = MagicMock(return_value={"running": False})
-        app._apply_api_settings = MagicMock(return_value={"success": True})
-        app._stop_api_server = MagicMock(return_value={"success": True})
-        app._restart_api_server = MagicMock(return_value={"success": True})
+        facade = app.get_application_facade()
+        app.get_status = MagicMock(return_value={"status": "ok"})
+        app.get_recordings = MagicMock(return_value=[{"path": "demo.mp4"}])
+        app.get_schedule = MagicMock(return_value=[{"id": "task-1"}])
+        app.create_schedule = MagicMock(return_value={"success": True})
+        app.delete_schedule = MagicMock(return_value={"success": True})
+        app.update_schedule = MagicMock(return_value={"success": True})
+        app.toggle_schedule = MagicMock(return_value={"success": True})
+        app.get_devices = MagicMock(return_value={"input": [], "output": []})
+        app.get_windows = MagicMock(return_value=[{"title": "Window"}])
+        app.get_config_snapshot = MagicMock(
+            return_value={"video": {"fps": 30}}
+        )
+        app.update_config = MagicMock(return_value={"success": True})
+        app.start_api_server = MagicMock(return_value={"success": True})
+        app.get_api_status = MagicMock(return_value={"running": False})
+        app.apply_api_settings = MagicMock(return_value={"success": True})
+        app.stop_api_server = MagicMock(return_value={"success": True})
+        app.restart_api_server = MagicMock(return_value={"success": True})
 
-        assert app.get_status() == {"status": "ok"}
-        assert app.get_recordings() == [{"path": "demo.mp4"}]
-        assert app.get_schedule() == [{"id": "task-1"}]
-        assert app.create_schedule({"name": "task"}) == {"success": True}
-        assert app.delete_schedule("task-1") == {"success": True}
-        assert app.update_schedule({"id": "task-1"}) == {"success": True}
-        assert app.toggle_schedule("task-1", True) == {"success": True}
-        assert app.get_devices() == {"input": [], "output": []}
-        assert app.get_windows() == [{"title": "Window"}]
-        assert app.get_config_snapshot() == {"video": {"fps": 30}}
-        assert app.update_config({"video": {"fps": 60}}) == {"success": True}
-        assert app.start_api_server(force=True) == {"success": True}
-        assert app.get_api_status() == {"running": False}
-        assert app.apply_api_settings({"port": 5001}) == {"success": True}
-        assert app.stop_api_server() == {"success": True}
-        assert app.restart_api_server() == {"success": True}
+        assert facade.get_status() == {"status": "ok"}
+        assert facade.get_recordings() == [{"path": "demo.mp4"}]
+        assert facade.get_schedule() == [{"id": "task-1"}]
+        assert facade.create_schedule({"name": "task"}) == {"success": True}
+        assert facade.delete_schedule("task-1") == {"success": True}
+        assert facade.update_schedule({"id": "task-1"}) == {"success": True}
+        assert facade.toggle_schedule("task-1", True) == {"success": True}
+        assert facade.get_devices() == {"input": [], "output": []}
+        assert facade.get_windows() == [{"title": "Window"}]
+        assert facade.get_config_snapshot() == {"video": {"fps": 30}}
+        assert facade.update_config({"video": {"fps": 60}}) == {
+            "success": True
+        }
+        assert facade.start_api_server(force=True) == {"success": True}
+        assert facade.get_api_status() == {"running": False}
+        assert facade.apply_api_settings({"port": 5001}) == {"success": True}
+        assert facade.stop_api_server() == {"success": True}
+        assert facade.restart_api_server() == {"success": True}
 
-        app._create_schedule.assert_called_once_with({"name": "task"})
-        app._delete_schedule.assert_called_once_with("task-1")
-        app._toggle_schedule.assert_called_once_with("task-1", True)
+        app.create_schedule.assert_called_once_with({"name": "task"})
+        app.delete_schedule.assert_called_once_with("task-1")
+        app.toggle_schedule.assert_called_once_with("task-1", True)
 
     def test_private_runtime_wrappers_delegate_to_coordinators_and_cli(
         self,
@@ -456,6 +466,7 @@ class TestMainApiRuntime:
     ) -> None:
         """Runtime API должен регистрировать публичный фасад приложения."""
         app, _ = _build_app(monkeypatch, api_key="config-token")
+        facade = app.get_application_facade()
         monkeypatch.setenv("MIA_API_KEY", "env-token")
         monkeypatch.setattr("api.server.APIServer", FakeApiServer)
         monkeypatch.setattr("api.routes.register_routes", lambda *args: None)
@@ -465,20 +476,20 @@ class TestMainApiRuntime:
         assert result["success"] is True
         assert isinstance(app._api_server, FakeApiServer)
         expected_methods = {
-            "status": app.get_status,
-            "start": app.start_recording,
-            "stop": app.stop_recording,
-            "pause": app.toggle_pause,
-            "recordings": app.get_recordings,
-            "get_schedule": app.get_schedule,
-            "create_schedule": app.create_schedule,
-            "delete_schedule": app.delete_schedule,
-            "update_schedule": app.update_schedule,
-            "toggle_schedule": app.toggle_schedule,
-            "devices": app.get_devices,
-            "windows": app.get_windows,
-            "get_config": app.get_config_snapshot,
-            "update_config": app.update_config,
+            "status": facade.get_status,
+            "start": facade.start_recording,
+            "stop": facade.stop_recording,
+            "pause": facade.toggle_pause,
+            "recordings": facade.get_recordings,
+            "get_schedule": facade.get_schedule,
+            "create_schedule": facade.create_schedule,
+            "delete_schedule": facade.delete_schedule,
+            "update_schedule": facade.update_schedule,
+            "toggle_schedule": facade.toggle_schedule,
+            "devices": facade.get_devices,
+            "windows": facade.get_windows,
+            "get_config": facade.get_config_snapshot,
+            "update_config": facade.update_config,
         }
 
         for action, expected in expected_methods.items():
@@ -777,17 +788,16 @@ class TestMainApiRuntime:
     ) -> None:
         """Hotkeys не должны дергать private-методы окна напрямую."""
         app, _ = _build_app(monkeypatch, api_key="config-token")
+        app.get_status = MagicMock(
+            side_effect=[
+                {"is_recording": False},
+                {"is_recording": True},
+            ]
+        )
         app.request_start_recording = MagicMock()
         app.request_stop_recording = MagicMock()
         app.request_toggle_pause_recording = MagicMock()
-        app._main_window = SimpleNamespace(
-            get_status=MagicMock(
-                side_effect=[
-                    {"is_recording": False},
-                    {"is_recording": True},
-                ]
-            )
-        )
+        app._main_window = SimpleNamespace()
 
         app._toggle_recording_hotkey()
         app._toggle_recording_hotkey()
@@ -796,6 +806,19 @@ class TestMainApiRuntime:
         app.request_start_recording.assert_called_once_with()
         app.request_stop_recording.assert_called_once_with()
         app.request_toggle_pause_recording.assert_called_once_with()
+
+    def test_execute_scheduled_task_uses_application_facade(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Scheduler должен запускать запись через общий facade contract."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app.start_recording = MagicMock(return_value={"success": True})
+
+        app._execute_scheduled_task({"id": "task-1", "area": "full"})
+
+        app.start_recording.assert_called_once_with(
+            {"id": "task-1", "area": "full"}
+        )
 
     def test_start_scheduler_uses_configured_max_concurrency(
         self, monkeypatch: pytest.MonkeyPatch
