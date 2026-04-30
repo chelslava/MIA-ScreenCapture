@@ -287,6 +287,20 @@ class ConfigManager:
                 logger.info(f"Конфигурация загружена из {self.config_path}")
             except Exception as e:
                 logger.error(f"Ошибка загрузки конфигурации: {e}")
+                if "data" in locals():
+                    logger.debug(
+                        "Проблемная структура конфигурации: %s",
+                        json.dumps(data, ensure_ascii=False, indent=2)[:2000],
+                    )
+                else:
+                    try:
+                        raw = self.config_path.read_text(encoding="utf-8")
+                        logger.debug(
+                            "Raw-содержимое конфигурационного файла: %s",
+                            raw[:2000],
+                        )
+                    except Exception:
+                        pass
                 with self._settings_lock:
                     self._settings = AppSettings()
         else:

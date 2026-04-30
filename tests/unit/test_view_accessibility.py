@@ -78,7 +78,7 @@ def view_accessibility_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         raising=False,
     )
     monkeypatch.setattr(
-        "gui.scheduler_tab.QLabel.setAlignment",
+        "gui.scheduler.scheduler_tab.QLabel.setAlignment",
         set_alignment,
         raising=False,
     )

@@ -153,3 +153,8 @@ uv.lock
 
 
 .kilo/
+
+# Claude Code / OMC local state
+.claude/
+.omc/
+.omx/

@@ -52,6 +52,7 @@ from gui.models.recording_state import (
     AudioSettings,
     CaptureSettings,
     RecordingState,
+    RecordingStatus,
     VideoSettings,
 )
 from gui.styles.theme import Theme
@@ -276,16 +277,19 @@ class MainWindow(QMainWindow):
 
         self.start_btn = QPushButton("Начать запись")
         self.start_btn.setMinimumHeight(40)
+        self.start_btn.setAccessibleName("Начать запись")
         layout.addWidget(self.start_btn)
 
         self.pause_btn = QPushButton("Пауза")
         self.pause_btn.setMinimumHeight(40)
         self.pause_btn.setEnabled(False)
+        self.pause_btn.setAccessibleName("Пауза / Продолжить запись")
         layout.addWidget(self.pause_btn)
 
         self.stop_btn = QPushButton("Стоп")
         self.stop_btn.setMinimumHeight(40)
         self.stop_btn.setEnabled(False)
+        self.stop_btn.setAccessibleName("Остановить запись")
         layout.addWidget(self.stop_btn)
 
         return layout
@@ -694,6 +698,20 @@ class MainWindow(QMainWindow):
                         self._desktop_actions.execute(action_id)
                     )
                 )
+                self._qt_shortcuts.append(shortcut)
+            except Exception:
+                continue
+
+        # Дополнительные Alt-shortcuts для доступности без мыши
+        _alt_shortcuts: list[tuple[str, Any]] = [
+            ("Alt+R", self.start_btn),
+            ("Alt+S", self.stop_btn),
+            ("Alt+P", self.pause_btn),
+        ]
+        for key_seq, btn in _alt_shortcuts:
+            try:
+                shortcut = QShortcut(QKeySequence(key_seq), self)
+                shortcut.activated.connect(lambda b=btn: b.click())
                 self._qt_shortcuts.append(shortcut)
             except Exception:
                 continue
@@ -1140,7 +1158,7 @@ class MainWindow(QMainWindow):
     def _begin_stop_operation(self) -> None:
         """Запустить остановку записи в фоне."""
         self._stop_operation_in_progress = True
-        self._update_ui_state("stopping")
+        self._update_ui_state(RecordingStatus.STOPPING)
         self.status_bar.showMessage("Финализация записи...", 0)
 
         self._stop_operation_thread = threading.Thread(
@@ -1190,7 +1208,7 @@ class MainWindow(QMainWindow):
             self._on_recording_stopped(output_path)
             return
 
-        self._update_ui_state("idle")
+        self._update_ui_state(RecordingStatus.IDLE)
         self._recording_indicator.hide_indicator()
         self.status_bar.showMessage(
             error_message or "Остановка записи не завершена",
@@ -1206,7 +1224,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         """Обработка запуска записи."""
         self._set_status_updates_enabled(True)
-        self._update_ui_state("recording")
+        self._update_ui_state(RecordingStatus.RECORDING)
         if capture is not None:
             self._recording_indicator.show_for_capture(capture)
 
@@ -1216,7 +1234,7 @@ class MainWindow(QMainWindow):
     def _on_recording_stopped(self, output_path: Path) -> None:
         """Обработка остановки записи."""
         self._set_status_updates_enabled(False)
-        self._update_ui_state("idle")
+        self._update_ui_state(RecordingStatus.IDLE)
         self._recording_indicator.hide_indicator()
 
         # Добавление в список последних записей
@@ -1231,7 +1249,7 @@ class MainWindow(QMainWindow):
     def _on_recording_paused(self) -> None:
         """Обработка приостановки записи."""
         self._set_status_updates_enabled(False)
-        self._update_ui_state("paused")
+        self._update_ui_state(RecordingStatus.PAUSED)
         self._recording_indicator.set_paused(True)
 
         self.recording_paused.emit()
@@ -1239,7 +1257,7 @@ class MainWindow(QMainWindow):
     def _on_recording_resumed(self) -> None:
         """Обработка возобновления записи."""
         self._set_status_updates_enabled(True)
-        self._update_ui_state("recording")
+        self._update_ui_state(RecordingStatus.RECORDING)
         self._recording_indicator.set_paused(False)
 
         self.recording_resumed.emit()
@@ -1263,15 +1281,15 @@ class MainWindow(QMainWindow):
 
         self._update_timer.stop()
 
-    def _update_ui_state(self, state: str) -> None:
+    def _update_ui_state(self, status: RecordingStatus) -> None:
         """
         Централизованно обновить состояние recording UI controls.
 
         Args:
-            state: Один из `idle`, `recording`, `paused`, `stopping`.
+            status: Статус записи из `RecordingStatus`.
         """
         state_config = {
-            "idle": {
+            RecordingStatus.IDLE: {
                 "start_enabled": True,
                 "stop_enabled": False,
                 "pause_enabled": False,
@@ -1281,7 +1299,7 @@ class MainWindow(QMainWindow):
                 "status_style": "",
                 "time_text": "00:00",
             },
-            "recording": {
+            RecordingStatus.RECORDING: {
                 "start_enabled": False,
                 "stop_enabled": True,
                 "pause_enabled": True,
@@ -1291,7 +1309,7 @@ class MainWindow(QMainWindow):
                 "status_style": Theme.status_style("danger"),
                 "time_text": None,
             },
-            "paused": {
+            RecordingStatus.PAUSED: {
                 "start_enabled": False,
                 "stop_enabled": True,
                 "pause_enabled": True,
@@ -1301,7 +1319,7 @@ class MainWindow(QMainWindow):
                 "status_style": Theme.status_style("warning"),
                 "time_text": None,
             },
-            "stopping": {
+            RecordingStatus.STOPPING: {
                 "start_enabled": False,
                 "stop_enabled": True,
                 "pause_enabled": False,
@@ -1312,7 +1330,7 @@ class MainWindow(QMainWindow):
                 "time_text": None,
             },
         }
-        config = state_config.get(state, state_config["idle"])
+        config = state_config.get(status, state_config[RecordingStatus.IDLE])
 
         start_enabled = bool(config["start_enabled"])
         stop_enabled = bool(config["stop_enabled"])
@@ -1880,7 +1898,7 @@ class MainWindow(QMainWindow):
             rect_coords = None
             if area_type == "rect" and "rect" in params:
                 r = params["rect"]
-                if isinstance(r, (list, tuple)) and len(r) >= 4:
+                if isinstance(r, list | tuple) and len(r) >= 4:
                     rect_coords = (r[0], r[1], r[2], r[3])
                 else:
                     return {

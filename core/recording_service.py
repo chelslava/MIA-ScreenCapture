@@ -26,6 +26,7 @@ from core.recording_types import (
     CaptureRequest,
     VideoRequest,
 )
+from exceptions import RecordingError
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -111,8 +112,15 @@ class RecordingService:
                 self._publish_event(RecordingEventType.STARTED, result)
                 return result
 
-            except Exception as e:
-                logger.error(f"Ошибка запуска записи: {e}", exc_info=True)
+            except RecordingError as e:
+                logger.error(f"Ошибка запуска записи: {e}")
+                result = {"success": False, "error": str(e)}
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
+            except (OSError, ValueError) as e:
+                logger.error(
+                    f"Системная ошибка запуска записи: {e}", exc_info=True
+                )
                 result = {"success": False, "error": str(e)}
                 self._publish_event(RecordingEventType.ERROR, result)
                 return result
@@ -143,7 +151,7 @@ class RecordingService:
                     get_config().add_recent_recording(
                         str(output_path), output_path.stat().st_size
                     )
-            except Exception as e:
+            except OSError as e:
                 # Ошибка обновления recent recordings не должна ломать stop.
                 logger.warning(f"Не удалось обновить список записей: {e}")
 
@@ -261,7 +269,7 @@ class RecordingService:
 
         rect_value = params.get("rect")
         rect_coords: tuple[int, int, int, int]
-        if isinstance(rect_value, (list, tuple)) and len(rect_value) >= 4:
+        if isinstance(rect_value, list | tuple) and len(rect_value) >= 4:
             rect_coords = self._validate_rect_coords(rect_value)
         elif area == "rect":
             raise ValueError(

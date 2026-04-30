@@ -279,8 +279,7 @@ class ApiSettingsView(QWidget):
         self._log_timer.timeout.connect(self._on_timer_tick)
 
     def _on_timer_tick(self) -> None:
-        """Периодическое обновление логов и статуса API."""
-        self.refresh_requested.emit()
+        """Периодическое обновление логов API."""
         self.refresh_logs()
 
     def _on_apply_clicked(self) -> None:

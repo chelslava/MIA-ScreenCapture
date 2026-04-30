@@ -20,6 +20,7 @@ from gui.models.recording_state import (
     AudioSettings,
     CaptureSettings,
     RecordingState,
+    RecordingStatus,
     VideoSettings,
 )
 
@@ -1303,10 +1304,10 @@ class TestMainWindowMethods:
     @pytest.mark.parametrize(
         ("ui_state", "expected_status", "expected_pause_text"),
         [
-            ("idle", "Готов", "Пауза"),
-            ("recording", "Запись", "Пауза"),
-            ("paused", "Пауза", "Продолжить"),
-            ("stopping", "Остановка...", "Пауза"),
+            (RecordingStatus.IDLE, "Готов", "Пауза"),
+            (RecordingStatus.RECORDING, "Запись", "Пауза"),
+            (RecordingStatus.PAUSED, "Пауза", "Продолжить"),
+            (RecordingStatus.STOPPING, "Остановка...", "Пауза"),
         ],
     )
     def test_update_ui_state_centralizes_button_and_status_updates(

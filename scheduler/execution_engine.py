@@ -75,5 +75,10 @@ class SchedulerExecutionEngine:
             return
         try:
             callback(task.params)
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             logger.error("Ошибка выполнения обратного вызова задачи: %s", e)
+        except Exception as e:
+            # Последний барьер: callback может быть любым внешним кодом
+            logger.exception(
+                "Непредвиденная ошибка обратного вызова задачи: %s", e
+            )

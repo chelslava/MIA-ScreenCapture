@@ -20,6 +20,7 @@ class RecordingStatus(Enum):
     IDLE = "idle"
     RECORDING = "recording"
     PAUSED = "paused"
+    STOPPING = "stopping"
 
 
 # Aliases для обратной совместимости с GUI

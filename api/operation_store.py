@@ -53,7 +53,7 @@ class APIOperationStore:
         request_id: str | None = None,
         trace_id: str | None = None,
         client_ip: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> APIOperation:
         """Запускает фоновую операцию и возвращает её snapshot."""
         if self._stopped:
             return self._build_rejected_operation(
@@ -97,7 +97,7 @@ class APIOperationStore:
                 status="failed",
                 error=f"Не удалось поставить операцию в очередь: {e}",
             )
-        return self.get(operation_id) or operation.to_dict()
+        return self.get_typed(operation_id) or operation
 
     def submit_typed(
         self,
@@ -109,14 +109,13 @@ class APIOperationStore:
         client_ip: str | None = None,
     ) -> APIOperation:
         """Запускает фоновую операцию и возвращает typed snapshot."""
-        operation = self.submit(
+        return self.submit(
             operation_type,
             runner,
             request_id=request_id,
             trace_id=trace_id,
             client_ip=client_ip,
         )
-        return APIOperation.from_dict(operation)
 
     def _run_operation(
         self,
@@ -152,29 +151,24 @@ class APIOperationStore:
             if done_event is not None:
                 done_event.set()
 
-    def get(self, operation_id: str) -> dict[str, Any] | None:
+    def get(self, operation_id: str) -> APIOperation | None:
         """Возвращает snapshot операции по id."""
         with self._lock:
             self._cleanup_expired_locked()
             operation = self._operations.get(operation_id)
             if operation is None:
                 return None
-            return operation.to_dict()
+            return operation
 
     def get_typed(self, operation_id: str) -> APIOperation | None:
         """Возвращает typed snapshot операции по id."""
-        with self._lock:
-            self._cleanup_expired_locked()
-            operation = self._operations.get(operation_id)
-            if operation is None:
-                return None
-            return APIOperation.from_dict(operation.to_dict())
+        return self.get(operation_id)
 
     def wait(
         self,
         operation_id: str,
         timeout: float,
-    ) -> dict[str, Any] | None:
+    ) -> APIOperation | None:
         """Ожидает завершение операции ограниченное время."""
         with self._lock:
             event = self._events.get(operation_id)
@@ -189,10 +183,7 @@ class APIOperationStore:
         timeout: float,
     ) -> APIOperation | None:
         """Ожидает завершение операции и возвращает typed snapshot."""
-        operation = self.wait(operation_id, timeout)
-        if operation is None:
-            return None
-        return APIOperation.from_dict(operation)
+        return self.wait(operation_id, timeout)
 
     def _cleanup_expired_locked(self) -> None:
         now = datetime.now(UTC).timestamp()
@@ -217,7 +208,7 @@ class APIOperationStore:
         self,
         operation_type: str,
         error_message: str,
-    ) -> dict[str, Any]:
+    ) -> APIOperation:
         operation_id = uuid.uuid4().hex
         operation = APIOperation.create_failed(
             operation_id,
@@ -232,7 +223,7 @@ class APIOperationStore:
             self._events[operation_id] = done_event
             self._rejected_total += 1
             self._failed_total += 1
-        return operation.to_dict()
+        return operation
 
     def _release_inflight_slot(self) -> None:
         with self._lock:

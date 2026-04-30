@@ -636,7 +636,7 @@ class TestAPIServerObservability:
         assert "timestamp" in data
         assert data["version"] == server._version
         assert data["version"] != "unknown"
-        assert isinstance(data["uptime_seconds"], (int, float))
+        assert isinstance(data["uptime_seconds"], int | float)
         assert data["uptime_seconds"] >= 0
         assert data["websocket"]["transport_ready"] is True
 
@@ -644,12 +644,12 @@ class TestAPIServerObservability:
         """Проверка чтения latency samples под lock."""
         observability = APIServerObservability()
 
-        class _LockAwareSamples:
-            def __iter__(self):
+        class _LockAwareList(list):
+            def __iter__(self_inner):
                 assert observability._lock.locked()
-                return iter([10.0, 20.0, 30.0])
+                return super().__iter__()
 
-        observability._latency_ms = _LockAwareSamples()  # type: ignore[assignment]
+        observability._latency_sorted = _LockAwareList([10.0, 20.0, 30.0])  # type: ignore[assignment]
 
         stats = observability._latency_stats()
 
@@ -850,18 +850,18 @@ class TestAPIOperationStore:
         first = store.submit("slow", slow_runner)
         second = store.submit("slow", slow_runner)
 
-        assert first["status"] == "running"
-        assert second["status"] == "failed"
-        assert "переполнена" in str(second.get("error", "")).lower()
+        assert first.status == "running"
+        assert second.status == "failed"
+        assert "переполнена" in str(second.error or "").lower()
 
         metrics = store.get_metrics_snapshot()
         assert metrics["rejected_total"] == 1
         assert metrics["inflight"] == 1
 
         release_event.set()
-        completed = store.wait(str(first["id"]), timeout=1.5)
+        completed = store.wait(first.operation_id, timeout=1.5)
         assert completed is not None
-        assert completed["status"] == "succeeded"
+        assert completed.status == "succeeded"
         store.stop()
 
     def test_runner_exception_marks_operation_failed(self) -> None:
@@ -872,11 +872,11 @@ class TestAPIOperationStore:
             raise RuntimeError("boom")
 
         operation = store.submit("failing", failing_runner)
-        completed = store.wait(str(operation["id"]), timeout=1.0)
+        completed = store.wait(operation.operation_id, timeout=1.0)
 
         assert completed is not None
-        assert completed["status"] == "failed"
-        assert "boom" in str(completed.get("error", ""))
+        assert completed.status == "failed"
+        assert "boom" in str(completed.error or "")
         store.stop()
 
     def test_submit_rejected_after_stop(self) -> None:
@@ -886,8 +886,8 @@ class TestAPIOperationStore:
 
         operation = store.submit("after-stop", lambda: {"success": True})
 
-        assert operation["status"] == "failed"
-        assert "executor остановлен" in str(operation.get("error", ""))
+        assert operation.status == "failed"
+        assert "executor остановлен" in str(operation.error or "")
 
     def test_wait_unknown_operation_returns_none(self) -> None:
         """Ожидание неизвестной операции должно возвращать None."""

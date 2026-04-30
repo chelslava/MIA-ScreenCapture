@@ -54,6 +54,12 @@ from core.application_facade import ApplicationFacade
 from core.application_service import ApplicationService
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
 from core.recording_service import RecordingService
+from exceptions import (
+    ConfigValidationError,
+    RecordingError,
+    SchedulerError,
+    TaskValidationError,
+)
 from gui.backends import GUIRecordingBackend
 from logger_config import get_module_logger, setup_logger
 from recorder.utils import (
@@ -419,8 +425,19 @@ class VideoRecorderApp:
         except KeyboardInterrupt:
             logger.info("Прервано пользователем")
             return 0
-        except Exception as e:
+        except (
+            RecordingError,
+            SchedulerError,
+            ConfigValidationError,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as e:
             logger.error(f"Ошибка приложения: {e}")
+            return 1
+        except Exception as e:
+            # Последний барьер: непредвиденные исключения от сторонних компонентов
+            logger.exception(f"Непредвиденная ошибка приложения: {e}")
             return 1
         finally:
             self._cleanup()
@@ -799,7 +816,7 @@ class VideoRecorderApp:
                 task_id,
                 e,
             )
-        except Exception as e:
+        except (RecordingError, OSError, ValueError, RuntimeError) as e:
             logger.error(
                 "Ошибка запуска записи из планировщика: task_id=%s, error=%s",
                 task_id,
@@ -868,7 +885,7 @@ class VideoRecorderApp:
                 "success": success,
                 "task_id": task.id if success else None,
             }
-        except Exception as e:
+        except (TaskValidationError, ValueError, RuntimeError) as e:
             return {"success": False, "error": str(e)}
 
     def _delete_schedule(self, task_id: str) -> dict[str, Any]:
@@ -905,7 +922,7 @@ class VideoRecorderApp:
                 )
 
             return {"success": success}
-        except Exception as e:
+        except (TaskValidationError, ValueError, RuntimeError) as e:
             return {"success": False, "error": str(e)}
 
     def _toggle_schedule(self, task_id: str, enabled: bool) -> dict[str, Any]:
@@ -1020,7 +1037,7 @@ class VideoRecorderApp:
                     )
                 ):
                     restart_required.append("api")
-        except Exception as e:
+        except (ConfigValidationError, ValueError, TypeError) as e:
             return {"success": False, "error": str(e)}
 
         # Обновление простых полей
@@ -1148,7 +1165,7 @@ class VideoRecorderApp:
                             f"Ошибка при остановке записи: "
                             f"{gui_stop_result.get('error', 'неизвестная ошибка')}"
                         )
-            except Exception as e:
+            except (RecordingError, OSError, RuntimeError) as e:
                 logger.error(f"Ошибка при остановке записи: {e}")
         else:
             try:
@@ -1162,7 +1179,7 @@ class VideoRecorderApp:
                     logger.info(
                         f"Запись сохранена: {headless_stop_result.get('filepath', 'неизвестно')}"
                     )
-            except Exception as e:
+            except (RecordingError, OSError, RuntimeError) as e:
                 logger.error(f"Ошибка при остановке headless записи: {e}")
 
     def _save_config(self) -> None:
@@ -1173,7 +1190,7 @@ class VideoRecorderApp:
             config.flush_debounced_saves()
             config.save()
             logger.info("Конфигурация сохранена")
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.error(f"Ошибка при сохранении конфигурации: {e}")
 
     def _cleanup_scheduler(self) -> None:
@@ -1183,7 +1200,7 @@ class VideoRecorderApp:
                 logger.info("Остановка планировщика...")
                 self._scheduler.stop()
                 logger.info("Планировщик остановлен")
-            except Exception as e:
+            except (SchedulerError, OSError, RuntimeError) as e:
                 logger.error(f"Ошибка при остановке планировщика: {e}")
 
     def _cleanup_api_server(self) -> None:
@@ -1193,7 +1210,7 @@ class VideoRecorderApp:
                 logger.info("Остановка API сервера...")
                 self._api_server.stop()
                 logger.info("API сервер остановлен")
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.error(f"Ошибка при остановке API сервера: {e}")
 
     def _cleanup_tray(self) -> None:
@@ -1203,7 +1220,7 @@ class VideoRecorderApp:
                 logger.info("Очистка трея...")
                 self._tray_icon.cleanup()
                 logger.info("Трей очищен")
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.error(f"Ошибка при очистке трея: {e}")
 
     def _quit_app(self) -> None:

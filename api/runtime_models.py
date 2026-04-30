@@ -216,6 +216,7 @@ class ObservabilityResourceStats:
     rss_mb: float
     threads: int
     cpu_percent: float
+    idempotency_entries: int = 0
 
     def to_dict(self) -> dict[str, float | int]:
         """Сериализовать resource-статистику в совместимый dict."""
@@ -223,6 +224,7 @@ class ObservabilityResourceStats:
             "rss_mb": self.rss_mb,
             "threads": self.threads,
             "cpu_percent": self.cpu_percent,
+            "idempotency_entries": self.idempotency_entries,
         }
 
 

@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from typing import Any
 
 from gui import scheduler_tab
+from gui.scheduler import scheduler_tab as scheduler_tab_impl
+from gui.scheduler import task_dialog as task_dialog_module
 from scheduler.task_scheduler import (
     RecordingParams,
     ScheduleTask,
@@ -267,7 +269,7 @@ def test_add_task_emits_task_created(monkeypatch) -> None:
         def get_task_data(self) -> dict[str, Any]:
             return payload
 
-    monkeypatch.setattr(scheduler_tab, "TaskDialog", _FakeDialog)
+    monkeypatch.setattr(scheduler_tab_impl, "TaskDialog", _FakeDialog)
     tab._add_task()
 
     assert tab.task_created.calls == [(payload,)]
@@ -297,7 +299,7 @@ def test_edit_task_emits_task_updated_with_id(monkeypatch) -> None:
         def get_task_data(self) -> dict[str, Any]:
             return dict(payload)
 
-    monkeypatch.setattr(scheduler_tab, "TaskDialog", _FakeDialog)
+    monkeypatch.setattr(scheduler_tab_impl, "TaskDialog", _FakeDialog)
     tab._edit_task()
 
     assert tab.task_updated.calls == [({"name": "Updated", "id": "task-77"},)]
@@ -472,7 +474,7 @@ def test_task_dialog_apply_preset_sets_fields_and_params(
 ) -> None:
     """Preset должен настраивать schedule и recording-параметры формы."""
     monkeypatch.setattr(
-        scheduler_tab,
+        task_dialog_module,
         "QTime",
         lambda hour, minute: SimpleNamespace(
             hour=lambda: hour,

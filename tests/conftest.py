@@ -812,7 +812,7 @@ def tasks_file(temp_dir: Path) -> Path:
         Путь к файлу задач
     """
     tasks_path = temp_dir / "tasks.json"
-    tasks_path.write_text("[]")
+    tasks_path.write_text('{"tasks": []}')
     return tasks_path
 
 

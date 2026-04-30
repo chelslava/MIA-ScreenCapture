@@ -529,7 +529,7 @@ class TestAudioRecorderNegative:
             # Путь к несуществующей директории без прав записи
             # Должно выбросить исключение или вернуть False
             with patch.object(
-                recorder, "_init_audio", side_effect=Exception("Error")
+                recorder, "_init_audio", side_effect=RuntimeError("Error")
             ):
                 result = recorder.start(Path("/nonexistent/path/audio.wav"))
 

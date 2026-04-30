@@ -356,7 +356,7 @@ class TestAudioRecorder:
         recorder.set_callbacks(on_error=error_callback)
 
         with patch.object(
-            recorder, "_init_audio", side_effect=Exception("Audio error")
+            recorder, "_init_audio", side_effect=RuntimeError("Audio error")
         ):
             result = recorder.start(output_path)
 
@@ -517,7 +517,7 @@ class TestAudioRecorderCleanup:
     def test_cleanup_handles_exception(self, recorder: AudioRecorder) -> None:
         """Проверка обработки исключения при очистке."""
         mock_wave = MagicMock()
-        mock_wave.close.side_effect = Exception("Close error")
+        mock_wave.close.side_effect = OSError("Close error")
         recorder._wave_file = mock_wave
 
         # Не должно вызывать исключение
@@ -689,3 +689,84 @@ class TestSystemAudioRecorderSelection:
                 RuntimeError, match="Виртуальное аудиоустройство"
             ):
                 recorder._init_audio()
+
+
+class TestAudioRecorderEventBus:
+    """Тесты публикации событий через event bus при потере аудио-чанков."""
+
+    def test_event_bus_published_on_first_dropped_chunk(self) -> None:
+        """Проверка публикации события при первой потере чанка."""
+        from core.event_bus import InMemoryEventBus, RecordingEventType
+
+        bus = InMemoryEventBus()
+        received: list = []
+        bus.subscribe(
+            RecordingEventType.AUDIO_CHUNKS_DROPPED,
+            lambda e: received.append(e),
+        )
+
+        recorder = AudioRecorder(event_bus=bus)
+        # Заполняем очередь до отказа
+        for _ in range(recorder._audio_queue.maxsize):
+            recorder._audio_queue.put_nowait((b"x", 1))
+
+        recorder._enqueue_audio_chunk(b"overflow", 1)
+
+        assert len(received) == 1
+        assert (
+            received[0].event_type == RecordingEventType.AUDIO_CHUNKS_DROPPED
+        )
+        assert received[0].payload["dropped_count"] == 1
+
+    def test_event_bus_published_every_10_dropped_chunks(self) -> None:
+        """Проверка публикации каждые 10 потерянных чанков."""
+        from core.event_bus import InMemoryEventBus, RecordingEventType
+
+        bus = InMemoryEventBus()
+        received: list = []
+        bus.subscribe(
+            RecordingEventType.AUDIO_CHUNKS_DROPPED,
+            lambda e: received.append(e),
+        )
+
+        recorder = AudioRecorder(event_bus=bus)
+        for _ in range(recorder._audio_queue.maxsize):
+            recorder._audio_queue.put_nowait((b"x", 1))
+
+        # 10 потерянных чанков: событие при 1-м и 10-м
+        for _ in range(10):
+            recorder._enqueue_audio_chunk(b"overflow", 1)
+
+        assert len(received) == 2
+        assert received[1].payload["dropped_count"] == 10
+
+    def test_no_event_bus_no_error_on_dropped_chunk(self) -> None:
+        """Проверка что без event_bus потеря чанка не вызывает ошибки."""
+        recorder = AudioRecorder()
+        for _ in range(recorder._audio_queue.maxsize):
+            recorder._audio_queue.put_nowait((b"x", 1))
+
+        recorder._enqueue_audio_chunk(b"overflow", 1)
+
+        assert recorder.dropped_chunks == 1
+
+    def test_event_bus_not_published_on_non_notify_drop(self) -> None:
+        """Проверка что событие не публикуется при каждом дропе (только 1, 10, 20...)."""
+        from core.event_bus import InMemoryEventBus, RecordingEventType
+
+        bus = InMemoryEventBus()
+        received: list = []
+        bus.subscribe(
+            RecordingEventType.AUDIO_CHUNKS_DROPPED,
+            lambda e: received.append(e),
+        )
+
+        recorder = AudioRecorder(event_bus=bus)
+        for _ in range(recorder._audio_queue.maxsize):
+            recorder._audio_queue.put_nowait((b"x", 1))
+
+        # 5 потерь: событие только при 1-м
+        for _ in range(5):
+            recorder._enqueue_audio_chunk(b"overflow", 1)
+
+        assert len(received) == 1

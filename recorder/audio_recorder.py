@@ -14,10 +14,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from exceptions import AudioCaptureError, AudioError
 from logger_config import get_module_logger
 from recorder.utils import get_audio_devices, get_platform
+
+if TYPE_CHECKING:
+    from core.event_bus import EventBus
 
 logger = get_module_logger(__name__)
 
@@ -57,6 +61,7 @@ class AudioRecorder:
         sample_rate: int = 44100,
         channels: int = 2,
         chunk_size: int = 1024,
+        event_bus: "EventBus | None" = None,
     ):
         """
         Инициализация аудиозаписи.
@@ -65,10 +70,12 @@ class AudioRecorder:
             sample_rate: Частота дискретизации аудио в Гц
             channels: Количество аудиоканалов (1=моно, 2=стерео)
             chunk_size: Размер чанка аудио для буферизации
+            event_bus: Опциональный event bus для публикации событий потери чанков
         """
         self.config = AudioConfig(
             sample_rate=sample_rate, channels=channels, chunk_size=chunk_size
         )
+        self._event_bus: EventBus | None = event_bus
 
         # Состояние
         self._state = AudioState.IDLE
@@ -229,7 +236,7 @@ class AudioRecorder:
                 logger.info(f"Аудиозапись начата: {output_path}")
                 return True
 
-            except Exception as e:
+            except (AudioError, OSError, RuntimeError) as e:
                 logger.error(f"Не удалось начать аудиозапись: {e}")
                 self._cleanup()
                 if self._on_error:
@@ -403,14 +410,14 @@ class AudioRecorder:
                     )
                     self._enqueue_audio_chunk(data, self.config.chunk_size)
 
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     logger.error(f"Ошибка чтения аудио: {e}")
 
                 # Проверка лимита длительности
                 if self._duration and self.elapsed_time >= self._duration:
                     break
 
-        except Exception as e:
+        except (AudioCaptureError, OSError, RuntimeError) as e:
             logger.error(f"Ошибка цикла записи PyAudio: {e}")
             if self._on_error:
                 self._on_error(str(e))
@@ -436,8 +443,23 @@ class AudioRecorder:
             if should_notify and self._on_chunks_dropped:
                 try:
                     self._on_chunks_dropped(self._dropped_chunks)
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     logger.error(f"Ошибка в on_chunks_dropped callback: {e}")
+
+            if should_notify and self._event_bus is not None:
+                from core.event_bus import RecordingEvent, RecordingEventType
+
+                try:
+                    self._event_bus.publish(
+                        RecordingEvent(
+                            event_type=RecordingEventType.AUDIO_CHUNKS_DROPPED,
+                            payload={"dropped_count": self._dropped_chunks},
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Ошибка публикации AUDIO_CHUNKS_DROPPED: %s", e
+                    )
 
             if self._dropped_chunks == 1 or self._dropped_chunks % 50 == 0:
                 logger.warning(
@@ -466,7 +488,7 @@ class AudioRecorder:
                 if self._wave_file is not None:
                     self._wave_file.writeframes(audio_data)
                     self._frames_recorded += frames
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.error(f"Ошибка записи WAV чанка: {e}")
                 if self._on_error:
                     self._on_error(str(e))
@@ -500,7 +522,7 @@ class AudioRecorder:
                 self._audio_interface.terminate()
                 self._audio_interface = None
 
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.error(f"Ошибка при очистке аудио: {e}")
 
         self._writer_thread = None
@@ -565,7 +587,7 @@ class SystemAudioRecorder(AudioRecorder):
                 f"Используется устройство системного аудио: {devices[loopback_device]['name']}"
             )
 
-        except Exception as e:
+        except (ImportError, OSError, RuntimeError) as e:
             logger.error(
                 f"Не удалось инициализировать системное аудио Windows: {e}"
             )
@@ -594,7 +616,7 @@ class SystemAudioRecorder(AudioRecorder):
                 f"Используется устройство системного аудио: {devices[monitor_device]['name']}"
             )
 
-        except Exception as e:
+        except (ImportError, OSError, RuntimeError) as e:
             logger.error(
                 f"Не удалось инициализировать системное аудио Linux: {e}"
             )
@@ -632,7 +654,7 @@ class SystemAudioRecorder(AudioRecorder):
                 f"Используется устройство системного аудио: {devices[virtual_device]['name']}"
             )
 
-        except Exception as e:
+        except (ImportError, OSError, RuntimeError) as e:
             logger.error(
                 f"Не удалось инициализировать системное аудио macOS: {e}"
             )

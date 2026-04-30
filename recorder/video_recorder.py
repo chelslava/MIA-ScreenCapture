@@ -10,13 +10,14 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
 
+from core.recording_state import RecordingStatus
+from exceptions import RecordingError, ScreenCaptureError
 from logger_config import get_module_logger
 from recorder.utils import (
     get_available_monitors,
@@ -32,14 +33,9 @@ _CAPTURE_FORCE_JOIN_TIMEOUT_SECONDS = 2
 _WINDOW_CAPTURE_RECONNECT_TIMEOUT_SECONDS = 5.0
 _WINDOW_CAPTURE_RECONNECT_POLL_SECONDS = 0.25
 
-
-class RecordingState(Enum):
-    """Перечисление состояний записи."""
-
-    IDLE = "idle"
-    RECORDING = "recording"
-    PAUSED = "paused"
-    STOPPING = "stopping"
+# Alias для обратной совместимости с тестами и кодом, импортирующим RecordingState
+RecordingState = RecordingStatus
+VideoRecorderState = RecordingStatus
 
 
 @dataclass
@@ -168,7 +164,7 @@ class _WindowsCaptureSession:
     def start(self, capture_area: CaptureArea) -> None:
         try:
             from windows_capture import InternalCaptureControl, WindowsCapture
-        except Exception as e:
+        except ImportError as e:
             raise RuntimeError(
                 "Библиотека windows-capture не установлена или недоступна"
             ) from e
@@ -203,27 +199,32 @@ class _WindowsCaptureSession:
             if frame_buffer is None:
                 return
 
-            # Обычно windows-capture отдаёт BGRA.
-            if frame_buffer.ndim == 3 and frame_buffer.shape[2] == 4:
-                bgr = frame_buffer[:, :, :3]
-            else:
-                bgr = frame_buffer
+            is_bgra = frame_buffer.ndim == 3 and frame_buffer.shape[2] == 4
 
-            # Прямоугольная область - пост-обрезка кадра.
             if capture_area.type == "rect":
                 x1 = max(capture_area.x, 0)
                 y1 = max(capture_area.y, 0)
                 x2 = max(capture_area.x + capture_area.width, x1)
                 y2 = max(capture_area.y + capture_area.height, y1)
-                if bgr.ndim == 3:
-                    h, w = bgr.shape[:2]
+                if frame_buffer.ndim == 3:
+                    h, w = frame_buffer.shape[:2]
                     x2 = min(x2, w)
                     y2 = min(y2, h)
-                    bgr = bgr[y1:y2, x1:x2]
+                # Обрезаем до конвертации — меньше данных для обработки.
+                region = frame_buffer[y1:y2, x1:x2]
+                if is_bgra:
+                    frame_copy = cv2.cvtColor(region, cv2.COLOR_BGRA2BGR)
+                else:
+                    frame_copy = np.ascontiguousarray(region)
+            else:
+                # SIMD-ускоренная конвертация BGRA→BGR (быстрее strided np.array copy).
+                if is_bgra:
+                    frame_copy = cv2.cvtColor(frame_buffer, cv2.COLOR_BGRA2BGR)
+                else:
+                    frame_copy = frame_buffer.copy()
 
             with self._lock:
-                # Копия нужна, т.к. буфер принадлежит native стороне.
-                self._last_frame = np.array(bgr, copy=True)
+                self._last_frame = frame_copy
                 self._frame_event.set()
                 self._init_complete.set()
 
@@ -240,7 +241,7 @@ class _WindowsCaptureSession:
                     self._on_closed_callback(
                         "Захват потерян (окно закрыто или монитор отключен)"
                     )
-                except Exception as e:
+                except (OSError, RuntimeError) as e:
                     logger.error(f"Ошибка в on_closed callback: {e}")
 
         self._capture = capture
@@ -294,7 +295,7 @@ class _WindowsCaptureSession:
                 control.stop()
                 if hasattr(control, "wait"):
                     control.wait()
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.warning(
                     "Не удалось корректно остановить capture session: %s",
                     e,
@@ -349,7 +350,7 @@ class VideoRecorder:
         self.preset = preset
 
         # Состояние
-        self._state = RecordingState.IDLE
+        self._state = VideoRecorderState.IDLE
         self._lock = threading.Lock()
         self._capture_lost_lock = threading.Lock()
         self._capture_thread: threading.Thread | None = None
@@ -361,6 +362,7 @@ class VideoRecorder:
         self._ffmpeg_writer: Any | None = None
         self._capture_area: CaptureArea | None = None
         self._capture_session: _WindowsCaptureSession | None = None
+        self._duration: float | None = None
 
         # Статистика
         self._start_time: float = 0
@@ -394,7 +396,7 @@ class VideoRecorder:
         if self._on_error:
             try:
                 self._on_error(message)
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.error(f"Ошибка в on_error callback: {e}")
 
     def _write_last_frame_on_capture_loss(self, frame: np.ndarray) -> None:
@@ -410,7 +412,7 @@ class VideoRecorder:
             elif self._video_writer is not None:
                 self._video_writer.write(frame)
             self._last_captured_frame = frame
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.warning(
                 "Не удалось записать последний кадр при потере захвата: %s",
                 e,
@@ -462,8 +464,8 @@ class VideoRecorder:
 
         while time.perf_counter() < deadline:
             if self._shutdown_event.is_set() or self._state in (
-                RecordingState.IDLE,
-                RecordingState.STOPPING,
+                VideoRecorderState.IDLE,
+                VideoRecorderState.STOPPING,
             ):
                 logger.info(
                     "Восстановление захвата окна отменено из-за остановки записи"
@@ -505,7 +507,7 @@ class VideoRecorder:
             )
             try:
                 recovered_session.start(recovered_area)
-            except Exception as e:
+            except (OSError, RuntimeError, TimeoutError) as e:
                 logger.warning(
                     "Не удалось перезапустить захват окна '%s' (попытка %s): %s",
                     capture_area.window_title,
@@ -514,7 +516,7 @@ class VideoRecorder:
                 )
                 try:
                     recovered_session.stop()
-                except Exception:
+                except (OSError, RuntimeError):
                     pass
                 time.sleep(_WINDOW_CAPTURE_RECONNECT_POLL_SECONDS)
                 continue
@@ -544,12 +546,12 @@ class VideoRecorder:
     @property
     def is_recording(self) -> bool:
         """Проверка активности записи."""
-        return self._state == RecordingState.RECORDING
+        return self._state == VideoRecorderState.RECORDING
 
     @property
     def is_paused(self) -> bool:
         """Проверка паузы записи."""
-        return self._state == RecordingState.PAUSED
+        return self._state == VideoRecorderState.PAUSED
 
     @property
     def elapsed_time(self) -> float:
@@ -557,7 +559,7 @@ class VideoRecorder:
         if self._start_time == 0:
             return 0
         elapsed = time.time() - self._start_time - self._total_paused
-        if self._state == RecordingState.PAUSED:
+        if self._state == VideoRecorderState.PAUSED:
             elapsed -= time.time() - self._paused_time
         return max(0, elapsed)
 
@@ -604,7 +606,7 @@ class VideoRecorder:
             True если запись успешно началась
         """
         with self._lock:
-            if self._state != RecordingState.IDLE:
+            if self._state != VideoRecorderState.IDLE:
                 logger.warning(
                     f"Невозможно начать: текущее состояние {self._state}"
                 )
@@ -674,7 +676,7 @@ class VideoRecorder:
                 self._shutdown_event.clear()
 
                 # Запуск потока захвата
-                self._state = RecordingState.RECORDING
+                self._state = VideoRecorderState.RECORDING
                 self._capture_thread = threading.Thread(
                     target=self._capture_loop, daemon=False
                 )
@@ -683,7 +685,7 @@ class VideoRecorder:
                 logger.info(f"Запись начата: {output_path}")
                 return True
 
-            except Exception as e:
+            except (RecordingError, OSError, RuntimeError, ValueError) as e:
                 logger.error(f"Не удалось начать запись: {e}")
                 self._cleanup()
                 if self._on_error:
@@ -698,10 +700,10 @@ class VideoRecorder:
             True если пауза успешно установлена
         """
         with self._lock:
-            if self._state != RecordingState.RECORDING:
+            if self._state != VideoRecorderState.RECORDING:
                 return False
 
-            self._state = RecordingState.PAUSED
+            self._state = VideoRecorderState.PAUSED
             self._paused_time = time.time()
             logger.info("Запись приостановлена")
             return True
@@ -714,11 +716,11 @@ class VideoRecorder:
             True если запись успешно возобновлена
         """
         with self._lock:
-            if self._state != RecordingState.PAUSED:
+            if self._state != VideoRecorderState.PAUSED:
                 return False
 
             self._total_paused += time.time() - self._paused_time
-            self._state = RecordingState.RECORDING
+            self._state = VideoRecorderState.RECORDING
             logger.info("Запись возобновлена")
             return True
 
@@ -730,10 +732,10 @@ class VideoRecorder:
             True если запись успешно остановлена
         """
         with self._lock:
-            if self._state == RecordingState.IDLE:
+            if self._state == VideoRecorderState.IDLE:
                 return False
 
-            self._state = RecordingState.STOPPING
+            self._state = VideoRecorderState.STOPPING
             self._shutdown_event.set()
 
         capture_thread = self._capture_thread
@@ -742,7 +744,7 @@ class VideoRecorder:
         if self._capture_session is not None:
             try:
                 self._capture_session.stop()
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.warning(
                     "Не удалось остановить capture session перед join: %s",
                     e,
@@ -782,7 +784,7 @@ class VideoRecorder:
     def _capture_loop(self) -> None:
         """Основной цикл захвата в отдельном потоке."""
         frame_interval: float = 1.0 / self.fps
-        last_frame_time: float = time.perf_counter()
+        next_frame_time: float = time.perf_counter()
         fatal_write_error = False
         capture_lost_requires_cleanup = False
         capture_lost_message = (
@@ -802,10 +804,10 @@ class VideoRecorder:
         try:
             session.start(self._capture_area)  # type: ignore[arg-type]
             while not self._shutdown_event.is_set() and self._state not in (
-                RecordingState.IDLE,
-                RecordingState.STOPPING,
+                VideoRecorderState.IDLE,
+                VideoRecorderState.STOPPING,
             ):
-                if self._state == RecordingState.PAUSED:
+                if self._state == VideoRecorderState.PAUSED:
                     time.sleep(0.1)
                     continue
 
@@ -815,7 +817,7 @@ class VideoRecorder:
                     self._set_capture_lost(True)
                     try:
                         session.stop()
-                    except Exception as e:
+                    except (OSError, RuntimeError) as e:
                         logger.warning(
                             "Ошибка остановки потерянной capture session: %s",
                             e,
@@ -828,18 +830,20 @@ class VideoRecorder:
                         self._notify_error(capture_lost_message)
                         break
                     session = recovered_session
-                    last_frame_time = time.perf_counter()
+                    next_frame_time = time.perf_counter()
                     continue
 
-                # Контроль частоты кадров с высокой точностью
-                current_time = time.perf_counter()
-                elapsed = current_time - last_frame_time
-                if elapsed < frame_interval:
-                    sleep_time = frame_interval - elapsed
-                    if sleep_time > 0.001:
-                        time.sleep(sleep_time * 0.9)
-
-                last_frame_time = time.perf_counter()
+                # Контроль частоты кадров с adaptive timing и drift correction
+                now = time.perf_counter()
+                wait_time = next_frame_time - now
+                if wait_time > 0.001:
+                    self._shutdown_event.wait(timeout=wait_time)
+                if self._shutdown_event.is_set():
+                    break
+                next_frame_time += frame_interval
+                # Предотвращение накопления drift при большой задержке
+                if time.perf_counter() - next_frame_time > frame_interval:
+                    next_frame_time = time.perf_counter()
 
                 # Захват кадра
                 try:
@@ -849,7 +853,7 @@ class VideoRecorder:
                         self._set_capture_lost(True)
                         try:
                             session.stop()
-                        except Exception as e:
+                        except (OSError, RuntimeError) as e:
                             logger.warning(
                                 "Ошибка остановки capture session до recovery: %s",
                                 e,
@@ -862,7 +866,7 @@ class VideoRecorder:
                             self._notify_error(capture_lost_message)
                             break
                         session = recovered_session
-                        last_frame_time = time.perf_counter()
+                        next_frame_time = time.perf_counter()
                         continue
 
                     frame = session.read_frame(
@@ -877,7 +881,7 @@ class VideoRecorder:
                             self._write_last_frame_on_capture_loss(frame)
                         try:
                             session.stop()
-                        except Exception as e:
+                        except (OSError, RuntimeError) as e:
                             logger.warning(
                                 "Ошибка остановки capture session после потери: %s",
                                 e,
@@ -890,7 +894,7 @@ class VideoRecorder:
                             self._notify_error(capture_lost_message)
                             break
                         session = recovered_session
-                        last_frame_time = time.perf_counter()
+                        next_frame_time = time.perf_counter()
                         continue
 
                     if frame is None:
@@ -912,7 +916,7 @@ class VideoRecorder:
                             logger.error(message)
                             if self._on_error:
                                 self._on_error(message)
-                            self._state = RecordingState.STOPPING
+                            self._state = VideoRecorderState.STOPPING
                             break
                         self._frame_count += 1
                         self._last_captured_frame = frame
@@ -925,7 +929,7 @@ class VideoRecorder:
                     if self._on_frame_captured:
                         self._on_frame_captured(frame)
 
-                except Exception as e:
+                except (ScreenCaptureError, OSError, RuntimeError) as e:
                     logger.error(f"Ошибка захвата кадра: {e}")
                     # Не прерываем запись при единичных ошибках
                     continue
@@ -935,14 +939,14 @@ class VideoRecorder:
                     logger.info("Достигнут лимит длительности, остановка")
                     break
 
-        except Exception as e:
+        except (RecordingError, OSError, RuntimeError) as e:
             logger.error(f"Ошибка цикла захвата: {e}", exc_info=True)
             if self._on_error:
                 self._on_error(str(e))
         finally:
             try:
                 session.stop()
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.warning(
                     "Ошибка при остановке capture session в finally: %s",
                     e,
@@ -958,7 +962,7 @@ class VideoRecorder:
             return
 
         # Сигнал завершения
-        self._state = RecordingState.IDLE
+        self._state = VideoRecorderState.IDLE
 
     @property
     def is_capture_lost(self) -> bool:
@@ -989,11 +993,11 @@ class VideoRecorder:
                 self._capture_session.stop()
                 self._capture_session = None
 
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.error(f"Ошибка при очистке: {e}")
             success = False
 
-        self._state = RecordingState.IDLE
+        self._state = VideoRecorderState.IDLE
         return success
 
     def get_preview_frame(self) -> np.ndarray | None:

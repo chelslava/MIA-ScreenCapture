@@ -9,6 +9,7 @@ from core.event_bus import InMemoryEventBus, RecordingEventType
 from core.recording_backend import RecordingStatusSnapshot
 from core.recording_service import RecordingService
 from core.recording_types import AudioMode
+from exceptions import RecordingError
 
 
 class FakeBackend:
@@ -291,3 +292,145 @@ class TestRectCoordsValidation:
         service = RecordingService(backend=FakeBackend())
         result = service._build_capture_settings({"area": "full"})
         assert result.rect_coords == (0, 0, 1920, 1080)
+
+
+class TestRecordingServiceExtraEdgeCases:
+    """Дополнительные тесты для покрытия непокрытых веток."""
+
+    def test_event_bus_property_returns_bus(self) -> None:
+        bus = InMemoryEventBus()
+        service = RecordingService(event_bus=bus, backend=FakeBackend())
+        assert service.event_bus is bus
+
+    def test_start_recording_fails_when_backend_returns_failure(self) -> None:
+        backend = FakeBackend()
+        backend.start_result = (False, "Нет доступа к экрану")
+        service = RecordingService(backend=backend)
+        result = service.start_recording({"area": "full", "audio": "none"})
+        assert result["success"] is False
+        assert "Нет доступа к экрану" in result["error"]
+
+    def test_start_recording_catches_recording_error(self) -> None:
+        class ErrorBackend(FakeBackend):
+            def start(self, **kwargs):
+                raise RecordingError("тест ошибки")
+
+        service = RecordingService(backend=ErrorBackend())
+        result = service.start_recording({"area": "full", "audio": "none"})
+        assert result["success"] is False
+        assert "тест ошибки" in result["error"]
+
+    def test_start_recording_catches_oserror(self) -> None:
+        class ErrorBackend(FakeBackend):
+            def start(self, **kwargs):
+                raise OSError("disk full")
+
+        service = RecordingService(backend=ErrorBackend())
+        result = service.start_recording({"area": "full", "audio": "none"})
+        assert result["success"] is False
+        assert "disk full" in result["error"]
+
+    def test_stop_recording_returns_failure_when_stop_returns_none(
+        self,
+    ) -> None:
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        backend.stop_result = None
+        service = RecordingService(backend=backend)
+        result = service.stop_recording()
+        assert result["success"] is False
+
+    def test_stop_recording_ignores_oserror_on_recent_recordings_update(
+        self,
+    ) -> None:
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+        with (
+            patch("core.recording_service.get_config") as get_config_mock,
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "stat", side_effect=OSError("disk error")),
+        ):
+            get_config_mock.return_value = MagicMock()
+            result = service.stop_recording()
+        assert result["success"] is True
+
+    def test_toggle_pause_returns_error_when_not_recording(self) -> None:
+        service = RecordingService(backend=FakeBackend())
+        result = service.toggle_pause()
+        assert result["success"] is False
+        assert "Запись не идёт" in result["error"]
+
+    def test_toggle_pause_returns_error_when_resume_fails(self) -> None:
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=False,
+            is_paused=True,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        backend.resume_result = False
+        service = RecordingService(backend=backend)
+        result = service.toggle_pause()
+        assert result["success"] is False
+        assert "возобновить" in result["error"]
+
+    def test_toggle_pause_returns_error_when_pause_fails(self) -> None:
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        backend.pause_result = False
+        service = RecordingService(backend=backend)
+        result = service.toggle_pause()
+        assert result["success"] is False
+        assert "паузу" in result["error"]
+
+    def test_get_recordings_returns_list(self) -> None:
+        service = RecordingService(backend=FakeBackend())
+        with patch("core.recording_service.get_config") as mock_cfg:
+            mock_cfg.return_value.settings.recent_recordings = [
+                {"path": "demo.mp4"}
+            ]
+            recordings = service.get_recordings()
+        assert recordings == [{"path": "demo.mp4"}]
+
+    def test_stop_active_recording_if_any_returns_none_when_idle(
+        self,
+    ) -> None:
+        service = RecordingService(backend=FakeBackend())
+        result = service.stop_active_recording_if_any()
+        assert result is None
+
+    def test_stop_active_recording_if_any_stops_when_recording(
+        self,
+    ) -> None:
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+        with (
+            patch("core.recording_service.get_config") as get_config_mock,
+            patch.object(Path, "exists", return_value=False),
+        ):
+            get_config_mock.return_value = MagicMock()
+            result = service.stop_active_recording_if_any()
+        assert result is not None
+        assert result["success"] is True

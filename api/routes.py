@@ -27,7 +27,6 @@ from api.routes_schedule import register_schedule_routes
 from api.runtime_models import (
     APIOperation,
     APIOperationPayload,
-    IdempotencyBeginResult,
 )
 from logger_config import get_module_logger
 
@@ -224,13 +223,8 @@ def _execute_with_idempotency(
             ),
         )
 
-    state = server.begin_idempotency_request(
+    state_model = server.begin_idempotency_request(
         key, _build_idempotency_fingerprint()
-    )
-    state_model = (
-        state
-        if isinstance(state, IdempotencyBeginResult)
-        else IdempotencyBeginResult.from_dict(state)
     )
     state_name = state_model.state
     if state_name == "conflict":
@@ -341,22 +335,17 @@ def handle_validation_error(error: ValidationError) -> tuple:
 
 
 def _serialize_operation(
-    operation: dict[str, Any] | APIOperation,
+    operation: APIOperation,
 ) -> dict[str, Any]:
     """Преобразует внутреннее представление операции в API payload."""
-    operation_model = (
-        operation
-        if isinstance(operation, APIOperation)
-        else APIOperation.from_dict(operation)
-    )
     return cast(
         dict[str, Any],
-        APIOperationPayload.from_operation(operation_model).to_dict(),
+        APIOperationPayload.from_operation(operation).to_dict(),
     )
 
 
 def _background_operation_status_response(
-    operation: dict[str, Any] | APIOperation | None,
+    operation: APIOperation | None,
 ) -> tuple[Any, int]:
     """Формирует ответ с состоянием фоновой операции."""
     if operation is None:
@@ -389,12 +378,7 @@ def _stop_operation_response(
         trace_id=request_context.trace_id,
         client_ip=request_context.client_ip,
     )
-    operation_model = (
-        operation
-        if isinstance(operation, APIOperation)
-        else APIOperation.from_dict(operation)
-    )
-    operation_id = operation_model.operation_id
+    operation_id = operation.operation_id
     if not operation_id:
         return _internal_error_response()
 
@@ -409,11 +393,7 @@ def _stop_operation_response(
             "Не удалось отследить состояние операции",
         )
 
-    completed_model = (
-        completed
-        if isinstance(completed, APIOperation)
-        else APIOperation.from_dict(completed)
-    )
+    completed_model = completed
 
     if completed_model.status == "running":
         return (

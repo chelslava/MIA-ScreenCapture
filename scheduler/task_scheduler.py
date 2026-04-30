@@ -440,7 +440,7 @@ class TaskScheduler:
                         job = self._scheduler.get_job(task.id)
                         if job and job.next_run_time:
                             next_run = job.next_run_time
-                    except Exception as e:
+                    except (JobLookupError, RuntimeError) as e:
                         logger.warning(
                             "Не удалось получить next_run для задачи %s: %s",
                             task.id,
@@ -507,7 +507,7 @@ class TaskScheduler:
                 )
                 return True
 
-        except Exception as e:
+        except (ValueError, RuntimeError) as e:
             logger.error(f"Ошибка планирования задачи {task.id}: {e}")
             return False
 
@@ -536,7 +536,7 @@ class TaskScheduler:
         """
         try:
             scheduled_job = self._scheduler.get_job(task_id)
-        except Exception as e:
+        except (JobLookupError, RuntimeError) as e:
             logger.warning(
                 "Не удалось проверить наличие задачи %s в APScheduler: %s",
                 task_id,
@@ -554,7 +554,7 @@ class TaskScheduler:
                 "Задача %s уже отсутствует в APScheduler при удалении",
                 task_id,
             )
-        except Exception as e:
+        except RuntimeError as e:
             logger.warning(
                 "Ошибка удаления задачи %s из APScheduler: %s",
                 task_id,
@@ -650,7 +650,8 @@ class TaskScheduler:
             return None
         except ValueError as e:
             return f"Некорректное cron-выражение '{expression}': {e}"
-        except Exception as e:
+        except (TypeError, RuntimeError) as e:
+            # CronTrigger может бросать разные типы при некорректном вводе
             return f"Ошибка парсинга cron-выражения: {e}"
 
     def _execute_task(self, task_id: str) -> None:
@@ -672,7 +673,7 @@ class TaskScheduler:
                 try:
                     task = ScheduleTask.from_dict(task_data)
                     self._tasks[task.id] = task
-                except Exception as e:
+                except (ValueError, KeyError, TypeError) as e:
                     logger.error(f"Ошибка загрузки задачи: {e}")
 
             logger.info(
@@ -681,7 +682,7 @@ class TaskScheduler:
                 self._storage.persist_path,
             )
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.error(f"Ошибка загрузки задач: {e}")
 
     def _save_tasks(self) -> None:
@@ -695,7 +696,7 @@ class TaskScheduler:
                     task.to_dict() for task in self._tasks.values()
                 ]
             self._storage.save_tasks_payload(tasks_snapshot)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.error(f"Ошибка сохранения задач: {e}")
 
     def create_task_from_dict(self, data: dict[str, Any]) -> ScheduleTask:

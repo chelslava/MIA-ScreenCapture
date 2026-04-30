@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import threading
 import time
 from collections import deque
@@ -10,6 +11,10 @@ from typing import Any
 
 import psutil
 
+from api.idempotency_store import APIIdempotencyStore
+from logger_config import get_module_logger
+
+logger = get_module_logger(__name__)
 from api.runtime_models import (
     ObservabilityBaseline,
     ObservabilityCurrent,
@@ -25,8 +30,13 @@ class APIServerObservability:
     """Потокобезопасный сбор базовых эксплуатационных метрик API."""
 
     _MAX_PATH_ENTRIES = 100
+    _MEMORY_WARN_MB = 500.0
 
-    def __init__(self, max_latency_samples: int = 2000) -> None:
+    def __init__(
+        self,
+        max_latency_samples: int = 2000,
+        idempotency_store: APIIdempotencyStore | None = None,
+    ) -> None:
         self._lock = threading.Lock()
         self._started_at = time.monotonic()
         self._requests_total = 0
@@ -36,7 +46,9 @@ class APIServerObservability:
         self._method_counts: dict[str, int] = {}
         self._path_counts: dict[str, int] = {}
         self._latency_ms: deque[float] = deque(maxlen=max_latency_samples)
+        self._latency_sorted: list[float] = []
         self._process = psutil.Process()
+        self._idempotency_store = idempotency_store
 
     def request_started(self) -> None:
         with self._lock:
@@ -67,7 +79,16 @@ class APIServerObservability:
                 or path in self._path_counts
             ):
                 self._path_counts[path] = self._path_counts.get(path, 0) + 1
+            if (
+                self._latency_ms.maxlen is not None
+                and len(self._latency_ms) == self._latency_ms.maxlen
+            ):
+                evicted = self._latency_ms[0]
+                idx = bisect.bisect_left(self._latency_sorted, evicted)
+                if idx < len(self._latency_sorted):
+                    del self._latency_sorted[idx]
             self._latency_ms.append(latency_ms)
+            bisect.insort(self._latency_sorted, latency_ms)
 
     @staticmethod
     def _percentile(sorted_values: list[float], percentile: float) -> float:
@@ -87,7 +108,7 @@ class APIServerObservability:
 
     def _latency_stats(self) -> ObservabilityLatencyStats:
         with self._lock:
-            samples = sorted(self._latency_ms)
+            samples = list(self._latency_sorted)
         if not samples:
             return ObservabilityLatencyStats(0, 0.0, 0.0, 0.0, 0.0, 0.0)
         return ObservabilityLatencyStats(
@@ -101,10 +122,23 @@ class APIServerObservability:
 
     def _resource_stats(self) -> ObservabilityResourceStats:
         memory_info = self._process.memory_info()
+        rss_mb = round(memory_info.rss / (1024 * 1024), 3)
+        if rss_mb > self._MEMORY_WARN_MB:
+            logger.warning(
+                "Высокое потребление памяти: %.1f MB (порог: %.0f MB)",
+                rss_mb,
+                self._MEMORY_WARN_MB,
+            )
+        idempotency_entries = (
+            self._idempotency_store.get_size()
+            if self._idempotency_store is not None
+            else 0
+        )
         return ObservabilityResourceStats(
-            rss_mb=round(memory_info.rss / (1024 * 1024), 3),
+            rss_mb=rss_mb,
             threads=self._process.num_threads(),
             cpu_percent=round(self._process.cpu_percent(interval=None), 3),
+            idempotency_entries=idempotency_entries,
         )
 
     def get_metrics_snapshot(self) -> dict[str, Any]:

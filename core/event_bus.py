@@ -26,6 +26,7 @@ class RecordingEventType(StrEnum):
     PROGRESS = "progress"
     ERROR = "error"
     STATUS = "status"
+    AUDIO_CHUNKS_DROPPED = "audio_chunks_dropped"
 
 
 @dataclass(frozen=True)

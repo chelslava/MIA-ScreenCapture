@@ -1,3 +1,39 @@
+<!-- Generated: 2026-04-29 | Updated: 2026-04-29 -->
+
+# MIA-ScreenCapture
+
+## Purpose
+Профессиональный рекордер экрана для Windows 10/11 с поддержкой GUI (PyQt6), REST API (Flask), CLI и планировщика задач. Использует Windows Graphics Capture API для захвата видео и APScheduler для задач по расписанию.
+
+## Subdirectories
+
+| Директория | Назначение |
+|-----------|---------|
+| `api/` | REST API сервер: Flask routes, аутентификация, WebSocket, Swagger (см. `api/AGENTS.md`) |
+| `core/` | Доменное ядро: бизнес-логика, event bus, lifecycle, DI-контейнер (см. `core/AGENTS.md`) |
+| `gui/` | PyQt6 GUI: MVC (views/controllers/models), трей, горячие клавиши (см. `gui/AGENTS.md`) |
+| `recorder/` | Физический захват: видео (WGC API), аудио (sounddevice), FFmpeg кодирование (см. `recorder/AGENTS.md`) |
+| `scheduler/` | Планировщик записей на APScheduler: разовые/ежедневные/cron задачи (см. `scheduler/AGENTS.md`) |
+| `cli/` | CLI интерфейс: argparse парсер, команды запуска/остановки (см. `cli/AGENTS.md`) |
+| `app_runtime/` | Runtime координаторы: связующий слой между core и GUI/API (см. `app_runtime/AGENTS.md`) |
+| `config/` | JSON-файлы конфигурации: `config.json`, `tasks.json` |
+| `tests/` | Тесты: 65+ unit + 10 интеграционных (см. `tests/AGENTS.md`) |
+| `docs/` | Документация GitHub Wiki (см. `docs/AGENTS.md`) |
+| `scripts/` | Утилиты разработки: smoke-тест API, diff-coverage (см. `scripts/AGENTS.md`) |
+| `plans/` | Планы разработки и дорожные карты |
+
+## Key Files
+
+| Файл | Описание |
+|------|----------|
+| `main.py` | Точка входа: разбор CLI, инициализация GUI или headless режима |
+| `config.py` | Dataclass-конфигурация приложения, чтение/запись `config/config.json` |
+| `exceptions.py` | Иерархия исключений: `MIAError`, `RecordingError`, `ConfigurationError` и др. |
+| `logger_config.py` | Централизованная настройка логирования: `get_module_logger(__name__)` |
+| `pyproject.toml` | Метаданные проекта, зависимости (управляются через UV) |
+
+---
+
 # Guidelines for Python Development in MIA-ScreenCapture
 
 ## Общие принципы

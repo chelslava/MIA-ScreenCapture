@@ -78,7 +78,7 @@ def _patch_waitress_shutdown_for_windows() -> None:
 
         try:
             from waitress import trigger as waitress_trigger
-        except Exception as e:
+        except ImportError as e:
             logger.debug(
                 "Не удалось применить workaround shutdown waitress: %s",
                 e,
@@ -141,9 +141,11 @@ class APIServer:
         self._lock = threading.Lock()
         self._start_time = time.monotonic()
         self._version = self._load_version()
-        self._observability = APIServerObservability()
         self._operations = APIOperationStore()
         self._idempotency = APIIdempotencyStore()
+        self._observability = APIServerObservability(
+            idempotency_store=self._idempotency
+        )
 
         # Обратные вызовы
         self._callbacks: dict[str, Callable] = {}
@@ -461,7 +463,7 @@ class APIServer:
                 logger.info(f"API сервер запущен на {self.host}:{self.port}")
                 return True
 
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.error(f"Не удалось запустить API сервер: {e}")
                 self._running = False
                 return False
@@ -504,7 +506,7 @@ class APIServer:
                 clear_untrusted_proxy_headers=True,
             )
             self._wsgi_server.run()
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.error(f"Ошибка сервера: {e}")
         finally:
             self._running = False
@@ -525,7 +527,7 @@ class APIServer:
         if wsgi_server is not None:
             try:
                 wsgi_server.close()
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.warning(f"Ошибка закрытия API сервера: {e}")
 
         if server_thread and server_thread.is_alive():
@@ -616,7 +618,7 @@ class APIServer:
             match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
             if match:
                 return match.group(1)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.debug(f"Не удалось прочитать версию из pyproject.toml: {e}")
         return _VERSION_FALLBACK
 
