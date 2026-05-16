@@ -9,8 +9,10 @@ import subprocess
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 
@@ -18,6 +20,70 @@ from logger_config import get_module_logger
 from recorder.utils import get_ffmpeg_path, get_subprocess_creationflags
 
 logger = get_module_logger(__name__)
+
+_T = TypeVar("_T")
+
+
+@dataclass
+class RetryPolicy:
+    """Политика повторных попыток для операций с FFmpeg."""
+
+    max_attempts: int = 3
+    initial_delay_s: float = 0.5
+    backoff_factor: float = 2.0
+    max_delay_s: float = 10.0
+
+
+def retry_with_backoff(
+    fn: Callable[[], _T],
+    policy: RetryPolicy,
+    *,
+    retriable_exceptions: tuple[type[Exception], ...] = (IOError, OSError),
+) -> _T:
+    """Вызывает fn() с повторами при retriable_exceptions согласно policy.
+
+    Каждая неудачная попытка логируется через logging.warning с номером попытки,
+    описанием ошибки и задержкой до следующей попытки.
+
+    Args:
+        fn: Вызываемый объект без аргументов.
+        policy: Параметры retry.
+        retriable_exceptions: Типы исключений, при которых делается повтор.
+
+    Returns:
+        Результат fn() при успехе.
+
+    Raises:
+        Последнее исключение если все попытки исчерпаны.
+    """
+    delay = policy.initial_delay_s
+    last_exc: Exception | None = None
+
+    for attempt in range(1, policy.max_attempts + 1):
+        try:
+            return fn()
+        except retriable_exceptions as exc:
+            last_exc = exc
+            if attempt < policy.max_attempts:
+                logger.warning(
+                    "Попытка %d/%d не удалась: %s. Следующая через %.2f с",
+                    attempt,
+                    policy.max_attempts,
+                    exc,
+                    delay,
+                )
+                time.sleep(delay)
+                delay = min(delay * policy.backoff_factor, policy.max_delay_s)
+            else:
+                logger.warning(
+                    "Попытка %d/%d не удалась: %s. Попытки исчерпаны",
+                    attempt,
+                    policy.max_attempts,
+                    exc,
+                )
+
+    raise last_exc  # type: ignore[misc]
+
 
 _FFMPEG_CLOSE_TIMEOUT_SECONDS = 180
 _FFMPEG_TERMINATE_GRACE_TIMEOUT_SECONDS = 15
@@ -98,6 +164,7 @@ class FFmpegVideoWriter:
         bitrate: str = "2M",
         preset: str = "medium",
         pixel_format: str = "bgr24",
+        retry_policy: RetryPolicy | None = None,
     ):
         """
         Инициализация FFmpeg видеозаписи.
@@ -111,6 +178,7 @@ class FFmpegVideoWriter:
             bitrate: Битрейт (2M, 4M, etc.)
             preset: Preset кодирования
             pixel_format: Формат пикселей (bgr24 для OpenCV)
+            retry_policy: Политика повторных попыток; None = RetryPolicy()
         """
         self._output_path = Path(output_path)
         self._width = width
@@ -120,6 +188,9 @@ class FFmpegVideoWriter:
         self._bitrate = bitrate
         self._preset = preset
         self._pixel_format = pixel_format
+        self._retry_policy = (
+            retry_policy if retry_policy is not None else RetryPolicy()
+        )
         self._ffmpeg_path = get_ffmpeg_path()
 
         self._process: subprocess.Popen | None = None
@@ -300,28 +371,54 @@ class FFmpegVideoWriter:
         Returns:
             True если кадр успешно записан
         """
-        if not self.is_opened:
-            return False
-
         if self._is_corrupted:
             return False
 
         try:
             with self._lock:
-                if self._process and self._process.stdin:
-                    self._process.stdin.write(frame.tobytes())
-                    self._frame_count += 1
-                    return True
+                if self._process is None:
+                    return False
+                if self._process.poll() is not None:
+                    self._is_corrupted = True
+                    dead_process = True
+                else:
+                    dead_process = False
+                    if self._process.stdin:
+                        # Используем memoryview для zero-copy если кадр
+                        # уже contiguous C-order — иначе tobytes() как fallback.
+                        contiguous = np.ascontiguousarray(frame)
+                        frame_data: bytes | memoryview = memoryview(contiguous)
+                        stdin = self._process.stdin
+
+                        def _write_frame() -> None:
+                            stdin.write(frame_data)
+
+                        retry_with_backoff(
+                            _write_frame,
+                            self._retry_policy,
+                            retriable_exceptions=(IOError, OSError),
+                        )
+                        self._frame_count += 1
+
+            if dead_process:
+                self._log_stderr_tail(
+                    "процесс завершился неожиданно во время write"
+                )
+                return False
+            return True
         except BrokenPipeError:
             logger.error("FFmpeg pipe broken, помечаем файл как повреждённый")
+            self._is_corrupted = True
+            self._terminate_process_safely()
+            return False
+        except OSError as e:
+            logger.error(f"Ошибка записи кадра после всех попыток: {e}")
             self._is_corrupted = True
             self._terminate_process_safely()
             return False
         except Exception as e:
             logger.error(f"Ошибка записи кадра: {e}")
             return False
-
-        return False
 
     def close(self) -> bool:
         """

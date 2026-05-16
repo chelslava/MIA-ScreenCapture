@@ -8,14 +8,29 @@
 
 import os
 import platform
+import re
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
+
+_MIN_FFMPEG_VERSION = (4, 0, 0)
+
+
+@dataclass
+class FFmpegStatus:
+    """Результат проверки доступности FFmpeg."""
+
+    available: bool
+    version: str | None = None
+    path: str | None = None
+    error: str | None = None
+    recommendation: str | None = None
 
 
 def get_subprocess_creationflags() -> int:
@@ -42,53 +57,102 @@ def get_platform() -> str:
     return system
 
 
-def check_ffmpeg() -> tuple[bool, str | None]:
+def check_ffmpeg() -> FFmpegStatus:
     """
-    Проверка доступности FFmpeg в системном PATH.
+    Проверка доступности FFmpeg.
 
     Returns:
-        Кортеж (доступен, строка_версии)
+        FFmpegStatus с полями available, version, path, error, recommendation.
     """
     ffmpeg_path = get_ffmpeg_path()
     if ffmpeg_path is None:
-        logger.warning("FFmpeg не найден в PATH")
-        return False, None
+        msg = "FFmpeg не найден в PATH"
+        rec = (
+            "Установите FFmpeg и добавьте его в PATH. "
+            "Скачать: https://ffmpeg.org/download.html"
+        )
+        logger.warning(msg)
+        return FFmpegStatus(available=False, error=msg, recommendation=rec)
 
     try:
         creationflags = get_subprocess_creationflags()
+        run_kwargs: dict[str, Any] = {
+            "capture_output": True,
+            "text": True,
+            "timeout": 10,
+        }
         if creationflags:
-            result = subprocess.run(
-                [ffmpeg_path, "-version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                creationflags=creationflags,
-            )
-        else:
-            result = subprocess.run(
-                [ffmpeg_path, "-version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        if result.returncode == 0:
-            # Извлечение версии из первой строки
-            first_line = result.stdout.split("\n")[0]
-            version = (
-                first_line.split()[2]
-                if len(first_line.split()) > 2
-                else "unknown"
-            )
-            logger.info(f"FFmpeg найден: версия {version}")
-            return True, version
-    except FileNotFoundError:
-        logger.warning(f"FFmpeg не найден по пути: {ffmpeg_path}")
-    except subprocess.TimeoutExpired:
-        logger.error("Таймаут проверки версии FFmpeg")
-    except Exception as e:
-        logger.error(f"Ошибка проверки FFmpeg: {e}")
+            run_kwargs["creationflags"] = creationflags
 
-    return False, None
+        result = subprocess.run([ffmpeg_path, "-version"], **run_kwargs)
+
+        if result.returncode != 0:
+            msg = f"FFmpeg вернул код {result.returncode}"
+            logger.error(msg)
+            return FFmpegStatus(
+                available=False,
+                path=ffmpeg_path,
+                error=msg,
+                recommendation="Переустановите FFmpeg.",
+            )
+
+        first_line = result.stdout.split("\n")[0]
+        parts = first_line.split()
+        version = parts[2] if len(parts) > 2 else "unknown"
+
+        recommendation: str | None = None
+        version_match = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", version)
+        if version_match:
+            major = int(version_match.group(1))
+            minor = int(version_match.group(2))
+            patch_ver = int(version_match.group(3) or 0)
+            detected = (major, minor, patch_ver)
+            if detected < _MIN_FFMPEG_VERSION:
+                min_str = ".".join(str(v) for v in _MIN_FFMPEG_VERSION)
+                recommendation = (
+                    f"Версия FFmpeg {version} устарела. "
+                    f"Рекомендуется {min_str} или новее."
+                )
+                logger.warning(
+                    "FFmpeg версия %s устарела, требуется >= %s",
+                    version,
+                    min_str,
+                )
+
+        logger.info("FFmpeg найден: версия %s, путь %s", version, ffmpeg_path)
+        return FFmpegStatus(
+            available=True,
+            version=version,
+            path=ffmpeg_path,
+            recommendation=recommendation,
+        )
+
+    except FileNotFoundError:
+        msg = f"FFmpeg не найден по пути: {ffmpeg_path}"
+        rec = (
+            "FFmpeg найден в PATH, но не запускается. "
+            "Проверьте права доступа или переустановите FFmpeg."
+        )
+        logger.warning(msg)
+        return FFmpegStatus(
+            available=False,
+            path=ffmpeg_path,
+            error=msg,
+            recommendation=rec,
+        )
+    except subprocess.TimeoutExpired:
+        msg = "Таймаут при проверке версии FFmpeg"
+        logger.error(msg)
+        return FFmpegStatus(
+            available=False,
+            path=ffmpeg_path,
+            error=msg,
+            recommendation="Проверьте, не завис ли процесс FFmpeg в системе.",
+        )
+    except Exception as e:
+        msg = f"Ошибка проверки FFmpeg: {e}"
+        logger.error(msg)
+        return FFmpegStatus(available=False, path=ffmpeg_path, error=msg)
 
 
 def get_executable_path(executable_name: str) -> str | None:

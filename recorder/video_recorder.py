@@ -34,8 +34,10 @@ _WINDOW_CAPTURE_RECONNECT_TIMEOUT_SECONDS = 5.0
 _WINDOW_CAPTURE_RECONNECT_POLL_SECONDS = 0.25
 
 # Alias для обратной совместимости с тестами и кодом, импортирующим RecordingState
-RecordingState = RecordingStatus
-VideoRecorderState = RecordingStatus
+from typing import TypeAlias
+
+RecordingState: TypeAlias = RecordingStatus
+VideoRecorderState: TypeAlias = RecordingStatus
 
 
 @dataclass
@@ -363,6 +365,11 @@ class VideoRecorder:
         self._capture_area: CaptureArea | None = None
         self._capture_session: _WindowsCaptureSession | None = None
         self._duration: float | None = None
+
+        # Кэшированный флаг: нужна ли конвертация цвета при записи кадров.
+        # False — кадры уже в целевом формате (zero-copy путь).
+        # True  — требуется cv2.cvtColor (устанавливается при первом кадре).
+        self._needs_color_conversion: bool = True
 
         # Статистика
         self._start_time: float = 0
