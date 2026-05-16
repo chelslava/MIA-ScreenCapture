@@ -714,7 +714,7 @@ class APIServer:
         ):
             overall_status = "degraded"
         else:
-            overall_status = "healthy"
+            overall_status = "ok"
 
         return {
             "status": overall_status,

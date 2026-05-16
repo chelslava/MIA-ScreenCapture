@@ -13,6 +13,7 @@ from flask.testing import FlaskClient
 
 from api.auth import init_api_auth
 from api.routes import register_routes
+from api.runtime_models import APIOperation, IdempotencyBeginResult
 from api.server import APIServer
 
 TEST_API_KEY = "test-api-key-for-recording-routes-12345"
@@ -84,7 +85,7 @@ def _install_stop_operation_stubs(
         request_id: str | None = None,
         trace_id: str | None = None,
         client_ip: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> APIOperation:
         result = runner()
         operation = {
             "id": STOP_OPERATION_ID,
@@ -97,19 +98,19 @@ def _install_stop_operation_stubs(
             "client_ip": client_ip,
         }
         operation_state["operation"] = operation
-        return dict(operation)
+        return APIOperation.from_dict(operation)
 
     def wait_for_background_operation(
         operation_id: str,
         timeout: float,
-    ) -> dict[str, Any] | None:
+    ) -> APIOperation | None:
         assert timeout == STOP_OPERATION_WAIT_SECONDS
         operation = operation_state["operation"]
         if operation is None:
             return None
         if operation["id"] != operation_id:
             return None
-        return dict(operation)
+        return APIOperation.from_dict(operation)
 
     server.submit_background_operation = MagicMock(
         side_effect=submit_background_operation
@@ -361,17 +362,19 @@ class TestStopRecordingRoute:
         """Проверяет контракт 202 для `/api/v1/stop` при running-операции."""
         request_id = f"{TEST_REQUEST_ID}-stop-v1-running"
 
-        running_operation = {
-            "id": STOP_OPERATION_ID,
-            "type": "stop",
-            "status": "running",
-            "created_at": "2026-03-30T10:00:00+00:00",
-            "updated_at": "2026-03-30T10:00:00+00:00",
-            "completed_at": None,
-            "request_id": request_id,
-            "trace_id": request_id,
-            "client_ip": "127.0.0.1",
-        }
+        running_operation = APIOperation.from_dict(
+            {
+                "id": STOP_OPERATION_ID,
+                "type": "stop",
+                "status": "running",
+                "created_at": "2026-03-30T10:00:00+00:00",
+                "updated_at": "2026-03-30T10:00:00+00:00",
+                "completed_at": None,
+                "request_id": request_id,
+                "trace_id": request_id,
+                "client_ip": "127.0.0.1",
+            }
+        )
         recording_server.submit_background_operation = MagicMock(
             return_value=running_operation
         )
@@ -402,19 +405,21 @@ class TestStopRecordingRoute:
     ) -> None:
         """Проверяет успешный контракт `/api/v1/operations/{id}`."""
         request_id = f"{TEST_REQUEST_ID}-operation-v1-ok"
-        operation = {
-            "id": STOP_OPERATION_ID,
-            "type": "stop",
-            "status": "succeeded",
-            "created_at": "2026-03-30T10:00:00+00:00",
-            "updated_at": "2026-03-30T10:00:01+00:00",
-            "completed_at": "2026-03-30T10:00:01+00:00",
-            "result": {"success": True},
-            "error": None,
-            "request_id": request_id,
-            "trace_id": request_id,
-            "client_ip": "127.0.0.1",
-        }
+        operation = APIOperation.from_dict(
+            {
+                "id": STOP_OPERATION_ID,
+                "type": "stop",
+                "status": "succeeded",
+                "created_at": "2026-03-30T10:00:00+00:00",
+                "updated_at": "2026-03-30T10:00:01+00:00",
+                "completed_at": "2026-03-30T10:00:01+00:00",
+                "result": {"success": True},
+                "error": None,
+                "request_id": request_id,
+                "trace_id": request_id,
+                "client_ip": "127.0.0.1",
+            }
+        )
         recording_server.get_background_operation = MagicMock(
             return_value=operation
         )
@@ -490,7 +495,9 @@ class TestV1IdempotencyContracts:
         """Проверяет `idempotency_in_progress` для `/api/v1/start`."""
         request_id = f"{TEST_REQUEST_ID}-idempotency-in-progress"
         recording_server.begin_idempotency_request = MagicMock(
-            return_value={"state": "in_progress"}
+            return_value=IdempotencyBeginResult.from_dict(
+                {"state": "in_progress"}
+            )
         )
 
         response = recording_client.post(

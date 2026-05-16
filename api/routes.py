@@ -468,12 +468,16 @@ def _register_health_route(app: Any, server: Any) -> None:
             resp.headers["X-Request-ID"] = _get_trace_id()
             return resp, 429
 
-        payload = server._get_health_payload()
-        status_code = 503 if payload.get("status") == "unhealthy" else 200
-        response = jsonify(payload)
-        response.status_code = status_code
-        response.headers["X-Request-ID"] = _get_trace_id()
-        return response, status_code
+        try:
+            payload = server._get_health_payload()
+            status_code = 503 if payload.get("status") == "unhealthy" else 200
+            response = jsonify(payload)
+            response.status_code = status_code
+            response.headers["X-Request-ID"] = _get_trace_id()
+            return response, status_code
+        except Exception:
+            logger.exception("Health check failed")
+            return _internal_error_response()
 
 
 def _register_legacy_routes(

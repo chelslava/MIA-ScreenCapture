@@ -53,8 +53,8 @@ class TestZeroCopyWrite:
 
         written_via_memoryview: list[bytes] = []
         stdin_mock = MagicMock()
-        stdin_mock.write.side_effect = (
-            lambda data: written_via_memoryview.append(bytes(data))
+        stdin_mock.write.side_effect = lambda data: (
+            written_via_memoryview.append(bytes(data))
         )
 
         writer = self._make_writer(stdin_mock)

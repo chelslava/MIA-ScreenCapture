@@ -12,6 +12,7 @@ from unittest.mock import ANY, MagicMock, patch
 import pytest
 
 from recorder.encoder import Encoder, EncodingSettings, RecordingEncoder
+from recorder.utils import FFmpegStatus
 
 
 class TestEncodingSettings:
@@ -57,7 +58,9 @@ class TestEncoder:
         with patch("recorder.encoder.check_ffmpeg") as mock_check:
             with patch("recorder.encoder.get_ffmpeg_path") as mock_path:
                 with patch("recorder.encoder.get_ffprobe_path") as mock_probe:
-                    mock_check.return_value = (True, "6.0")
+                    mock_check.return_value = FFmpegStatus(
+                        available=True, version="6.0"
+                    )
                     mock_path.return_value = "/usr/bin/ffmpeg"
                     mock_probe.return_value = "/usr/bin/ffprobe"
                     yield
@@ -100,7 +103,7 @@ class TestEncoder:
         """Проверка is_available когда FFmpeg недоступен."""
         with patch("recorder.encoder.check_ffmpeg") as mock_check:
             with patch("recorder.encoder.get_ffmpeg_path") as mock_path:
-                mock_check.return_value = (False, None)
+                mock_check.return_value = FFmpegStatus(available=False)
                 mock_path.return_value = None
 
                 encoder = Encoder()
@@ -398,7 +401,9 @@ class TestEncoderAdditionalMethods:
         with patch("recorder.encoder.check_ffmpeg") as mock_check:
             with patch("recorder.encoder.get_ffmpeg_path") as mock_path:
                 with patch("recorder.encoder.get_ffprobe_path") as mock_probe:
-                    mock_check.return_value = (True, "6.0")
+                    mock_check.return_value = FFmpegStatus(
+                        available=True, version="6.0"
+                    )
                     mock_path.return_value = "/usr/bin/ffmpeg"
                     mock_probe.return_value = "/usr/bin/ffprobe"
                     yield

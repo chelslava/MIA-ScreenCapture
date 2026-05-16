@@ -632,7 +632,7 @@ class TestAPIServerObservability:
         data = response.get_json()
 
         assert response.status_code in (200, 503)
-        assert data["status"] in ("healthy", "degraded", "unhealthy")
+        assert data["status"] in ("ok", "degraded", "unhealthy")
         assert "timestamp" in data
         assert data["version"] == server._version
         assert data["version"] != "unknown"
@@ -945,7 +945,7 @@ class TestHealthCheckEndpoint:
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data["status"] == "healthy"
+        assert data["status"] == "ok"
 
     def test_health_returns_503_when_disk_critical(self) -> None:
         client, server = self._make_client()

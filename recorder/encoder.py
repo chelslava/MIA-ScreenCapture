@@ -74,7 +74,8 @@ class Encoder:
         Returns:
             True если FFmpeg доступен
         """
-        available, _version = check_ffmpeg()
+        status = check_ffmpeg()
+        available = status.available
         if not available:
             logger.error(
                 "FFmpeg не найден! Пожалуйста, установите FFmpeg и добавьте в PATH. "

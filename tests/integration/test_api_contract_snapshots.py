@@ -61,6 +61,8 @@ def api_server() -> Generator[APIServer, None, None]:
         }
     )
     server.set_websocket_manager(websocket_manager)
+    server._check_ffmpeg = lambda: {"status": "ok"}
+    server._check_disk = lambda: {"status": "ok", "free_gb": 100.0}
 
     register_routes(server.app, server)
     server.app.config["TESTING"] = True
@@ -101,11 +103,18 @@ class TestAPIContractSnapshots:
         payload = response.get_json()
         _assert_exact_keys(
             payload,
-            {"status", "timestamp", "uptime_seconds", "version", "websocket"},
+            {
+                "status",
+                "timestamp",
+                "uptime_seconds",
+                "version",
+                "websocket",
+                "checks",
+            },
         )
         assert payload["status"] == "ok"
         assert isinstance(payload["timestamp"], str)
-        assert isinstance(payload["uptime_seconds"], (int, float))
+        assert isinstance(payload["uptime_seconds"], int | float)
         assert isinstance(payload["version"], str)
 
         websocket = payload["websocket"]
