@@ -41,6 +41,7 @@ from core.readiness import (
 from core.recording_types import AudioMode, CaptureMode
 from gui.controllers.recording_controller import RecordingController
 from gui.controllers.settings_controller import SettingsController
+from gui.controllers.status_bar_controller import StatusBarController
 from gui.controllers.websocket_controller import WebSocketClientController
 from gui.desktop_actions import (
     DesktopAction,
@@ -63,13 +64,43 @@ from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_indicator import RecordingIndicatorOverlay
 from gui.views.video_view import VideoView
 from logger_config import get_module_logger, open_logs_folder
-from recorder.utils import check_ffmpeg, format_filesize, format_time
+from recorder.utils import (
+    FFmpegStatus,
+    check_ffmpeg,
+    format_filesize,
+    format_time,
+)
 
 logger = get_module_logger(__name__)
 _STATUS_UPDATE_INTERVAL_MS = 100
 
 if TYPE_CHECKING:
     from core.application_facade import ApplicationFacade
+
+
+class _ThreadTracker:
+    def __init__(self) -> None:
+        self._threads: list[threading.Thread] = []
+        self._lock = threading.Lock()
+
+    def track(self, thread: threading.Thread) -> threading.Thread:
+        with self._lock:
+            self._threads = [t for t in self._threads if t.is_alive()]
+            self._threads.append(thread)
+        return thread
+
+    def join_all(self, timeout: float = 5.0) -> None:
+        with self._lock:
+            threads = list(self._threads)
+        for t in threads:
+            if t.is_alive():
+                t.join(timeout=timeout)
+                if t.is_alive():
+                    logger.warning(
+                        "Поток не завершился за timeout: %s", t.name
+                    )
+        with self._lock:
+            self._threads = [t for t in self._threads if t.is_alive()]
 
 
 class MainWindow(QMainWindow):
@@ -112,6 +143,7 @@ class MainWindow(QMainWindow):
         self._application_facade: ApplicationFacade | None = None
         self._stop_operation_thread: threading.Thread | None = None
         self._stop_operation_in_progress = False
+        self._thread_tracker = _ThreadTracker()
 
         # Инициализация модели и контроллеров
         self._state = RecordingState()
@@ -136,6 +168,13 @@ class MainWindow(QMainWindow):
         # Настройка окна
         self._setup_window()
         self._setup_ui()
+        self._status_bar_controller = StatusBarController(
+            start_btn=self.start_btn,
+            stop_btn=self.stop_btn,
+            pause_btn=self.pause_btn,
+            status_label=self.status_label,
+            time_label=self.time_label,
+        )
         self._setup_desktop_actions()
         self._connect_signals()
 
@@ -848,11 +887,13 @@ class MainWindow(QMainWindow):
         request_id = self._readiness_request_id
         self._readiness_center_view.set_loading_state()
 
-        threading.Thread(
+        t = threading.Thread(
             target=self._refresh_readiness_worker,
             args=(request_id, capture, audio, output_path),
             daemon=True,
-        ).start()
+        )
+        self._thread_tracker.track(t)
+        t.start()
 
     def _refresh_readiness_worker(
         self,
@@ -936,15 +977,13 @@ class MainWindow(QMainWindow):
 
         if action_key == "refresh_windows":
             self.tabs.setCurrentIndex(0)
-            self._capture_view._refresh_windows()
+            self._capture_view.refresh_windows()
             return
 
         if action_key == "focus_capture_window":
             self.tabs.setCurrentIndex(0)
             self._capture_view.set_capture_type(CaptureMode.WINDOW)
-            focus = getattr(self._capture_view._window_combo, "setFocus", None)
-            if callable(focus):
-                focus()
+            self._capture_view.focus_window_combo()
             return
 
         if action_key == "refresh_audio_devices":
@@ -1165,6 +1204,7 @@ class MainWindow(QMainWindow):
             target=self._stop_recording_worker,
             daemon=True,
         )
+        self._thread_tracker.track(self._stop_operation_thread)
         self._stop_operation_thread.start()
 
     def _stop_recording_worker(self) -> None:
@@ -1266,7 +1306,9 @@ class MainWindow(QMainWindow):
         """Обновление отображения статуса."""
         if self._state.is_recording():
             elapsed = self._recording_controller.elapsed_time
-            self.time_label.setText(format_time(elapsed))
+            self._status_bar_controller.update_time_display(
+                format_time(elapsed)
+            )
 
     def _set_status_updates_enabled(self, enabled: bool) -> None:
         """
@@ -1288,69 +1330,7 @@ class MainWindow(QMainWindow):
         Args:
             status: Статус записи из `RecordingStatus`.
         """
-        state_config = {
-            RecordingStatus.IDLE: {
-                "start_enabled": True,
-                "stop_enabled": False,
-                "pause_enabled": False,
-                "pause_text": "Пауза",
-                "stop_text": "Стоп",
-                "status_text": "Готов",
-                "status_style": "",
-                "time_text": "00:00",
-            },
-            RecordingStatus.RECORDING: {
-                "start_enabled": False,
-                "stop_enabled": True,
-                "pause_enabled": True,
-                "pause_text": "Пауза",
-                "stop_text": "Стоп",
-                "status_text": "Запись",
-                "status_style": Theme.status_style("danger"),
-                "time_text": None,
-            },
-            RecordingStatus.PAUSED: {
-                "start_enabled": False,
-                "stop_enabled": True,
-                "pause_enabled": True,
-                "pause_text": "Продолжить",
-                "stop_text": "Стоп",
-                "status_text": "Пауза",
-                "status_style": Theme.status_style("warning"),
-                "time_text": None,
-            },
-            RecordingStatus.STOPPING: {
-                "start_enabled": False,
-                "stop_enabled": True,
-                "pause_enabled": False,
-                "pause_text": "Пауза",
-                "stop_text": "Отменить остановку",
-                "status_text": "Остановка...",
-                "status_style": Theme.status_style("warning"),
-                "time_text": None,
-            },
-        }
-        config = state_config.get(status, state_config[RecordingStatus.IDLE])
-
-        start_enabled = bool(config["start_enabled"])
-        stop_enabled = bool(config["stop_enabled"])
-        pause_enabled = bool(config["pause_enabled"])
-        pause_text = str(config["pause_text"])
-        stop_text = str(config["stop_text"])
-        status_text = str(config["status_text"])
-        status_style = str(config["status_style"])
-        time_text = config["time_text"]
-
-        self.start_btn.setEnabled(start_enabled)
-        self.stop_btn.setEnabled(stop_enabled)
-        self.pause_btn.setEnabled(pause_enabled)
-        self.pause_btn.setText(pause_text)
-        self.stop_btn.setText(stop_text)
-        self.status_label.setText(status_text)
-        self.status_label.setStyleSheet(status_style)
-
-        if time_text is not None:
-            self.time_label.setText(str(time_text))
+        self._status_bar_controller.apply_recording_status(status)
 
     def _get_api_control_handler(
         self,
@@ -1702,19 +1682,41 @@ class MainWindow(QMainWindow):
             logger.error("Ошибка проверки зависимостей: %s", error)
             return
 
-        if not isinstance(result, tuple) or not result:
+        if not isinstance(result, FFmpegStatus):
             return
 
-        ffmpeg_available = bool(result[0])
-        if not ffmpeg_available:
-            self.status_label.setText("Требует внимания")
-            self.status_label.setStyleSheet(Theme.status_style("warning"))
-            self.status_bar.showMessage(
-                "FFmpeg не найден. Проверьте readiness center "
-                "или откройте диагностику.",
-                12000,
-            )
-            self._refresh_readiness_summary()
+        if result.available:
+            if result.recommendation:
+                logger.warning("FFmpeg: %s", result.recommendation)
+                self.status_bar.showMessage(
+                    f"FFmpeg: {result.recommendation}",
+                    10000,
+                )
+            else:
+                logger.info(
+                    "FFmpeg доступен: версия %s, путь %s",
+                    result.version,
+                    result.path,
+                )
+            return
+
+        logger.warning(
+            "FFmpeg недоступен: %s. Рекомендация: %s",
+            result.error,
+            result.recommendation,
+        )
+        self.start_btn.setEnabled(False)
+        self.start_btn.setToolTip(
+            result.recommendation or result.error or "FFmpeg недоступен"
+        )
+        self.status_label.setText("Требует внимания")
+        self.status_label.setStyleSheet(Theme.status_style("warning"))
+        hint = result.recommendation or result.error or "FFmpeg не найден."
+        self.status_bar.showMessage(
+            f"{hint} Проверьте readiness center или откройте диагностику.",
+            12000,
+        )
+        self._refresh_readiness_summary()
 
     def _get_default_geometry(self):
         """Возвращает геометрию по умолчанию при отсутствии экрана."""
@@ -1768,6 +1770,7 @@ class MainWindow(QMainWindow):
 
         self._settings_controller.save_settings()
         self._update_timer.stop()
+        self._thread_tracker.join_all()
         event.accept()
 
     # === Публичные методы для API ===

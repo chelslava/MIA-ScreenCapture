@@ -198,3 +198,41 @@ class TestCaptureViewAsyncLoading:
         assert view._select_rect_btn._accessible_name == (
             "Выбрать область захвата"
         )
+
+    def test_refresh_windows_public_delegates_to_private(
+        self,
+        qapp: QApplication,
+        monkeypatch,
+        capture_view_environment,
+    ) -> None:
+        """refresh_windows() — публичный proxy к _refresh_windows()."""
+        from unittest.mock import patch
+
+        monkeypatch.setattr(
+            "gui.views.capture_view.threading.Thread",
+            _NoopThread,
+        )
+        view = _patch_view_runtime(CaptureView())
+
+        with patch.object(view, "_refresh_windows") as mock_private:
+            view.refresh_windows()
+            mock_private.assert_called_once_with()
+
+    def test_focus_window_combo_sets_focus(
+        self,
+        qapp: QApplication,
+        monkeypatch,
+        capture_view_environment,
+    ) -> None:
+        """focus_window_combo() вызывает setFocus на _window_combo."""
+        from unittest.mock import MagicMock
+
+        monkeypatch.setattr(
+            "gui.views.capture_view.threading.Thread",
+            _NoopThread,
+        )
+        view = _patch_view_runtime(CaptureView())
+        view._window_combo.setFocus = MagicMock()
+
+        view.focus_window_combo()
+        view._window_combo.setFocus.assert_called_once_with()

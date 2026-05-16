@@ -421,3 +421,12 @@ class CaptureView(QWidget):
         self._rect_edit.setText(format_rect_coords(coords))
         self._rect_summary_label.setText(describe_rect(coords))
         self._rect_preview.set_rect_coords(coords)
+
+    def refresh_windows(self) -> None:
+        """Публичный метод обновления списка доступных окон."""
+        self._refresh_windows()
+
+    def focus_window_combo(self) -> None:
+        """Установить фокус на комбобокс выбора окна."""
+        if hasattr(self, "_window_combo"):
+            self._window_combo.setFocus()
