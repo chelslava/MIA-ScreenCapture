@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-29 | Updated: 2026-04-29 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-05-07 -->
 
 # MIA-ScreenCapture
 
@@ -11,7 +11,7 @@
 |-----------|---------|
 | `api/` | REST API сервер: Flask routes, аутентификация, WebSocket, Swagger (см. `api/AGENTS.md`) |
 | `core/` | Доменное ядро: бизнес-логика, event bus, lifecycle, DI-контейнер (см. `core/AGENTS.md`) |
-| `gui/` | PyQt6 GUI: MVC (views/controllers/models), трей, горячие клавиши (см. `gui/AGENTS.md`) |
+| `gui/` | PyQt6 GUI: MVC (views/controllers/models), трей, горячие клавиши, бэкенды записи, темы (см. `gui/AGENTS.md`) |
 | `recorder/` | Физический захват: видео (WGC API), аудио (sounddevice), FFmpeg кодирование (см. `recorder/AGENTS.md`) |
 | `scheduler/` | Планировщик записей на APScheduler: разовые/ежедневные/cron задачи (см. `scheduler/AGENTS.md`) |
 | `cli/` | CLI интерфейс: argparse парсер, команды запуска/остановки (см. `cli/AGENTS.md`) |

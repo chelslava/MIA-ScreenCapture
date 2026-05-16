@@ -421,6 +421,14 @@ class AudioRecorder:
             logger.error(f"Ошибка цикла записи PyAudio: {e}")
             if self._on_error:
                 self._on_error(str(e))
+        finally:
+            if self._audio_stream is not None:
+                try:
+                    self._audio_stream.stop_stream()
+                    self._audio_stream.close()
+                except (OSError, RuntimeError) as e:
+                    logger.error(f"Ошибка закрытия PyAudio стрима: {e}")
+                self._audio_stream = None
 
     def _enqueue_audio_chunk(self, audio_data: bytes, frames: int) -> None:
         """

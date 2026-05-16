@@ -26,6 +26,8 @@ class TaskStorage:
 
         with self._persist_path.open(encoding="utf-8") as file:
             data = json.load(file)
+        if isinstance(data, list):
+            return data
         tasks = data.get("tasks", [])
         return tasks if isinstance(tasks, list) else []
 
