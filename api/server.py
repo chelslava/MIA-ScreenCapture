@@ -10,6 +10,7 @@ REST API сервер на базе Flask для удалённого управ
 import logging
 import os
 import re
+import shutil
 import socket
 import threading
 import time
@@ -55,6 +56,10 @@ _HIGH_FREQUENCY_PATH_PREFIXES = (
     "/api/v1/events",
     "/api/v1/observability",
 )
+
+_HEALTH_DISK_CRITICAL_MB = 100
+_HEALTH_DISK_DEGRADED_MB = 1024
+_HEALTH_RATE_LIMIT_SECONDS = 1.0
 _WAITRESS_SHUTDOWN_PATCH_LOCK = threading.Lock()
 _WAITRESS_SHUTDOWN_PATCHED = False
 
@@ -151,6 +156,8 @@ class APIServer:
         self._callbacks: dict[str, Callable] = {}
         self._websocket_manager: Any | None = None
         self._ws_transport: Any = None
+        self._health_last_request_time: float = 0.0
+        self._health_lock = threading.Lock()
 
         # Создание Flask приложения
         self._create_app()
@@ -622,19 +629,104 @@ class APIServer:
             logger.debug(f"Не удалось прочитать версию из pyproject.toml: {e}")
         return _VERSION_FALLBACK
 
+    def _check_ffmpeg(self) -> dict[str, Any]:
+        """Проверяет доступность FFmpeg."""
+        from recorder.utils import check_ffmpeg
+
+        status = check_ffmpeg()
+        result: dict[str, Any] = {
+            "status": "ok" if status.available else "error"
+        }
+        if status.version:
+            result["version"] = status.version
+        if status.path:
+            result["path"] = status.path
+        if status.error:
+            result["error"] = status.error
+        if status.recommendation:
+            result["recommendation"] = status.recommendation
+        return result
+
+    def _check_disk(self) -> dict[str, Any]:
+        """Проверяет свободное место на диске."""
+        try:
+            usage = shutil.disk_usage(Path.home())
+            free_gb = round(usage.free / (1024**3), 2)
+            free_mb = usage.free / (1024 * 1024)
+            if free_mb < _HEALTH_DISK_CRITICAL_MB:
+                disk_status = "critical"
+            elif free_mb < _HEALTH_DISK_DEGRADED_MB:
+                disk_status = "degraded"
+            else:
+                disk_status = "ok"
+            return {"status": disk_status, "free_gb": free_gb}
+        except OSError as e:
+            return {"status": "error", "error": str(e)}
+
+    def _check_recording(self) -> dict[str, Any]:
+        """Возвращает состояние записи через callback."""
+        callback = self._callbacks.get("status")
+        if callback is None:
+            return {"status": "idle"}
+        try:
+            data = callback()
+            if not isinstance(data, dict):
+                return {"status": "idle"}
+            if data.get("is_recording"):
+                rec_status = "paused" if data.get("is_paused") else "active"
+            else:
+                rec_status = "idle"
+            return {"status": rec_status}
+        except Exception:
+            return {"status": "idle"}
+
+    def check_health_rate_limit(self) -> bool:
+        """Возвращает True если запрос разрешён, False если нужно вернуть 429."""
+        now = time.time()
+        with self._health_lock:
+            if (
+                now - self._health_last_request_time
+                < _HEALTH_RATE_LIMIT_SECONDS
+            ):
+                return False
+            self._health_last_request_time = now
+            return True
+
     def _get_health_payload(self) -> dict[str, Any]:
-        """Возвращает расширенный health payload."""
+        """Возвращает расширенный health payload с проверками компонентов."""
         websocket = (
             self._websocket_manager.get_stats()
             if self._websocket_manager is not None
             else {"transport_ready": False}
         )
+
+        ffmpeg_check = self._check_ffmpeg()
+        disk_check = self._check_disk()
+        recording_check = self._check_recording()
+
+        # Определяем итоговый статус
+        disk_status = disk_check.get("status", "ok")
+        if disk_status == "critical":
+            overall_status = "unhealthy"
+        elif (
+            disk_status in ("degraded", "error")
+            or ffmpeg_check.get("status") == "error"
+        ):
+            overall_status = "degraded"
+        else:
+            overall_status = "healthy"
+
         return {
-            "status": "ok",
+            "status": overall_status,
             "timestamp": datetime.now(UTC).isoformat(),
             "version": self._version,
             "uptime_seconds": round(time.monotonic() - self._start_time, 3),
             "websocket": websocket,
+            "checks": {
+                "ffmpeg": ffmpeg_check,
+                "disk": disk_check,
+                "recording": recording_check,
+            },
         }
 
     def get_observability_metrics(self) -> dict[str, Any]:

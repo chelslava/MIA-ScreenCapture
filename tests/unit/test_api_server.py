@@ -631,14 +631,18 @@ class TestAPIServerObservability:
         response = client.get("/health")
         data = response.get_json()
 
-        assert response.status_code == 200
-        assert data["status"] == "ok"
+        assert response.status_code in (200, 503)
+        assert data["status"] in ("healthy", "degraded", "unhealthy")
         assert "timestamp" in data
         assert data["version"] == server._version
         assert data["version"] != "unknown"
         assert isinstance(data["uptime_seconds"], int | float)
         assert data["uptime_seconds"] >= 0
         assert data["websocket"]["transport_ready"] is True
+        assert "checks" in data
+        assert "ffmpeg" in data["checks"]
+        assert "disk" in data["checks"]
+        assert "recording" in data["checks"]
 
     def test_latency_stats_reads_samples_under_lock(self) -> None:
         """Проверка чтения latency samples под lock."""
@@ -897,3 +901,249 @@ class TestAPIOperationStore:
             assert result is None
         finally:
             store.stop()
+
+
+class TestHealthCheckEndpoint:
+    """Тесты health-check endpoint /health."""
+
+    def _make_client(self, with_status_callback: bool = True):
+        server = APIServer()
+        init_api_auth(server.app, api_key="test-api-key")
+        server.set_websocket_manager(WebSocketManager())
+        if with_status_callback:
+            server.set_callback(
+                "status",
+                MagicMock(
+                    return_value={
+                        "is_recording": False,
+                        "is_paused": False,
+                        "elapsed_time": 0,
+                        "current_file": None,
+                    }
+                ),
+            )
+        register_routes(server.app, server)
+        server.app.config["TESTING"] = True
+        return server.app.test_client(), server
+
+    def test_health_returns_200_when_healthy(self) -> None:
+        client, server = self._make_client()
+
+        with (
+            patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
+            patch("api.server.shutil.disk_usage") as mock_disk,
+        ):
+            mock_ffmpeg.return_value = MagicMock(
+                available=True,
+                version="6.0",
+                path="/usr/bin/ffmpeg",
+                error=None,
+                recommendation=None,
+            )
+            mock_disk.return_value = MagicMock(free=50 * 1024**3)
+            response = client.get("/health")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "healthy"
+
+    def test_health_returns_503_when_disk_critical(self) -> None:
+        client, server = self._make_client()
+
+        with (
+            patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
+            patch("api.server.shutil.disk_usage") as mock_disk,
+        ):
+            mock_ffmpeg.return_value = MagicMock(
+                available=True,
+                version="6.0",
+                path="/usr/bin/ffmpeg",
+                error=None,
+                recommendation=None,
+            )
+            mock_disk.return_value = MagicMock(free=50 * 1024 * 1024)
+            response = client.get("/health")
+
+        assert response.status_code == 503
+        data = response.get_json()
+        assert data["status"] == "unhealthy"
+        assert data["checks"]["disk"]["status"] == "critical"
+
+    def test_health_returns_200_when_ffmpeg_missing(self) -> None:
+        client, server = self._make_client()
+
+        with (
+            patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
+            patch("api.server.shutil.disk_usage") as mock_disk,
+        ):
+            mock_ffmpeg.return_value = MagicMock(
+                available=False,
+                version=None,
+                path=None,
+                error="FFmpeg не найден",
+                recommendation="Установите FFmpeg",
+            )
+            mock_disk.return_value = MagicMock(free=50 * 1024**3)
+            response = client.get("/health")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "degraded"
+        assert data["checks"]["ffmpeg"]["status"] == "error"
+
+    def test_health_returns_200_when_disk_degraded(self) -> None:
+        client, server = self._make_client()
+
+        with (
+            patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
+            patch("api.server.shutil.disk_usage") as mock_disk,
+        ):
+            mock_ffmpeg.return_value = MagicMock(
+                available=True,
+                version="6.0",
+                path="/usr/bin/ffmpeg",
+                error=None,
+                recommendation=None,
+            )
+            mock_disk.return_value = MagicMock(free=500 * 1024 * 1024)
+            response = client.get("/health")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["status"] == "degraded"
+        assert data["checks"]["disk"]["status"] == "degraded"
+
+    def test_health_checks_structure(self) -> None:
+        client, server = self._make_client()
+
+        with (
+            patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
+            patch("api.server.shutil.disk_usage") as mock_disk,
+        ):
+            mock_ffmpeg.return_value = MagicMock(
+                available=True,
+                version="6.0",
+                path="/usr/bin/ffmpeg",
+                error=None,
+                recommendation=None,
+            )
+            mock_disk.return_value = MagicMock(free=50 * 1024**3)
+            response = client.get("/health")
+
+        data = response.get_json()
+        assert "checks" in data
+        assert "ffmpeg" in data["checks"]
+        assert "disk" in data["checks"]
+        assert "recording" in data["checks"]
+        assert "status" in data["checks"]["ffmpeg"]
+        assert "status" in data["checks"]["disk"]
+        assert "free_gb" in data["checks"]["disk"]
+        assert "status" in data["checks"]["recording"]
+
+    def test_health_recording_active_when_recording(self) -> None:
+        client, server = self._make_client(with_status_callback=False)
+        server.set_callback(
+            "status",
+            MagicMock(
+                return_value={
+                    "is_recording": True,
+                    "is_paused": False,
+                }
+            ),
+        )
+
+        with (
+            patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
+            patch("api.server.shutil.disk_usage") as mock_disk,
+        ):
+            mock_ffmpeg.return_value = MagicMock(
+                available=True,
+                version="6.0",
+                path="/usr/bin/ffmpeg",
+                error=None,
+                recommendation=None,
+            )
+            mock_disk.return_value = MagicMock(free=50 * 1024**3)
+            response = client.get("/health")
+
+        data = response.get_json()
+        assert data["checks"]["recording"]["status"] == "active"
+
+    def test_health_recording_paused_when_paused(self) -> None:
+        client, server = self._make_client(with_status_callback=False)
+        server.set_callback(
+            "status",
+            MagicMock(
+                return_value={
+                    "is_recording": True,
+                    "is_paused": True,
+                }
+            ),
+        )
+
+        with (
+            patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
+            patch("api.server.shutil.disk_usage") as mock_disk,
+        ):
+            mock_ffmpeg.return_value = MagicMock(
+                available=True,
+                version="6.0",
+                path="/usr/bin/ffmpeg",
+                error=None,
+                recommendation=None,
+            )
+            mock_disk.return_value = MagicMock(free=50 * 1024**3)
+            response = client.get("/health")
+
+        data = response.get_json()
+        assert data["checks"]["recording"]["status"] == "paused"
+
+    def test_health_rate_limit_returns_429(self) -> None:
+        client, server = self._make_client()
+        server._health_last_request_time = time.time()
+
+        response = client.get("/health")
+
+        assert response.status_code == 429
+
+    def test_health_rate_limit_allows_after_interval(self) -> None:
+        client, server = self._make_client()
+        server._health_last_request_time = time.time() - 2.0
+
+        with (
+            patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
+            patch("api.server.shutil.disk_usage") as mock_disk,
+        ):
+            mock_ffmpeg.return_value = MagicMock(
+                available=True,
+                version="6.0",
+                path="/usr/bin/ffmpeg",
+                error=None,
+                recommendation=None,
+            )
+            mock_disk.return_value = MagicMock(free=50 * 1024**3)
+            response = client.get("/health")
+
+        assert response.status_code == 200
+
+    def test_health_has_timestamp_and_version(self) -> None:
+        client, server = self._make_client()
+
+        with (
+            patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
+            patch("api.server.shutil.disk_usage") as mock_disk,
+        ):
+            mock_ffmpeg.return_value = MagicMock(
+                available=True,
+                version="6.0",
+                path="/usr/bin/ffmpeg",
+                error=None,
+                recommendation=None,
+            )
+            mock_disk.return_value = MagicMock(free=50 * 1024**3)
+            response = client.get("/health")
+
+        data = response.get_json()
+        assert "timestamp" in data
+        assert "version" in data
+        assert "uptime_seconds" in data
