@@ -138,6 +138,11 @@ def _create_server(
         _install_stop_operation_stubs(server)
 
     register_routes(server.app, server)
+
+    # Мокируем проверки компонентов для стабильного поведения в CI
+    server._check_ffmpeg = lambda: {"status": "ok"}
+    server._check_disk = lambda: {"status": "ok", "free_gb": 100.0}
+
     server.app.config["TESTING"] = True
     return server, callbacks
 

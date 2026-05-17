@@ -154,6 +154,10 @@ def test_app(mock_callbacks: dict[str, MagicMock]) -> Flask:
     # Регистрация маршрутов
     register_routes(server.app, server)
 
+    # Мокируем проверки компонентов для стабильного поведения в CI
+    server._check_ffmpeg = lambda: {"status": "ok"}
+    server._check_disk = lambda: {"status": "ok", "free_gb": 100.0}
+
     server.app.config["TESTING"] = True
 
     return server.app
