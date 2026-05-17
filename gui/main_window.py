@@ -1607,7 +1607,7 @@ class MainWindow(QMainWindow):
         """Открытие файла с помощью системного приложения по умолчанию."""
         system = platform.system()
         if system == "Windows":
-            # os.startfile is only available on Windows
+            # os.startfile is Windows-specific and not in type stubs
             os.startfile(path)  # type: ignore[attr-defined]
         elif system == "Darwin":
             subprocess.run(["open", path])
