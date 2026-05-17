@@ -20,6 +20,7 @@ from gui.models.recording_state import (
     RecordingStatus,
     VideoSettings,
 )
+from recorder.utils import FFmpegStatus
 
 
 class TestRecordingController:
