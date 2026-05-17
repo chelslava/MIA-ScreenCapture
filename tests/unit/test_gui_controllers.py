@@ -108,7 +108,9 @@ class TestRecordingController:
     ) -> None:
         """Проверка успешного запуска записи."""
         # Настройка моков
-        mock_check_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
+        mock_check_ffmpeg.return_value = FFmpegStatus(
+            available=True, version="5.0"
+        )
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),
@@ -147,7 +149,9 @@ class TestRecordingController:
         controller: RecordingController,
     ) -> None:
         """Проверка ошибки запуска, если аудиозапись не стартовала."""
-        mock_check_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
+        mock_check_ffmpeg.return_value = FFmpegStatus(
+            available=True, version="5.0"
+        )
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),
@@ -208,7 +212,9 @@ class TestRecordingController:
         controller: RecordingController,
     ) -> None:
         """Повторный старт в пределах TTL не должен заново дёргать check_ffmpeg."""
-        mock_check_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
+        mock_check_ffmpeg.return_value = FFmpegStatus(
+            available=True, version="5.0"
+        )
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),
@@ -259,7 +265,9 @@ class TestRecordingController:
         controller: RecordingController,
     ) -> None:
         """После истечения TTL проверка FFmpeg должна выполняться заново."""
-        mock_check_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
+        mock_check_ffmpeg.return_value = FFmpegStatus(
+            available=True, version="5.0"
+        )
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),
