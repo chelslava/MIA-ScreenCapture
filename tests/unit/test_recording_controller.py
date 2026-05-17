@@ -18,6 +18,7 @@ from gui.models.recording_state import (
     RecordingStatus,
     VideoSettings,
 )
+from recorder.utils import FFmpegStatus
 
 
 class TestRecordingControllerInit:
@@ -91,7 +92,7 @@ class TestRecordingControllerStartRecording:
         mock_video_recorder_cls,
         mock_encoder_cls,
     ) -> None:
-        mock_ffmpeg.return_value = (True, "5.0")
+        mock_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
         encoder = MagicMock()
         encoder.setup.return_value = (Path("/tmp/v.mp4"), Path("/tmp/a.wav"))
         mock_encoder_cls.return_value = encoder
@@ -113,7 +114,7 @@ class TestRecordingControllerStartRecording:
 
     @patch("gui.controllers.recording_controller.check_ffmpeg")
     def test_start_fails_when_ffmpeg_missing(self, mock_ffmpeg) -> None:
-        mock_ffmpeg.return_value = (False, None)
+        mock_ffmpeg.return_value = FFmpegStatus(available=False)
         ctrl = RecordingController()
 
         success, err = ctrl.start_recording(
@@ -137,7 +138,7 @@ class TestRecordingControllerStartRecording:
         mock_video_recorder_cls,
         mock_encoder_cls,
     ) -> None:
-        mock_ffmpeg.return_value = (True, "5.0")
+        mock_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
         encoder = MagicMock()
         encoder.setup.return_value = (Path("/tmp/v.mp4"), Path("/tmp/a.wav"))
         mock_encoder_cls.return_value = encoder
@@ -167,7 +168,7 @@ class TestRecordingControllerStartRecording:
         mock_encoder_cls,
         mock_audio_recorder_cls,
     ) -> None:
-        mock_ffmpeg.return_value = (True, "5.0")
+        mock_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
         encoder = MagicMock()
         encoder.setup.return_value = (Path("/tmp/v.mp4"), Path("/tmp/a.wav"))
         mock_encoder_cls.return_value = encoder
@@ -350,7 +351,7 @@ class TestRecordingControllerFfmpegCache:
         mock_video_recorder_cls,
         mock_encoder_cls,
     ) -> None:
-        mock_ffmpeg.return_value = (True, "5.0")
+        mock_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
         encoder = MagicMock()
         encoder.setup.return_value = (Path("/tmp/v.mp4"), Path("/tmp/a.wav"))
         mock_encoder_cls.return_value = encoder
@@ -391,7 +392,7 @@ class TestRecordingControllerFfmpegCache:
         mock_video_recorder_cls,
         mock_encoder_cls,
     ) -> None:
-        mock_ffmpeg.return_value = (True, "5.0")
+        mock_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
         encoder = MagicMock()
         encoder.setup.return_value = (Path("/tmp/v.mp4"), Path("/tmp/a.wav"))
         mock_encoder_cls.return_value = encoder

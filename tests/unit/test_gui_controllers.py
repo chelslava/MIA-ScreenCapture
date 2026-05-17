@@ -107,7 +107,7 @@ class TestRecordingController:
     ) -> None:
         """Проверка успешного запуска записи."""
         # Настройка моков
-        mock_check_ffmpeg.return_value = (True, "5.0")
+        mock_check_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),
@@ -146,7 +146,7 @@ class TestRecordingController:
         controller: RecordingController,
     ) -> None:
         """Проверка ошибки запуска, если аудиозапись не стартовала."""
-        mock_check_ffmpeg.return_value = (True, "5.0")
+        mock_check_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),
@@ -181,7 +181,7 @@ class TestRecordingController:
         controller: RecordingController,
     ) -> None:
         """Запись не должна стартовать при недоступном FFmpeg."""
-        mock_check_ffmpeg.return_value = (False, None)
+        mock_check_ffmpeg.return_value = FFmpegStatus(available=False)
         output_path = Path("/output/test.mp4")
 
         success, error_msg = controller.start_recording(
@@ -207,7 +207,7 @@ class TestRecordingController:
         controller: RecordingController,
     ) -> None:
         """Повторный старт в пределах TTL не должен заново дёргать check_ffmpeg."""
-        mock_check_ffmpeg.return_value = (True, "5.0")
+        mock_check_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),
@@ -258,7 +258,7 @@ class TestRecordingController:
         controller: RecordingController,
     ) -> None:
         """После истечения TTL проверка FFmpeg должна выполняться заново."""
-        mock_check_ffmpeg.return_value = (True, "5.0")
+        mock_check_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
         mock_encoder_instance = MagicMock()
         mock_encoder_instance.setup.return_value = (
             Path("/tmp/video.mp4"),

@@ -352,7 +352,7 @@ class VideoRecorder:
         self.preset = preset
 
         # Состояние
-        self._state = VideoRecorderState.IDLE
+        self._state: VideoRecorderState = VideoRecorderState.IDLE
         self._lock = threading.Lock()
         self._capture_lost_lock = threading.Lock()
         self._capture_thread: threading.Thread | None = None
