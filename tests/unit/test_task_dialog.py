@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 from PyQt6.QtCore import QDate, QTime
 from PyQt6.QtWidgets import QDialogButtonBox
-from scheduler.task_scheduler import RecordingParams, ScheduleTask, ScheduleType
 
 from gui.scheduler.task_dialog import TaskDialog
+from scheduler.task_scheduler import (
+    RecordingParams,
+    ScheduleTask,
+    ScheduleType,
+)
 
 
 @pytest.fixture
@@ -398,7 +400,7 @@ class TestTaskDialogValidateScheduleInputs:
 class TestTaskDialogButtonBox:
     """Tests for dialog buttons."""
 
-    def test_accept button_exists(self, dialog_without_task):
+    def test_accept_button_exists(self, dialog_without_task):
         """Test that dialog has Accept button."""
         button_box = dialog_without_task.findChild(QDialogButtonBox)
         assert button_box is not None
