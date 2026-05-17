@@ -6,13 +6,13 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from gui.scheduler.task_dialog import TaskDialog
 from scheduler.task_scheduler import (
     RecordingParams,
     ScheduleTask,
     ScheduleType,
 )
-
-from gui.scheduler.task_dialog import TaskDialog
 
 
 class TestTaskDialogInitialization:
@@ -159,9 +159,7 @@ class TestTaskDialogUI:
                 preset_name = str(preset.get("name", "")).strip()
                 if not preset_name:
                     continue
-                display_name = str(
-                    preset.get("display_name", preset_name)
-                ).strip()
+                str(preset.get("display_name", preset_name)).strip()
                 dialog._preset_names.append(preset_name)
 
             assert len(dialog._preset_names) == 0
@@ -722,7 +720,6 @@ class TestTaskDialogButtonBox:
             assert MockBox.StandardButton.Cancel == 2
 
 
-
 class TestTaskDialogInitReal:
     """Tests for __init__ with mocking to avoid widget creation."""
 
@@ -1082,9 +1079,7 @@ class TestTaskDialogRefreshPreview:
         dialog._schedule_preview_label = MagicMock()
         dialog._schedule_preview_label.setText = MagicMock()
 
-        dialog._calculate_schedule_preview = MagicMock(
-            return_value=([], None)
-        )
+        dialog._calculate_schedule_preview = MagicMock(return_value=([], None))
 
         dialog._refresh_schedule_preview()
 
@@ -1104,9 +1099,7 @@ class TestTaskDialogRefreshPreview:
         dialog._schedule_preview_label = MagicMock()
         dialog._schedule_preview_label.setText = MagicMock()
 
-        dialog._calculate_schedule_preview = MagicMock(
-            return_value=([], None)
-        )
+        dialog._calculate_schedule_preview = MagicMock(return_value=([], None))
 
         dialog._refresh_schedule_preview()
 
@@ -1170,9 +1163,7 @@ class TestTaskDialogRefreshPreview:
         dialog._schedule_preview_label = MagicMock()
         dialog._schedule_preview_label.setText = MagicMock()
 
-        dialog._calculate_schedule_preview = MagicMock(
-            return_value=([], None)
-        )
+        dialog._calculate_schedule_preview = MagicMock(return_value=([], None))
 
         dialog._refresh_schedule_preview()
 
@@ -1193,6 +1184,7 @@ class TestTaskDialogRefreshPreview:
         dialog._schedule_preview_label.setText = MagicMock()
 
         from datetime import datetime
+
         preview_runs = [
             datetime(2025, 6, 15, 14, 30),
             datetime(2025, 6, 16, 14, 30),
@@ -1214,9 +1206,7 @@ class TestTaskDialogAccept:
         """Test accept blocks when validation fails."""
         dialog = TaskDialog.__new__(TaskDialog)
 
-        dialog._validate_schedule_inputs = MagicMock(
-            return_value="Some error"
-        )
+        dialog._validate_schedule_inputs = MagicMock(return_value="Some error")
         dialog._set_inline_validation_message = MagicMock()
 
         with patch(
@@ -1352,9 +1342,7 @@ class TestTaskDialogOnPresetChanged:
         dialog._apply_preset = MagicMock()
         dialog._refresh_schedule_preview = MagicMock()
 
-        with patch(
-            "gui.scheduler.task_dialog.get_preset"
-        ) as mock_get_preset:
+        with patch("gui.scheduler.task_dialog.get_preset") as mock_get_preset:
             mock_get_preset.return_value = {
                 "name": "Test Preset",
                 "trigger": "daily",
@@ -1373,9 +1361,7 @@ class TestTaskDialogOnPresetChanged:
         dialog._apply_preset = MagicMock()
         dialog._refresh_schedule_preview = MagicMock()
 
-        with patch(
-            "gui.scheduler.task_dialog.get_preset"
-        ) as mock_get_preset:
+        with patch("gui.scheduler.task_dialog.get_preset") as mock_get_preset:
             mock_get_preset.return_value = None
 
             dialog._on_preset_changed(1)
@@ -1490,17 +1476,48 @@ class TestTaskDialogSetupUI:
         mock_qcheckbox.setChecked = MagicMock()
 
         patches = [
-            patch("gui.scheduler.task_dialog.QVBoxLayout", return_value=MagicMock()),
-            patch("gui.scheduler.task_dialog.QFormLayout", return_value=MagicMock()),
-            patch("gui.scheduler.task_dialog.QHBoxLayout", return_value=MagicMock()),
-            patch("gui.scheduler.task_dialog.QLineEdit", return_value=mock_qlineedit),
-            patch("gui.scheduler.task_dialog.QComboBox", return_value=mock_qcombobox),
-            patch("gui.scheduler.task_dialog.QDateEdit", return_value=mock_qdateedit),
-            patch("gui.scheduler.task_dialog.QTimeEdit", return_value=mock_qtimeedit),
-            patch("gui.scheduler.task_dialog.QSpinBox", return_value=mock_qspinbox),
-            patch("gui.scheduler.task_dialog.QLabel", return_value=mock_qlabel),
-            patch("gui.scheduler.task_dialog.QWidget", return_value=mock_qwidget),
-            patch("gui.scheduler.task_dialog.QGroupBox", return_value=mock_qgroupbox),
+            patch(
+                "gui.scheduler.task_dialog.QVBoxLayout",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QFormLayout",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QHBoxLayout",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QLineEdit",
+                return_value=mock_qlineedit,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QComboBox",
+                return_value=mock_qcombobox,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QDateEdit",
+                return_value=mock_qdateedit,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QTimeEdit",
+                return_value=mock_qtimeedit,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QSpinBox",
+                return_value=mock_qspinbox,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QLabel", return_value=mock_qlabel
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QWidget", return_value=mock_qwidget
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QGroupBox",
+                return_value=mock_qgroupbox,
+            ),
             patch(
                 "gui.scheduler.task_dialog.QDialogButtonBox",
                 return_value=mock_qdialogbuttonbox,
@@ -1515,9 +1532,7 @@ class TestTaskDialogSetupUI:
             ),
         ]
 
-        with patch(
-            "gui.scheduler.task_dialog.QDate.currentDate"
-        ) as mock_date:
+        with patch("gui.scheduler.task_dialog.QDate.currentDate") as mock_date:
             mock_date.return_value = MagicMock()
             with patch("gui.scheduler.task_dialog.QTime") as MockQTime:
                 MockQTime.return_value = MagicMock()
@@ -1598,17 +1613,48 @@ class TestTaskDialogSetupUI:
         mock_qcheckbox = MagicMock()
 
         patch_list = [
-            patch("gui.scheduler.task_dialog.QVBoxLayout", return_value=MagicMock()),
-            patch("gui.scheduler.task_dialog.QFormLayout", return_value=MagicMock()),
-            patch("gui.scheduler.task_dialog.QHBoxLayout", return_value=MagicMock()),
-            patch("gui.scheduler.task_dialog.QLineEdit", return_value=mock_qlineedit),
-            patch("gui.scheduler.task_dialog.QComboBox", return_value=mock_qcombobox),
-            patch("gui.scheduler.task_dialog.QDateEdit", return_value=mock_qdateedit),
-            patch("gui.scheduler.task_dialog.QTimeEdit", return_value=mock_qtimeedit),
-            patch("gui.scheduler.task_dialog.QSpinBox", return_value=mock_qspinbox),
-            patch("gui.scheduler.task_dialog.QLabel", return_value=mock_qlabel),
-            patch("gui.scheduler.task_dialog.QWidget", return_value=mock_qwidget),
-            patch("gui.scheduler.task_dialog.QGroupBox", return_value=mock_qgroupbox),
+            patch(
+                "gui.scheduler.task_dialog.QVBoxLayout",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QFormLayout",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QHBoxLayout",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QLineEdit",
+                return_value=mock_qlineedit,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QComboBox",
+                return_value=mock_qcombobox,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QDateEdit",
+                return_value=mock_qdateedit,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QTimeEdit",
+                return_value=mock_qtimeedit,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QSpinBox",
+                return_value=mock_qspinbox,
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QLabel", return_value=mock_qlabel
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QWidget", return_value=mock_qwidget
+            ),
+            patch(
+                "gui.scheduler.task_dialog.QGroupBox",
+                return_value=mock_qgroupbox,
+            ),
             patch(
                 "gui.scheduler.task_dialog.QDialogButtonBox",
                 return_value=mock_qdialogbuttonbox,
@@ -1628,9 +1674,7 @@ class TestTaskDialogSetupUI:
             ),
         ]
 
-        with patch(
-            "gui.scheduler.task_dialog.QDate.currentDate"
-        ) as mock_date:
+        with patch("gui.scheduler.task_dialog.QDate.currentDate") as mock_date:
             mock_date.return_value = MagicMock()
             with patch("gui.scheduler.task_dialog.QTime") as MockQTime:
                 MockQTime.return_value = MagicMock()
@@ -1695,11 +1739,13 @@ class TestTaskDialogCalculateSchedulePreview:
         dialog._parse_time_of_day = MagicMock(return_value=(9, 0))
 
         mock_trigger = MagicMock()
-        mock_trigger.get_next_fire_time = MagicMock(side_effect=[
-            datetime(2025, 6, 15, 14, 30),
-            datetime(2025, 6, 16, 14, 30),
-            None,
-        ])
+        mock_trigger.get_next_fire_time = MagicMock(
+            side_effect=[
+                datetime(2025, 6, 15, 14, 30),
+                datetime(2025, 6, 16, 14, 30),
+                None,
+            ]
+        )
 
         with patch(
             "gui.scheduler.task_dialog.create_trigger",
@@ -1738,6 +1784,7 @@ class TestTaskDialogCalculateSchedulePreview:
         assert error is not None
         assert "test error" in error
         assert len(runs) == 0
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
