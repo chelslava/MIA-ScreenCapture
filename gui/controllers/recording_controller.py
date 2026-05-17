@@ -106,9 +106,10 @@ class RecordingController:
             if now - checked_at < _FFMPEG_CHECK_TTL_SECONDS:
                 return available, version
 
-        available, version = check_ffmpeg()
-        self._ffmpeg_check_cache = (now, available, version)
-        return available, version
+        ffmpeg_status = check_ffmpeg()
+        version = ffmpeg_status.version or "unknown"
+        self._ffmpeg_check_cache = (now, ffmpeg_status.available, version)
+        return ffmpeg_status.available, version
 
     def start_recording(
         self,
