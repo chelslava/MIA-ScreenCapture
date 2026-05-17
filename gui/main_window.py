@@ -1608,7 +1608,7 @@ class MainWindow(QMainWindow):
         system = platform.system()
         if system == "Windows":
             # os.startfile is Windows-specific and not in type stubs
-            os.startfile(path)  # type: ignore[attr-defined]
+            os.startfile(path)  # type: ignore[attr-defined, unused-ignore]
         elif system == "Darwin":
             subprocess.run(["open", path])
         else:
