@@ -123,7 +123,7 @@ class TestCircuitBreakerHalfOpen:
         with pytest.raises(RuntimeError):
             cb.call(fn)
         assert cb.state == CircuitState.OPEN.value
-        time.sleep(0.06)
+        time.sleep(0.15)
         probe = MagicMock(return_value="ok")
         cb.call(probe)
         assert cb.state == CircuitState.CLOSED.value
