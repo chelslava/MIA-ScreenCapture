@@ -342,7 +342,9 @@ class ApiSettingsView(QWidget):
         Returns:
             True, если фокус находится на полях порта или токена.
         """
-        return bool(self._port_spinbox.hasFocus() or self._token_edit.hasFocus())
+        return bool(
+            self._port_spinbox.hasFocus() or self._token_edit.hasFocus()
+        )
 
     def set_settings(self, port: int, token: str) -> None:
         """
