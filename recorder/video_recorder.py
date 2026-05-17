@@ -553,12 +553,12 @@ class VideoRecorder:
     @property
     def is_recording(self) -> bool:
         """Проверка активности записи."""
-        return self._state == VideoRecorderState.RECORDING
+        return bool(self._state == VideoRecorderState.RECORDING)
 
     @property
     def is_paused(self) -> bool:
         """Проверка паузы записи."""
-        return self._state == VideoRecorderState.PAUSED
+        return bool(self._state == VideoRecorderState.PAUSED)
 
     @property
     def elapsed_time(self) -> float:

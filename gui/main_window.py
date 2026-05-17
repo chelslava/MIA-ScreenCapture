@@ -808,7 +808,7 @@ class MainWindow(QMainWindow):
 
     def _normalized_recordings_filter(self) -> str:
         """Нормализация текста фильтра для сравнения."""
-        return self._recordings_filter_input.text().strip().lower()
+        return str(self._recordings_filter_input.text().strip().lower())
 
     @staticmethod
     def _recording_matches_filter(
@@ -1607,7 +1607,8 @@ class MainWindow(QMainWindow):
         """Открытие файла с помощью системного приложения по умолчанию."""
         system = platform.system()
         if system == "Windows":
-            os.startfile(path)
+            # os.startfile is only available on Windows
+            os.startfile(path)  # type: ignore[attr-defined]
         elif system == "Darwin":
             subprocess.run(["open", path])
         else:

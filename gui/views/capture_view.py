@@ -360,8 +360,8 @@ class CaptureView(QWidget):
         """
         current_title = self._window_combo.currentText()
         if current_title:
-            return current_title
-        return self._pending_window_title
+            return str(current_title)
+        return str(self._pending_window_title)
 
     def get_rect_coords(self) -> tuple[int, int, int, int] | None:
         """

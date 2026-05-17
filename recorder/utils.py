@@ -406,7 +406,8 @@ def get_screen_size() -> tuple[int, int]:
     try:
         import ctypes
 
-        user32 = ctypes.windll.user32
+        # Windows-specific: use windll.user32 only on Windows
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
         width = int(user32.GetSystemMetrics(0))
         height = int(user32.GetSystemMetrics(1))
         if width > 0 and height > 0:
@@ -458,14 +459,15 @@ def get_all_monitors() -> list[dict[str, int]]:
                 ("bottom", wintypes.LONG),
             ]
 
-        monitor_enum_proc = ctypes.WINFUNCTYPE(
+        monitor_enum_proc = ctypes.WINFUNCTYPE(  # type: ignore[attr-defined]
             ctypes.c_int,
             wintypes.HMONITOR,
             wintypes.HDC,
             ctypes.POINTER(RECT),
             wintypes.LPARAM,
         )
-        ctypes.windll.user32.EnumDisplayMonitors(
+        # Windows-specific: use windll.user32 only on Windows
+        ctypes.windll.user32.EnumDisplayMonitors(  # type: ignore[attr-defined]
             0, 0, monitor_enum_proc(_callback), 0
         )
     except Exception as e:

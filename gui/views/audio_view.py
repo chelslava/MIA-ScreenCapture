@@ -328,8 +328,8 @@ class AudioView(QWidget):
         """
         current_name = self._mic_combo.currentText()
         if current_name:
-            return current_name
-        return self._pending_mic_device_name
+            return str(current_name)
+        return str(self._pending_mic_device_name)
 
     def set_audio_type(self, audio_type: AudioType) -> None:
         """

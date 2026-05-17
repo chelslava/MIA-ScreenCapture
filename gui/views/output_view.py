@@ -129,7 +129,7 @@ class OutputView(QWidget):
         Returns:
             Путь к выходному файлу
         """
-        return self._output_edit.text()
+        return str(self._output_edit.text())
 
     def get_output_path_as_path(self) -> Path:
         """
