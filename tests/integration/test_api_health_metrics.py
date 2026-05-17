@@ -44,6 +44,8 @@ def api_server() -> Generator[APIServer, None, None]:
         }
     )
     server.set_websocket_manager(websocket_manager)
+    server._check_ffmpeg = lambda: {"status": "ok"}
+    server._check_disk = lambda: {"status": "ok", "free_gb": 100.0}
     register_routes(server.app, server)
     server.app.config["TESTING"] = True
 

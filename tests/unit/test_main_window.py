@@ -80,6 +80,18 @@ def _build_window():
     window._stop_operation_in_progress = False
     window._stop_operation_thread = None
     window.stop_operation_finished = MagicMock()
+    from gui.main_window import _ThreadTracker
+
+    window._thread_tracker = _ThreadTracker()
+    from gui.controllers.status_bar_controller import StatusBarController
+
+    window._status_bar_controller = StatusBarController(
+        start_btn=window.start_btn,
+        stop_btn=window.stop_btn,
+        pause_btn=window.pause_btn,
+        status_label=window.status_label,
+        time_label=window.time_label,
+    )
     return window
 
 
@@ -933,7 +945,7 @@ class TestMainWindowMethods:
 
         assert window.tabs.setCurrentIndex.call_count == 2
         window._audio_view._refresh_audio_devices.assert_called_once_with()
-        window._capture_view._refresh_windows.assert_called_once_with()
+        window._capture_view.refresh_windows.assert_called_once_with()
 
     def test_stop_recording_reports_missing_output(self) -> None:
         """Если backend не вернул путь, показывается ошибка."""
@@ -1122,13 +1134,20 @@ class TestMainWindowMethods:
     ) -> None:
         """Проверка FFmpeg обновляет status bar без modal-диалога."""
         from gui.main_window import MainWindow
+        from recorder.utils import FFmpegStatus
 
         window = _build_window()
+
+        ffmpeg_status = FFmpegStatus(
+            available=False,
+            error="FFmpeg не найден в PATH",
+            recommendation="Установите FFmpeg и добавьте его в PATH.",
+        )
 
         with patch("gui.main_window.QMessageBox.warning") as warning:
             MainWindow._on_dependency_check_completed(
                 window,
-                (False, None),
+                ffmpeg_status,
                 None,
             )
 
@@ -1601,3 +1620,65 @@ class TestMainWindowMethods:
         window._show_non_modal_error.assert_called_once_with(
             "Не удалось открыть папку логов: boom"
         )
+
+
+class TestThreadTracker:
+    """Тесты вспомогательного класса _ThreadTracker."""
+
+    def test_track_returns_the_thread(self) -> None:
+        """track() возвращает тот же поток, что передан."""
+        import threading
+
+        from gui.main_window import _ThreadTracker
+
+        tracker = _ThreadTracker()
+        t = threading.Thread(target=lambda: None, daemon=True)
+        result = tracker.track(t)
+        assert result is t
+
+    def test_track_stores_thread(self) -> None:
+        """После track() поток присутствует во внутреннем списке."""
+        import threading
+
+        from gui.main_window import _ThreadTracker
+
+        tracker = _ThreadTracker()
+        t = threading.Thread(target=lambda: None, daemon=True)
+        tracker.track(t)
+        with tracker._lock:
+            assert t in tracker._threads
+
+    def test_join_all_waits_for_running_thread(self) -> None:
+        """join_all() дожидается завершения живого потока."""
+        import threading
+
+        from gui.main_window import _ThreadTracker
+
+        barrier = threading.Barrier(2)
+        done: list[bool] = []
+
+        def worker() -> None:
+            barrier.wait()
+            done.append(True)
+
+        tracker = _ThreadTracker()
+        t = threading.Thread(target=worker, daemon=True)
+        tracker.track(t)
+        t.start()
+        barrier.wait()
+        tracker.join_all(timeout=5.0)
+        assert done == [True]
+
+    def test_join_all_removes_finished_threads(self) -> None:
+        """После join_all() завершившиеся потоки убираются из списка."""
+        import threading
+
+        from gui.main_window import _ThreadTracker
+
+        tracker = _ThreadTracker()
+        t = threading.Thread(target=lambda: None, daemon=True)
+        tracker.track(t)
+        t.start()
+        tracker.join_all(timeout=5.0)
+        with tracker._lock:
+            assert t not in tracker._threads

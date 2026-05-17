@@ -7,6 +7,14 @@ from typing import Any
 from flask import jsonify
 
 from api.auth import require_api_key
+from api.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+
+_cb_devices = CircuitBreaker(
+    name="devices", failure_threshold=3, recovery_timeout=30.0
+)
+_cb_windows = CircuitBreaker(
+    name="windows", failure_threshold=3, recovery_timeout=30.0
+)
 
 
 def register_resource_routes(
@@ -26,9 +34,22 @@ def register_resource_routes(
         try:
             callback = server.get_callback("devices")
             if callback:
-                devices = callback()
+                devices = _cb_devices.call(callback)
                 return jsonify({"success": True, "data": devices})
             return internal_error_response()
+
+        except CircuitBreakerOpenError as e:
+            logger.warning("Circuit breaker OPEN для devices: %s", e)
+            return jsonify(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "circuit_open",
+                        "message": "Сервис временно недоступен. Повторите позже.",
+                        "details": {"retry_after": e.retry_after},
+                    },
+                }
+            ), 503
 
         except Exception as e:
             logger.exception(f"Ошибка получения устройств: {e}")
@@ -41,12 +62,45 @@ def register_resource_routes(
         try:
             callback = server.get_callback("windows")
             if callback:
-                windows = callback()
+                windows = _cb_windows.call(callback)
                 return jsonify({"success": True, "data": windows})
             return internal_error_response()
 
+        except CircuitBreakerOpenError as e:
+            logger.warning("Circuit breaker OPEN для windows: %s", e)
+            return jsonify(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "circuit_open",
+                        "message": "Сервис временно недоступен. Повторите позже.",
+                        "details": {"retry_after": e.retry_after},
+                    },
+                }
+            ), 503
+
         except Exception as e:
             logger.exception(f"Ошибка получения окон: {e}")
+            return exception_response(e)
+
+    @api_v1.route("circuit-breakers", methods=["GET"])
+    @require_api_key
+    def get_circuit_breaker_metrics() -> Any:
+        """Получение метрик Circuit Breaker для ресурсных эндпоинтов."""
+        try:
+            return jsonify(
+                {
+                    "success": True,
+                    "data": {
+                        "circuit_breakers": [
+                            _cb_devices.get_metrics(),
+                            _cb_windows.get_metrics(),
+                        ]
+                    },
+                }
+            )
+        except Exception as e:
+            logger.exception(f"Ошибка получения метрик circuit breaker: {e}")
             return exception_response(e)
 
 

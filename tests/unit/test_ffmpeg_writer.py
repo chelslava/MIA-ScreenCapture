@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 import recorder.ffmpeg_writer as ffmpeg_writer_module
 from recorder.ffmpeg_writer import FFmpegVideoWriter
 
@@ -235,6 +237,60 @@ class TestFFmpegVideoWriterDiagnostics:
         assert "beta" in caplog.text
         assert "delta" in caplog.text
 
+    def test_write_returns_false_and_marks_corrupted_when_process_died(
+        self,
+        monkeypatch,
+    ) -> None:
+        """write() возвращает False и is_corrupted=True если process.poll() не None."""
+        monkeypatch.setattr(
+            ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.threading,
+            "Thread",
+            _ImmediateThread,
+        )
+
+        process = MagicMock()
+        process.stdin = MagicMock()
+        process.stderr = io.StringIO("")
+        process.poll.return_value = None
+        process.wait.return_value = None
+        process.returncode = 0
+        process.terminate = MagicMock()
+        process.kill = MagicMock()
+
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_ffmpeg_path",
+            MagicMock(return_value=r"C:\Tools\ffmpeg\bin\ffmpeg.exe"),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            MagicMock(return_value=process),
+        )
+
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+        )
+        assert writer.open() is True
+
+        # Симулируем смерть процесса после open()
+        process.poll.return_value = 1
+
+        import numpy as np
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is False
+        assert writer.is_corrupted is True
+        process.stdin.write.assert_not_called()
+
     def test_multiple_open_close_joins_stderr_reader(
         self,
         monkeypatch,
@@ -288,3 +344,305 @@ class TestFFmpegVideoWriterDiagnostics:
         assert writer._stderr_stream is None
         for process in processes:
             process.stderr.close.assert_called_once()
+
+
+class TestRetryPolicy:
+    """Проверки dataclass RetryPolicy."""
+
+    def test_default_values(self) -> None:
+        from recorder.ffmpeg_writer import RetryPolicy
+
+        policy = RetryPolicy()
+        assert policy.max_attempts == 3
+        assert policy.initial_delay_s == 0.5
+        assert policy.backoff_factor == 2.0
+        assert policy.max_delay_s == 10.0
+
+    def test_custom_values(self) -> None:
+        from recorder.ffmpeg_writer import RetryPolicy
+
+        policy = RetryPolicy(
+            max_attempts=5,
+            initial_delay_s=1.0,
+            backoff_factor=3.0,
+            max_delay_s=30.0,
+        )
+        assert policy.max_attempts == 5
+        assert policy.initial_delay_s == 1.0
+        assert policy.backoff_factor == 3.0
+        assert policy.max_delay_s == 30.0
+
+
+class TestRetryWithBackoff:
+    """Проверки функции retry_with_backoff."""
+
+    def test_success_on_first_attempt(self, monkeypatch) -> None:
+        from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
+
+        sleep_calls: list[float] = []
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep",
+            lambda s: sleep_calls.append(s),
+        )
+
+        call_count = 0
+
+        def fn() -> str:
+            nonlocal call_count
+            call_count += 1
+            return "ok"
+
+        result = retry_with_backoff(fn, RetryPolicy())
+        assert result == "ok"
+        assert call_count == 1
+        assert sleep_calls == []
+
+    def test_retries_on_ioerror_and_succeeds(self, monkeypatch) -> None:
+        from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
+
+        sleep_calls: list[float] = []
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep",
+            lambda s: sleep_calls.append(s),
+        )
+
+        call_count = 0
+
+        def fn() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise OSError("pipe busy")
+            return "ok"
+
+        result = retry_with_backoff(
+            fn,
+            RetryPolicy(
+                max_attempts=3, initial_delay_s=0.1, backoff_factor=2.0
+            ),
+        )
+        assert result == "ok"
+        assert call_count == 3
+        assert len(sleep_calls) == 2
+        assert sleep_calls[0] == pytest.approx(0.1)
+        assert sleep_calls[1] == pytest.approx(0.2)
+
+    def test_raises_after_all_attempts_exhausted(self, monkeypatch) -> None:
+        from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
+
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep", lambda s: None
+        )
+
+        call_count = 0
+
+        def fn() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise OSError("disk full")
+
+        with pytest.raises(OSError, match="disk full"):
+            retry_with_backoff(fn, RetryPolicy(max_attempts=3))
+        assert call_count == 3
+
+    def test_non_retriable_exception_propagates_immediately(
+        self, monkeypatch
+    ) -> None:
+        from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
+
+        sleep_calls: list[float] = []
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep",
+            lambda s: sleep_calls.append(s),
+        )
+
+        call_count = 0
+
+        def fn() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise ValueError("not retriable")
+
+        with pytest.raises(ValueError, match="not retriable"):
+            retry_with_backoff(fn, RetryPolicy(max_attempts=3))
+        assert call_count == 1
+        assert sleep_calls == []
+
+    def test_delay_capped_at_max_delay(self, monkeypatch) -> None:
+        from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
+
+        sleep_calls: list[float] = []
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep",
+            lambda s: sleep_calls.append(s),
+        )
+
+        call_count = 0
+
+        def fn() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 5:
+                raise OSError("err")
+            return "ok"
+
+        policy = RetryPolicy(
+            max_attempts=5,
+            initial_delay_s=1.0,
+            backoff_factor=10.0,
+            max_delay_s=5.0,
+        )
+        result = retry_with_backoff(fn, policy)
+        assert result == "ok"
+        assert len(sleep_calls) == 4
+        assert all(s <= 5.0 for s in sleep_calls)
+        assert sleep_calls[1] == pytest.approx(5.0)
+
+    def test_logs_warning_on_each_retry(self, monkeypatch, caplog) -> None:
+        import logging
+
+        from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
+
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep", lambda s: None
+        )
+
+        call_count = 0
+
+        def fn() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise OSError(f"err {call_count}")
+            return "ok"
+
+        with caplog.at_level(logging.WARNING, logger="recorder.ffmpeg_writer"):
+            retry_with_backoff(
+                fn, RetryPolicy(max_attempts=3, initial_delay_s=0.1)
+            )
+
+        warning_msgs = [
+            r.message for r in caplog.records if r.levelno == logging.WARNING
+        ]
+        assert len(warning_msgs) == 2
+        assert "1/3" in warning_msgs[0]
+        assert "2/3" in warning_msgs[1]
+
+    def test_write_retries_on_ioerror(self, monkeypatch) -> None:
+        """write() использует retry_with_backoff при IOError записи в stdin."""
+        import numpy as np
+
+        from recorder.ffmpeg_writer import FFmpegVideoWriter, RetryPolicy
+
+        sleep_calls: list[float] = []
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep",
+            lambda s: sleep_calls.append(s),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.threading, "Thread", _ImmediateThread
+        )
+
+        write_count = 0
+
+        def failing_write(data: bytes) -> None:
+            nonlocal write_count
+            write_count += 1
+            if write_count == 1:
+                raise OSError("write failed once")
+
+        process = MagicMock()
+        process.stdin = MagicMock()
+        process.stdin.write = failing_write
+        process.stderr = io.StringIO("")
+        process.poll.return_value = None
+        process.wait.return_value = None
+        process.returncode = 0
+
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_ffmpeg_path",
+            MagicMock(return_value=r"C:\ffmpeg.exe"),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            MagicMock(return_value=process),
+        )
+
+        policy = RetryPolicy(
+            max_attempts=3, initial_delay_s=0.05, backoff_factor=2.0
+        )
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+            retry_policy=policy,
+        )
+        assert writer.open() is True
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is True
+        assert write_count == 2
+        assert len(sleep_calls) == 1
+        assert writer.frame_count == 1
+
+    def test_write_marks_corrupted_after_all_retries_fail(
+        self, monkeypatch
+    ) -> None:
+        """write() помечает файл corrupted после исчерпания всех retry."""
+        import numpy as np
+
+        from recorder.ffmpeg_writer import FFmpegVideoWriter, RetryPolicy
+
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep", lambda s: None
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.threading, "Thread", _ImmediateThread
+        )
+
+        process = MagicMock()
+        process.stdin = MagicMock()
+        process.stdin.write.side_effect = OSError("disk full")
+        process.stderr = io.StringIO("")
+        process.poll.return_value = None
+        process.wait.return_value = None
+        process.returncode = 0
+
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_ffmpeg_path",
+            MagicMock(return_value=r"C:\ffmpeg.exe"),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            MagicMock(return_value=process),
+        )
+
+        policy = RetryPolicy(max_attempts=2, initial_delay_s=0.0)
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+            retry_policy=policy,
+        )
+        assert writer.open() is True
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is False
+        assert writer.is_corrupted is True
+        assert process.stdin.write.call_count == 2

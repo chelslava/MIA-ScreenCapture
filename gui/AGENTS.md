@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-04-29 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-05-07 -->
 
 # gui/
 
@@ -25,8 +25,8 @@ PyQt6 GUI-слой приложения. Реализует MVC-паттерн: 
 | `views/` | PyQt6 виджеты-представления (вкладки главного окна) (см. `views/AGENTS.md`) |
 | `controllers/` | Контроллеры MVC — связывают представления с доменной логикой (см. `controllers/AGENTS.md`) |
 | `models/` | Модели данных GUI — состояние, кодеки, WebSocket (см. `models/AGENTS.md`) |
-| `backends/` | `RecordingBackend` — реализация протокола записи для GUI |
-| `styles/` | `theme.py` — цветовые темы и стили PyQt6 |
+| `backends/` | `RecordingBackend` — реализация протокола записи для GUI (см. `backends/AGENTS.md`) |
+| `styles/` | `theme.py` — цветовые темы и стили PyQt6 (см. `styles/AGENTS.md`) |
 | `scheduler/` | UI планировщика: `scheduler_tab.py`, `task_dialog.py` (см. `scheduler/AGENTS.md`) |
 
 ## For AI Agents

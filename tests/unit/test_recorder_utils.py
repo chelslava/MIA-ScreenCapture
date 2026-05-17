@@ -58,7 +58,7 @@ class TestCheckFFmpeg:
     """Тесты для функции check_ffmpeg."""
 
     @patch("recorder.utils.get_ffmpeg_path")
-    @patch("subprocess.run")
+    @patch("recorder.utils.subprocess.run")
     def test_ffmpeg_available(self, mock_run, mock_get_path):
         """Проверка доступности FFmpeg."""
         mock_get_path.return_value = r"C:\Tools\ffmpeg\bin\ffmpeg.exe"
@@ -66,10 +66,11 @@ class TestCheckFFmpeg:
             returncode=0, stdout="ffmpeg version 5.0\nCopyright (c) 2000-2022"
         )
 
-        available, version = check_ffmpeg()
+        result = check_ffmpeg()
 
-        assert available is True
-        assert version == "5.0"
+        assert result.available is True
+        assert result.version == "5.0"
+        assert result.path == r"C:\Tools\ffmpeg\bin\ffmpeg.exe"
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
         assert args[0] == [r"C:\Tools\ffmpeg\bin\ffmpeg.exe", "-version"]
@@ -82,19 +83,20 @@ class TestCheckFFmpeg:
             assert "creationflags" not in kwargs
 
     @patch("recorder.utils.get_ffmpeg_path")
-    @patch("subprocess.run")
+    @patch("recorder.utils.subprocess.run")
     def test_ffmpeg_not_found(self, mock_run, mock_get_path):
         """Проверка отсутствия FFmpeg."""
         mock_get_path.return_value = None
 
-        available, version = check_ffmpeg()
+        result = check_ffmpeg()
 
-        assert available is False
-        assert version is None
+        assert result.available is False
+        assert result.version is None
+        assert result.error is not None
         mock_run.assert_not_called()
 
     @patch("recorder.utils.get_ffmpeg_path")
-    @patch("subprocess.run")
+    @patch("recorder.utils.subprocess.run")
     def test_ffmpeg_timeout(self, mock_run, mock_get_path):
         """Проверка таймаута при проверке FFmpeg."""
         mock_get_path.return_value = r"C:\Tools\ffmpeg\bin\ffmpeg.exe"
@@ -102,22 +104,24 @@ class TestCheckFFmpeg:
             cmd=r"C:\Tools\ffmpeg\bin\ffmpeg.exe", timeout=10
         )
 
-        available, version = check_ffmpeg()
+        result = check_ffmpeg()
 
-        assert available is False
-        assert version is None
+        assert result.available is False
+        assert result.version is None
+        assert result.error is not None
 
     @patch("recorder.utils.get_ffmpeg_path")
-    @patch("subprocess.run")
+    @patch("recorder.utils.subprocess.run")
     def test_ffmpeg_unexpected_error(self, mock_run, mock_get_path):
         """Проверка неожиданной ошибки при проверке FFmpeg."""
         mock_get_path.return_value = r"C:\Tools\ffmpeg\bin\ffmpeg.exe"
         mock_run.side_effect = RuntimeError("Unexpected error")
 
-        available, version = check_ffmpeg()
+        result = check_ffmpeg()
 
-        assert available is False
-        assert version is None
+        assert result.available is False
+        assert result.version is None
+        assert result.error is not None
 
 
 class TestGetFFmpegPath:

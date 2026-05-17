@@ -165,6 +165,12 @@ def _normalize_error_payload(
 
 def _standardize_error_response(response):
     """Нормализует JSON-ошибки в единый контракт."""
+    from flask import request as flask_request
+
+    if flask_request.path == "/health":
+        response.headers.setdefault("X-Request-ID", _get_trace_id())
+        return response
+
     if response.status_code < 400 or not response.is_json:
         response.headers.setdefault("X-Request-ID", _get_trace_id())
         return response
@@ -454,9 +460,24 @@ def _register_health_route(app: Any, server: Any) -> None:
     @app.route("/health", methods=["GET"])
     def health_check() -> Any:
         """Эндпоинт проверки здоровья."""
-        response = jsonify(server._get_health_payload())
-        response.headers["X-Request-ID"] = _get_trace_id()
-        return response
+        if not server.check_health_rate_limit():
+            resp = jsonify(
+                {"error": "rate_limited", "message": "Too many requests"}
+            )
+            resp.status_code = 429
+            resp.headers["X-Request-ID"] = _get_trace_id()
+            return resp, 429
+
+        try:
+            payload = server._get_health_payload()
+            status_code = 503 if payload.get("status") == "unhealthy" else 200
+            response = jsonify(payload)
+            response.status_code = status_code
+            response.headers["X-Request-ID"] = _get_trace_id()
+            return response, status_code
+        except Exception:
+            logger.exception("Health check failed")
+            return _internal_error_response()
 
 
 def _register_legacy_routes(

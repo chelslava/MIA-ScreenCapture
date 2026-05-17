@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from api.routes import register_routes
 from api.server import APIServer
 
 TEST_API_KEY = "test-api-key-for-integration-tests-12345"
@@ -38,6 +39,10 @@ def api_server() -> Generator[APIServer, None, None]:
         port=5011,
         api_key=TEST_API_KEY,
     )
+    server._check_ffmpeg = lambda: {"status": "ok"}
+    server._check_disk = lambda: {"status": "ok", "free_gb": 100.0}
+    register_routes(server.app, server)
+    server.app.config["TESTING"] = True
     yield server
     server.stop()
 

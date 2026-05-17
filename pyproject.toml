@@ -32,7 +32,7 @@ dependencies = [
     "opencv-python>=4.8.0",
     "numpy>=1.24.0",
     # Audio Recording
-    "pyaudio>=0.2.13",
+    "pyaudio>=0.2.13; sys_platform == 'win32'",
     "sounddevice>=0.4.6",
     "soundfile>=0.12.1",
     # FFmpeg Integration
@@ -56,8 +56,8 @@ dependencies = [
     "python-xlib>=0.33; sys_platform == 'linux'",
     # Audio System Control (Windows)
     "pycaw>=20230407; sys_platform == 'win32'",
-    # Global Hotkeys
-    "pynput>=1.7.6",
+    # Global Hotkeys (Windows-only)
+    "pynput>=1.7.6; sys_platform == 'win32'",
     # WebSocket client
     "websockets>=12.0",
     # Type hints support

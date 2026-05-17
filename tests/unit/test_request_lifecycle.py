@@ -59,9 +59,14 @@ def _create_app_with_middleware() -> tuple[Flask, _DummyObservability]:
     return app, obs
 
 
-def test_health_short_circuit_and_headers() -> None:
-    """Проверяет short-circuit health и заголовок request id."""
+def test_health_request_tracked_by_observability() -> None:
+    """Проверяет что /health запрос отслеживается observability и заголовок request id выставляется."""
     app, obs = _create_app_with_middleware()
+
+    @app.route("/health", methods=["GET"])
+    def health() -> Any:
+        return jsonify({"status": "ok"})
+
     client = app.test_client()
 
     response = client.get("/health", headers={"X-Request-ID": "req-health-1"})

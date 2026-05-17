@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from flask import Flask, g, jsonify, request
+from flask import Flask, g, request
 
 from api.request_context import ensure_request_context
 from logger_config import get_module_logger
@@ -49,9 +49,6 @@ def register_request_lifecycle(
         g.client_ip = request_context.client_ip
         g.request_started_at = time.monotonic()
         observability.request_started()
-
-        if request.path == "/health":
-            return jsonify(health_payload_factory())
         return None
 
     @app.after_request

@@ -217,7 +217,7 @@ class VideoView(QWidget):
         Returns:
             FPS
         """
-        return self._fps_spin.value()
+        return int(self._fps_spin.value())
 
     def get_codec(self) -> str:
         """

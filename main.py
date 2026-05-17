@@ -386,8 +386,8 @@ class VideoRecorderApp:
             self._setup_graceful_shutdown()
 
             # Проверка FFmpeg
-            ffmpeg_available, _ = check_ffmpeg()
-            if not ffmpeg_available:
+            ffmpeg_status = check_ffmpeg()
+            if not ffmpeg_status.available:
                 logger.warning(
                     "FFmpeg не найден. Кодирование видео может работать некорректно. "
                     "Пожалуйста, установите FFmpeg с https://ffmpeg.org/download.html"

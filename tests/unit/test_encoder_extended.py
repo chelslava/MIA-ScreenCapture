@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from recorder.encoder import Encoder, EncodingSettings
+from recorder.utils import FFmpegStatus
 
 
 class TestEncodingSettings:
@@ -86,7 +87,8 @@ class TestEncoderInit:
     def test_init_default_settings(self) -> None:
         """Проверка инициализации с настройками по умолчанию."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -102,7 +104,8 @@ class TestEncoderInit:
         custom_settings = EncodingSettings(codec="h264", bitrate="5M")
 
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -115,7 +118,8 @@ class TestEncoderInit:
     def test_init_ffmpeg_not_found(self) -> None:
         """Проверка инициализации когда FFmpeg не найден."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(False, None)
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=False),
         ):
             with patch("recorder.encoder.get_ffmpeg_path", return_value=None):
                 encoder = Encoder()
@@ -125,7 +129,8 @@ class TestEncoderInit:
     def test_ffprobe_path_detection(self) -> None:
         """Проверка определения пути к ffprobe."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -146,7 +151,8 @@ class TestEncoderAvailability:
     def test_is_available_true(self) -> None:
         """Проверка доступности FFmpeg (доступен)."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -159,7 +165,8 @@ class TestEncoderAvailability:
     def test_is_available_false(self) -> None:
         """Проверка доступности FFmpeg (недоступен)."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(False, None)
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=False),
         ):
             with patch("recorder.encoder.get_ffmpeg_path", return_value=None):
                 encoder = Encoder()
@@ -173,7 +180,8 @@ class TestEncoderMergeVideoAudio:
     def test_merge_success(self) -> None:
         """Проверка успешного объединения."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -198,7 +206,8 @@ class TestEncoderMergeVideoAudio:
     def test_merge_ffmpeg_error(self) -> None:
         """Проверка ошибки FFmpeg при объединении."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -223,7 +232,8 @@ class TestEncoderMergeVideoAudio:
     def test_merge_video_not_found(self) -> None:
         """Проверка ошибки когда видеофайл не найден."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -244,7 +254,8 @@ class TestEncoderMergeVideoAudio:
     def test_merge_audio_not_found(self) -> None:
         """Проверка ошибки когда аудиофайл не найден."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -267,7 +278,8 @@ class TestEncoderMergeVideoAudio:
     def test_merge_with_progress_callback(self) -> None:
         """Проверка объединения с callback прогресса."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -301,7 +313,8 @@ class TestEncoderExtractAudio:
     def test_extract_audio_success(self) -> None:
         """Проверка успешного извлечения аудио."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -324,7 +337,8 @@ class TestEncoderExtractAudio:
     def test_extract_audio_video_not_found(self) -> None:
         """Проверка ошибки когда видео не найдено."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -347,7 +361,8 @@ class TestEncoderGetVideoInfo:
     def test_get_video_info_success(self) -> None:
         """Проверка успешного получения информации."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -372,7 +387,8 @@ class TestEncoderGetVideoInfo:
     def test_get_video_info_file_not_found(self) -> None:
         """Проверка ошибки когда файл не найден."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -392,7 +408,8 @@ class TestEncoderGetVideoInfo:
     def test_get_video_info_no_ffprobe(self) -> None:
         """Проверка когда ffprobe недоступен."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -415,7 +432,8 @@ class TestEncoderEdgeCases:
     def test_merge_with_special_characters_in_path(self) -> None:
         """Проверка объединения со спецсимволами в пути."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -440,7 +458,8 @@ class TestEncoderEdgeCases:
     def test_encoder_with_none_settings(self) -> None:
         """Проверка инициализации с None настройками."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -459,7 +478,8 @@ class TestEncoderSubprocessError:
     def test_subprocess_timeout(self) -> None:
         """Проверка таймаута subprocess."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",
@@ -488,7 +508,8 @@ class TestEncoderSubprocessError:
     def test_subprocess_file_not_found(self) -> None:
         """Проверка ошибки FileNotFoundError в subprocess."""
         with patch(
-            "recorder.encoder.check_ffmpeg", return_value=(True, "5.0")
+            "recorder.encoder.check_ffmpeg",
+            return_value=FFmpegStatus(available=True, version="5.0"),
         ):
             with patch(
                 "recorder.encoder.get_ffmpeg_path",

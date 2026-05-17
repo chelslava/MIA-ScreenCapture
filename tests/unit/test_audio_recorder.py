@@ -691,6 +691,59 @@ class TestSystemAudioRecorderSelection:
                 recorder._init_audio()
 
 
+class TestAudioRecorderPyaudioLoop:
+    """Тесты цикла записи PyAudio и освобождения ресурсов."""
+
+    @pytest.fixture
+    def recorder(self) -> AudioRecorder:
+        return AudioRecorder()
+
+    def test_record_loop_pyaudio_closes_stream_on_exception(
+        self, recorder: AudioRecorder
+    ) -> None:
+        """При исключении внутри read() стрим гарантированно закрывается."""
+        mock_stream = MagicMock()
+
+        def read_and_stop(*args, **kwargs):
+            recorder._shutdown_event.set()
+            raise OSError("device error")
+
+        mock_stream.read.side_effect = read_and_stop
+        recorder._audio_stream = mock_stream
+        recorder._state = AudioState.RECORDING
+        recorder._duration = None
+
+        recorder._record_loop_pyaudio()
+
+        mock_stream.stop_stream.assert_called_once()
+        mock_stream.close.assert_called_once()
+        assert recorder._audio_stream is None
+
+    def test_record_loop_pyaudio_closes_stream_on_normal_exit(
+        self, recorder: AudioRecorder
+    ) -> None:
+        """После штатного завершения цикла стрим тоже закрывается."""
+        mock_stream = MagicMock()
+        mock_stream.read.return_value = b"\x00" * 2048
+        recorder._audio_stream = mock_stream
+        recorder._state = AudioState.STOPPING
+
+        recorder._record_loop_pyaudio()
+
+        mock_stream.stop_stream.assert_called_once()
+        mock_stream.close.assert_called_once()
+        assert recorder._audio_stream is None
+
+    def test_record_loop_pyaudio_noop_when_no_stream(
+        self, recorder: AudioRecorder
+    ) -> None:
+        """Если стрим не инициализирован — метод немедленно возвращается."""
+        recorder._audio_stream = None
+        recorder._state = AudioState.RECORDING
+
+        recorder._record_loop_pyaudio()  # не должно упасть
+
+
 class TestAudioRecorderEventBus:
     """Тесты публикации событий через event bus при потере аудио-чанков."""
 
