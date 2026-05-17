@@ -32,7 +32,7 @@ dependencies = [
     "opencv-python>=4.8.0",
     "numpy>=1.24.0",
     # Audio Recording
-    "pyaudio>=0.2.13",
+    "pyaudio>=0.2.13; sys_platform == 'win32'",
     "sounddevice>=0.4.6",
     "soundfile>=0.12.1",
     # FFmpeg Integration
