@@ -500,7 +500,7 @@ def validate_rect_coords(
     Validate and normalize rectangle coordinates.
 
     .. deprecated::
-        Используйте core.geometry.validate_rect_coords() вместо этой функции.
+        Use core.geometry.validate_rect_coords() instead of this function.
 
     Args:
         x1, y1: Top-left corner.
@@ -509,10 +509,10 @@ def validate_rect_coords(
     Returns:
         Normalized coordinates (left, top, right, bottom).
     """
-    # Импорт внутри функции для избежания циклических зависимостей
+    # Import inside function to avoid circular dependencies
     from core.geometry import validate_rect_coords as geometry_validate
 
-    # Вызываем новую функцию без strict-проверок (старое поведение)
+    # Call new function without strict checks (old behavior)
     return geometry_validate(x1, y1, x2, y2, strict=False)
 
 
