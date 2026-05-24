@@ -1,8 +1,7 @@
-"""
-Core-типы для параметров записи.
+"""Core types for recording parameters.
 
-Не зависят от GUI-слоя и используются в use-case сервисах.
-Единый источник типов для всего приложения.
+Does not depend on the GUI layer and is used in use-case services.
+Single source of truth for types across the application.
 """
 
 from __future__ import annotations
@@ -13,10 +12,10 @@ from enum import Enum
 
 class CaptureMode(Enum):
     """
-    Режим захвата экрана.
+    Screen capture mode.
 
-    Используется во всех слоях приложения.
-    Значения совместимы с API и CLI.
+    Used across all application layers.
+    Values are compatible with API and CLI.
     """
 
     FULL = "full"
@@ -26,10 +25,10 @@ class CaptureMode(Enum):
 
 class AudioMode(Enum):
     """
-    Режим записи аудио.
+    Audio recording mode.
 
-    Используется во всех слоях приложения.
-    Значения совместимы с API и CLI.
+    Used across all application layers.
+    Values are compatible with API and CLI.
     """
 
     NONE = "none"
@@ -38,14 +37,14 @@ class AudioMode(Enum):
     BOTH = "both"
 
 
-# Aliases для обратной совместимости
+# Aliases for backward compatibility
 CaptureType = CaptureMode
 AudioType = AudioMode
 
 
 @dataclass(frozen=True)
 class CaptureRequest:
-    """Параметры захвата экрана на уровне core."""
+    """Screen capture parameters at core level."""
 
     mode: CaptureMode
     window_title: str
@@ -54,7 +53,7 @@ class CaptureRequest:
 
 @dataclass(frozen=True)
 class AudioRequest:
-    """Параметры аудио на уровне core."""
+    """Audio parameters at core level."""
 
     mode: AudioMode
     mic_device_index: int | None = None
@@ -62,7 +61,7 @@ class AudioRequest:
 
 @dataclass(frozen=True)
 class VideoRequest:
-    """Параметры видео на уровне core."""
+    """Video parameters at core level."""
 
     fps: int
     codec: str
