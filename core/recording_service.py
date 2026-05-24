@@ -18,6 +18,7 @@ from core.event_bus import (
     RecordingEvent,
     RecordingEventType,
 )
+from core.geometry import validate_rect_coords
 from core.recording_backend import RecordingBackend
 from core.recording_types import (
     AudioMode,
@@ -228,7 +229,11 @@ class RecordingService:
     def _validate_rect_coords(
         self, rect: list[int] | tuple[int, ...]
     ) -> tuple[int, int, int, int]:
-        """Валидирует координаты области захвата.
+        """
+        Валидирует координаты области захвата.
+
+        Использует общую функцию validate_rect_coords из core.geometry
+        в строгом режиме для проверки корректности порядка координат.
 
         Args:
             rect: Список или кортеж из 4 координат [x1, y1, x2, y2].
@@ -245,16 +250,8 @@ class RecordingService:
                 f"получено {len(rect)}"
             )
         x1, y1, x2, y2 = int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3])
-        if x2 <= x1:
-            raise ValueError(f"x2 должен быть больше x1: x1={x1}, x2={x2}")
-        if y2 <= y1:
-            raise ValueError(f"y2 должен быть больше y1: y1={y1}, y2={y2}")
-        if any(c < 0 for c in (x1, y1, x2, y2)):
-            raise ValueError(
-                f"Координаты не могут быть отрицательными: "
-                f"[{x1}, {y1}, {x2}, {y2}]"
-            )
-        return (x1, y1, x2, y2)
+        # Используем общую функцию с strict=True для валидации
+        return validate_rect_coords(x1, y1, x2, y2, strict=True)
 
     def _build_capture_settings(
         self, params: dict[str, Any]

@@ -56,13 +56,8 @@ class AudioRecorder:
     зависит от платформы и может потребовать дополнительной настройки.
     """
 
-    def __init__(
-        self,
-        sample_rate: int = 44100,
-        channels: int = 2,
-        chunk_size: int = 1024,
-        event_bus: "EventBus | None" = None,
-    ):
+    def __init__(self, sample_rate: int = 44100, channels: int = 2, chunk_size: int = 1024, event_bus: "EventBus | None" = None
+):
         """
         Инициализация аудиозаписи.
 
@@ -421,14 +416,6 @@ class AudioRecorder:
             logger.error(f"Ошибка цикла записи PyAudio: {e}")
             if self._on_error:
                 self._on_error(str(e))
-        finally:
-            if self._audio_stream is not None:
-                try:
-                    self._audio_stream.stop_stream()
-                    self._audio_stream.close()
-                except (OSError, RuntimeError) as e:
-                    logger.error(f"Ошибка закрытия PyAudio стрима: {e}")
-                self._audio_stream = None
 
     def _enqueue_audio_chunk(self, audio_data: bytes, frames: int) -> None:
         """

@@ -1,9 +1,8 @@
 """
-Модуль вспомогательных функций
-==============================
+Utility functions module.
 
-Предоставляет вспомогательные функции для захвата экрана, определения окон,
-перечисления аудиоустройств и проверки FFmpeg.
+Provides helpers for screen capture, window enumeration,
+audio device listing, and FFmpeg availability checks.
 """
 
 import os
@@ -13,9 +12,12 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from logger_config import get_module_logger
+
+if TYPE_CHECKING:
+    pass
 
 logger = get_module_logger(__name__)
 
@@ -24,7 +26,7 @@ _MIN_FFMPEG_VERSION = (4, 0, 0)
 
 @dataclass
 class FFmpegStatus:
-    """Результат проверки доступности FFmpeg."""
+    """Result of an FFmpeg availability check."""
 
     available: bool
     version: str | None = None
@@ -34,7 +36,7 @@ class FFmpegStatus:
 
 
 def get_subprocess_creationflags() -> int:
-    """Возвращает флаги для скрытия консоли на Windows."""
+    """Return flags to suppress a console window on Windows."""
     if os.name != "nt":
         return 0
     return getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -42,10 +44,10 @@ def get_subprocess_creationflags() -> int:
 
 def get_platform() -> str:
     """
-    Получение идентификатора текущей платформы.
+    Return the current platform identifier.
 
     Returns:
-        Строка платформы: 'windows', 'linux', 'darwin' (macOS)
+        One of 'windows', 'linux', or 'darwin' (macOS).
     """
     system = platform.system().lower()
     if system == "windows":
@@ -59,17 +61,17 @@ def get_platform() -> str:
 
 def check_ffmpeg() -> FFmpegStatus:
     """
-    Проверка доступности FFmpeg.
+    Check FFmpeg availability.
 
     Returns:
-        FFmpegStatus с полями available, version, path, error, recommendation.
+        FFmpegStatus with fields: available, version, path, error, recommendation.
     """
     ffmpeg_path = get_ffmpeg_path()
     if ffmpeg_path is None:
-        msg = "FFmpeg не найден в PATH"
+        msg = "FFmpeg not found in PATH"
         rec = (
-            "Установите FFmpeg и добавьте его в PATH. "
-            "Скачать: https://ffmpeg.org/download.html"
+            "Install FFmpeg and add it to PATH. "
+            "Download: https://ffmpeg.org/download.html"
         )
         logger.warning(msg)
         return FFmpegStatus(available=False, error=msg, recommendation=rec)
@@ -87,13 +89,13 @@ def check_ffmpeg() -> FFmpegStatus:
         result = subprocess.run([ffmpeg_path, "-version"], **run_kwargs)
 
         if result.returncode != 0:
-            msg = f"FFmpeg вернул код {result.returncode}"
+            msg = f"FFmpeg returned code {result.returncode}"
             logger.error(msg)
             return FFmpegStatus(
                 available=False,
                 path=ffmpeg_path,
                 error=msg,
-                recommendation="Переустановите FFmpeg.",
+                recommendation="Reinstall FFmpeg.",
             )
 
         first_line = result.stdout.split("\n")[0]
@@ -110,16 +112,16 @@ def check_ffmpeg() -> FFmpegStatus:
             if detected < _MIN_FFMPEG_VERSION:
                 min_str = ".".join(str(v) for v in _MIN_FFMPEG_VERSION)
                 recommendation = (
-                    f"Версия FFmpeg {version} устарела. "
-                    f"Рекомендуется {min_str} или новее."
+                    f"FFmpeg version {version} is outdated. "
+                    f"Version {min_str} or newer is recommended."
                 )
                 logger.warning(
-                    "FFmpeg версия %s устарела, требуется >= %s",
+                    "FFmpeg version %s is outdated, >= %s required",
                     version,
                     min_str,
                 )
 
-        logger.info("FFmpeg найден: версия %s, путь %s", version, ffmpeg_path)
+        logger.info("FFmpeg found: version %s, path %s", version, ffmpeg_path)
         return FFmpegStatus(
             available=True,
             version=version,
@@ -128,10 +130,10 @@ def check_ffmpeg() -> FFmpegStatus:
         )
 
     except FileNotFoundError:
-        msg = f"FFmpeg не найден по пути: {ffmpeg_path}"
+        msg = f"FFmpeg not found at path: {ffmpeg_path}"
         rec = (
-            "FFmpeg найден в PATH, но не запускается. "
-            "Проверьте права доступа или переустановите FFmpeg."
+            "FFmpeg was found in PATH but failed to run. "
+            "Check permissions or reinstall FFmpeg."
         )
         logger.warning(msg)
         return FFmpegStatus(
@@ -141,29 +143,29 @@ def check_ffmpeg() -> FFmpegStatus:
             recommendation=rec,
         )
     except subprocess.TimeoutExpired:
-        msg = "Таймаут при проверке версии FFmpeg"
+        msg = "Timeout while checking FFmpeg version"
         logger.error(msg)
         return FFmpegStatus(
             available=False,
             path=ffmpeg_path,
             error=msg,
-            recommendation="Проверьте, не завис ли процесс FFmpeg в системе.",
+            recommendation="Check whether an FFmpeg process is hanging on the system.",
         )
     except Exception as e:
-        msg = f"Ошибка проверки FFmpeg: {e}"
+        msg = f"FFmpeg check error: {e}"
         logger.error(msg)
         return FFmpegStatus(available=False, path=ffmpeg_path, error=msg)
 
 
 def get_executable_path(executable_name: str) -> str | None:
     """
-    Получение абсолютного пути к исполняемому файлу.
+    Return the absolute path to an executable.
 
     Args:
-        executable_name: Имя исполняемого файла для поиска.
+        executable_name: Name of the executable to find.
 
     Returns:
-        Абсолютный путь к исполняемому файлу или None, если он не найден.
+        Absolute path, or None if not found.
     """
     executable_path = shutil.which(executable_name)
     if executable_path is None:
@@ -172,32 +174,21 @@ def get_executable_path(executable_name: str) -> str | None:
 
 
 def get_ffmpeg_path() -> str | None:
-    """
-    Получение пути к исполняемому файлу FFmpeg.
-
-    Returns:
-        Абсолютный путь к FFmpeg или None, если он не найден.
-    """
+    """Return the absolute path to the FFmpeg executable, or None."""
     return get_executable_path("ffmpeg")
 
 
 def get_ffprobe_path() -> str | None:
-    """
-    Получение пути к исполняемому файлу FFprobe.
-
-    Returns:
-        Абсолютный путь к FFprobe или None, если он не найден.
-    """
+    """Return the absolute path to the FFprobe executable, or None."""
     return get_executable_path("ffprobe")
 
 
 def get_available_windows() -> list[dict[str, Any]]:
     """
-    Получение списка всех видимых окон с их заголовками и позициями.
+    Return a list of all visible windows with their titles and positions.
 
     Returns:
-        Список словарей с информацией об окнах:
-        [{'title': str, 'x': int, 'y': int, 'width': int, 'height': int}, ...]
+        List of dicts: [{'title': str, 'x': int, 'y': int, 'width': int, 'height': int}, ...]
     """
     windows = []
     current_platform = get_platform()
@@ -210,18 +201,13 @@ def get_available_windows() -> list[dict[str, Any]]:
         elif current_platform == "darwin":
             windows = _get_macos_windows()
     except Exception as e:
-        logger.error(f"Ошибка получения списка окон: {e}")
+        logger.error(f"Failed to enumerate windows: {e}")
 
     return windows
 
 
 def _get_windows_windows() -> list[dict[str, Any]]:
-    """
-    Получение окон на платформе Windows с использованием win32gui.
-
-    Returns:
-        Список словарей с информацией об окнах
-    """
+    """Return windows on Windows using win32gui."""
     windows = []
 
     try:
@@ -230,7 +216,7 @@ def _get_windows_windows() -> list[dict[str, Any]]:
         def enum_windows_callback(hwnd, _):
             if win32gui.IsWindowVisible(hwnd):
                 title = win32gui.GetWindowText(hwnd)
-                if title:  # Только окна с заголовками
+                if title:  # Only windows with titles
                     rect = win32gui.GetWindowRect(hwnd)
                     windows.append(
                         {
@@ -247,7 +233,7 @@ def _get_windows_windows() -> list[dict[str, Any]]:
         win32gui.EnumWindows(enum_windows_callback, None)
 
     except ImportError:
-        logger.warning("win32gui недоступен, пробуем pygetwindow")
+        logger.warning("win32gui not available, trying pygetwindow")
         try:
             import pygetwindow as gw
 
@@ -263,22 +249,16 @@ def _get_windows_windows() -> list[dict[str, Any]]:
                         }
                     )
         except ImportError:
-            logger.error("pygetwindow также недоступен")
+            logger.error("pygetwindow is also not available")
 
     return windows
 
 
 def _get_linux_windows() -> list[dict[str, Any]]:
-    """
-    Получение окон на платформе Linux с использованием xlib или wmctrl.
-
-    Returns:
-        Список словарей с информацией об окнах
-    """
+    """Return windows on Linux using wmctrl."""
     windows = []
 
     try:
-        # Попытка использования команды wmctrl
         result = subprocess.run(
             ["wmctrl", "-lG"], capture_output=True, text=True, timeout=5
         )
@@ -297,18 +277,13 @@ def _get_linux_windows() -> list[dict[str, Any]]:
                         }
                     )
     except (FileNotFoundError, subprocess.TimeoutExpired):
-        logger.warning("wmctrl недоступен")
+        logger.warning("wmctrl not available")
 
     return windows
 
 
 def _get_macos_windows() -> list[dict[str, Any]]:
-    """
-    Получение окон на macOS с использованием pygetwindow или AppleScript.
-
-    Returns:
-        Список словарей с информацией об окнах
-    """
+    """Return windows on macOS using pygetwindow."""
     windows = []
 
     try:
@@ -326,17 +301,17 @@ def _get_macos_windows() -> list[dict[str, Any]]:
                     }
                 )
     except ImportError:
-        logger.warning("pygetwindow недоступен на macOS")
+        logger.warning("pygetwindow not available on macOS")
 
     return windows
 
 
 def get_audio_devices() -> dict[str, list[dict[str, Any]]]:
     """
-    Получение доступных устройств ввода и вывода аудио.
+    Return available audio input and output devices.
 
     Returns:
-        Словарь со списками 'input' и 'output' информации об устройствах
+        Dict with 'input' and 'output' lists of device info dicts.
     """
     devices: dict[str, list[dict[str, Any]]] = {"input": [], "output": []}
 
@@ -359,9 +334,8 @@ def get_audio_devices() -> dict[str, list[dict[str, Any]]]:
                 devices["output"].append(device_info)
 
     except ImportError:
-        logger.warning("sounddevice недоступен")
+        logger.warning("sounddevice not available")
 
-        # Возврат к pyaudio
         try:
             import pyaudio
 
@@ -386,21 +360,21 @@ def get_audio_devices() -> dict[str, list[dict[str, Any]]]:
             p.terminate()
 
         except ImportError:
-            logger.error("Ни sounddevice, ни pyaudio недоступны")
+            logger.error("Neither sounddevice nor pyaudio is available")
 
     return devices
 
 
 def get_screen_size() -> tuple[int, int]:
     """
-    Получение размера основного экрана.
+    Return the primary screen size.
 
     Returns:
-        Кортеж (ширина, высота)
+        Tuple (width, height).
     """
     current_platform = get_platform()
     if current_platform != "windows":
-        # Проект ориентирован на Windows-capture.
+        # Project targets Windows capture.
         return 1920, 1080
 
     try:
@@ -413,16 +387,16 @@ def get_screen_size() -> tuple[int, int]:
         if width > 0 and height > 0:
             return width, height
     except Exception as e:
-        logger.error(f"Ошибка получения размера экрана: {e}")
-    return 1920, 1080  # Значение по умолчанию
+        logger.error(f"Failed to get screen size: {e}")
+    return 1920, 1080  # Default fallback
 
 
 def get_all_monitors() -> list[dict[str, int]]:
     """
-    Получение информации о всех подключенных мониторах.
+    Return information about all connected monitors.
 
     Returns:
-        Список словарей с информацией о мониторах
+        List of dicts with monitor info.
     """
     current_platform = get_platform()
     if current_platform != "windows":
@@ -472,7 +446,7 @@ def get_all_monitors() -> list[dict[str, int]]:
             0, 0, monitor_enum_proc(_callback), 0
         )
     except Exception as e:
-        logger.error(f"Ошибка получения мониторов: {e}")
+        logger.error(f"Failed to enumerate monitors: {e}")
 
     if not monitors:
         width, height = get_screen_size()
@@ -484,24 +458,17 @@ def get_all_monitors() -> list[dict[str, int]]:
 
 def get_available_monitors() -> list[dict[str, Any]]:
     """
-    Получение списка доступных мониторов для выбора.
+    Return the list of available monitors with metadata.
 
-    Это alias для get_all_monitors() с дополнительными метаданными.
+    This is an alias for get_all_monitors() with additional metadata fields.
 
     Returns:
-        Список словарей с информацией о мониторах:
-        [{
-            'index': int,
-            'x': int, 'y': int,
-            'width': int, 'height': int,
-            'name': str,
-            'is_primary': bool
-        }, ...]
+        List of dicts: [{'index', 'x', 'y', 'width', 'height', 'name', 'is_primary'}, ...]
     """
     monitors = get_all_monitors()
     result = []
 
-    # Определение primary монитора (обычно 0,0)
+    # Identify the primary monitor (conventionally at 0,0).
     primary_monitor = None
     for i, mon in enumerate(monitors):
         is_primary = mon["x"] == 0 and mon["y"] == 0
@@ -519,7 +486,7 @@ def get_available_monitors() -> list[dict[str, Any]]:
             }
         )
 
-    # Если не нашли primary по координатам, считаем первый primary
+    # If no monitor is at 0,0 treat the first one as primary.
     if primary_monitor is None and result:
         result[0]["is_primary"] = True
 
@@ -530,38 +497,34 @@ def validate_rect_coords(
     x1: int, y1: int, x2: int, y2: int
 ) -> tuple[int, int, int, int]:
     """
-    Проверка и нормализация координат прямоугольника.
+    Validate and normalize rectangle coordinates.
+
+    .. deprecated::
+        Используйте core.geometry.validate_rect_coords() вместо этой функции.
 
     Args:
-        x1, y1: Верхний левый угол
-        x2, y2: Нижний правый угол
+        x1, y1: Top-left corner.
+        x2, y2: Bottom-right corner.
 
     Returns:
-        Нормализованные координаты (left, top, right, bottom)
+        Normalized coordinates (left, top, right, bottom).
     """
-    left = min(x1, x2)
-    top = min(y1, y2)
-    right = max(x1, x2)
-    bottom = max(y1, y2)
+    # Импорт внутри функции для избежания циклических зависимостей
+    from core.geometry import validate_rect_coords as geometry_validate
 
-    # Обеспечение минимального размера
-    if right - left < 10:
-        right = left + 10
-    if bottom - top < 10:
-        bottom = top + 10
-
-    return left, top, right, bottom
+    # Вызываем новую функцию без strict-проверок (старое поведение)
+    return geometry_validate(x1, y1, x2, y2, strict=False)
 
 
 def format_time(seconds: float) -> str:
     """
-    Форматирование секунд в строку ЧЧ:ММ:СС.
+    Format seconds as HH:MM:SS.
 
     Args:
-        seconds: Время в секундах
+        seconds: Time in seconds.
 
     Returns:
-        Отформатированная строка времени
+        Formatted time string.
     """
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
@@ -574,13 +537,13 @@ def format_time(seconds: float) -> str:
 
 def format_filesize(size_bytes: int) -> str:
     """
-    Форматирование размера файла в читаемом формате.
+    Format a file size in human-readable form.
 
     Args:
-        size_bytes: Размер в байтах
+        size_bytes: Size in bytes.
 
     Returns:
-        Отформатированная строка размера (например, "1.5 MB")
+        Formatted size string (e.g. "1.5 MB").
     """
     size: float = float(size_bytes)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
@@ -592,41 +555,39 @@ def format_filesize(size_bytes: int) -> str:
 
 def ensure_directory(path: Path) -> bool:
     """
-    Обеспечение существования директории, создание при необходимости.
+    Ensure a directory exists, creating it if necessary.
 
     Args:
-        path: Путь к директории
+        path: Directory path.
 
     Returns:
-        True если директория существует или была создана
+        True if the directory exists or was created.
     """
     try:
         path.mkdir(parents=True, exist_ok=True)
         return True
     except Exception as e:
-        logger.error(f"Ошибка создания директории {path}: {e}")
+        logger.error(f"Failed to create directory {path}: {e}")
         return False
 
 
 def is_valid_output_path(path: str) -> bool:
     """
-    Проверка допустимости пути вывода для записи.
+    Check whether an output path is writable.
 
     Args:
-        path: Путь к выходному файлу
+        path: Output file path.
 
     Returns:
-        True если путь допустим
+        True if the path is valid and writable.
     """
     try:
         p = Path(path)
         parent = p.parent
 
-        # Проверка существования родительской директории или возможности создания
         if not parent.exists():
             parent.mkdir(parents=True, exist_ok=True)
 
-        # Проверка возможности записи в расположение
         if p.exists():
             return os.access(path, os.W_OK)
         return os.access(parent, os.W_OK)
@@ -637,14 +598,14 @@ def is_valid_output_path(path: str) -> bool:
 
 def get_unique_filename(base_path: Path, filename: str) -> Path:
     """
-    Получение уникального имени файла добавлением номера если файл существует.
+    Return a unique file path by appending a counter if the file already exists.
 
     Args:
-        base_path: Путь к директории
-        filename: Желаемое имя файла
+        base_path: Directory path.
+        filename: Desired file name.
 
     Returns:
-        Уникальный путь к файлу
+        Unique file path.
     """
     full_path = base_path / filename
 
@@ -664,15 +625,15 @@ def get_unique_filename(base_path: Path, filename: str) -> Path:
 
 def get_available_disk_space(path: Path) -> int:
     """
-    Получение доступного места на диске для указанного пути.
+    Return available disk space in bytes for the given path.
 
     Args:
-        path: Путь для проверки (файл или директория)
+        path: File or directory path to check.
 
     Returns:
-        Количество свободных байт на диске
+        Free bytes on the disk.
     """
-    # Если путь указывает на файл (по расширению), проверяем родителя.
+    # If the path looks like a file (has an extension), check its parent.
     if path.suffix or path.is_file():
         check_path = path.parent
     else:
@@ -689,15 +650,15 @@ def check_disk_space(
     estimated_size_mb: int | None = None,
 ) -> tuple[bool, int, str | None]:
     """
-    Проверка достаточности места на диске для записи.
+    Check whether there is enough disk space for a recording.
 
     Args:
-        output_path: Путь к выходному файлу
-        min_space_mb: Минимальное свободное место в МБ (по умолчанию 100)
-        estimated_size_mb: Ожидаемый размер файла в МБ (опционально)
+        output_path: Output file path.
+        min_space_mb: Minimum free space in MB (default 100).
+        estimated_size_mb: Expected file size in MB (optional).
 
     Returns:
-        Кортеж (достаточно_места, свободно_байт, сообщение_об_ошибке)
+        Tuple (enough_space, free_bytes, error_message).
     """
     try:
         free_bytes = get_available_disk_space(output_path)
@@ -709,25 +670,23 @@ def check_disk_space(
 
         if free_mb < required_mb:
             error_msg = (
-                f"Недостаточно места на диске: {free_mb:.0f} МБ свободно, "
-                f"требуется минимум {required_mb:.0f} МБ"
+                f"Not enough disk space: {free_mb:.0f} MB free, "
+                f"minimum {required_mb:.0f} MB required"
             )
             return False, free_bytes, error_msg
 
         return True, free_bytes, None
 
     except FileNotFoundError as e:
-        error_msg = f"Путь недоступен: {e}"
+        error_msg = f"Path not accessible: {e}"
         return False, 0, error_msg
     except OSError as e:
-        error_msg = f"Ошибка проверки диска: {e}"
+        error_msg = f"Disk check error: {e}"
         return False, 0, error_msg
 
 
 class Singleton(type):
-    """
-    Метакласс Singleton для обеспечения существования только одного экземпляра класса.
-    """
+    """Metaclass that ensures only one instance of a class exists."""
 
     _instances: dict[type, Any] = {}
 
