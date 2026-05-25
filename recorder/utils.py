@@ -513,7 +513,7 @@ def validate_rect_coords(
     from core.geometry import validate_rect_coords as geometry_validate
 
     # Call new function without strict checks (old behavior)
-    return geometry_validate(x1, y1, x2, y2, strict=False)
+    return geometry_validate(x1, y1, x2, y2, strict=False)  # type: ignore[no-any-return]
 
 
 def format_time(seconds: float) -> str:

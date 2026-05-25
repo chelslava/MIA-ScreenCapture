@@ -254,7 +254,7 @@ class RecordingService:
             )
         x1, y1, x2, y2 = int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3])
         # Use common function with strict=True for validation
-        return validate_rect_coords(x1, y1, x2, y2, strict=True)
+        return validate_rect_coords(x1, y1, x2, y2, strict=True)  # type: ignore[no-any-return]
 
     def _build_capture_settings(
         self, params: dict[str, Any]
