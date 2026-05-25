@@ -56,8 +56,13 @@ class AudioRecorder:
     зависит от платформы и может потребовать дополнительной настройки.
     """
 
-    def __init__(self, sample_rate: int = 44100, channels: int = 2, chunk_size: int = 1024, event_bus: "EventBus | None" = None
-):
+    def __init__(
+        self,
+        sample_rate: int = 44100,
+        channels: int = 2,
+        chunk_size: int = 1024,
+        event_bus: "EventBus | None" = None,
+    ):
         """
         Инициализация аудиозаписи.
 

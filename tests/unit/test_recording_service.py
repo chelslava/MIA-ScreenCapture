@@ -100,7 +100,10 @@ class TestRecordingService:
         service = RecordingService(backend=backend)
 
         result = service.start_recording({"area": "full"})
-        assert result == {"success": False, "error": "Recording already in progress"}
+        assert result == {
+            "success": False,
+            "error": "Recording already in progress",
+        }
 
     def test_stop_recording_success(self) -> None:
         backend = FakeBackend()
