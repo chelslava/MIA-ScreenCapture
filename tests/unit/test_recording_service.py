@@ -100,7 +100,7 @@ class TestRecordingService:
         service = RecordingService(backend=backend)
 
         result = service.start_recording({"area": "full"})
-        assert result == {"success": False, "error": "Запись уже идёт"}
+        assert result == {"success": False, "error": "Recording already in progress"}
 
     def test_stop_recording_success(self) -> None:
         backend = FakeBackend()
@@ -184,7 +184,7 @@ class TestRecordingService:
 
         assert result["success"] is False
         assert len(events) == 1
-        assert events[0].payload["error"] == "Запись уже идёт"
+        assert events[0].payload["error"] == "Recording already in progress"
 
     def test_build_output_path_accepts_directory(self) -> None:
         """При передаче директории должен генерироваться файл внутри неё."""
@@ -241,7 +241,7 @@ class TestRectCoordsValidation:
             service._validate_rect_coords([100, 200, 500])
             assert False, "Должен быть выброшен ValueError"
         except ValueError as e:
-            assert "4 координаты" in str(e)
+            assert "4 coordinates" in str(e)
 
     def test_invalid_rect_coords_x2_le_x1(self) -> None:
         """Ошибка при x2 <= x1."""
@@ -250,7 +250,7 @@ class TestRectCoordsValidation:
             service._validate_rect_coords([500, 100, 100, 600])
             assert False, "Должен быть выброшен ValueError"
         except ValueError as e:
-            assert "x2 должен быть больше x1" in str(e)
+            assert "x2 must be greater than x1" in str(e)
 
     def test_invalid_rect_coords_y2_le_y1(self) -> None:
         """Ошибка при y2 <= y1."""
@@ -259,7 +259,7 @@ class TestRectCoordsValidation:
             service._validate_rect_coords([100, 600, 500, 100])
             assert False, "Должен быть выброшен ValueError"
         except ValueError as e:
-            assert "y2 должен быть больше y1" in str(e)
+            assert "y2 must be greater than y1" in str(e)
 
     def test_invalid_rect_coords_negative(self) -> None:
         """Ошибка при отрицательных координатах."""
@@ -268,7 +268,7 @@ class TestRectCoordsValidation:
             service._validate_rect_coords([-100, 0, 500, 600])
             assert False, "Должен быть выброшен ValueError"
         except ValueError as e:
-            assert "отрицательными" in str(e)
+            assert "negative" in str(e)
 
     def test_build_capture_settings_rect_without_coords(self) -> None:
         """Ошибка при area=rect без координат."""
@@ -369,7 +369,7 @@ class TestRecordingServiceExtraEdgeCases:
         service = RecordingService(backend=FakeBackend())
         result = service.toggle_pause()
         assert result["success"] is False
-        assert "Запись не идёт" in result["error"]
+        assert "Recording is not active" in result["error"]
 
     def test_toggle_pause_returns_error_when_resume_fails(self) -> None:
         backend = FakeBackend()
@@ -383,7 +383,7 @@ class TestRecordingServiceExtraEdgeCases:
         service = RecordingService(backend=backend)
         result = service.toggle_pause()
         assert result["success"] is False
-        assert "возобновить" in result["error"]
+        assert "Failed to resume" in result["error"]
 
     def test_toggle_pause_returns_error_when_pause_fails(self) -> None:
         backend = FakeBackend()
@@ -397,7 +397,7 @@ class TestRecordingServiceExtraEdgeCases:
         service = RecordingService(backend=backend)
         result = service.toggle_pause()
         assert result["success"] is False
-        assert "паузу" in result["error"]
+        assert "Failed to pause" in result["error"]
 
     def test_get_recordings_returns_list(self) -> None:
         service = RecordingService(backend=FakeBackend())

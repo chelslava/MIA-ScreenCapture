@@ -1,10 +1,11 @@
 """
 Тесты контроллеров GUI
-======================
+=====================
 
 Тестирует контроллеры для GUI компонентов.
 """
 
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +24,7 @@ from gui.models.recording_state import (
 from recorder.utils import FFmpegStatus
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
 class TestRecordingController:
     """Тесты контроллера записи."""
 

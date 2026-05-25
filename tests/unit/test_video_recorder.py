@@ -1,10 +1,11 @@
 """
 Тесты модуля видеозаписи
-========================
+=======================
 
 Тестирует классы CaptureArea и VideoRecorder.
 """
 
+import sys
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -423,6 +424,7 @@ class TestVideoRecorder:
         error_callback.assert_called_once()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
 class TestVideoRecorderStart:
     """Тесты запуска видеозаписи."""
 
@@ -598,6 +600,7 @@ class TestVideoRecorderStop:
         assert result is False
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
 class TestVideoRecorderIntegration:
     """Интеграционные тесты VideoRecorder."""
 

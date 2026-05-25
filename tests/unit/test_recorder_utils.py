@@ -7,8 +7,11 @@
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from recorder.utils import (
     Singleton,
@@ -298,6 +301,7 @@ class TestGetAudioDevices:
 class TestGetScreenSize:
     """Тесты для функции get_screen_size."""
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
     def test_screen_size(self):
         """Проверка получения размера экрана."""
         with (
@@ -474,6 +478,7 @@ class TestLinuxSpecificFunctions:
 class TestMacOSSpecificFunctions:
     """Тесты для macOS-специфичных функций."""
 
+    @pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only test")
     @patch("pygetwindow.getAllWindows")
     def test_get_macos_windows(self, mock_get_windows):
         """Проверка получения окон на macOS."""

@@ -390,6 +390,7 @@ class AudioRecorder:
         if not self._audio_stream:
             return
 
+        stream = self._audio_stream
         try:
             while not self._shutdown_event.is_set() and self._state not in (
                 AudioState.IDLE,
@@ -400,7 +401,7 @@ class AudioRecorder:
                     continue
 
                 try:
-                    data = self._audio_stream.read(
+                    data = stream.read(
                         self.config.chunk_size, exception_on_overflow=False
                     )
                     self._enqueue_audio_chunk(data, self.config.chunk_size)
@@ -416,6 +417,17 @@ class AudioRecorder:
             logger.error(f"Ошибка цикла записи PyAudio: {e}")
             if self._on_error:
                 self._on_error(str(e))
+        finally:
+            if stream is not None:
+                try:
+                    stream.stop_stream()
+                except Exception:
+                    pass
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            self._audio_stream = None
 
     def _enqueue_audio_chunk(self, audio_data: bytes, frames: int) -> None:
         """

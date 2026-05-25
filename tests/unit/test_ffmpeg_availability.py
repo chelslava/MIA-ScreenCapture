@@ -86,7 +86,7 @@ class TestCheckFfmpegFoundButNotExecutable:
 
         rec_lower = result.recommendation.lower()
         assert any(
-            word in rec_lower for word in ["права", "переустановите", "доступ"]
+            word in rec_lower for word in ["permissions", "reinstall", "check"]
         )
 
 
@@ -203,8 +203,8 @@ class TestCheckFfmpegOutdatedVersion:
         assert result.available is True
         assert result.recommendation is not None
         assert (
-            "устарела" in result.recommendation
-            or "устар" in result.recommendation
+            "outdated" in result.recommendation.lower()
+            or "older" in result.recommendation.lower()
         )
 
     def test_recommendation_mentions_min_version(self) -> None:

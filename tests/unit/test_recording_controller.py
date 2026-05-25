@@ -6,8 +6,11 @@
 Мокируют Qt-зависимости и файловую систему.
 """
 
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from core.recording_types import AudioMode, CaptureMode
 from gui.controllers.recording_controller import RecordingController
@@ -80,6 +83,7 @@ class TestRecordingControllerBuildCaptureArea:
             mock_from_rect.assert_called_once_with(10, 20, 300, 400)
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
 class TestRecordingControllerStartRecording:
     """Тесты запуска записи."""
 
