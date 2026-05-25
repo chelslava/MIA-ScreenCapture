@@ -158,3 +158,6 @@ uv.lock
 .claude/
 .omc/
 .omx/
+
+# Sisyphus agent state
+.sisyphus/
