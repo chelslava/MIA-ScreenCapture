@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-05-07 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-05 -->
 
 # gui/controllers/
 
@@ -12,6 +12,7 @@
 |------|----------|
 | `recording_controller.py` | Управляет запуском/остановкой/паузой записи; строит `RecordingParams` из GUI-настроек |
 | `settings_controller.py` | Читает и сохраняет настройки (video, audio, output, API); синхронизирует views ↔ config |
+| `status_bar_controller.py` | Управляет строкой статуса главного окна: обновляет текст и иконки по событиям записи |
 | `websocket_controller.py` | Управляет WebSocket соединением для SSE; подписывает views на события через event bus |
 
 ## Subdirectories

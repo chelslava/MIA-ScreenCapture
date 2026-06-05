@@ -1,5 +1,5 @@
-<!-- Parent: ../gui/AGENTS.md -->
-<!-- Generated: 2026-05-07 -->
+<!-- Parent: ../AGENTS.md -->
+<!-- Generated: 2026-05-07 | Updated: 2026-06-05 -->
 
 # gui/backends/
 

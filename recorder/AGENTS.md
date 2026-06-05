@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-05-07 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-05 -->
 
 # recorder/
 
@@ -14,7 +14,6 @@
 | `audio_recorder.py` | `AudioRecorder` — захват аудио с микрофона/системного звука через sounddevice |
 | `encoder.py` | `VideoEncoder` — кодирование видео через FFmpeg pipeline (современный подход) |
 | `ffmpeg_pipeline.py` | `FFmpegPipeline` — полный pipeline кодирования через FFmpeg subprocess |
-| `error_format.py` | Форматирование ошибок FFmpeg для диагностических сообщений |
 | `ffmpeg_writer.py` | `FFmpegWriter` — упрощённая обёртка над FFmpeg subprocess (legacy, используется в тестах) |
 | `utils.py` | Утилиты: `get_available_monitors()`, `get_available_windows()`, `validate_rect_coords()`, `get_platform()` |
 

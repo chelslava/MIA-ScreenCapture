@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-05-07 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-05 -->
 
 # api/
 
@@ -27,6 +27,7 @@ REST API слой на базе Flask для удалённого управле
 | `error_mapping.py` | Маппинг доменных исключений → HTTP-коды ошибок |
 | `operation_store.py` | In-memory хранилище текущих операций (concurrent protection) |
 | `idempotency_store.py` | Хранилище ключей идемпотентности (`Idempotency-Key` header) |
+| `circuit_breaker.py` | `CircuitBreaker` — защита от каскадных сбоев внешних вызовов |
 | `observability.py` | Метрики сервера: счётчики запросов, latency, статус |
 | `swagger.py` | Swagger/OpenAPI 3.0 документация (`/api/docs`) |
 

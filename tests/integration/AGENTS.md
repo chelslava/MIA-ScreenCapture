@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-05-07 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-05 -->
 
 # tests/integration/
 
@@ -20,6 +20,7 @@
 | `test_full_workflow.py` | End-to-end сценарий: старт → запись → стоп |
 | `test_recording_flow.py` | Интеграция компонентов записи |
 | `test_scheduler_integration.py` | Интеграционные тесты планировщика с реальным APScheduler |
+| `test_websocket_load.py` | Нагрузочные тесты WebSocket/SSE: конкурентные соединения и стриминг событий |
 
 ## Subdirectories
 

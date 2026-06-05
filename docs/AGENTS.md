@@ -1,16 +1,22 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-04-29 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-05 -->
 
 # docs/
 
 ## Purpose
 Документация проекта для пользователей и разработчиков. Публикуется как GitHub Wiki через `scripts/publish_github_wiki.ps1`.
 
+## Key Files
+
+| Файл | Описание |
+|------|----------|
+| `API.md` | Справочник REST API: все endpoint'ы, схемы запросов/ответов, аутентификация |
+
 ## Subdirectories
 
 | Директория | Назначение |
 |-----------|---------|
-| `wiki/` | Markdown-статьи GitHub Wiki |
+| `wiki/` | Markdown-статьи GitHub Wiki (см. `wiki/AGENTS.md`) |
 
 ## For AI Agents
 

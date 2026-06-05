@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-05-07 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-05 -->
 
 # tests/unit/
 
@@ -10,11 +10,11 @@
 
 | Группа | Файлы |
 |--------|-------|
-| **API** | `test_api_server.py`, `test_api_auth.py`, `test_api_error_mapping.py`, `test_api_runtime_models.py`, `test_api_runtime_manager.py`, `test_schemas.py`, `test_swagger.py`, `test_rate_limiter.py`, `test_request_context.py`, `test_request_lifecycle.py`, `test_websocket.py`, `test_websocket_transport.py` |
-| **Core** | `test_event_bus.py`, `test_recording_service.py`, `test_lifecycle.py`, `test_container.py`, `test_application_service.py`, `test_readiness.py`, `test_api_lifecycle_manager.py` |
-| **GUI** | `test_main_window.py`, `test_gui_views.py`, `test_gui_controllers.py`, `test_gui_models.py`, `test_tray_icon.py`, `test_hotkeys.py`, `test_notifications.py`, `test_desktop_actions.py`, `test_settings_controller.py`, `test_websocket_controller.py`, `test_websocket_state.py`, `test_capture_view.py`, `test_audio_view.py`, `test_video_view.py`, `test_api_settings_view.py`, `test_readiness_center_view.py`, `test_recording_indicator.py`, `test_capture_area_selector.py`, `test_view_accessibility.py`, `test_theme.py`, `test_video_codecs.py`, `test_gui_recording_backend.py` |
-| **Recorder** | `test_video_recorder.py`, `test_video_recorder_extended.py`, `test_video_recorder_threading.py`, `test_audio_recorder.py`, `test_audio_recorder_extended.py`, `test_audio_recorder_threading.py`, `test_encoder.py`, `test_encoder_extended.py`, `test_ffmpeg_writer.py`, `test_recorder_utils.py` |
-| **Scheduler** | `test_scheduler.py`, `test_scheduler_tab.py`, `test_task_storage.py`, `test_trigger_builder.py`, `test_execution_engine.py` |
+| **API** | `test_api_server.py`, `test_api_auth.py`, `test_api_error_mapping.py`, `test_api_runtime_models.py`, `test_api_runtime_manager.py`, `test_schemas.py`, `test_swagger.py`, `test_rate_limiter.py`, `test_request_context.py`, `test_request_lifecycle.py`, `test_websocket.py`, `test_websocket_transport.py`, `test_circuit_breaker.py` |
+| **Core** | `test_event_bus.py`, `test_recording_service.py`, `test_lifecycle.py`, `test_container.py`, `test_application_service.py`, `test_readiness.py`, `test_api_lifecycle_manager.py`, `test_error_format.py` |
+| **GUI** | `test_main_window.py`, `test_gui_views.py`, `test_gui_controllers.py`, `test_gui_models.py`, `test_tray_icon.py`, `test_hotkeys.py`, `test_notifications.py`, `test_desktop_actions.py`, `test_recording_controller.py`, `test_settings_controller.py`, `test_status_bar_controller.py`, `test_websocket_controller.py`, `test_websocket_state.py`, `test_capture_view.py`, `test_audio_view.py`, `test_video_view.py`, `test_api_settings_view.py`, `test_readiness_center_view.py`, `test_recording_indicator.py`, `test_capture_area_selector.py`, `test_view_accessibility.py`, `test_theme.py`, `test_video_codecs.py`, `test_gui_recording_backend.py` |
+| **Recorder** | `test_video_recorder.py`, `test_video_recorder_extended.py`, `test_video_recorder_threading.py`, `test_audio_recorder.py`, `test_audio_recorder_extended.py`, `test_audio_recorder_threading.py`, `test_encoder.py`, `test_encoder_extended.py`, `test_ffmpeg_writer.py`, `test_ffmpeg_pipeline.py`, `test_ffmpeg_availability.py`, `test_recorder_utils.py`, `test_zero_copy_optimization.py` |
+| **Scheduler** | `test_scheduler.py`, `test_scheduler_tab.py`, `test_task_storage.py`, `test_trigger_builder.py`, `test_execution_engine.py`, `test_task_dialog.py` |
 | **CLI** | `test_cli_parser.py`, `test_cli_scheduler.py` |
 | **Config/Logger** | `test_config.py`, `test_config_extended.py`, `test_logger_config.py`, `test_exceptions.py` |
 | **Main** | `test_main_entrypoint.py`, `test_main_api_runtime.py` |
