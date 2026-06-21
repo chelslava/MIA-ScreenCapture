@@ -253,6 +253,33 @@ class TestVideoRecorder:
         """Проверка frame_count при инициализации."""
         assert recorder.frame_count == 0
 
+    def test_additional_segment_paths_empty_initially(
+        self, recorder: VideoRecorder
+    ) -> None:
+        """additional_segment_paths пуст без активного writer."""
+        assert recorder.additional_segment_paths == []
+
+    def test_additional_segment_paths_survives_cleanup(
+        self, recorder: VideoRecorder
+    ) -> None:
+        """Сегменты восстановления остаются доступны после _cleanup()."""
+        mock_writer = MagicMock()
+        mock_writer.is_corrupted = False
+        mock_writer.close.return_value = True
+        mock_writer.segment_paths = [
+            Path("video.mp4"),
+            Path("video_part2.mp4"),
+        ]
+        recorder._ffmpeg_writer = mock_writer
+
+        recorder._cleanup()
+
+        assert recorder._ffmpeg_writer is None
+        assert recorder.additional_segment_paths == [
+            Path("video.mp4"),
+            Path("video_part2.mp4"),
+        ]
+
     def test_set_callbacks(self, recorder: VideoRecorder) -> None:
         """Проверка установки callback'ов."""
         frame_callback = MagicMock()

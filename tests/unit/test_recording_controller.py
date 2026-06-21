@@ -296,6 +296,60 @@ class TestRecordingControllerStop:
 
         video_recorder.resume.assert_called_once()
 
+    def test_stop_saves_recovered_segments_before_finalize(
+        self, tmp_path: Path
+    ) -> None:
+        """Сегменты восстановления FFmpeg копируются до finalize()."""
+        segment1 = tmp_path / "video_temp.mp4"
+        segment2 = tmp_path / "video_temp_part2.mp4"
+        segment1.write_bytes(b"broken-moov")
+        segment2.write_bytes(b"valid-recovered-data")
+
+        output_path = tmp_path / "out" / "recording.mp4"
+        output_path.parent.mkdir(parents=True)
+
+        ctrl = RecordingController()
+        ctrl.state.status = RecordingStatus.RECORDING
+        video_recorder = MagicMock()
+        video_recorder.stop.return_value = True
+        video_recorder.additional_segment_paths = [segment1, segment2]
+        ctrl._video_recorder = video_recorder
+        ctrl._audio_recorder = None
+        encoder = MagicMock()
+        encoder.finalize.return_value = (False, "moov atom not found")
+        encoder.output_path = output_path
+        ctrl._encoder = encoder
+
+        result = ctrl.stop_recording()
+
+        assert result is None
+        saved1 = tmp_path / "out" / "recording_part1.mp4"
+        saved2 = tmp_path / "out" / "recording_part2.mp4"
+        assert saved1.read_bytes() == b"broken-moov"
+        assert saved2.read_bytes() == b"valid-recovered-data"
+
+    def test_stop_skips_saving_when_no_recovered_segments(
+        self, tmp_path: Path
+    ) -> None:
+        """Без восстановления никаких part-файлов не создаётся."""
+        output_path = tmp_path / "recording.mp4"
+
+        ctrl = RecordingController()
+        ctrl.state.status = RecordingStatus.RECORDING
+        video_recorder = MagicMock()
+        video_recorder.stop.return_value = True
+        video_recorder.additional_segment_paths = []
+        ctrl._video_recorder = video_recorder
+        ctrl._audio_recorder = None
+        encoder = MagicMock()
+        encoder.finalize.return_value = (True, None)
+        encoder.output_path = output_path
+        ctrl._encoder = encoder
+
+        ctrl.stop_recording()
+
+        assert not (tmp_path / "recording_part1.mp4").exists()
+
 
 class TestRecordingControllerCancellation:
     """Тесты отмены операций."""

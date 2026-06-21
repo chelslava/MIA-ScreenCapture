@@ -6,6 +6,7 @@
 Отделяет бизнес-логику от UI.
 """
 
+import shutil
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -335,7 +336,9 @@ class RecordingController:
 
         # Остановка видео
         video_stopped = True
+        recovered_segments: list[Path] = []
         if self._video_recorder:
+            recovered_segments = self._video_recorder.additional_segment_paths
             video_stopped = self._video_recorder.stop()
 
         # Остановка аудио
@@ -353,6 +356,14 @@ class RecordingController:
             self._state.stop_recording()
             return None
 
+        # Сохранить сегменты восстановления FFmpeg до того, как finalize()
+        # удалит временную директорию (см. recorder/ffmpeg_writer.py —
+        # посегментное восстановление при сбое FFmpeg-процесса).
+        if recovered_segments and self._encoder:
+            self._save_recovered_segments(
+                recovered_segments, self._encoder.output_path
+            )
+
         # Финализация (объединение видео и аудио)
         output_path = None
         if self._encoder:
@@ -366,6 +377,46 @@ class RecordingController:
         self._state.stop_recording()
         logger.info(f"Запись остановлена: {output_path}")
         return output_path
+
+    def _save_recovered_segments(
+        self, segments: list[Path], final_output_path: Path
+    ) -> None:
+        """
+        Копирует сегменты восстановления FFmpeg рядом с итоговым файлом.
+
+        Вызывается до `RecordingEncoder.finalize()`, который удаляет
+        временную директорию независимо от успеха. Без этого шага кадры,
+        записанные после восстановления FFmpeg, были бы потеряны.
+
+        Args:
+            segments: Пути сегментов из `VideoRecorder.additional_segment_paths`.
+            final_output_path: Путь, в который должна была попасть запись.
+        """
+        saved: list[str] = []
+        for index, segment_path in enumerate(segments, start=1):
+            if not segment_path.exists():
+                continue
+            dest = final_output_path.with_name(
+                f"{final_output_path.stem}_part{index}{final_output_path.suffix}"
+            )
+            try:
+                shutil.copy2(segment_path, dest)
+                saved.append(str(dest))
+            except OSError as e:
+                logger.error(
+                    "Не удалось сохранить сегмент восстановления %s: %s",
+                    segment_path,
+                    e,
+                )
+
+        if saved:
+            logger.warning(
+                "Запись была восстановлена после сбоя FFmpeg — сохранена в "
+                "%s частях рядом с %s: %s",
+                len(saved),
+                final_output_path,
+                saved,
+            )
 
     def request_stop_cancellation(self) -> bool:
         """

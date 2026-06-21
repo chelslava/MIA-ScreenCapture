@@ -370,6 +370,7 @@ class VideoRecorder:
         self._capture_area: CaptureArea | None = None
         self._capture_session: _WindowsCaptureSession | None = None
         self._duration: float | None = None
+        self._last_segment_paths: list[Path] = []
 
         # Кэшированный флаг: нужна ли конвертация цвета при записи кадров.
         # False — кадры уже в целевом формате (zero-copy путь).
@@ -585,11 +586,13 @@ class VideoRecorder:
         """
         Пути дополнительных файлов-сегментов после восстановления FFmpeg.
 
-        Пустой список, если сбоев FFmpeg во время записи не было.
+        Пустой список, если сбоев FFmpeg во время записи не было. Сохраняется
+        и после `stop()`/`_cleanup()` — `FFmpegVideoWriter` к этому моменту
+        уже обнулён, поэтому значение кэшируется в `_last_segment_paths`.
         """
-        if self._ffmpeg_writer is None:
-            return []
-        return list(self._ffmpeg_writer.segment_paths)
+        if self._ffmpeg_writer is not None:
+            return list(self._ffmpeg_writer.segment_paths)
+        return list(self._last_segment_paths)
 
     @property
     def frame_count(self) -> int:
@@ -1003,6 +1006,7 @@ class VideoRecorder:
         success = True
         try:
             if self._ffmpeg_writer is not None:
+                self._last_segment_paths = self._ffmpeg_writer.segment_paths
                 if self._ffmpeg_writer.is_corrupted:
                     self._ffmpeg_writer.close()
                     self._ffmpeg_writer.cleanup_corrupted_file()
