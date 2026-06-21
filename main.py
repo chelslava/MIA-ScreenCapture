@@ -67,8 +67,11 @@ from recorder.utils import (
     get_audio_devices,
     get_available_windows,
 )
+from single_instance import SingleInstanceGuard, bring_existing_window_to_front
 
 logger = get_module_logger(__name__)
+
+_SINGLE_INSTANCE_MODES = ("gui", "headless")
 
 
 class _GuiRuntimeCoordinatorProtocol(Protocol):
@@ -139,6 +142,25 @@ def _load_environment() -> None:
     env_path = Path(__file__).parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
+
+
+def _handle_already_running(mode: str) -> int:
+    """
+    Обрабатывает запуск при уже работающем экземпляре приложения.
+
+    Args:
+        mode: Режим запуска текущего (второго) процесса.
+
+    Returns:
+        Код выхода 0 — это штатный сценарий, а не ошибка пользователя.
+    """
+    logger.info("Другой экземпляр MIA-ScreenCapture уже запущен. Завершение.")
+    print("MIA-ScreenCapture уже запущен.")
+
+    if mode == "gui":
+        bring_existing_window_to_front()
+
+    return 0
 
 
 class VideoRecorderApp:
@@ -1289,9 +1311,22 @@ def main() -> int:
     config_path = Path(config_path_arg) if config_path_arg else None
     init_config(config_path)
 
-    # Создание и запуск приложения
-    app = VideoRecorderApp(config)
-    return app.run()
+    mode = config.get("mode", "gui")
+    if mode not in _SINGLE_INSTANCE_MODES:
+        # CLI-команды (--start/--stop/--status/--schedule-*) проксируются
+        # в работающий экземпляр через REST API — мьютекс им не нужен.
+        app = VideoRecorderApp(config)
+        return app.run()
+
+    guard = SingleInstanceGuard()
+    if not guard.acquire():
+        return _handle_already_running(mode)
+
+    try:
+        app = VideoRecorderApp(config)
+        return app.run()
+    finally:
+        guard.release()
 
 
 if __name__ == "__main__":

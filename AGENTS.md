@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-29 | Updated: 2026-05-07 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-22 -->
 
 # MIA-ScreenCapture
 
@@ -30,6 +30,7 @@
 | `config.py` | Dataclass-конфигурация приложения, чтение/запись `config/config.json` |
 | `exceptions.py` | Иерархия исключений: `MIAError`, `RecordingError`, `ConfigurationError` и др. |
 | `logger_config.py` | Централизованная настройка логирования: `get_module_logger(__name__)` |
+| `single_instance.py` | `SingleInstanceGuard` (named Mutex через pywin32) — защита от запуска нескольких экземпляров; `bring_existing_window_to_front()` |
 | `pyproject.toml` | Метаданные проекта, зависимости (управляются через UV) |
 
 ---
