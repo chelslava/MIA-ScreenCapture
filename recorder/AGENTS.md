@@ -14,7 +14,7 @@
 | `audio_recorder.py` | `AudioRecorder` — захват аудио с микрофона/системного звука через sounddevice |
 | `encoder.py` | `VideoEncoder` — кодирование видео через FFmpeg pipeline (современный подход) |
 | `ffmpeg_pipeline.py` | `FFmpegPipeline` — полный pipeline кодирования через FFmpeg subprocess. **Не импортируется ни одним production-модулем** (не используется ни в `video_recorder.py`, ни где-либо ещё) — кандидат на ADR (миграция или удаление) |
-| `ffmpeg_writer.py` | `FFmpegVideoWriter` — **действующий продакшен-путь записи** (используется в `video_recorder.py` → `app_runtime/recording_coordinator.py` → `gui/controllers/recording_controller.py`). Не legacy — активно развивается (`RetryPolicy`/`retry_with_backoff` добавлены 2026-05-24) |
+| `ffmpeg_writer.py` | `FFmpegVideoWriter` — **действующий продакшен-путь записи** (используется в `video_recorder.py` → `app_runtime/recording_coordinator.py` → `gui/controllers/recording_controller.py`). Не legacy — активно развивается (`RetryPolicy`/`retry_with_backoff` добавлены 2026-05-24; посегментное авто-восстановление при сбое FFmpeg-процесса добавлено 2026-06-22 — см. `recovery_count`/`segment_paths`) |
 | `utils.py` | Утилиты: `get_available_monitors()`, `get_available_windows()`, `validate_rect_coords()`, `get_platform()` |
 
 ## Subdirectories

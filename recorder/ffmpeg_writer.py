@@ -160,6 +160,7 @@ class FFmpegVideoWriter:
         preset: str = "medium",
         pixel_format: str = "bgr24",
         retry_policy: RetryPolicy | None = None,
+        max_recovery_attempts: int = 3,
     ):
         """
         Инициализация FFmpeg видеозаписи.
@@ -174,6 +175,11 @@ class FFmpegVideoWriter:
             preset: Preset кодирования
             pixel_format: Формат пикселей (bgr24 для OpenCV)
             retry_policy: Политика повторных попыток при ошибках записи.
+            max_recovery_attempts: Сколько раз пытаться перезапустить
+                FFmpeg-процесс при его аварийном завершении, прежде чем
+                пометить запись повреждённой. Каждый успешный перезапуск
+                продолжает запись в новый файл-сегмент
+                (`{stem}_part{N}{suffix}`) — см. `segment_paths`.
         """
         self._output_path = Path(output_path)
         self._width = width
@@ -187,6 +193,7 @@ class FFmpegVideoWriter:
         self._retry_policy = (
             retry_policy if retry_policy is not None else RetryPolicy()
         )
+        self._max_recovery_attempts = max_recovery_attempts
 
         self._process: subprocess.Popen | None = None
         self._lock = threading.Lock()
@@ -196,6 +203,11 @@ class FFmpegVideoWriter:
         self._stderr_reader: threading.Thread | None = None
         self._stderr_stream: Any | None = None
         self._is_corrupted = False
+
+        self._current_segment_path = self._output_path
+        self._segment_paths: list[Path] = []
+        self._recovery_count = 0
+        self._total_downtime_s = 0.0
 
     @property
     def frame_count(self) -> int:
@@ -218,6 +230,32 @@ class FFmpegVideoWriter:
     def is_corrupted(self) -> bool:
         """Проверка что файл повреждён (запись прервана)."""
         return self._is_corrupted
+
+    @property
+    def recovery_count(self) -> int:
+        """Количество успешных перезапусков FFmpeg после сбоя процесса."""
+        return self._recovery_count
+
+    @property
+    def total_downtime_s(self) -> float:
+        """Суммарное время простоя записи во время восстановлений (сек)."""
+        return self._total_downtime_s
+
+    @property
+    def segment_paths(self) -> list[Path]:
+        """
+        Пути всех файлов-сегментов записи.
+
+        Пустой список, если восстановлений после сбоя не было (запись —
+        единственный файл `output_path`). Иначе — все сегменты, включая
+        текущий активный, в порядке записи.
+        """
+        if (
+            not self._segment_paths
+            and self._current_segment_path == self._output_path
+        ):
+            return []
+        return [*self._segment_paths, self._current_segment_path]
 
     def mark_corrupted(self) -> None:
         """Пометить файл как повреждённый."""
@@ -279,13 +317,80 @@ class FFmpegVideoWriter:
         Returns:
             True если успешно открыто
         """
+        self._current_segment_path = self._output_path
+        self._start_time = time.time()
+        self._frame_count = 0
+        return self._open_process(self._output_path)
+
+    def _next_segment_path(self) -> Path:
+        """Возвращает путь для следующего сегмента восстановления."""
+        part_number = len(self._segment_paths) + 2
+        stem = self._output_path.stem
+        suffix = self._output_path.suffix
+        return self._output_path.with_name(f"{stem}_part{part_number}{suffix}")
+
+    def _attempt_recovery(self) -> bool:
+        """
+        Пытается перезапустить FFmpeg-процесс в новом файле-сегменте.
+
+        Returns:
+            True, если новый процесс успешно открыт.
+        """
+        if self._recovery_count >= self._max_recovery_attempts:
+            logger.error(
+                "Превышен лимит попыток восстановления FFmpeg (%s)",
+                self._max_recovery_attempts,
+            )
+            return False
+
+        recovery_start = time.time()
+        attempt_number = self._recovery_count + 1
+        logger.warning(
+            "FFmpeg процесс прервался, попытка восстановления %s/%s",
+            attempt_number,
+            self._max_recovery_attempts,
+        )
+
+        self._terminate_process_safely()
+
+        new_segment_path = self._next_segment_path()
+        if not self._open_process(new_segment_path):
+            logger.error(
+                "Не удалось открыть новый сегмент при восстановлении: %s",
+                new_segment_path,
+            )
+            return False
+
+        self._segment_paths.append(self._current_segment_path)
+        self._current_segment_path = new_segment_path
+        self._recovery_count += 1
+        self._total_downtime_s += time.time() - recovery_start
+
+        logger.warning(
+            "FFmpeg восстановлен (попытка %s/%s), запись продолжена в новом сегменте: %s",
+            attempt_number,
+            self._max_recovery_attempts,
+            new_segment_path,
+        )
+        return True
+
+    def _open_process(self, output_path: Path) -> bool:
+        """
+        Запускает FFmpeg-процесс для записи в указанный файл.
+
+        Args:
+            output_path: Путь к файлу-сегменту, в который пишет этот процесс.
+
+        Returns:
+            True если успешно открыто
+        """
         try:
             ffmpeg_bin = self._ffmpeg_path
             if ffmpeg_bin is None:
                 logger.error("FFmpeg не найден")
                 return False
 
-            self._output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
             codec_key = self._codec
             if self._codec == "libx264" and self._preset in (
@@ -326,7 +431,7 @@ class FFmpegVideoWriter:
                 self._bitrate,
                 "-movflags",
                 "+faststart",
-                str(self._output_path),
+                str(output_path),
             ]
 
             logger.info(f"Запуск FFmpeg: {' '.join(cmd)}")
@@ -347,9 +452,6 @@ class FFmpegVideoWriter:
             self._stderr_tail.clear()
             self._start_stderr_reader(self._process.stderr)
 
-            self._start_time = time.time()
-            self._frame_count = 0
-
             return True
 
         except Exception as e:
@@ -357,12 +459,6 @@ class FFmpegVideoWriter:
             return False
 
     def write(self, frame: np.ndarray) -> bool:
-        if not self.is_opened:
-            if self._process is not None:
-                self._is_corrupted = True
-                self._terminate_process_safely()
-            return False
-
         if self._is_corrupted:
             return False
 
@@ -372,23 +468,40 @@ class FFmpegVideoWriter:
             if self._process.stdin:
                 self._process.stdin.write(frame.tobytes())
 
-        try:
-            retry_with_backoff(_do_write, self._retry_policy)
-            with self._lock:
-                self._frame_count += 1
-            return True
-        except OSError as e:
-            logger.error(
-                "Ошибка записи кадра после %s попыток: %s",
-                self._retry_policy.max_attempts,
-                e,
-            )
-            self._is_corrupted = True
-            self._terminate_process_safely()
-            return False
-        except Exception as e:
-            logger.error("Ошибка записи кадра: %s", e)
-            return False
+        for _ in range(self._max_recovery_attempts + 1):
+            if not self.is_opened:
+                if self._process is None or not self._attempt_recovery():
+                    self._is_corrupted = True
+                    self._terminate_process_safely()
+                    return False
+                continue
+
+            try:
+                retry_with_backoff(_do_write, self._retry_policy)
+                with self._lock:
+                    self._frame_count += 1
+                return True
+            except OSError as e:
+                logger.warning(
+                    "Ошибка записи кадра после %s попыток: %s",
+                    self._retry_policy.max_attempts,
+                    e,
+                )
+                if self.is_opened:
+                    # Процесс жив, но запись стабильно не проходит
+                    # (например, диск заполнен) — перезапуск FFmpeg не
+                    # устранит причину, восстановление здесь не поможет.
+                    self._is_corrupted = True
+                    self._terminate_process_safely()
+                    return False
+                continue
+            except Exception as e:
+                logger.error("Ошибка записи кадра: %s", e)
+                return False
+
+        self._is_corrupted = True
+        self._terminate_process_safely()
+        return False
 
     def close(self) -> bool:
         """
@@ -468,6 +581,13 @@ class FFmpegVideoWriter:
         finally:
             self._process = None
             self._stop_stderr_reader()
+            if self._segment_paths:
+                logger.info(
+                    "Запись восстановлена после %s сбоев FFmpeg, сохранена в %s частях: %s",
+                    self._recovery_count,
+                    len(self._segment_paths) + 1,
+                    [str(p) for p in self.segment_paths],
+                )
 
     def _start_stderr_reader(self, stream: Any | None) -> None:
         """

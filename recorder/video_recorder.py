@@ -332,6 +332,7 @@ class VideoRecorder:
         output_format: str = "mp4",
         use_ffmpeg: bool = True,
         preset: str = "medium",
+        max_recovery_attempts: int = 3,
     ):
         """
         Инициализация видеозаписи.
@@ -343,6 +344,9 @@ class VideoRecorder:
             output_format: Выходной формат (mp4, avi)
             use_ffmpeg: Использовать FFmpeg для прямой записи (быстрее)
             preset: Preset кодирования (ultrafast, fast, medium, slow)
+            max_recovery_attempts: Сколько раз перезапускать FFmpeg-процесс
+                при сбое, прежде чем пометить запись повреждённой (только
+                для `use_ffmpeg=True`).
         """
         self.fps = fps
         self.codec = codec
@@ -350,6 +354,7 @@ class VideoRecorder:
         self.output_format = output_format
         self.use_ffmpeg = use_ffmpeg
         self.preset = preset
+        self.max_recovery_attempts = max_recovery_attempts
 
         # Состояние
         self._state: VideoRecorderState = VideoRecorderState.IDLE
@@ -576,6 +581,17 @@ class VideoRecorder:
         return self._output_path
 
     @property
+    def additional_segment_paths(self) -> list[Path]:
+        """
+        Пути дополнительных файлов-сегментов после восстановления FFmpeg.
+
+        Пустой список, если сбоев FFmpeg во время записи не было.
+        """
+        if self._ffmpeg_writer is None:
+            return []
+        return list(self._ffmpeg_writer.segment_paths)
+
+    @property
     def frame_count(self) -> int:
         """Получение общего количества захваченных кадров."""
         return self._frame_count
@@ -649,6 +665,7 @@ class VideoRecorder:
                         codec=self.codec,
                         bitrate=self.bitrate,
                         preset=self.preset,
+                        max_recovery_attempts=self.max_recovery_attempts,
                     )
                     if not self._ffmpeg_writer.open():
                         raise RuntimeError(

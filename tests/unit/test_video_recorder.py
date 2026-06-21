@@ -708,6 +708,32 @@ class TestVideoRecorderErrorHandling:
             in (error_callback.call_args.args[0])
         )
 
+    def test_start_passes_max_recovery_attempts_to_ffmpeg_writer(
+        self, tmp_path: Path
+    ) -> None:
+        """max_recovery_attempts из конструктора передаётся в FFmpegVideoWriter."""
+        recorder = VideoRecorder(use_ffmpeg=True, max_recovery_attempts=5)
+        capture_area = CaptureArea(type="full", width=1280, height=720)
+        mock_writer = MagicMock()
+        mock_writer.open.return_value = True
+        mock_writer_class = MagicMock(return_value=mock_writer)
+
+        with (
+            patch(
+                "recorder.video_recorder.get_platform", return_value="windows"
+            ),
+            patch(
+                "recorder.ffmpeg_writer.FFmpegVideoWriter",
+                mock_writer_class,
+            ),
+            patch.object(recorder, "_capture_loop"),
+        ):
+            result = recorder.start(tmp_path / "video.mp4", capture_area)
+
+        assert result is True
+        _, kwargs = mock_writer_class.call_args
+        assert kwargs["max_recovery_attempts"] == 5
+
     def test_capture_loop_marks_capture_lost(self) -> None:
         """Проверка фиксации потери захвата в основном цикле."""
         recorder = VideoRecorder(use_ffmpeg=False)

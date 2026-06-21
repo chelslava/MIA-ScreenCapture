@@ -241,7 +241,8 @@ class TestFFmpegVideoWriterDiagnostics:
         self,
         monkeypatch,
     ) -> None:
-        """write() возвращает False и is_corrupted=True если process.poll() не None."""
+        """write() пытается восстановиться, но помечает corrupted, если
+        перезапущенный процесс снова оказывается мёртв на каждой попытке."""
         monkeypatch.setattr(
             ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
         )
@@ -250,6 +251,7 @@ class TestFFmpegVideoWriterDiagnostics:
             "Thread",
             _ImmediateThread,
         )
+        monkeypatch.setattr(ffmpeg_writer_module.time, "sleep", lambda s: None)
 
         process = MagicMock()
         process.stdin = MagicMock()
@@ -265,10 +267,77 @@ class TestFFmpegVideoWriterDiagnostics:
             "get_ffmpeg_path",
             MagicMock(return_value=r"C:\Tools\ffmpeg\bin\ffmpeg.exe"),
         )
+        popen_mock = MagicMock(return_value=process)
         monkeypatch.setattr(
             ffmpeg_writer_module.subprocess,
             "Popen",
-            MagicMock(return_value=process),
+            popen_mock,
+        )
+
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+        )
+        assert writer.open() is True
+
+        # Симулируем смерть процесса после open() — каждая попытка
+        # восстановления снова получает "мёртвый" процесс.
+        process.poll.return_value = 1
+
+        import numpy as np
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is False
+        assert writer.is_corrupted is True
+        process.stdin.write.assert_not_called()
+        # 1 исходный open() + 3 попытки восстановления (max_recovery_attempts=3)
+        assert popen_mock.call_count == 4
+        assert writer.recovery_count == 3
+
+    def test_write_recovers_after_single_ffmpeg_crash(
+        self,
+        monkeypatch,
+    ) -> None:
+        """write() восстанавливается после одного сбоя, открывая новый сегмент."""
+        monkeypatch.setattr(
+            ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.threading,
+            "Thread",
+            _ImmediateThread,
+        )
+        monkeypatch.setattr(ffmpeg_writer_module.time, "sleep", lambda s: None)
+
+        dead_process = MagicMock()
+        dead_process.stdin = MagicMock()
+        dead_process.stderr = io.StringIO("")
+        dead_process.poll.return_value = None
+        dead_process.wait.return_value = None
+        dead_process.returncode = 0
+        dead_process.terminate = MagicMock()
+        dead_process.kill = MagicMock()
+
+        alive_process = MagicMock()
+        alive_process.stdin = MagicMock()
+        alive_process.stderr = io.StringIO("")
+        alive_process.poll.return_value = None
+        alive_process.wait.return_value = None
+        alive_process.returncode = 0
+
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_ffmpeg_path",
+            MagicMock(return_value=r"C:\Tools\ffmpeg\bin\ffmpeg.exe"),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            MagicMock(side_effect=[dead_process, alive_process]),
         )
 
         writer = FFmpegVideoWriter(
@@ -280,16 +349,75 @@ class TestFFmpegVideoWriterDiagnostics:
         assert writer.open() is True
 
         # Симулируем смерть процесса после open()
-        process.poll.return_value = 1
+        dead_process.poll.return_value = 1
 
         import numpy as np
 
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
         result = writer.write(frame)
 
-        assert result is False
-        assert writer.is_corrupted is True
-        process.stdin.write.assert_not_called()
+        assert result is True
+        assert writer.is_corrupted is False
+        assert writer.recovery_count == 1
+        assert writer.segment_paths == [
+            Path("test.mp4"),
+            Path("test_part2.mp4"),
+        ]
+        alive_process.stdin.write.assert_called_once()
+        dead_process.stdin.write.assert_not_called()
+
+    def test_segment_path_naming(self) -> None:
+        """_next_segment_path() генерирует имена part2, part3, ..."""
+        writer = FFmpegVideoWriter(
+            output_path=Path("recording.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+        )
+
+        assert writer._next_segment_path() == Path("recording_part2.mp4")
+
+        writer._segment_paths.append(Path("recording.mp4"))
+        assert writer._next_segment_path() == Path("recording_part3.mp4")
+
+        writer._segment_paths.append(Path("recording_part2.mp4"))
+        assert writer._next_segment_path() == Path("recording_part4.mp4")
+
+    def test_close_logs_segment_summary_when_recovered(
+        self,
+        monkeypatch,
+        caplog,
+    ) -> None:
+        """close() логирует сводку по сегментам, если было восстановление."""
+        monkeypatch.setattr(
+            ffmpeg_writer_module.threading,
+            "Thread",
+            _ImmediateThread,
+        )
+
+        process = MagicMock()
+        process.stdin = MagicMock()
+        process.stderr = io.StringIO("")
+        process.poll.return_value = None
+        process.wait.return_value = None
+        process.returncode = 0
+
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+        )
+        writer._process = process
+        writer._segment_paths = [Path("test.mp4")]
+        writer._current_segment_path = Path("test_part2.mp4")
+        writer._recovery_count = 1
+
+        with caplog.at_level(logging.INFO):
+            assert writer.close() is True
+
+        assert "восстановлена после 1 сбоев" in caplog.text
+        assert "test_part2.mp4" in caplog.text
 
     def test_multiple_open_close_joins_stderr_reader(
         self,
