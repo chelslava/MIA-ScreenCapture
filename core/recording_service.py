@@ -73,6 +73,17 @@ class RecordingService:
         event_bus: EventBus | None = None,
         backend: RecordingBackend | None = None,
     ) -> None:
+        """
+        Initializes the recording service.
+
+        Args:
+            event_bus: Event bus for transport integration (e.g. WebSocket).
+                Defaults to a fresh `InMemoryEventBus()` if not provided.
+            backend: `RecordingBackend` implementation (e.g. `GUIRecordingBackend`).
+
+        Raises:
+            ValueError: If `backend` is not provided.
+        """
         if backend is None:
             raise ValueError(
                 "backend is required. Pass a GUIRecordingBackend or another "
@@ -88,7 +99,15 @@ class RecordingService:
         return self._event_bus
 
     def get_status(self) -> dict[str, Any]:
-        """Returns current recording status."""
+        """
+        Returns current recording status.
+
+        Raises:
+            Не выбрасывает исключений напрямую — делегирует в
+            `backend.get_status()` без собственной обработки ошибок;
+            любое исключение реализации `RecordingBackend` распространяется
+            вызывающему как есть.
+        """
         backend_status = self._backend.get_status()
         status = {
             "is_recording": backend_status.is_recording,
@@ -109,6 +128,12 @@ class RecordingService:
         - area / area_type
         - rect / rect_coords
         - audio / audio_type
+
+        Raises:
+            Не выбрасывает исключений в штатной работе: `RecordingError`,
+            `OSError` и `ValueError` от валидации параметров/backend
+            перехватываются внутри и сообщаются через
+            `result["success"] = False` / `result["error"]`.
         """
         with self._lock:
             backend_status = self._backend.get_status()
@@ -162,7 +187,15 @@ class RecordingService:
                 return result
 
     def stop_recording(self) -> dict[str, Any]:
-        """Stops current recording."""
+        """
+        Stops current recording.
+
+        Raises:
+            Не выбрасывает исключений в штатной работе: ошибка обновления
+            списка последних записей (`OSError`) и сбой верификации
+            целостности (любой `Exception`) перехватываются внутри и
+            только логируются — на результат `stop()` не влияют.
+        """
         with self._lock:
             backend_status = self._backend.get_status()
             if (
@@ -254,7 +287,14 @@ class RecordingService:
         return {"valid": True, "repaired": True}
 
     def toggle_pause(self) -> dict[str, Any]:
-        """Toggles pause of current recording."""
+        """
+        Toggles pause of current recording.
+
+        Raises:
+            Не выбрасывает исключений — `backend.pause()`/`backend.resume()`
+            сообщают о неудаче через возвращаемое булево значение, а не
+            исключение.
+        """
         with self._lock:
             backend_status = self._backend.get_status()
             if (
@@ -291,7 +331,13 @@ class RecordingService:
             return result
 
     def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Переключает источник захвата активной записи без остановки (#48)."""
+        """
+        Переключает источник захвата активной записи без остановки (#48).
+
+        Raises:
+            Не выбрасывает исключений: `ValueError` от валидации параметров
+            перехватывается внутри и сообщается через `result["error"]`.
+        """
         with self._lock:
             backend_status = self._backend.get_status()
             if (
@@ -326,13 +372,26 @@ class RecordingService:
             return result
 
     def get_recordings(self) -> list[dict[str, Any]]:
-        """Returns list of recent recordings from configuration."""
+        """
+        Returns list of recent recordings from configuration.
+
+        Raises:
+            Не выбрасывает исключений напрямую — распространяет любое
+            исключение `get_config()` (например, при повреждённом
+            конфиге), если оно возникнет.
+        """
         return cast(
             list[dict[str, Any]], get_config().settings.recent_recordings
         )
 
     def stop_active_recording_if_any(self) -> dict[str, Any] | None:
-        """Safely stops active recording if any."""
+        """
+        Safely stops active recording if any.
+
+        Raises:
+            Не выбрасывает исключений напрямую — см. `stop_recording()`
+            (вызывается внутри при активной записи).
+        """
         with self._lock:
             backend_status = self._backend.get_status()
             if (

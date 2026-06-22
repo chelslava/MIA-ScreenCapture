@@ -48,15 +48,33 @@ class EventBus(Protocol):
     def subscribe(
         self, event_type: RecordingEventType, handler: EventHandler
     ) -> None:
-        """Подписывает обработчик на тип события."""
+        """
+        Подписывает обработчик на тип события.
+
+        Raises:
+            Контракт реализации не фиксирует исключения — см. конкретную
+            реализацию (например, `InMemoryEventBus.subscribe`).
+        """
 
     def unsubscribe(
         self, event_type: RecordingEventType, handler: EventHandler
     ) -> None:
-        """Отписывает обработчик от типа события."""
+        """
+        Отписывает обработчик от типа события.
+
+        Raises:
+            Контракт реализации не фиксирует исключения — см. конкретную
+            реализацию (например, `InMemoryEventBus.unsubscribe`).
+        """
 
     def publish(self, event: RecordingEvent) -> None:
-        """Публикует событие в bus."""
+        """
+        Публикует событие в bus.
+
+        Raises:
+            Контракт реализации не фиксирует исключения — см. конкретную
+            реализацию (например, `InMemoryEventBus.publish`).
+        """
 
 
 class InMemoryEventBus:
@@ -76,6 +94,15 @@ class InMemoryEventBus:
     def subscribe(
         self, event_type: RecordingEventType, handler: EventHandler
     ) -> None:
+        """
+        Подписывает обработчик на тип события (идемпотентно).
+
+        Raises:
+            KeyError: Если `event_type` не является валидным членом
+                `RecordingEventType` (на практике недостижимо при вызове
+                с типизированным enum-значением — словарь `_subscribers`
+                инициализируется ключом на каждый член enum в `__init__`).
+        """
         with self._lock:
             handlers = self._subscribers[event_type]
             if handler not in handlers:
@@ -84,12 +111,27 @@ class InMemoryEventBus:
     def unsubscribe(
         self, event_type: RecordingEventType, handler: EventHandler
     ) -> None:
+        """
+        Отписывает обработчик от типа события (без ошибки, если не был подписан).
+
+        Raises:
+            KeyError: Если `event_type` не является валидным членом
+                `RecordingEventType` (см. `subscribe`).
+        """
         with self._lock:
             handlers = self._subscribers[event_type]
             if handler in handlers:
                 handlers.remove(handler)
 
     def publish(self, event: RecordingEvent) -> None:
+        """
+        Публикует событие всем подписчикам данного типа.
+
+        Raises:
+            Не выбрасывает исключений: любая ошибка обработчика-подписчика
+            перехватывается и логируется (`logger.warning`), остальные
+            подписчики продолжают получать событие.
+        """
         with self._lock:
             handlers = list(self._subscribers.get(event.event_type, []))
         for handler in handlers:

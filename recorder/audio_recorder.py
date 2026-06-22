@@ -223,6 +223,13 @@ class AudioRecorder:
 
         Returns:
             True если запись успешно началась
+
+        Raises:
+            Не выбрасывает исключений: `AudioError`, `OSError` и
+            `RuntimeError` (например, ни sounddevice, ни pyaudio
+            недоступны — см. `_init_pyaudio`) перехватываются внутри,
+            ресурсы освобождаются через `_cleanup()`, ошибка сообщается
+            через возвращаемое значение `False` и callback `on_error`.
         """
         with self._lock:
             if self._state != AudioState.IDLE:
@@ -359,6 +366,11 @@ class AudioRecorder:
 
         Returns:
             True если запись успешно остановлена
+
+        Raises:
+            Не выбрасывает исключений — потоки записи/writer'а
+            присоединяются с таймаутом, `_cleanup()` отвечает за
+            корректное закрытие WAV-файла независимо от их состояния.
         """
         with self._lock:
             if self._state == AudioState.IDLE:

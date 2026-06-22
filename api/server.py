@@ -131,6 +131,12 @@ class APIServer:
             port: Номер порта для прослушивания
             server_threads: Количество потоков waitress
             api_key: Токен API для аутентификации
+
+        Raises:
+            Не выбрасывает собственных исключений — создание Flask
+            приложения (`_create_app()`) не оборачивается в try/except,
+            поэтому ошибка инициализации Flask/CORS/auth (нетипичный
+            случай) распространится вызывающему как есть.
         """
         self.host = host
         self.port = port
@@ -356,6 +362,9 @@ class APIServer:
         Args:
             action: Имя действия (start, stop, pause, status и т.д.)
             callback: Функция обратного вызова
+
+        Raises:
+            Не выбрасывает исключений — простая запись в словарь.
         """
         self._callbacks[action] = callback
 
@@ -368,15 +377,28 @@ class APIServer:
 
         Returns:
             Функция обратного вызова или None
+
+        Raises:
+            Не выбрасывает исключений — `dict.get()` с явным None по умолчанию.
         """
         return self._callbacks.get(action)
 
     def set_websocket_manager(self, manager: Any) -> None:
-        """Устанавливает менеджер событий для real-time уведомлений."""
+        """
+        Устанавливает менеджер событий для real-time уведомлений.
+
+        Raises:
+            Не выбрасывает исключений — простое присваивание атрибута.
+        """
         self._websocket_manager = manager
 
     def get_websocket_manager(self) -> Any | None:
-        """Возвращает менеджер real-time уведомлений."""
+        """
+        Возвращает менеджер real-time уведомлений.
+
+        Raises:
+            Не выбрасывает исключений.
+        """
         return self._websocket_manager
 
     def submit_background_operation(
@@ -388,7 +410,16 @@ class APIServer:
         trace_id: str | None = None,
         client_ip: str | None = None,
     ) -> APIOperation:
-        """Запускает фоновую операцию API."""
+        """
+        Запускает фоновую операцию API.
+
+        Raises:
+            Не выбрасывает собственных исключений напрямую — делегирует в
+            `APIOperationStore.submit_typed()`; исключение из `runner`
+            выполняется в фоновом потоке и не распространяется в вызывающий
+            код этого метода (см. `APIOperation`/`get_background_operation`
+            для получения результата/ошибки).
+        """
         return self._operations.submit_typed(
             operation_type,
             runner,
@@ -401,7 +432,13 @@ class APIServer:
         self,
         operation_id: str,
     ) -> APIOperation | None:
-        """Возвращает состояние фоновой операции."""
+        """
+        Возвращает состояние фоновой операции.
+
+        Raises:
+            Не выбрасывает исключений — неизвестный `operation_id`
+            приводит к `None`, а не к исключению.
+        """
         return self._operations.get_typed(operation_id)
 
     def wait_for_background_operation(
@@ -409,7 +446,14 @@ class APIServer:
         operation_id: str,
         timeout: float,
     ) -> APIOperation | None:
-        """Ожидает завершения фоновой операции."""
+        """
+        Ожидает завершения фоновой операции.
+
+        Raises:
+            Не выбрасывает исключений — истечение `timeout` или неизвестный
+            `operation_id` сообщаются через возвращаемое значение, а не
+            исключение (`TimeoutError` не используется).
+        """
         return self._operations.wait_typed(operation_id, timeout)
 
     def begin_idempotency_request(
@@ -417,7 +461,13 @@ class APIServer:
         key: str,
         fingerprint: str,
     ) -> IdempotencyBeginResult:
-        """Начинает идемпотентный запрос или возвращает cached-результат."""
+        """
+        Начинает идемпотентный запрос или возвращает cached-результат.
+
+        Raises:
+            Не выбрасывает собственных исключений напрямую — делегирует в
+            `APIIdempotencyStore.begin()`.
+        """
         return self._idempotency.begin(key, fingerprint)
 
     def complete_idempotency_request(
@@ -427,7 +477,13 @@ class APIServer:
         body_bytes: bytes,
         mimetype: str | None,
     ) -> None:
-        """Сохраняет результат идемпотентного запроса в TTL-хранилище."""
+        """
+        Сохраняет результат идемпотентного запроса в TTL-хранилище.
+
+        Raises:
+            Не выбрасывает собственных исключений напрямую — делегирует в
+            `APIIdempotencyStore.complete()`.
+        """
         self._idempotency.complete(
             key=key,
             status_code=status_code,
@@ -436,7 +492,13 @@ class APIServer:
         )
 
     def abort_idempotency_request(self, key: str) -> None:
-        """Удаляет in-progress запись идемпотентного запроса."""
+        """
+        Удаляет in-progress запись идемпотентного запроса.
+
+        Raises:
+            Не выбрасывает собственных исключений напрямую — делегирует в
+            `APIIdempotencyStore.abort()`.
+        """
         self._idempotency.abort(key)
 
     def start(self) -> bool:
@@ -445,6 +507,12 @@ class APIServer:
 
         Returns:
             True если сервер успешно запущен
+
+        Raises:
+            Не выбрасывает исключений: `OSError`/`RuntimeError` от
+            `_validate_bind_address()` (например, порт уже занят)
+            перехватываются внутри, ошибка сообщается через возвращаемое
+            значение `False`.
         """
         with self._lock:
             if self._running:
@@ -520,7 +588,14 @@ class APIServer:
             self._wsgi_server = None
 
     def stop(self) -> None:
-        """Остановка API сервера."""
+        """
+        Остановка API сервера.
+
+        Raises:
+            Не выбрасывает исключений: ошибка закрытия waitress-сервера
+            (`OSError`/`RuntimeError`) перехватывается внутри и только
+            логируется.
+        """
         server_thread: threading.Thread | None
         wsgi_server: Any | None
         with self._lock:
@@ -550,11 +625,21 @@ class APIServer:
         logger.info("API сервер остановлен")
 
     def is_running(self) -> bool:
-        """Проверка работы сервера."""
+        """
+        Проверка работы сервера.
+
+        Raises:
+            Не выбрасывает исключений.
+        """
         return self._running
 
     def get_url(self) -> str:
-        """Получение URL сервера."""
+        """
+        Получение URL сервера.
+
+        Raises:
+            Не выбрасывает исключений.
+        """
         return f"http://{self.host}:{self.port}"
 
     def get_status(self) -> dict[str, Any]:
@@ -563,6 +648,9 @@ class APIServer:
 
         Returns:
             Словарь со статусом, адресом и информацией об аутентификации.
+
+        Raises:
+            Не выбрасывает исключений.
         """
         return {
             "running": self._running,
@@ -579,6 +667,9 @@ class APIServer:
 
         Args:
             api_key: Новый API ключ или None.
+
+        Raises:
+            Не выбрасывает исключений.
         """
         normalized_key = (
             api_key.strip() if api_key and api_key.strip() else None
@@ -597,6 +688,9 @@ class APIServer:
 
         Returns:
             API ключ или None если не установлен
+
+        Raises:
+            Не выбрасывает исключений.
         """
         from api.auth import get_api_key
 
@@ -609,6 +703,9 @@ class APIServer:
 
         Returns:
             Исходный API ключ или None если не установлен.
+
+        Raises:
+            Не выбрасывает исключений.
         """
         if self.app is not None:
             value = self.app.config.get(API_KEY_CONFIG_KEY)
@@ -681,7 +778,12 @@ class APIServer:
             return {"status": "idle"}
 
     def check_health_rate_limit(self) -> bool:
-        """Возвращает True если запрос разрешён, False если нужно вернуть 429."""
+        """
+        Возвращает True если запрос разрешён, False если нужно вернуть 429.
+
+        Raises:
+            Не выбрасывает исключений.
+        """
         now = time.time()
         with self._health_lock:
             if (
@@ -730,7 +832,15 @@ class APIServer:
         }
 
     def get_observability_metrics(self) -> dict[str, Any]:
-        """Возвращает снапшот эксплуатационных метрик API."""
+        """
+        Возвращает снапшот эксплуатационных метрик API.
+
+        Raises:
+            Не выбрасывает собственных исключений напрямую — делегирует в
+            `APIServerObservability.get_metrics_snapshot()`,
+            `APIIdempotencyStore.get_size()` и
+            `APIOperationStore.get_metrics_snapshot()`.
+        """
         payload = cast(
             dict[str, Any],
             self._observability.get_metrics_snapshot(),
@@ -742,5 +852,11 @@ class APIServer:
         return payload
 
     def get_observability_baseline(self) -> dict[str, Any]:
-        """Возвращает baseline SLO по текущим эксплуатационным метрикам."""
+        """
+        Возвращает baseline SLO по текущим эксплуатационным метрикам.
+
+        Raises:
+            Не выбрасывает собственных исключений напрямую — делегирует в
+            `APIServerObservability.get_baseline()`.
+        """
         return cast(dict[str, Any], self._observability.get_baseline())

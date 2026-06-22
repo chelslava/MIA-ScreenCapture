@@ -681,6 +681,13 @@ class VideoRecorder:
 
         Returns:
             True если запись успешно началась
+
+        Raises:
+            Не выбрасывает исключений: `RecordingError`, `OSError`,
+            `RuntimeError` и `ValueError` (например, недоступный FFmpeg/
+            OpenCV writer) перехватываются внутри, ресурсы освобождаются
+            через `_cleanup()`, ошибка сообщается через возвращаемое
+            значение `False` и callback `on_error`.
         """
         with self._lock:
             if self._state != VideoRecorderState.IDLE:
@@ -786,6 +793,10 @@ class VideoRecorder:
 
         Returns:
             True если пауза успешно установлена
+
+        Raises:
+            Не выбрасывает исключений — попытка поставить на паузу запись
+            не в состоянии RECORDING просто возвращает `False`.
         """
         with self._lock:
             if self._state != VideoRecorderState.RECORDING:
@@ -941,6 +952,13 @@ class VideoRecorder:
 
         Returns:
             True если запись успешно остановлена
+
+        Raises:
+            Не выбрасывает исключений: ошибка остановки capture session
+            (`OSError`/`RuntimeError`) логируется и не прерывает
+            остановку; незавершённость потока захвата или ошибка
+            финализации контейнера сообщается через возвращаемое
+            значение `False`, а не исключение.
         """
         with self._lock:
             if self._state == VideoRecorderState.IDLE:
