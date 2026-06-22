@@ -49,11 +49,16 @@ class TrayIcon(QSystemTrayIcon):
         self._is_recording = False
         self._is_paused = False
 
-        # Создание иконок для разных состояний
+        # Создание иконок для разных состояний.
+        # Кастомная .ico используется только для "idle" — для
+        # "recording"/"paused" нужен цветовой индикатор статуса,
+        # который статичная иконка из файла не передаёт.
         self._icons = {
             "idle": self._create_icon(QColor(100, 100, 100)),
-            "recording": self._create_icon(QColor(255, 0, 0)),
-            "paused": self._create_icon(QColor(255, 165, 0)),
+            "recording": self._create_icon(
+                QColor(255, 0, 0), use_custom=False
+            ),
+            "paused": self._create_icon(QColor(255, 165, 0), use_custom=False),
         }
 
         # Установка начальной иконки
@@ -70,17 +75,19 @@ class TrayIcon(QSystemTrayIcon):
 
         logger.info("Иконка трея инициализирована")
 
-    def _create_icon(self, color: QColor) -> QIcon:
+    def _create_icon(self, color: QColor, use_custom: bool = True) -> QIcon:
         """
         Создание цветной иконки для трея.
 
         Args:
             color: Цвет иконки
+            use_custom: Разрешить использование пользовательской .ico
+                (отключается для состояний с цветовым индикатором статуса)
 
         Returns:
             Экземпляр QIcon
         """
-        if self._icon_path and self._icon_path.exists():
+        if use_custom and self._icon_path and self._icon_path.exists():
             # Загрузка пользовательской иконки
             return QIcon(str(self._icon_path))
 

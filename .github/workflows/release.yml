@@ -67,7 +67,9 @@ jobs:
 
           pyinstaller --onefile --windowed `
             --name "MIA-ScreenCapture" `
+            --icon "docs/assets/MIA-ScreenCapture.ico" `
             --add-data "config;config" `
+            --add-data "docs/assets;docs/assets" `
             --hidden-import="PyQt6" `
             --hidden-import="PyQt6.QtCore" `
             --hidden-import="PyQt6.QtWidgets" `

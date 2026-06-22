@@ -4,6 +4,7 @@
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,26 @@ from typing import Any
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
+
+
+def get_app_icon_path() -> Path:
+    """
+    Путь к .ico приложения для брендирования окна/трея/EXE.
+
+    В frozen-сборке (PyInstaller) ресурсы распаковываются во временный
+    каталог `sys._MEIPASS`, поэтому путь относительно `__file__` там
+    не работает — отсюда ветвление по `sys.frozen`, как в
+    `logger_config.get_log_dir()`.
+
+    Returns:
+        Путь к `docs/assets/MIA-ScreenCapture.ico` (может не существовать —
+        вызывающий код должен проверить `.exists()`).
+    """
+    if getattr(sys, "frozen", False):
+        base_path = Path(getattr(sys, "_MEIPASS", "."))
+    else:
+        base_path = Path(__file__).parent
+    return base_path / "docs" / "assets" / "MIA-ScreenCapture.ico"
 
 
 def atomic_write_json(path: Path, data: Any) -> bool:

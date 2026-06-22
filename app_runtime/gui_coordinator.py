@@ -21,7 +21,10 @@ class GuiRuntimeCoordinator:
 
     def run(self) -> int:
         """Запускает GUI-режим и инициализирует связанные компоненты."""
+        from PyQt6.QtGui import QIcon
         from PyQt6.QtWidgets import QApplication
+
+        from utils import get_app_icon_path
 
         self._app._app = QApplication(sys.argv)
         assert self._app._app is not None
@@ -33,6 +36,10 @@ class GuiRuntimeCoordinator:
         except importlib.metadata.PackageNotFoundError:
             version = "dev"
         self._app._app.setApplicationVersion(version)
+
+        icon_path = get_app_icon_path()
+        if icon_path.exists():
+            self._app._app.setWindowIcon(QIcon(str(icon_path)))
 
         self._setup_main_window()
         self._setup_tray_icon()
@@ -54,10 +61,15 @@ class GuiRuntimeCoordinator:
     def _setup_tray_icon(self) -> None:
         """Создаёт иконку в трее и подключает её сигналы."""
         from gui.tray_icon import TrayIcon
+        from utils import get_app_icon_path
 
         assert self._app._main_window is not None
         facade = self._app.get_application_facade()
-        self._app._tray_icon = TrayIcon(self._app._main_window)
+        icon_path = get_app_icon_path()
+        self._app._tray_icon = TrayIcon(
+            self._app._main_window,
+            icon_path=icon_path if icon_path.exists() else None,
+        )
         assert self._app._tray_icon is not None
         self._app._tray_icon.show()
 
