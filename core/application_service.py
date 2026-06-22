@@ -99,6 +99,14 @@ class ApplicationService:
         """Отправляет тестовое webhook-уведомление."""
         return self._backend.test_webhook()
 
+    def verify_recording(self, file_path: str) -> dict[str, Any]:
+        """Проверяет целостность видеофайла по указанному пути."""
+        return self._backend.verify_recording(file_path)
+
+    def repair_recording(self, file_path: str) -> dict[str, Any]:
+        """Пытается восстановить видеофайл по указанному пути."""
+        return self._backend.repair_recording(file_path)
+
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot конфигурации."""
         return self._backend.get_config_snapshot()

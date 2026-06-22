@@ -119,7 +119,9 @@ class TestRecordingService:
             patch("core.recording_service.get_config") as get_config_mock,
             patch.object(Path, "exists", return_value=False),
         ):
-            get_config_mock.return_value = MagicMock()
+            get_config_mock.return_value.settings.video.verify_on_complete = (
+                False
+            )
             result = service.stop_recording()
 
         assert result["success"] is True
@@ -364,9 +366,206 @@ class TestRecordingServiceExtraEdgeCases:
             patch.object(Path, "exists", return_value=True),
             patch.object(Path, "stat", side_effect=OSError("disk error")),
         ):
-            get_config_mock.return_value = MagicMock()
+            get_config_mock.return_value.settings.video.verify_on_complete = (
+                False
+            )
             result = service.stop_recording()
         assert result["success"] is True
+
+    def test_stop_recording_skips_verification_when_disabled(self) -> None:
+        """verify_on_complete=False -> verify_video_integrity не вызывается."""
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+
+        with (
+            patch("core.recording_service.get_config") as get_config_mock,
+            patch.object(Path, "exists", return_value=False),
+            patch(
+                "core.recording_service.verify_video_integrity"
+            ) as mock_verify,
+        ):
+            get_config_mock.return_value.settings.video.verify_on_complete = (
+                False
+            )
+            result = service.stop_recording()
+
+        assert "integrity" not in result
+        mock_verify.assert_not_called()
+
+    def test_stop_recording_includes_valid_integrity_result(self) -> None:
+        """Валидный результат проверки попадает в result['integrity']."""
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+
+        with (
+            patch("core.recording_service.get_config") as get_config_mock,
+            patch.object(Path, "exists", return_value=False),
+            patch(
+                "core.recording_service.verify_video_integrity"
+            ) as mock_verify,
+        ):
+            get_config_mock.return_value.settings.video.verify_on_complete = (
+                True
+            )
+            mock_verify.return_value = MagicMock(valid=True, error=None)
+            result = service.stop_recording()
+
+        assert result["integrity"] == {"valid": True, "repaired": False}
+
+    def test_stop_recording_reports_invalid_without_auto_repair(
+        self,
+    ) -> None:
+        """Невалидный файл без auto_repair_corrupted -> репорт без попытки repair."""
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+
+        with (
+            patch("core.recording_service.get_config") as get_config_mock,
+            patch.object(Path, "exists", return_value=False),
+            patch(
+                "core.recording_service.verify_video_integrity"
+            ) as mock_verify,
+            patch(
+                "core.recording_service.attempt_repair_video"
+            ) as mock_repair,
+        ):
+            get_config_mock.return_value.settings.video.verify_on_complete = (
+                True
+            )
+            get_config_mock.return_value.settings.video.auto_repair_corrupted = False
+            mock_verify.return_value = MagicMock(
+                valid=False, error="moov atom not found"
+            )
+            result = service.stop_recording()
+
+        assert result["integrity"] == {
+            "valid": False,
+            "repaired": False,
+            "error": "moov atom not found",
+        }
+        mock_repair.assert_not_called()
+
+    def test_stop_recording_attempts_repair_when_enabled_and_succeeds(
+        self,
+    ) -> None:
+        """auto_repair_corrupted=True и успешный ремукс -> valid/repaired=True."""
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+
+        with (
+            patch("core.recording_service.get_config") as get_config_mock,
+            patch.object(Path, "exists", return_value=False),
+            patch(
+                "core.recording_service.verify_video_integrity"
+            ) as mock_verify,
+            patch(
+                "core.recording_service.attempt_repair_video"
+            ) as mock_repair,
+        ):
+            get_config_mock.return_value.settings.video.verify_on_complete = (
+                True
+            )
+            get_config_mock.return_value.settings.video.auto_repair_corrupted = True
+            mock_verify.return_value = MagicMock(
+                valid=False, error="moov atom not found"
+            )
+            mock_repair.return_value = MagicMock(repaired=True, error=None)
+            result = service.stop_recording()
+
+        assert result["integrity"] == {"valid": True, "repaired": True}
+        mock_repair.assert_called_once()
+
+    def test_stop_recording_reports_repair_failure(self) -> None:
+        """Неудачный repair -> репорт остаётся невалидным."""
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+
+        with (
+            patch("core.recording_service.get_config") as get_config_mock,
+            patch.object(Path, "exists", return_value=False),
+            patch(
+                "core.recording_service.verify_video_integrity"
+            ) as mock_verify,
+            patch(
+                "core.recording_service.attempt_repair_video"
+            ) as mock_repair,
+        ):
+            get_config_mock.return_value.settings.video.verify_on_complete = (
+                True
+            )
+            get_config_mock.return_value.settings.video.auto_repair_corrupted = True
+            mock_verify.return_value = MagicMock(
+                valid=False, error="moov atom not found"
+            )
+            mock_repair.return_value = MagicMock(
+                repaired=False, error="ffmpeg decode error"
+            )
+            result = service.stop_recording()
+
+        assert result["integrity"] == {
+            "valid": False,
+            "repaired": False,
+            "error": "ffmpeg decode error",
+        }
+
+    def test_stop_recording_verification_failure_does_not_block_stop(
+        self,
+    ) -> None:
+        """Неожиданное исключение в верификации не должно ломать stop()."""
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+
+        with (
+            patch("core.recording_service.get_config") as get_config_mock,
+            patch.object(Path, "exists", return_value=False),
+            patch(
+                "core.recording_service.verify_video_integrity",
+                side_effect=RuntimeError("unexpected"),
+            ),
+        ):
+            get_config_mock.return_value.settings.video.verify_on_complete = (
+                True
+            )
+            result = service.stop_recording()
+
+        assert result["success"] is True
+        assert "integrity" not in result
 
     def test_toggle_pause_returns_error_when_not_recording(self) -> None:
         service = RecordingService(backend=FakeBackend())

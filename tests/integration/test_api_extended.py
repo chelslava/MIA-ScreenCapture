@@ -139,6 +139,24 @@ def mock_callbacks() -> dict[str, MagicMock]:
         "test_webhook": MagicMock(
             return_value={"success": True, "response_time_ms": 12.5}
         ),
+        "verify_recording": MagicMock(
+            return_value={
+                "valid": True,
+                "duration_s": 12.5,
+                "codec_name": "h264",
+                "width": 1920,
+                "height": 1080,
+                "error": None,
+            }
+        ),
+        "repair_recording": MagicMock(
+            return_value={
+                "repaired": True,
+                "original_size_bytes": 1000,
+                "repaired_size_bytes": 950,
+                "error": None,
+            }
+        ),
     }
 
 
@@ -558,6 +576,104 @@ class TestAPIWebhookExtended:
         )
 
         response = client.post("/api/v1/config/webhook/test")
+
+        assert response.status_code == 500
+
+
+class TestAPIRecordingIntegrityExtended:
+    """Тесты для /api/v1/recordings/verify и /repair (#46)."""
+
+    def test_verify_recording_returns_status(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Проверка целостности файла по указанному пути."""
+        response = client.post(
+            "/api/v1/recordings/verify",
+            json={"file_path": "D:/Videos/recording.mp4"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["valid"] is True
+        mock_callbacks["verify_recording"].assert_called_once_with(
+            "D:/Videos/recording.mp4"
+        )
+
+    def test_verify_recording_requires_file_path(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Запрос без file_path должен отклоняться валидацией."""
+        response = client.post(
+            "/api/v1/recordings/verify",
+            json={},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        mock_callbacks["verify_recording"].assert_not_called()
+
+    def test_verify_recording_callback_error(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Ошибка callback должна возвращать 500."""
+        mock_callbacks["verify_recording"].side_effect = RuntimeError(
+            "ffprobe crashed"
+        )
+
+        response = client.post(
+            "/api/v1/recordings/verify",
+            json={"file_path": "video.mp4"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 500
+
+    def test_repair_recording_returns_status(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Попытка восстановления файла по указанному пути."""
+        response = client.post(
+            "/api/v1/recordings/repair",
+            json={"file_path": "D:/Videos/recording.mp4"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["repaired"] is True
+        mock_callbacks["repair_recording"].assert_called_once_with(
+            "D:/Videos/recording.mp4"
+        )
+
+    def test_repair_recording_requires_file_path(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Запрос без file_path должен отклоняться валидацией."""
+        response = client.post(
+            "/api/v1/recordings/repair",
+            json={},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        mock_callbacks["repair_recording"].assert_not_called()
+
+    def test_repair_recording_callback_error(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Ошибка callback должна возвращать 500."""
+        mock_callbacks["repair_recording"].side_effect = RuntimeError(
+            "ffmpeg crashed"
+        )
+
+        response = client.post(
+            "/api/v1/recordings/repair",
+            json={"file_path": "video.mp4"},
+            content_type="application/json",
+        )
 
         assert response.status_code == 500
 

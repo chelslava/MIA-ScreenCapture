@@ -423,5 +423,7 @@ class ApiRuntimeManager:
         server.set_callback("get_webhook_config", facade.get_webhook_config)
         server.set_callback("configure_webhook", facade.configure_webhook)
         server.set_callback("test_webhook", facade.test_webhook)
+        server.set_callback("verify_recording", facade.verify_recording)
+        server.set_callback("repair_recording", facade.repair_recording)
         server.set_callback("get_config", facade.get_config_snapshot)
         server.set_callback("update_config", facade.update_config)

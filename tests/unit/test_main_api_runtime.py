@@ -472,6 +472,8 @@ class TestMainApiRuntime:
             "get_webhook_config",
             "configure_webhook",
             "test_webhook",
+            "verify_recording",
+            "repair_recording",
             "get_config",
             "update_config",
         }
@@ -507,6 +509,8 @@ class TestMainApiRuntime:
             "get_webhook_config": facade.get_webhook_config,
             "configure_webhook": facade.configure_webhook,
             "test_webhook": facade.test_webhook,
+            "verify_recording": facade.verify_recording,
+            "repair_recording": facade.repair_recording,
             "get_config": facade.get_config_snapshot,
             "update_config": facade.update_config,
         }

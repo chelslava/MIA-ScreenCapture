@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from api.auth import require_api_key
 from api.rate_limiter import rate_limit
-from api.schemas import StartRecordingRequest
+from api.schemas import FilePathRequest, StartRecordingRequest
 
 
 def register_recording_routes(
@@ -114,6 +114,56 @@ def register_recording_routes(
 
         except Exception as e:
             logger.exception(f"Ошибка получения записей: {e}")
+            return exception_response(e)
+
+    @api_v1.route("recordings/verify", methods=["POST"])
+    @rate_limit
+    @require_api_key
+    def verify_recording() -> Any:
+        """Проверка целостности видеофайла по указанному пути (#46)."""
+        try:
+            data, parse_error = parse_request_json()
+            if parse_error is not None:
+                return parse_error
+            assert data is not None
+
+            try:
+                validated = FilePathRequest(**data)
+            except ValidationError as e:
+                return handle_validation_error(e)
+
+            callback = server.get_callback("verify_recording")
+            if callback:
+                result = callback(validated.file_path)
+                return jsonify({"success": True, "data": result})
+            return internal_error_response()
+        except Exception as e:
+            logger.exception(f"Ошибка проверки целостности файла: {e}")
+            return exception_response(e)
+
+    @api_v1.route("recordings/repair", methods=["POST"])
+    @rate_limit
+    @require_api_key
+    def repair_recording() -> Any:
+        """Попытка восстановления видеофайла по указанному пути (#46)."""
+        try:
+            data, parse_error = parse_request_json()
+            if parse_error is not None:
+                return parse_error
+            assert data is not None
+
+            try:
+                validated = FilePathRequest(**data)
+            except ValidationError as e:
+                return handle_validation_error(e)
+
+            callback = server.get_callback("repair_recording")
+            if callback:
+                result = callback(validated.file_path)
+                return jsonify({"success": True, "data": result})
+            return internal_error_response()
+        except Exception as e:
+            logger.exception(f"Ошибка восстановления файла: {e}")
             return exception_response(e)
 
     @api_v1.route("events/recent", methods=["GET"])

@@ -121,6 +121,16 @@ class MockApp:
     def _test_webhook(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"success": True, "response_time_ms": 1.0}
 
+    def _verify_recording_file(
+        self, *args: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {"valid": True, "duration_s": 5.0}
+
+    def _repair_recording_file(
+        self, *args: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {"repaired": True}
+
     def _get_config(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {}
 
@@ -182,6 +192,12 @@ class MockApp:
 
     def test_webhook(self) -> dict[str, Any]:
         return self._test_webhook()
+
+    def verify_recording(self, file_path: str) -> dict[str, Any]:
+        return self._verify_recording_file(file_path)
+
+    def repair_recording(self, file_path: str) -> dict[str, Any]:
+        return self._repair_recording_file(file_path)
 
     def get_config_snapshot(self) -> dict[str, Any]:
         return self._get_config()
@@ -764,6 +780,8 @@ class TestSetupApiCallbacks:
             "get_webhook_config",
             "configure_webhook",
             "test_webhook",
+            "verify_recording",
+            "repair_recording",
             "get_config",
             "update_config",
         ]
@@ -799,6 +817,8 @@ class TestSetupApiCallbacks:
             "get_webhook_config": mock_facade.get_webhook_config,
             "configure_webhook": mock_facade.configure_webhook,
             "test_webhook": mock_facade.test_webhook,
+            "verify_recording": mock_facade.verify_recording,
+            "repair_recording": mock_facade.repair_recording,
             "get_config": mock_facade.get_config_snapshot,
             "update_config": mock_facade.update_config,
         }

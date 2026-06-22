@@ -90,6 +90,14 @@ class ApplicationFacade(Protocol):
         """Отправляет тестовое webhook-уведомление."""
         ...
 
+    def verify_recording(self, file_path: str) -> dict[str, Any]:
+        """Проверяет целостность видеофайла по указанному пути."""
+        ...
+
+    def repair_recording(self, file_path: str) -> dict[str, Any]:
+        """Пытается восстановить видеофайл по указанному пути."""
+        ...
+
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot конфигурации."""
         ...

@@ -68,10 +68,12 @@ from exceptions import (
 from gui.backends import GUIRecordingBackend
 from logger_config import get_module_logger, setup_logger
 from recorder.utils import (
+    attempt_repair_video,
     check_ffmpeg,
     get_audio_devices,
     get_available_windows,
     get_disk_space_status,
+    verify_video_integrity,
 )
 from single_instance import SingleInstanceGuard, bring_existing_window_to_front
 
@@ -357,6 +359,14 @@ class VideoRecorderApp:
     def test_webhook(self) -> dict[str, Any]:
         """Отправляет тестовое webhook-уведомление."""
         return self._test_webhook()
+
+    def verify_recording(self, file_path: str) -> dict[str, Any]:
+        """Проверяет целостность видеофайла по указанному пути."""
+        return self._verify_recording_file(file_path)
+
+    def repair_recording(self, file_path: str) -> dict[str, Any]:
+        """Пытается восстановить видеофайл по указанному пути."""
+        return self._repair_recording_file(file_path)
 
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot текущей конфигурации."""
@@ -1073,6 +1083,28 @@ class VideoRecorderApp:
             secret=api_settings.webhook_secret,
         )
         return {"success": success, "response_time_ms": response_time_ms}
+
+    def _verify_recording_file(self, file_path: str) -> dict[str, Any]:
+        """Проверка целостности произвольного видеофайла по пути."""
+        check = verify_video_integrity(Path(file_path))
+        return {
+            "valid": check.valid,
+            "duration_s": check.duration_s,
+            "codec_name": check.codec_name,
+            "width": check.width,
+            "height": check.height,
+            "error": check.error,
+        }
+
+    def _repair_recording_file(self, file_path: str) -> dict[str, Any]:
+        """Попытка восстановления произвольного видеофайла по пути."""
+        repair = attempt_repair_video(Path(file_path))
+        return {
+            "repaired": repair.repaired,
+            "original_size_bytes": repair.original_size_bytes,
+            "repaired_size_bytes": repair.repaired_size_bytes,
+            "error": repair.error,
+        }
 
     def _get_config(self) -> dict[str, Any]:
         """Получение текущей конфигурации."""

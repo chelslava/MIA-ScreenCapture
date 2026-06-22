@@ -5,6 +5,7 @@
 Проверяет функциональность recorder/utils.py.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -15,6 +16,8 @@ import pytest
 
 from recorder.utils import (
     Singleton,
+    VideoIntegrityResult,
+    attempt_repair_video,
     check_ffmpeg,
     ensure_directory,
     format_filesize,
@@ -30,6 +33,7 @@ from recorder.utils import (
     get_unique_filename,
     is_valid_output_path,
     validate_rect_coords,
+    verify_video_integrity,
 )
 
 
@@ -693,3 +697,278 @@ class TestSingleton:
         assert first is not second
         assert first.name == "first"
         assert second.name == "second"
+
+
+class TestVerifyVideoIntegrity:
+    """Тесты verify_video_integrity (#46)."""
+
+    def test_returns_invalid_when_file_missing(self, tmp_path: Path) -> None:
+        """Несуществующий файл сразу невалиден, без вызова ffprobe."""
+        result = verify_video_integrity(tmp_path / "missing.mp4")
+
+        assert result.valid is False
+        assert "не найден" in result.error
+
+    @patch("recorder.utils.get_ffprobe_path")
+    def test_returns_invalid_when_ffprobe_missing(
+        self, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Отсутствие ffprobe должно давать понятную ошибку."""
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"fake")
+        mock_get_path.return_value = None
+
+        result = verify_video_integrity(video)
+
+        assert result.valid is False
+        assert "FFprobe" in result.error
+
+    @patch("recorder.utils.get_ffprobe_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_valid_video_returns_metadata(
+        self, mock_run, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Валидный видеопоток с положительной длительностью -> valid=True."""
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"fake")
+        mock_get_path.return_value = r"C:\ffprobe.exe"
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "streams": [
+                        {"codec_name": "h264", "width": 1920, "height": 1080}
+                    ],
+                    "format": {"duration": "12.5"},
+                }
+            ),
+            stderr="",
+        )
+
+        result = verify_video_integrity(video)
+
+        assert result.valid is True
+        assert result.duration_s == 12.5
+        assert result.codec_name == "h264"
+        assert result.width == 1920
+        assert result.height == 1080
+
+    @patch("recorder.utils.get_ffprobe_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_ffprobe_nonzero_returncode_is_invalid(
+        self, mock_run, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Ошибка ffprobe (например, moov atom not found) -> невалидно."""
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"fake")
+        mock_get_path.return_value = r"C:\ffprobe.exe"
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="moov atom not found"
+        )
+
+        result = verify_video_integrity(video)
+
+        assert result.valid is False
+        assert "moov atom not found" in result.error
+
+    @patch("recorder.utils.get_ffprobe_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_missing_video_stream_is_invalid(
+        self, mock_run, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Отсутствие видеопотока в выводе ffprobe -> невалидно."""
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"fake")
+        mock_get_path.return_value = r"C:\ffprobe.exe"
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps({"streams": [], "format": {"duration": "1.0"}}),
+            stderr="",
+        )
+
+        result = verify_video_integrity(video)
+
+        assert result.valid is False
+        assert "Видеопоток" in result.error
+
+    @patch("recorder.utils.get_ffprobe_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_zero_duration_is_invalid(
+        self, mock_run, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Нулевая/отсутствующая длительность -> невалидно, метаданные сохранены."""
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"fake")
+        mock_get_path.return_value = r"C:\ffprobe.exe"
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "streams": [
+                        {"codec_name": "h264", "width": 1920, "height": 1080}
+                    ],
+                    "format": {"duration": "0"},
+                }
+            ),
+            stderr="",
+        )
+
+        result = verify_video_integrity(video)
+
+        assert result.valid is False
+        assert result.codec_name == "h264"
+
+    @patch("recorder.utils.get_ffprobe_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_timeout_is_invalid(
+        self, mock_run, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Таймаут ffprobe не должен пробрасывать исключение наружу."""
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"fake")
+        mock_get_path.return_value = r"C:\ffprobe.exe"
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd="ffprobe", timeout=30
+        )
+
+        result = verify_video_integrity(video, timeout=30)
+
+        assert result.valid is False
+        assert "30" in result.error
+
+    @patch("recorder.utils.get_ffprobe_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_malformed_json_is_invalid(
+        self, mock_run, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Некорректный JSON в выводе ffprobe не должен пробрасывать исключение."""
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"fake")
+        mock_get_path.return_value = r"C:\ffprobe.exe"
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="not json", stderr=""
+        )
+
+        result = verify_video_integrity(video)
+
+        assert result.valid is False
+
+
+class TestAttemptRepairVideo:
+    """Тесты attempt_repair_video (#46)."""
+
+    def test_returns_not_repaired_when_file_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """Несуществующий файл сразу не восстановлен, без вызова FFmpeg."""
+        result = attempt_repair_video(tmp_path / "missing.mp4")
+
+        assert result.repaired is False
+
+    @patch("recorder.utils.get_ffmpeg_path")
+    def test_returns_not_repaired_when_ffmpeg_missing(
+        self, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Отсутствие FFmpeg должно давать понятную ошибку."""
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"fake")
+        mock_get_path.return_value = None
+
+        result = attempt_repair_video(video)
+
+        assert result.repaired is False
+        assert "FFmpeg" in result.error
+
+    @patch("recorder.utils.verify_video_integrity")
+    @patch("recorder.utils.get_ffmpeg_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_successful_repair_replaces_original(
+        self, mock_run, mock_get_ffmpeg, mock_verify, tmp_path: Path
+    ) -> None:
+        """Успешный ремукс, прошедший повторную проверку, заменяет оригинал."""
+        video = tmp_path / "video.mp4"
+        video.write_bytes(b"original-broken-content")
+        mock_get_ffmpeg.return_value = r"C:\ffmpeg.exe"
+
+        def fake_run(cmd, **kwargs):
+            Path(cmd[-1]).write_bytes(b"repaired-content")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        mock_run.side_effect = fake_run
+        mock_verify.return_value = VideoIntegrityResult(
+            valid=True, duration_s=5.0
+        )
+
+        result = attempt_repair_video(video)
+
+        assert result.repaired is True
+        assert video.read_bytes() == b"repaired-content"
+        assert result.original_size_bytes == len(b"original-broken-content")
+        assert result.repaired_size_bytes == len(b"repaired-content")
+        assert not (tmp_path / "video.repair.mp4").exists()
+
+    @patch("recorder.utils.get_ffmpeg_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_ffmpeg_failure_leaves_original_untouched(
+        self, mock_run, mock_get_ffmpeg, tmp_path: Path
+    ) -> None:
+        """Неудача FFmpeg не должна трогать оригинальный файл."""
+        video = tmp_path / "video.mp4"
+        original_content = b"original-content"
+        video.write_bytes(original_content)
+        mock_get_ffmpeg.return_value = r"C:\ffmpeg.exe"
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="decode error"
+        )
+
+        result = attempt_repair_video(video)
+
+        assert result.repaired is False
+        assert video.read_bytes() == original_content
+        assert not (tmp_path / "video.repair.mp4").exists()
+
+    @patch("recorder.utils.verify_video_integrity")
+    @patch("recorder.utils.get_ffmpeg_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_repaired_file_failing_verification_leaves_original_untouched(
+        self, mock_run, mock_get_ffmpeg, mock_verify, tmp_path: Path
+    ) -> None:
+        """Ремукс, не прошедший повторную проверку, не заменяет оригинал."""
+        video = tmp_path / "video.mp4"
+        original_content = b"original-content"
+        video.write_bytes(original_content)
+        mock_get_ffmpeg.return_value = r"C:\ffmpeg.exe"
+
+        def fake_run(cmd, **kwargs):
+            Path(cmd[-1]).write_bytes(b"still-broken")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        mock_run.side_effect = fake_run
+        mock_verify.return_value = VideoIntegrityResult(
+            valid=False, error="still broken"
+        )
+
+        result = attempt_repair_video(video)
+
+        assert result.repaired is False
+        assert video.read_bytes() == original_content
+        assert not (tmp_path / "video.repair.mp4").exists()
+
+    @patch("recorder.utils.get_ffmpeg_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_timeout_leaves_original_untouched(
+        self, mock_run, mock_get_ffmpeg, tmp_path: Path
+    ) -> None:
+        """Таймаут FFmpeg не должен пробрасывать исключение и не трогает файл."""
+        video = tmp_path / "video.mp4"
+        original_content = b"original-content"
+        video.write_bytes(original_content)
+        mock_get_ffmpeg.return_value = r"C:\ffmpeg.exe"
+        mock_run.side_effect = subprocess.TimeoutExpired(
+            cmd="ffmpeg", timeout=600
+        )
+
+        result = attempt_repair_video(video)
+
+        assert result.repaired is False
+        assert video.read_bytes() == original_content

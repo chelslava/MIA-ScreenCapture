@@ -29,6 +29,7 @@ from core.recording_types import (
 )
 from exceptions import RecordingError
 from logger_config import get_module_logger
+from recorder.utils import attempt_repair_video, verify_video_integrity
 
 logger = get_module_logger(__name__)
 
@@ -160,9 +161,66 @@ class RecordingService:
                 logger.warning(f"Failed to update recordings list: {e}")
 
             logger.info(f"Recording stopped: {output_path}")
-            result = {"success": True, "filepath": str(output_path)}
+            result = {
+                "success": True,
+                "filepath": str(output_path),
+            }
+            try:
+                integrity = self._verify_recording(output_path)
+                if integrity is not None:
+                    result["integrity"] = integrity
+            except Exception as e:
+                # Верификация не должна мешать успешному завершению stop().
+                logger.warning(
+                    f"Integrity verification failed unexpectedly: {e}"
+                )
+
             self._publish_event(RecordingEventType.STOPPED, result)
             return result
+
+    def _verify_recording(self, output_path: Path) -> dict[str, Any] | None:
+        """
+        Проверяет целостность записанного файла через ffprobe (#46).
+
+        При включённом `auto_repair_corrupted` и невалидном результате
+        пытается восстановить файл ремуксом. Никогда не удаляет и не
+        блокирует сохранение исходного файла — только репортит результат.
+
+        Returns:
+            Словарь с результатом проверки, либо `None`, если проверка
+            отключена в настройках (`verify_on_complete=False`).
+        """
+        video_settings = get_config().settings.video
+        if not video_settings.verify_on_complete:
+            return None
+
+        check = verify_video_integrity(output_path)
+        if check.valid:
+            return {"valid": True, "repaired": False}
+
+        if not video_settings.auto_repair_corrupted:
+            logger.warning(
+                f"Запись не прошла проверку целостности: {output_path} "
+                f"({check.error})"
+            )
+            return {"valid": False, "repaired": False, "error": check.error}
+
+        repair = attempt_repair_video(output_path)
+        if not repair.repaired:
+            logger.warning(
+                f"Не удалось восстановить повреждённую запись: "
+                f"{output_path} ({repair.error})"
+            )
+            return {
+                "valid": False,
+                "repaired": False,
+                "error": repair.error or check.error,
+            }
+
+        logger.info(
+            f"Запись восстановлена после проверки целостности: {output_path}"
+        )
+        return {"valid": True, "repaired": True}
 
     def toggle_pause(self) -> dict[str, Any]:
         """Toggles pause of current recording."""

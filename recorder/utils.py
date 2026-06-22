@@ -5,6 +5,7 @@ Provides helpers for screen capture, window enumeration,
 audio device listing, and FFmpeg availability checks.
 """
 
+import json
 import os
 import platform
 import re
@@ -703,6 +704,233 @@ def get_disk_space_status(path: Path) -> dict[str, float | str]:
         "used_mb": stat.used / (1024 * 1024),
         "path": str(check_path),
     }
+
+
+_FFPROBE_TIMEOUT_SECONDS = 30.0
+_FFMPEG_REPAIR_TIMEOUT_SECONDS = 600.0
+
+
+@dataclass
+class VideoIntegrityResult:
+    """Результат проверки целостности видеофайла через ffprobe (#46)."""
+
+    valid: bool
+    duration_s: float | None = None
+    codec_name: str | None = None
+    width: int | None = None
+    height: int | None = None
+    error: str | None = None
+
+
+@dataclass
+class RepairResult:
+    """Результат попытки восстановления видеофайла (#46)."""
+
+    repaired: bool
+    original_size_bytes: int | None = None
+    repaired_size_bytes: int | None = None
+    error: str | None = None
+
+
+def _run_ffprobe(
+    ffprobe_bin: str, file_path: Path, timeout: float
+) -> subprocess.CompletedProcess[str]:
+    """Запускает ffprobe и возвращает структурную информацию в JSON."""
+    cmd = [
+        ffprobe_bin,
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "json",
+        str(file_path),
+    ]
+    creationflags = get_subprocess_creationflags()
+    run_kwargs: dict[str, Any] = {
+        "capture_output": True,
+        "text": True,
+        "timeout": timeout,
+    }
+    if creationflags:
+        run_kwargs["creationflags"] = creationflags
+    return subprocess.run(cmd, **run_kwargs)
+
+
+def verify_video_integrity(
+    file_path: Path, timeout: float = _FFPROBE_TIMEOUT_SECONDS
+) -> VideoIntegrityResult:
+    """
+    Проверяет целостность видеофайла через ffprobe.
+
+    Лёгкая структурная проверка (`-v error`, без полного декодирования) —
+    ловит структурные повреждения (например, отсутствующий moov atom при
+    неожиданном прерывании записи, см. #45), не требуя дорогого полного
+    прохода по файлу.
+
+    Args:
+        file_path: Путь к видеофайлу.
+        timeout: Таймаут выполнения ffprobe (секунды).
+
+    Returns:
+        Результат проверки: валидность, длительность, кодек, разрешение.
+    """
+    if not file_path.exists():
+        return VideoIntegrityResult(valid=False, error="Файл не найден")
+
+    ffprobe_bin = get_ffprobe_path()
+    if ffprobe_bin is None:
+        return VideoIntegrityResult(valid=False, error="FFprobe недоступен")
+
+    try:
+        result = _run_ffprobe(ffprobe_bin, file_path, timeout)
+    except subprocess.TimeoutExpired:
+        return VideoIntegrityResult(
+            valid=False, error=f"FFprobe не ответил за {timeout:.0f}с"
+        )
+    except OSError as e:
+        return VideoIntegrityResult(valid=False, error=str(e))
+
+    if result.returncode != 0:
+        error_msg = (result.stderr or "").strip() or (
+            "ffprobe завершился с ошибкой"
+        )
+        return VideoIntegrityResult(valid=False, error=error_msg)
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        return VideoIntegrityResult(
+            valid=False, error=f"Некорректный вывод ffprobe: {e}"
+        )
+
+    streams = data.get("streams") or []
+    if not streams:
+        return VideoIntegrityResult(valid=False, error="Видеопоток не найден")
+
+    stream = streams[0]
+    codec_name = stream.get("codec_name")
+    width = stream.get("width")
+    height = stream.get("height")
+
+    duration_raw = (data.get("format") or {}).get("duration")
+    try:
+        duration_s = float(duration_raw) if duration_raw is not None else None
+    except (TypeError, ValueError):
+        duration_s = None
+
+    if duration_s is None or duration_s <= 0:
+        return VideoIntegrityResult(
+            valid=False,
+            error="Не удалось определить длительность видео",
+            codec_name=codec_name,
+            width=width,
+            height=height,
+        )
+
+    return VideoIntegrityResult(
+        valid=True,
+        duration_s=duration_s,
+        codec_name=codec_name,
+        width=width,
+        height=height,
+    )
+
+
+def attempt_repair_video(
+    file_path: Path, timeout: float = _FFMPEG_REPAIR_TIMEOUT_SECONDS
+) -> RepairResult:
+    """
+    Пытается восстановить видеофайл ремуксом через FFmpeg (`-c copy`).
+
+    Ремукс пишется во временный файл и заменяет оригинал ТОЛЬКО если сам
+    проходит повторную `verify_video_integrity()` — при любой неудаче
+    оригинал не трогается.
+
+    Args:
+        file_path: Путь к видеофайлу для восстановления.
+        timeout: Таймаут выполнения FFmpeg (секунды).
+
+    Returns:
+        Результат восстановления.
+    """
+    if not file_path.exists():
+        return RepairResult(repaired=False, error="Файл не найден")
+
+    ffmpeg_bin = get_ffmpeg_path()
+    if ffmpeg_bin is None:
+        return RepairResult(repaired=False, error="FFmpeg недоступен")
+
+    original_size = file_path.stat().st_size
+    temp_path = file_path.with_suffix(f".repair{file_path.suffix}")
+
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-i",
+        str(file_path),
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(temp_path),
+    ]
+    creationflags = get_subprocess_creationflags()
+    run_kwargs: dict[str, Any] = {
+        "capture_output": True,
+        "text": True,
+        "timeout": timeout,
+    }
+    if creationflags:
+        run_kwargs["creationflags"] = creationflags
+
+    try:
+        result = subprocess.run(cmd, **run_kwargs)
+    except subprocess.TimeoutExpired:
+        temp_path.unlink(missing_ok=True)
+        return RepairResult(
+            repaired=False,
+            original_size_bytes=original_size,
+            error=f"FFmpeg не ответил за {timeout:.0f}с",
+        )
+    except OSError as e:
+        temp_path.unlink(missing_ok=True)
+        return RepairResult(
+            repaired=False, original_size_bytes=original_size, error=str(e)
+        )
+
+    if result.returncode != 0 or not temp_path.exists():
+        temp_path.unlink(missing_ok=True)
+        error_msg = (result.stderr or "").strip() or (
+            "ffmpeg завершился с ошибкой"
+        )
+        return RepairResult(
+            repaired=False, original_size_bytes=original_size, error=error_msg
+        )
+
+    repaired_check = verify_video_integrity(
+        temp_path, timeout=_FFPROBE_TIMEOUT_SECONDS
+    )
+    if not repaired_check.valid:
+        temp_path.unlink(missing_ok=True)
+        return RepairResult(
+            repaired=False,
+            original_size_bytes=original_size,
+            error="Восстановленный файл не прошёл проверку: "
+            f"{repaired_check.error}",
+        )
+
+    repaired_size = temp_path.stat().st_size
+    temp_path.replace(file_path)
+    return RepairResult(
+        repaired=True,
+        original_size_bytes=original_size,
+        repaired_size_bytes=repaired_size,
+    )
 
 
 class Singleton(type):

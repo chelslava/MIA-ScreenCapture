@@ -13,6 +13,12 @@ import tzlocal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class FilePathRequest(BaseModel):
+    """Схема запроса с путём к видеофайлу (#46: verify/repair)."""
+
+    file_path: str = Field(..., min_length=1, description="Путь к видеофайлу")
+
+
 class StartRecordingRequest(BaseModel):
     """Схема запроса для начала записи."""
 

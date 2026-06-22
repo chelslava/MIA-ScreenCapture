@@ -37,6 +37,8 @@ class VideoSettingsSchema(BaseModel):
     format: str = Field(default="mp4")
     compression: bool = Field(default=True)
     preset: str = Field(default="medium")
+    verify_on_complete: bool = Field(default=True)
+    auto_repair_corrupted: bool = Field(default=False)
 
     @field_validator("preset")
     @classmethod
@@ -193,6 +195,8 @@ class VideoSettings:
     format: str = "mp4"
     compression: bool = True
     preset: str = "medium"
+    verify_on_complete: bool = True
+    auto_repair_corrupted: bool = False
 
 
 @dataclass
