@@ -347,6 +347,10 @@ class MockSignal:
         for callback in self._callbacks:
             callback(*args, **kwargs)
 
+    def __call__(self, *args, **kwargs):
+        """Поддержка сигнал->сигнал связывания (`a.connect(b)`, где b — сигнал)."""
+        self.emit(*args, **kwargs)
+
 
 # Создаем mock классы с нужными методами
 def _create_widget_mock_class(name: str):
@@ -399,6 +403,63 @@ MockQTabWidget = _create_mock_class("QTabWidget", (MockQWidgetBase,))
 MockQScrollArea = _create_mock_class("QScrollArea", (MockQWidgetBase,))
 MockQSplitter = _create_mock_class("QSplitter", (MockQWidgetBase,))
 MockQFrame = _create_mock_class("QFrame", (MockQWidgetBase,))
+
+
+class MockQSystemTrayIconBase(MockQWidgetBase):
+    """
+    Базовый mock для QSystemTrayIcon (нужен только gui/tray_icon.py).
+
+    До этого класс не был куратирован, и `class TrayIcon(QSystemTrayIcon)`
+    наследовался от голого auto-vivified `MagicMock` — Python в этом случае
+    использует `type(QSystemTrayIcon)` (т.е. сам класс `MagicMock`) как
+    метакласс и "проглатывает" тело класса целиком (см. TD-7 в базе знаний
+    проекта). `TrayIcon` под таким "базовым классом" никогда не был
+    настоящим Python-классом с собственными методами.
+    """
+
+    class MessageIcon:
+        """Аналог QSystemTrayIcon.MessageIcon (используется как тип/default)."""
+
+        NoIcon = 0
+        Information = 1
+        Warning = 2
+        Critical = 3
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self._icon = None
+        self._context_menu = None
+        self._messages: list[tuple] = []
+        self._supports_messages = True
+
+    def setIcon(self, icon):
+        self._icon = icon
+
+    def icon(self):
+        return self._icon
+
+    def setContextMenu(self, menu):
+        self._context_menu = menu
+
+    def contextMenu(self):
+        return self._context_menu
+
+    def supportsMessages(self) -> bool:
+        return self._supports_messages
+
+    def showMessage(self, title, message, icon=None, timeout=10000):
+        self._messages.append((title, message, icon, timeout))
+
+    def show(self):
+        self._visible = True
+
+    def hide(self):
+        self._visible = False
+
+
+MockQSystemTrayIcon = _create_mock_class(
+    "QSystemTrayIcon", (MockQSystemTrayIconBase,)
+)
 
 
 # Layout mocks - с методами setContentsMargins, addWidget и т.д.
@@ -542,6 +603,7 @@ qt_widgets_mock.QTabWidget = MockQTabWidget
 qt_widgets_mock.QScrollArea = MockQScrollArea
 qt_widgets_mock.QSplitter = MockQSplitter
 qt_widgets_mock.QFrame = MockQFrame
+qt_widgets_mock.QSystemTrayIcon = MockQSystemTrayIcon
 qt_widgets_mock.QApplication = MockQApplication
 
 qt_core_mock = MagicMock()
@@ -571,6 +633,10 @@ def mock_pyqtSignal(*args, **kwargs):
             for callback in self._callbacks:
                 callback(*args, **kwargs)
 
+        def __call__(self, *args, **kwargs):
+            """Поддержка сигнал->сигнал связывания (`a.connect(b)`, где b — сигнал)."""
+            self.emit(*args, **kwargs)
+
     return MockSignal()
 
 
@@ -578,15 +644,106 @@ qt_core_mock.pyqtSignal = mock_pyqtSignal
 qt_core_mock.pyqtSlot = lambda *args, **kwargs: lambda func: func
 qt_core_mock.QObject = _create_mock_class("QObject")
 qt_core_mock.QThread = _create_mock_class("QThread")
-qt_core_mock.QTimer = _create_mock_class("QTimer")
+
+
+class MockQTimerBase:
+    """Базовый mock для QTimer с .timeout/.start()/.stop()."""
+
+    def __init__(self, *args, **kwargs):
+        self.timeout = MockSignal()
+        self._active = False
+        self._interval = 0
+
+    def start(self, interval=None):
+        if interval is not None:
+            self._interval = interval
+        self._active = True
+
+    def stop(self):
+        self._active = False
+
+    def isActive(self) -> bool:
+        return self._active
+
+    def setInterval(self, interval):
+        self._interval = interval
+
+    def interval(self) -> int:
+        return self._interval
+
+
+qt_core_mock.QTimer = _create_mock_class("QTimer", (MockQTimerBase,))
 qt_core_mock.QSettings = _create_mock_class("QSettings")
+
+
+class MockQActionBase:
+    """
+    Базовый mock для QAction (нужен только gui/tray_icon.py).
+
+    `_create_mock_class`'s сгенерированный `__init__` всегда зовёт
+    `super().__init__()` без аргументов, поэтому конструкторский `title`
+    (`QAction("Пауза", self)`) сюда не доходит — это сознательный компромисс
+    по аналогии с остальными mock-классами в этом файле (см. `MockQWidgetBase`
+    через `_create_mock_class`). Важно не начальное значение `text()`, а то,
+    что каждый `QAction(...)` создаёт **отдельный** объект (до этого
+    `qt_gui_mock.QAction` был голым auto-vivified `MagicMock` — все вызовы
+    `QAction(...)` возвращали один и тот же `mock.return_value`, и все пункты
+    меню в TrayIcon были фактически одним и тем же объектом).
+    """
+
+    def __init__(self, *args, **kwargs):
+        self._text = ""
+        self._enabled = True
+        self._shortcut = None
+        self._tooltip = ""
+        self._status_tip = ""
+        self.triggered = MockSignal()
+
+    def setText(self, text):
+        self._text = text
+
+    def text(self):
+        return self._text
+
+    def setEnabled(self, enabled):
+        self._enabled = enabled
+
+    def isEnabled(self):
+        return self._enabled
+
+    def setShortcut(self, shortcut):
+        self._shortcut = shortcut
+
+    def setToolTip(self, text):
+        self._tooltip = text
+
+    def toolTip(self):
+        return self._tooltip
+
+    def setStatusTip(self, text):
+        self._status_tip = text
+
+
+class MockQPixmapBase:
+    """Базовый mock для QPixmap с .fill() (нужен gui/tray_icon.py)."""
+
+    def __init__(self, *args, **kwargs):
+        self._fill_color = None
+
+    def fill(self, color=None):
+        self._fill_color = color
+
+    def isNull(self) -> bool:
+        return False
+
 
 qt_gui_mock = MagicMock()
 qt_gui_mock.QIcon = _create_mock_class("QIcon")
-qt_gui_mock.QPixmap = _create_mock_class("QPixmap")
+qt_gui_mock.QPixmap = _create_mock_class("QPixmap", (MockQPixmapBase,))
 qt_gui_mock.QColor = _create_mock_class("QColor")
 qt_gui_mock.QFont = _create_mock_class("QFont")
 qt_gui_mock.QCursor = _create_mock_class("QCursor")
+qt_gui_mock.QAction = _create_mock_class("QAction", (MockQActionBase,))
 
 sys.modules["PyQt6"] = MagicMock()
 sys.modules["PyQt6.QtWidgets"] = qt_widgets_mock

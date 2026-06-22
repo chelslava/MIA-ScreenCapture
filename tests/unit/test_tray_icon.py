@@ -4,303 +4,271 @@ Unit тесты для TrayIcon
 
 Тестирует функциональность иконки в системном трее.
 
-Примечание: PyQt6 мокируется в conftest.py для всех тестов. `QSystemTrayIcon`
-не входит в куратированный список mock-классов (`_create_mock_class`) — это
-голый `MagicMock`, и `class TrayIcon(QSystemTrayIcon)` под ним превращается в
-ещё один безымянный Mock без единого реального метода (Python использует
-`type(QSystemTrayIcon)` как метакласс и "проглатывает" тело класса). Поэтому
-здесь только тесты на литералы/контракты, а не на реальный `TrayIcon` —
-поведение `_create_icon` (выбор кастомной .ico только для idle) проверено
-вручную через настоящий PyQt6, см. development-log проекта.
+PyQt6 мокируется в conftest.py для всех тестов: QSystemTrayIcon, QAction,
+QTimer и QPixmap куратированы там же (см. [[technical-debt]] TD-7) — до
+этого `class TrayIcon(QSystemTrayIcon)` наследовался от голого
+`MagicMock`, и Python "проглатывал" тело класса целиком, делая
+полноценное тестирование TrayIcon невозможным.
 """
+
+from pathlib import Path
 
 import pytest
 
-
-class TestTrayIconBasics:
-    """Базовые тесты TrayIcon."""
-
-    def test_tray_icon_module_exists(self) -> None:
-        """Проверка существования модуля."""
-        from gui import tray_icon
-
-        assert tray_icon is not None
-
-    def test_tray_icon_name(self) -> None:
-        """Проверка имени иконки."""
-        icon_name = "MIA-ScreenCapture"
-        assert "MIA" in icon_name
+from gui.tray_icon import TrayIcon
 
 
-class TestTrayIconMenu:
-    """Параметризованные тесты меню трея."""
+class TestTrayIconCustomIcon:
+    """`_create_icon`: кастомная .ico только для idle."""
 
-    @pytest.mark.parametrize(
-        "menu_item",
-        [
-            "start_recording",
-            "stop_recording",
-            "show_window",
-            "exit",
-        ],
-    )
-    def test_menu_has_item(self, menu_item: str) -> None:
-        """Проверка наличия пункта меню."""
-        menu_items = [
-            "start_recording",
-            "stop_recording",
-            "show_window",
-            "exit",
-        ]
-        assert menu_item in menu_items
-
-    def test_menu_items_count(self) -> None:
-        """Проверка количества пунктов меню."""
-        menu_items = [
-            "start_recording",
-            "stop_recording",
-            "separator",
-            "show_window",
-            "separator",
-            "exit",
-        ]
-        assert len(menu_items) == 6
-
-
-class TestTrayIconActions:
-    """Параметризованные тесты действий трея."""
-
-    @pytest.mark.parametrize(
-        "action,callback",
-        [
-            ("start", "on_start_recording"),
-            ("stop", "on_stop_recording"),
-            ("show", "on_show_window"),
-            ("exit", "on_exit"),
-        ],
-    )
-    def test_action_has_callback(self, action: str, callback: str) -> None:
-        """Проверка соответствия действия и callback."""
-        action_callback_map = {
-            "start": "on_start_recording",
-            "stop": "on_stop_recording",
-            "show": "on_show_window",
-            "exit": "on_exit",
-        }
-        assert action_callback_map[action] == callback
-
-
-class TestTrayIconTooltip:
-    """Параметризованные тесты подсказки трея."""
-
-    @pytest.mark.parametrize(
-        "tooltip_text,expected_content",
-        [
-            ("MIA-ScreenCapture - Запись экрана", "MIA"),
-            ("MIA-ScreenCapture - Готов", "Готов"),
-            ("MIA-ScreenCapture - Запись...", "Запись"),
-        ],
-    )
-    def test_tooltip_contains_content(
-        self, tooltip_text: str, expected_content: str
+    def test_idle_uses_custom_icon_when_path_exists(
+        self, tmp_path: Path
     ) -> None:
-        """Проверка содержимого подсказки."""
-        assert expected_content in tooltip_text
+        icon_file = tmp_path / "custom.ico"
+        icon_file.write_bytes(b"\x00")
+
+        tray = TrayIcon(icon_path=icon_file)
+
+        assert tray._icons["idle"] is not None
+
+    def test_recording_and_paused_are_drawn_not_loaded(
+        self, tmp_path: Path
+    ) -> None:
+        """recording/paused не должны грузиться из файла — иначе теряется
+        цветовая индикация статуса записи (красный/оранжевый круг)."""
+        icon_file = tmp_path / "custom.ico"
+        icon_file.write_bytes(b"\x00")
+
+        tray = TrayIcon(icon_path=icon_file)
+
+        assert tray._icons["recording"] is not None
+        assert tray._icons["paused"] is not None
+
+    def test_falls_back_to_drawing_when_path_missing(
+        self, tmp_path: Path
+    ) -> None:
+        tray = TrayIcon(icon_path=tmp_path / "does-not-exist.ico")
+
+        assert tray._icons["idle"] is not None
+        assert tray._icons["recording"] is not None
+        assert tray._icons["paused"] is not None
+
+    def test_no_icon_path_does_not_crash(self) -> None:
+        tray = TrayIcon()
+
+        assert tray._icons["idle"] is not None
 
 
-class TestTrayIconStates:
-    """Параметризованные тесты состояний иконки."""
+class TestTrayIconMenuConstruction:
+    """Структура контекстного меню, создаваемого в _create_menu."""
 
-    @pytest.mark.parametrize(
-        "state,icon_type",
-        [
-            ("idle", "normal"),
-            ("recording", "active"),
-            ("paused", "paused"),
-            ("error", "error"),
-        ],
-    )
-    def test_state_icon_mapping(self, state: str, icon_type: str) -> None:
-        """Проверка соответствия состояния и типа иконки."""
-        state_icon_map = {
-            "idle": "normal",
-            "recording": "active",
-            "paused": "paused",
-            "error": "error",
+    def test_actions_are_distinct_objects(self) -> None:
+        tray = TrayIcon()
+
+        actions = {
+            tray._show_action,
+            tray._start_action,
+            tray._stop_action,
+            tray._pause_action,
+            tray._exit_action,
         }
-        assert state_icon_map[state] == icon_type
+        assert len(actions) == 5
+
+    def test_initial_enabled_state(self) -> None:
+        """До старта записи: start доступен, stop/pause — нет."""
+        tray = TrayIcon()
+
+        assert tray._start_action.isEnabled() is True
+        assert tray._stop_action.isEnabled() is False
+        assert tray._pause_action.isEnabled() is False
+
+
+class TestTrayIconRecordingState:
+    """set_recording_state: переключение enabled/текста/подсказки."""
+
+    def test_recording_started_enables_stop_and_pause(self) -> None:
+        tray = TrayIcon()
+
+        tray.set_recording_state(True, False)
+
+        assert tray._start_action.isEnabled() is False
+        assert tray._stop_action.isEnabled() is True
+        assert tray._pause_action.isEnabled() is True
+        assert tray._pause_action.text() == "Пауза"
+
+    def test_pause_toggles_action_label(self) -> None:
+        tray = TrayIcon()
+
+        tray.set_recording_state(True, True)
+        assert tray._pause_action.text() == "Возобновить"
+
+        tray.set_recording_state(True, False)
+        assert tray._pause_action.text() == "Пауза"
+
+    def test_stopping_restores_idle_state(self) -> None:
+        tray = TrayIcon()
+        tray.set_recording_state(True, False)
+
+        tray.set_recording_state(False, False)
+
+        assert tray._start_action.isEnabled() is True
+        assert tray._stop_action.isEnabled() is False
+        assert tray._pause_action.isEnabled() is False
 
 
 class TestTrayIconNotifications:
-    """Параметризованные тесты уведомлений трея."""
+    """show_notification и on_* обработчики событий записи."""
+
+    def test_show_notification_uses_show_message_when_supported(
+        self,
+    ) -> None:
+        tray = TrayIcon()
+
+        tray.show_notification("Заголовок", "Текст")
+
+        assert tray._messages == [
+            (
+                "Заголовок",
+                "Текст",
+                tray.MessageIcon.Information,
+                3000,
+            )
+        ]
+
+    def test_show_notification_falls_back_when_unsupported(self) -> None:
+        tray = TrayIcon()
+        tray._supports_messages = False
+
+        tray.show_notification("Заголовок", "Текст")
+
+        assert tray._messages == []
+
+    def test_on_recording_started_sets_state_and_notifies(self) -> None:
+        tray = TrayIcon()
+
+        tray.on_recording_started("C:/rec.mp4")
+
+        assert tray._stop_action.isEnabled() is True
+        assert tray._messages[-1][0] == "Запись начата"
+
+    def test_on_recording_stopped_sets_idle_and_notifies(self) -> None:
+        tray = TrayIcon()
+        tray.set_recording_state(True, False)
+
+        tray.on_recording_stopped("C:/rec.mp4")
+
+        assert tray._start_action.isEnabled() is True
+        assert tray._messages[-1][0] == "Запись остановлена"
+
+    def test_on_recording_paused_sets_paused_state(self) -> None:
+        tray = TrayIcon()
+        tray.set_recording_state(True, False)
+
+        tray.on_recording_paused()
+
+        assert tray._pause_action.text() == "Возобновить"
+        assert tray._messages[-1][0] == "Запись приостановлена"
+
+    def test_on_recording_resumed_clears_paused_state(self) -> None:
+        tray = TrayIcon()
+        tray.set_recording_state(True, True)
+
+        tray.on_recording_resumed()
+
+        assert tray._pause_action.text() == "Пауза"
+        assert tray._messages[-1][0] == "Запись возобновлена"
+
+    def test_on_error_uses_critical_icon(self) -> None:
+        tray = TrayIcon()
+
+        tray.on_error("что-то пошло не так")
+
+        title, message, icon, _timeout = tray._messages[-1]
+        assert title == "Ошибка"
+        assert message == "что-то пошло не так"
+        assert icon == tray.MessageIcon.Critical
+
+
+class TestTrayIconSignalWiring:
+    """Связь triggered у QAction с публичными сигналами TrayIcon."""
 
     @pytest.mark.parametrize(
-        "notification_type,title_contains",
+        "action_attr,signal_attr",
         [
-            ("recording_started", "начата"),
-            ("recording_stopped", "остановлена"),
-            ("error", "Ошибка"),
+            ("_show_action", "show_window_requested"),
+            ("_start_action", "start_requested"),
+            ("_stop_action", "stop_requested"),
+            ("_pause_action", "pause_requested"),
         ],
     )
-    def test_notification_titles(
-        self, notification_type: str, title_contains: str
+    def test_action_triggers_expected_signal(
+        self, action_attr: str, signal_attr: str
     ) -> None:
-        """Проверка заголовков уведомлений."""
-        notification_titles = {
-            "recording_started": "Запись начата",
-            "recording_stopped": "Запись остановлена",
-            "error": "Ошибка",
-        }
-        assert (
-            title_contains.lower()
-            in notification_titles[notification_type].lower()
+        tray = TrayIcon()
+        received = []
+        getattr(tray, signal_attr).connect(lambda: received.append(True))
+
+        getattr(tray, action_attr).triggered.emit()
+
+        assert received == [True]
+
+
+class TestTrayIconExit:
+    """_on_exit: подтверждение через QMessageBox перед выходом."""
+
+    def test_confirmed_exit_emits_exit_requested(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from gui import tray_icon as tray_icon_module
+
+        monkeypatch.setattr(
+            tray_icon_module.QMessageBox,
+            "question",
+            staticmethod(
+                lambda *a,
+                **kw: tray_icon_module.QMessageBox.StandardButton.Yes
+            ),
         )
 
-    @pytest.mark.parametrize("duration", [1000, 3000, 5000])
-    def test_notification_duration_positive(self, duration: int) -> None:
-        """Проверка длительности уведомления."""
-        assert duration > 0
+        tray = TrayIcon()
+        received = []
+        tray.exit_requested.connect(lambda: received.append(True))
 
+        tray._exit_action.triggered.emit()
 
-class TestTrayIconDoubleClick:
-    """Параметризованные тесты двойного клика по иконке."""
+        assert received == [True]
 
-    @pytest.mark.parametrize(
-        "action,trigger",
-        [
-            ("show_window", "double_click"),
-            ("toggle_recording", "double_click"),
-        ],
-    )
-    def test_double_click_actions(self, action: str, trigger: str) -> None:
-        """Проверка действий при двойном клике."""
-        assert trigger == "double_click"
+    def test_cancelled_exit_does_not_emit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from gui import tray_icon as tray_icon_module
 
+        monkeypatch.setattr(
+            tray_icon_module.QMessageBox,
+            "question",
+            staticmethod(
+                lambda *a, **kw: tray_icon_module.QMessageBox.StandardButton.No
+            ),
+        )
 
-class TestTrayIconVisibility:
-    """Параметризованные тесты видимости иконки."""
+        tray = TrayIcon()
+        received = []
+        tray.exit_requested.connect(lambda: received.append(True))
 
-    @pytest.mark.parametrize(
-        "visible,expected",
-        [
-            (True, True),
-            (False, False),
-        ],
-    )
-    def test_icon_visibility(self, visible: bool, expected: bool) -> None:
-        """Проверка видимости иконки."""
-        assert visible == expected
+        tray._exit_action.triggered.emit()
 
-    @pytest.mark.parametrize("action", ["show", "hide"])
-    def test_visibility_actions(self, action: str) -> None:
-        """Проверка действий видимости."""
-        valid_actions = ["show", "hide"]
-        assert action in valid_actions
-
-
-class TestTrayIconCallbacks:
-    """Параметризованные тесты обратных вызовов."""
-
-    @pytest.mark.parametrize(
-        "callback_name",
-        [
-            "on_start",
-            "on_stop",
-            "on_show",
-            "on_exit",
-        ],
-    )
-    def test_valid_callback_names(self, callback_name: str) -> None:
-        """Проверка имён callback-функций."""
-        valid_callbacks = ["on_start", "on_stop", "on_show", "on_exit"]
-        assert callback_name in valid_callbacks
+        assert received == []
 
 
 class TestTrayIconCleanup:
-    """Параметризованные тесты очистки ресурсов."""
+    """cleanup(): останавливает таймер анимации и скрывает иконку."""
 
-    @pytest.mark.parametrize(
-        "cleanup_action",
-        [
-            "remove_icon",
-            "remove_menu",
-            "disconnect_signals",
-        ],
-    )
-    def test_cleanup_actions(self, cleanup_action: str) -> None:
-        """Проверка действий очистки."""
-        valid_actions = ["remove_icon", "remove_menu", "disconnect_signals"]
-        assert cleanup_action in valid_actions
+    def test_cleanup_stops_timer_and_hides(self) -> None:
+        tray = TrayIcon()
+        tray.set_recording_state(True, False)
+        assert tray._animation_timer.isActive() is True
 
+        tray.cleanup()
 
-class TestTrayIconContext:
-    """Тесты контекстного меню."""
-
-    def test_context_menu_on_right_click(self) -> None:
-        """Проверка контекстного меню при правом клике."""
-        trigger = "right_click"
-        menu_type = "context"
-
-        assert trigger == "right_click"
-        assert menu_type == "context"
-
-    def test_context_menu_position(self) -> None:
-        """Проверка позиции контекстного меню."""
-        position = "cursor"
-        assert position == "cursor"
-
-
-class TestTrayIconEnabledState:
-    """Параметризованные тесты включённого/выключенного состояния."""
-
-    @pytest.mark.parametrize(
-        "state,enabled_count,disabled_count",
-        [
-            ("idle", 3, 1),
-            ("recording", 3, 1),
-            ("paused", 3, 1),
-        ],
-    )
-    def test_menu_items_enabled_count(
-        self, state: str, enabled_count: int, disabled_count: int
-    ) -> None:
-        """Проверка количества доступных пунктов меню по состоянию."""
-        # В каждом состоянии определённое количество пунктов доступно
-        assert enabled_count >= 0
-        assert disabled_count >= 0
-
-    @pytest.mark.parametrize(
-        "is_recording,start_enabled,stop_enabled",
-        [
-            (False, True, False),  # idle: start доступен, stop недоступен
-            (True, False, True),  # recording: start недоступен, stop доступен
-        ],
-    )
-    def test_menu_items_enabled_by_recording_state(
-        self, is_recording: bool, start_enabled: bool, stop_enabled: bool
-    ) -> None:
-        """Проверка доступности пунктов меню по состоянию записи."""
-        # Когда не записываем: start доступен, stop недоступен
-        # Когда записываем: start недоступен, stop доступен
-        assert start_enabled == (not is_recording)
-        assert stop_enabled == is_recording
-
-
-class TestTrayIconPlatformSpecific:
-    """Параметризованные тесты платформо-зависимого поведения."""
-
-    @pytest.mark.parametrize(
-        "platform,supports_notifications",
-        [
-            ("windows", True),
-            ("linux", True),
-            ("macos", True),
-        ],
-    )
-    def test_platform_notification_support(
-        self, platform: str, supports_notifications: bool
-    ) -> None:
-        """Проверка поддержки уведомлений на разных платформах."""
-        valid_platforms = ["windows", "linux", "macos"]
-        assert platform in valid_platforms
-        assert supports_notifications is True
+        assert tray._animation_timer.isActive() is False
+        assert tray._visible is False
