@@ -15,6 +15,9 @@ _cb_devices = CircuitBreaker(
 _cb_windows = CircuitBreaker(
     name="windows", failure_threshold=3, recovery_timeout=30.0
 )
+_cb_monitors = CircuitBreaker(
+    name="monitors", failure_threshold=3, recovery_timeout=30.0
+)
 
 
 def register_resource_routes(
@@ -83,6 +86,34 @@ def register_resource_routes(
             logger.exception(f"Ошибка получения окон: {e}")
             return exception_response(e)
 
+    @api_v1.route("resources/monitors", methods=["GET"])
+    @require_api_key
+    def get_monitors() -> Any:
+        """Получение доступных мониторов для захвата (#48)."""
+        try:
+            callback = server.get_callback("monitors")
+            if callback:
+                monitors = _cb_monitors.call(callback)
+                return jsonify({"success": True, "data": monitors})
+            return internal_error_response()
+
+        except CircuitBreakerOpenError as e:
+            logger.warning("Circuit breaker OPEN для monitors: %s", e)
+            return jsonify(
+                {
+                    "success": False,
+                    "error": {
+                        "code": "circuit_open",
+                        "message": "Сервис временно недоступен. Повторите позже.",
+                        "details": {"retry_after": e.retry_after},
+                    },
+                }
+            ), 503
+
+        except Exception as e:
+            logger.exception(f"Ошибка получения мониторов: {e}")
+            return exception_response(e)
+
     @api_v1.route("resources/disk-space", methods=["GET"])
     @require_api_key
     def get_disk_space() -> Any:
@@ -110,6 +141,7 @@ def register_resource_routes(
                         "circuit_breakers": [
                             _cb_devices.get_metrics(),
                             _cb_windows.get_metrics(),
+                            _cb_monitors.get_metrics(),
                         ]
                     },
                 }

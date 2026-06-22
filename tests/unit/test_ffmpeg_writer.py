@@ -1089,3 +1089,39 @@ class TestFFmpegVideoWriterSegmentRotation:
 
         # Последующие вызовы write() корректно отказывают без новой попытки.
         assert writer.write(frame) is False
+
+    def test_switch_resolution_opens_new_segment_with_new_size(
+        self, monkeypatch
+    ) -> None:
+        """switch_resolution() открывает новый сегмент с новым width/height."""
+        processes = [_make_process("", 0), _make_process("", 0)]
+        self._setup_rotation_mocks(monkeypatch, processes)
+
+        writer = self._make_writer()
+        assert writer.open() is True
+
+        assert writer.switch_resolution(800, 600) is True
+
+        assert ffmpeg_writer_module.subprocess.Popen.call_count == 2
+        assert writer.segment_paths == [
+            Path("test.mp4"),
+            Path("test_part2.mp4"),
+        ]
+        cmd = ffmpeg_writer_module.subprocess.Popen.call_args.args[0]
+        assert "800x600" in cmd
+
+    def test_switch_resolution_failure_preserves_previous_segment(
+        self, monkeypatch
+    ) -> None:
+        """Неудача открытия нового разрешения не трогает прежний сегмент."""
+        first_process = _make_process("", 0)
+        self._setup_rotation_mocks(
+            monkeypatch, [first_process, OSError("disk error")]
+        )
+
+        writer = self._make_writer()
+        assert writer.open() is True
+
+        assert writer.switch_resolution(800, 600) is False
+        assert writer.segment_paths == []
+        assert writer.is_corrupted is False

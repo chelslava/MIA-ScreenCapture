@@ -419,11 +419,15 @@ class ApiRuntimeManager:
         server.set_callback("toggle_schedule", facade.toggle_schedule)
         server.set_callback("devices", facade.get_devices)
         server.set_callback("windows", facade.get_windows)
+        server.set_callback("monitors", facade.get_monitors)
         server.set_callback("disk_space", facade.get_disk_space)
         server.set_callback("get_webhook_config", facade.get_webhook_config)
         server.set_callback("configure_webhook", facade.configure_webhook)
         server.set_callback("test_webhook", facade.test_webhook)
         server.set_callback("verify_recording", facade.verify_recording)
         server.set_callback("repair_recording", facade.repair_recording)
+        server.set_callback(
+            "switch_capture_source", facade.switch_capture_source
+        )
         server.set_callback("get_config", facade.get_config_snapshot)
         server.set_callback("update_config", facade.update_config)

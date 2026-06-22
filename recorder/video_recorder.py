@@ -395,6 +395,12 @@ class VideoRecorder:
         self._stopped_due_to_low_disk_space: bool = False
         self._stopped_due_to_segment_rotation_failure: bool = False
 
+        # Горячее переключение источника захвата (#48)
+        self._switch_lock = threading.Lock()
+        self._pending_switch_area: CaptureArea | None = None
+        self._switch_done_event = threading.Event()
+        self._switch_result: tuple[bool, str | None] | None = None
+
         # Кэшированный флаг: нужна ли конвертация цвета при записи кадров.
         # False — кадры уже в целевом формате (zero-copy путь).
         # True  — требуется cv2.cvtColor (устанавливается при первом кадре).
@@ -702,6 +708,9 @@ class VideoRecorder:
                 self._capture_lost = False  # Сброс флага потери захвата
                 self._stopped_due_to_low_disk_space = False
                 self._stopped_due_to_segment_rotation_failure = False
+                self._pending_switch_area = None
+                self._switch_done_event.clear()
+                self._switch_result = None
 
                 # Инициализация видеозаписи
                 if self.use_ffmpeg:
@@ -803,6 +812,129 @@ class VideoRecorder:
             logger.info("Запись возобновлена")
             return True
 
+    def switch_capture_source(
+        self, new_area: CaptureArea, timeout: float = 10.0
+    ) -> tuple[bool, str | None]:
+        """
+        Переключает источник захвата активной записи без остановки (#48).
+
+        Вызывается из любого потока, кроме потока захвата. Передаёт запрос
+        в `_capture_loop()` (та же нить, что владеет capture session и
+        FFmpeg-процессом) и синхронно ждёт результата — никакие другие
+        потоки не должны напрямую трогать `_capture_session`/`_ffmpeg_writer`.
+
+        Args:
+            new_area: Новая область захвата.
+            timeout: Сколько секунд ждать применения переключения.
+
+        Returns:
+            Кортеж (успех, сообщение об ошибке или None).
+        """
+        if self._state not in (
+            VideoRecorderState.RECORDING,
+            VideoRecorderState.PAUSED,
+        ):
+            return False, "Запись не активна"
+
+        if not self.use_ffmpeg or self._ffmpeg_writer is None:
+            return (
+                False,
+                "Горячее переключение источника поддерживается только в "
+                "режиме записи через FFmpeg",
+            )
+
+        with self._switch_lock:
+            self._switch_result = None
+            self._switch_done_event.clear()
+            self._pending_switch_area = new_area
+
+            if not self._switch_done_event.wait(timeout=timeout):
+                self._pending_switch_area = None
+                return False, "Таймаут переключения источника захвата"
+
+            return self._switch_result or (
+                False,
+                "Неизвестная ошибка переключения источника захвата",
+            )
+
+    def _apply_capture_source_switch(
+        self,
+        current_session: "_WindowsCaptureSession",
+        new_area: CaptureArea,
+        on_capture_lost: Callable[[str], None],
+    ) -> tuple[bool, str | None, "_WindowsCaptureSession"]:
+        """
+        Пытается переключиться на новый источник захвата.
+
+        Вызывается только из потока захвата (`_capture_loop`). При любой
+        неудаче откатывается без изменений — `current_session` продолжает
+        работать, запись не прерывается.
+
+        Args:
+            current_session: Текущая активная capture session.
+            new_area: Новая область захвата.
+            on_capture_lost: Callback потери захвата для новой session.
+
+        Returns:
+            Кортеж (успех, сообщение об ошибке, session для дальнейшей
+            работы — новая при успехе, прежняя при неудаче).
+        """
+        new_session = _WindowsCaptureSession(
+            on_closed_callback=on_capture_lost
+        )
+        try:
+            new_session.start(new_area)
+        except (RuntimeError, TimeoutError, OSError) as e:
+            logger.error(
+                "Не удалось переключиться на новый источник захвата: %s", e
+            )
+            return False, str(e), current_session
+
+        old_area = self._capture_area
+        dimensions_changed = (
+            old_area is None
+            or old_area.width != new_area.width
+            or old_area.height != new_area.height
+        )
+        if dimensions_changed and self._ffmpeg_writer is not None:
+            if not self._ffmpeg_writer.switch_resolution(
+                new_area.width, new_area.height
+            ):
+                logger.error(
+                    "Не удалось продолжить запись с новым разрешением "
+                    "%sx%s — переключение отменено",
+                    new_area.width,
+                    new_area.height,
+                )
+                try:
+                    new_session.stop()
+                except (OSError, RuntimeError) as e:
+                    logger.warning(
+                        "Ошибка остановки отклонённой capture session: %s",
+                        e,
+                    )
+                return (
+                    False,
+                    "Не удалось открыть новый сегмент записи для нового "
+                    "разрешения",
+                    current_session,
+                )
+
+        try:
+            current_session.stop()
+        except (OSError, RuntimeError) as e:
+            logger.warning(
+                "Ошибка остановки предыдущей capture session при "
+                "переключении источника: %s",
+                e,
+            )
+
+        self._capture_area = new_area
+        self._capture_session = new_session
+        self._set_capture_lost(False)
+        logger.info("Источник захвата переключён: %s", new_area)
+        return True, None, new_session
+
     def stop(self) -> bool:
         """
         Остановка записи и сохранение файла.
@@ -888,6 +1020,22 @@ class VideoRecorder:
                 VideoRecorderState.IDLE,
                 VideoRecorderState.STOPPING,
             ):
+                # Запрос на горячее переключение источника (#48) —
+                # обрабатывается даже на паузе, поэтому проверяется первым.
+                pending_area = self._pending_switch_area
+                if pending_area is not None:
+                    self._pending_switch_area = None
+                    switch_ok, switch_error, session = (
+                        self._apply_capture_source_switch(
+                            session, pending_area, on_capture_lost
+                        )
+                    )
+                    self._switch_result = (switch_ok, switch_error)
+                    self._switch_done_event.set()
+                    if switch_ok:
+                        next_frame_time = time.perf_counter()
+                    continue
+
                 if self._state == VideoRecorderState.PAUSED:
                     time.sleep(0.1)
                     continue

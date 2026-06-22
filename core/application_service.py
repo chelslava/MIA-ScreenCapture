@@ -81,6 +81,10 @@ class ApplicationService:
         """Возвращает список окон."""
         return self._backend.get_windows()
 
+    def get_monitors(self) -> list[Any]:
+        """Возвращает список доступных мониторов (#48)."""
+        return self._backend.get_monitors()
+
     def get_disk_space(self) -> dict[str, Any]:
         """Возвращает статус свободного места на диске для пути записи."""
         return self._backend.get_disk_space()
@@ -106,6 +110,10 @@ class ApplicationService:
     def repair_recording(self, file_path: str) -> dict[str, Any]:
         """Пытается восстановить видеофайл по указанному пути."""
         return self._backend.repair_recording(file_path)
+
+    def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Переключает источник захвата активной записи без остановки."""
+        return self._backend.switch_capture_source(params)
 
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot конфигурации."""

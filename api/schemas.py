@@ -19,6 +19,47 @@ class FilePathRequest(BaseModel):
     file_path: str = Field(..., min_length=1, description="Путь к видеофайлу")
 
 
+class SwitchCaptureSourceRequest(BaseModel):
+    """Схема запроса переключения источника захвата записи (#48)."""
+
+    area: Literal["full", "window", "rect"] = Field(
+        default="full",
+        description="Тип нового источника захвата: full, window или rect",
+    )
+    window_title: str | None = Field(
+        default=None,
+        description="Заголовок окна для захвата (требуется если area='window')",
+    )
+    rect: list[int] | None = Field(
+        default=None,
+        description="Координаты прямоугольника [x1, y1, x2, y2] (требуется если area='rect')",
+        min_length=4,
+        max_length=4,
+    )
+
+    @field_validator("rect")
+    @classmethod
+    def validate_rect(cls, v: list[int] | None) -> list[int] | None:
+        """Валидация координат прямоугольника."""
+        if v is not None:
+            if len(v) != 4:
+                raise ValueError(
+                    "rect должен содержать ровно 4 значения: [x1, y1, x2, y2]"
+                )
+
+            x1, y1, x2, y2 = v
+
+            if x2 <= x1 or y2 <= y1:
+                raise ValueError(
+                    "x2 должен быть больше x1 и y2 должен быть больше y1"
+                )
+
+            if any(coord < 0 for coord in v):
+                raise ValueError("Координаты не могут быть отрицательными")
+
+        return v
+
+
 class StartRecordingRequest(BaseModel):
     """Схема запроса для начала записи."""
 

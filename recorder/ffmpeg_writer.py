@@ -591,7 +591,11 @@ class FFmpegVideoWriter:
             >= self._max_segment_duration_s
         )
 
-    def _rotate_segment(self) -> bool:
+    def _rotate_segment(
+        self,
+        new_width: int | None = None,
+        new_height: int | None = None,
+    ) -> bool:
         """
         Завершает текущий сегмент штатно и открывает следующий.
 
@@ -600,6 +604,11 @@ class FFmpegVideoWriter:
         `_next_segment_path()`/`_segment_paths` — те же примитивы, что
         использует crash-recovery (#45), так что плановые и
         восстановительные сегменты делят единую нумерацию `_partN`.
+
+        Args:
+            new_width: Если задано, новый сегмент открывается с этой
+                шириной кадра (#48 — смена источника захвата на лету).
+            new_height: Аналогично `new_width`, для высоты кадра.
 
         Returns:
             True, если новый сегмент успешно открыт.
@@ -611,6 +620,11 @@ class FFmpegVideoWriter:
                 "Сегмент %s завершён с ошибкой при плановой ротации",
                 previous_segment_path,
             )
+
+        if new_width is not None:
+            self._width = new_width
+        if new_height is not None:
+            self._height = new_height
 
         new_segment_path = self._next_segment_path()
         if not self._open_process(new_segment_path):
@@ -630,6 +644,24 @@ class FFmpegVideoWriter:
             new_segment_path,
         )
         return True
+
+    def switch_resolution(self, width: int, height: int) -> bool:
+        """
+        Продолжает запись в новом сегменте с другим разрешением кадра (#48).
+
+        Используется при горячем переключении источника захвата на источник
+        другого размера (например, монитор -> окно). Текущий сегмент
+        завершается штатно, новый открывается с указанными `width`/`height`
+        и делит нумерацию `_partN` с остальными сегментами этой записи.
+
+        Args:
+            width: Ширина кадра нового источника.
+            height: Высота кадра нового источника.
+
+        Returns:
+            True, если новый сегмент успешно открыт с новым разрешением.
+        """
+        return self._rotate_segment(new_width=width, new_height=height)
 
     def write(self, frame: np.ndarray) -> bool:
         if self._is_corrupted:

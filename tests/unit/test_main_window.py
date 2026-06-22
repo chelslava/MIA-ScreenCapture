@@ -1515,6 +1515,68 @@ class TestMainWindowMethods:
         assert "Окно захвата недоступно" in result["error"]
         window._recording_controller.start_recording.assert_not_called()
 
+    def test_switch_capture_source_returns_false_when_not_recording(
+        self,
+    ) -> None:
+        """Переключение источника недоступно, если запись не активна (#48)."""
+        window = _build_window()
+
+        result = window.switch_capture_source({"area": "full"})
+
+        assert result == {"success": False, "error": "Запись не активна"}
+        window._recording_controller.switch_capture_source.assert_not_called()
+
+    def test_switch_capture_source_success(self) -> None:
+        """Успешное переключение делегирует в RecordingController."""
+        window = _build_window()
+        window._state.start_recording(Path("D:/capture.mp4"))
+        window._recording_controller.switch_capture_source.return_value = (
+            True,
+            None,
+        )
+
+        result = window.switch_capture_source(
+            {"area": "window", "window_title": "Notepad"}
+        )
+
+        assert result == {"success": True}
+        call = (
+            window._recording_controller.switch_capture_source.call_args.args[
+                0
+            ]
+        )
+        assert call.window_title == "Notepad"
+        assert call.strict_window_match is True
+
+    def test_switch_capture_source_invalid_rect(self) -> None:
+        """Невалидный rect отклоняется без обращения к контроллеру."""
+        window = _build_window()
+        window._state.start_recording(Path("D:/capture.mp4"))
+
+        result = window.switch_capture_source({"area": "rect", "rect": [1, 2]})
+
+        assert result["success"] is False
+        assert "4 координаты" in result["error"]
+        window._recording_controller.switch_capture_source.assert_not_called()
+
+    def test_switch_capture_source_propagates_controller_failure(
+        self,
+    ) -> None:
+        """Ошибка RecordingController пробрасывается в результат."""
+        window = _build_window()
+        window._state.start_recording(Path("D:/capture.mp4"))
+        window._recording_controller.switch_capture_source.return_value = (
+            False,
+            "Таймаут переключения источника захвата",
+        )
+
+        result = window.switch_capture_source({"area": "full"})
+
+        assert result == {
+            "success": False,
+            "error": "Таймаут переключения источника захвата",
+        }
+
     def test_stop_recording_toggle_pause_and_get_recordings_api_methods(
         self,
     ) -> None:

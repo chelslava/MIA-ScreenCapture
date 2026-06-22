@@ -24,6 +24,8 @@ class FakeBackend:
         self.stop_result = Path("demo.mp4")
         self.pause_result = True
         self.resume_result = True
+        self.switch_capture_source_result = (True, None)
+        self.switch_capture_source_calls: list[object] = []
 
     def get_status(self) -> RecordingStatusSnapshot:
         return self.status
@@ -67,6 +69,10 @@ class FakeBackend:
                 current_file=self.status.current_file,
             )
         return self.resume_result
+
+    def switch_capture_source(self, capture):
+        self.switch_capture_source_calls.append(capture)
+        return self.switch_capture_source_result
 
 
 class TestRecordingService:
@@ -141,6 +147,75 @@ class TestRecordingService:
 
         resumed = service.toggle_pause()
         assert resumed == {"success": True, "is_paused": False}
+
+    def test_switch_capture_source_success(self) -> None:
+        """#48: успешное переключение делегирует в backend с CaptureRequest."""
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+
+        result = service.switch_capture_source(
+            {"area": "window", "window_title": "Notepad"}
+        )
+
+        assert result == {"success": True}
+        assert len(backend.switch_capture_source_calls) == 1
+        capture_request = backend.switch_capture_source_calls[0]
+        assert capture_request.window_title == "Notepad"
+
+    def test_switch_capture_source_fails_when_not_recording(self) -> None:
+        """#48: переключение недоступно, если запись не активна."""
+        service = RecordingService(backend=FakeBackend())
+
+        result = service.switch_capture_source({"area": "full"})
+
+        assert result["success"] is False
+        assert "not active" in result["error"]
+
+    def test_switch_capture_source_propagates_backend_failure(self) -> None:
+        """#48: ошибка backend пробрасывается в результат."""
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        backend.switch_capture_source_result = (
+            False,
+            "Таймаут переключения источника захвата",
+        )
+        service = RecordingService(backend=backend)
+
+        result = service.switch_capture_source({"area": "full"})
+
+        assert result == {
+            "success": False,
+            "error": "Таймаут переключения источника захвата",
+        }
+
+    def test_switch_capture_source_rejects_invalid_rect(self) -> None:
+        """#48: невалидный rect не доходит до backend."""
+        backend = FakeBackend()
+        backend.status = RecordingStatusSnapshot(
+            is_recording=True,
+            is_paused=False,
+            elapsed_time=0.0,
+            current_file=Path("demo.mp4"),
+        )
+        service = RecordingService(backend=backend)
+
+        result = service.switch_capture_source(
+            {"area": "rect", "rect": [1, 2, 3]}
+        )
+
+        assert result["success"] is False
+        assert backend.switch_capture_source_calls == []
 
     def test_normalize_internal_keys(self) -> None:
         service = RecordingService(backend=FakeBackend())

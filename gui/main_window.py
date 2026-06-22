@@ -1984,6 +1984,58 @@ class MainWindow(QMainWindow):
             logger.error(f"Ошибка запуска записи: {e}")
             return {"success": False, "error": str(e)}
 
+    def switch_capture_source(self, params: dict) -> dict:
+        """
+        Переключает источник захвата активной записи без остановки (#48).
+
+        Args:
+            params: Словарь с параметрами нового источника захвата
+                - area: "full" | "window" | "rect"
+                - window_title: str (опционально)
+                - rect: [x1, y1, x2, y2] (опционально)
+
+        Returns:
+            Словарь с результатом операции.
+        """
+        if not self._state.is_recording():
+            return {"success": False, "error": "Запись не активна"}
+
+        area_type = params.get("area", "full")
+        capture_type_map = {
+            "full": CaptureMode.FULL,
+            "window": CaptureMode.WINDOW,
+            "rect": CaptureMode.RECT,
+        }
+        capture_type = capture_type_map.get(area_type, CaptureMode.FULL)
+
+        rect_coords = None
+        if area_type == "rect" and "rect" in params:
+            r = params["rect"]
+            if isinstance(r, list | tuple) and len(r) >= 4:
+                rect_coords = (r[0], r[1], r[2], r[3])
+            else:
+                return {
+                    "success": False,
+                    "error": "rect должен содержать 4 координаты [x1, y1, x2, y2]",
+                }
+
+        capture = CaptureSettings(
+            capture_type=capture_type,
+            window_title=params.get("window_title") or "",
+            rect_coords=rect_coords or (0, 0, 1920, 1080),
+            strict_window_match=True,
+        )
+
+        success, error_msg = self._recording_controller.switch_capture_source(
+            capture
+        )
+        if success:
+            return {"success": True}
+        return {
+            "success": False,
+            "error": error_msg or "Не удалось переключить источник захвата",
+        }
+
     def _resolve_requested_output_path(
         self,
         requested_output_path: Any,

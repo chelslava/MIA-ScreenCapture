@@ -122,6 +122,20 @@ class RecordingRuntimeCoordinator:
             )
         return self._app._recording_service.toggle_pause()
 
+    def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Переключает источник захвата активной записи без остановки (#48)."""
+        if self._app._main_window:
+            return cast(
+                dict[str, Any],
+                self._app._run_on_gui_thread(
+                    lambda: self._app._main_window.switch_capture_source(
+                        params
+                    ),
+                    timeout=GUI_START_TIMEOUT_SECONDS,
+                ),
+            )
+        return self._app._recording_service.switch_capture_source(params)
+
     def get_recordings(self) -> list[Any]:
         """Возвращает список последних записей."""
         if self._app._main_window:

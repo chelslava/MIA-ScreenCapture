@@ -102,3 +102,8 @@ class GUIRecordingBackend(RecordingBackend):
 
     def resume(self) -> bool:
         return self._controller.resume_recording()
+
+    def switch_capture_source(
+        self, capture: CaptureRequest
+    ) -> tuple[bool, str | None]:
+        return self._controller.switch_capture_source(_map_capture(capture))

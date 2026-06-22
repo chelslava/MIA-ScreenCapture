@@ -316,6 +316,28 @@ class RecordingController:
         logger.info("Запись возобновлена")
         return True
 
+    def switch_capture_source(
+        self, capture: CaptureSettings
+    ) -> tuple[bool, str | None]:
+        """
+        Переключает источник захвата активной записи без остановки (#48).
+
+        Args:
+            capture: Настройки нового источника захвата.
+
+        Returns:
+            Кортеж (успех, сообщение об ошибке или None).
+        """
+        if self._video_recorder is None:
+            return False, "Запись не активна"
+
+        try:
+            new_area = self.build_capture_area(capture)
+        except ValueError as e:
+            return False, str(e)
+
+        return self._video_recorder.switch_capture_source(new_area)
+
     def stop_recording(self) -> Path | None:
         """
         Остановка записи и финализация.

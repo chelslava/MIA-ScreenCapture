@@ -64,6 +64,47 @@ def test_pause_resume_and_stop_delegate_to_controller() -> None:
     assert backend.stop() == Path("out.mp4")
 
 
+def test_switch_capture_source_maps_core_types_to_gui_controller_types() -> (
+    None
+):
+    """#48: CaptureRequest конвертируется в CaptureSettings перед делегацией."""
+    controller = MagicMock()
+    controller.switch_capture_source.return_value = (True, None)
+    backend = GUIRecordingBackend(controller=controller)
+
+    result = backend.switch_capture_source(
+        CaptureRequest(
+            mode=CaptureMode.WINDOW,
+            window_title="Notepad",
+            rect_coords=(0, 0, 0, 0),
+        )
+    )
+
+    assert result == (True, None)
+    capture_settings = controller.switch_capture_source.call_args.args[0]
+    assert capture_settings.capture_type == CaptureMode.WINDOW
+    assert capture_settings.window_title == "Notepad"
+    assert capture_settings.strict_window_match is True
+
+
+def test_switch_capture_source_propagates_failure() -> None:
+    """#48: ошибка контроллера пробрасывается как есть."""
+    controller = MagicMock()
+    controller.switch_capture_source.return_value = (
+        False,
+        "Запись не активна",
+    )
+    backend = GUIRecordingBackend(controller=controller)
+
+    result = backend.switch_capture_source(
+        CaptureRequest(
+            mode=CaptureMode.FULL, window_title="", rect_coords=(0, 0, 0, 0)
+        )
+    )
+
+    assert result == (False, "Запись не активна")
+
+
 @patch("gui.backends.recording_backend.RecordingController")
 def test_default_backend_uses_shared_state_with_controller(
     controller_cls: MagicMock,

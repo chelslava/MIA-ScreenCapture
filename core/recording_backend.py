@@ -53,3 +53,9 @@ class RecordingBackend(Protocol):
     def resume(self) -> bool:
         """Возобновляет запись после паузы."""
         ...
+
+    def switch_capture_source(
+        self, capture: CaptureRequest
+    ) -> tuple[bool, str | None]:
+        """Переключает источник захвата активной записи без остановки."""
+        ...

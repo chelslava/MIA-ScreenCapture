@@ -72,6 +72,10 @@ class ApplicationFacade(Protocol):
         """Возвращает список окон."""
         ...
 
+    def get_monitors(self) -> list[Any]:
+        """Возвращает список доступных мониторов (#48)."""
+        ...
+
     def get_disk_space(self) -> dict[str, Any]:
         """Возвращает статус свободного места на диске для пути записи."""
         ...
@@ -96,6 +100,10 @@ class ApplicationFacade(Protocol):
 
     def repair_recording(self, file_path: str) -> dict[str, Any]:
         """Пытается восстановить видеофайл по указанному пути."""
+        ...
+
+    def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Переключает источник захвата активной записи без остановки."""
         ...
 
     def get_config_snapshot(self) -> dict[str, Any]:

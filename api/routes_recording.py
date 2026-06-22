@@ -9,7 +9,11 @@ from pydantic import ValidationError
 
 from api.auth import require_api_key
 from api.rate_limiter import rate_limit
-from api.schemas import FilePathRequest, StartRecordingRequest
+from api.schemas import (
+    FilePathRequest,
+    StartRecordingRequest,
+    SwitchCaptureSourceRequest,
+)
 
 
 def register_recording_routes(
@@ -99,6 +103,48 @@ def register_recording_routes(
             return execute_with_idempotency(server, _handler)
         except Exception as e:
             logger.exception(f"Ошибка паузы записи: {e}")
+            return exception_response(e)
+
+    @api_v1.route("recording/switch-source", methods=["POST"])
+    @rate_limit
+    @require_api_key
+    def switch_capture_source() -> Any:
+        """Переключение источника захвата активной записи (#48)."""
+        try:
+
+            def _handler() -> Any:
+                data, parse_error = parse_request_json()
+                if parse_error is not None:
+                    return parse_error
+                assert data is not None
+
+                try:
+                    validated = SwitchCaptureSourceRequest(**data)
+                except ValidationError as e:
+                    return handle_validation_error(e)
+
+                callback_data = validated.model_dump(exclude_none=True)
+
+                callback = server.get_callback("switch_capture_source")
+                if callback:
+                    result = callback(callback_data)
+                    if result.get("success"):
+                        return jsonify({"success": True, "data": result})
+                    return jsonify(
+                        {
+                            "success": False,
+                            "error": result.get(
+                                "error",
+                                "Не удалось переключить источник захвата",
+                            ),
+                        }
+                    ), 400
+
+                return internal_error_response()
+
+            return execute_with_idempotency(server, _handler)
+        except Exception as e:
+            logger.exception(f"Ошибка переключения источника захвата: {e}")
             return exception_response(e)
 
     @api_v1.route("recordings", methods=["GET"])

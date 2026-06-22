@@ -71,6 +71,7 @@ from recorder.utils import (
     attempt_repair_video,
     check_ffmpeg,
     get_audio_devices,
+    get_available_monitors,
     get_available_windows,
     get_disk_space_status,
     verify_video_integrity,
@@ -106,6 +107,9 @@ class _RecordingRuntimeCoordinatorProtocol(Protocol):
 
     def toggle_pause(self) -> dict[str, Any]:
         """Переключает паузу записи."""
+
+    def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Переключает источник захвата активной записи без остановки."""
 
     def get_recordings(self) -> list[Any]:
         """Возвращает недавние записи."""
@@ -306,6 +310,10 @@ class VideoRecorderApp:
         """Переключает паузу через публичный фасад приложения."""
         return self._toggle_pause()
 
+    def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Переключает источник захвата через публичный фасад приложения."""
+        return self._switch_capture_source(params)
+
     def get_recordings(self) -> list[Any]:
         """Возвращает список последних записей."""
         return self._get_recordings()
@@ -341,6 +349,10 @@ class VideoRecorderApp:
     def get_windows(self) -> list[Any]:
         """Возвращает список доступных окон."""
         return self._get_windows()
+
+    def get_monitors(self) -> list[Any]:
+        """Возвращает список доступных мониторов (#48)."""
+        return self._get_monitors()
 
     def get_disk_space(self) -> dict[str, Any]:
         """Возвращает статус свободного места на диске для пути записи."""
@@ -915,6 +927,12 @@ class VideoRecorderApp:
         """Переключение состояния паузы."""
         return self._recording_runtime_coordinator.toggle_pause()
 
+    def _switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Переключение источника захвата активной записи (#48)."""
+        return self._recording_runtime_coordinator.switch_capture_source(
+            params
+        )
+
     def _get_recordings(self) -> list[Any]:
         """Получение недавних записей."""
         return self._recording_runtime_coordinator.get_recordings()
@@ -1008,6 +1026,10 @@ class VideoRecorderApp:
     def _get_windows(self) -> list:
         """Получение доступных окон."""
         return cast(list, get_available_windows())
+
+    def _get_monitors(self) -> list:
+        """Получение доступных мониторов (#48)."""
+        return cast(list, get_available_monitors())
 
     def _get_disk_space(self) -> dict[str, Any]:
         """Получение статуса свободного места на диске для пути записи."""

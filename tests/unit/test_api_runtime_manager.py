@@ -109,6 +109,9 @@ class MockApp:
     def _get_windows(self, *args: Any, **kwargs: Any) -> list[Any]:
         return []
 
+    def _get_monitors(self, *args: Any, **kwargs: Any) -> list[Any]:
+        return []
+
     def _get_disk_space(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"free_mb": 1024.0, "total_mb": 2048.0, "used_mb": 1024.0}
 
@@ -130,6 +133,11 @@ class MockApp:
         self, *args: Any, **kwargs: Any
     ) -> dict[str, Any]:
         return {"repaired": True}
+
+    def _switch_capture_source(
+        self, *args: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {"success": True}
 
     def _get_config(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {}
@@ -179,6 +187,9 @@ class MockApp:
     def get_windows(self) -> list[Any]:
         return self._get_windows()
 
+    def get_monitors(self) -> list[Any]:
+        return self._get_monitors()
+
     def get_disk_space(self) -> dict[str, Any]:
         return self._get_disk_space()
 
@@ -198,6 +209,9 @@ class MockApp:
 
     def repair_recording(self, file_path: str) -> dict[str, Any]:
         return self._repair_recording_file(file_path)
+
+    def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._switch_capture_source(params)
 
     def get_config_snapshot(self) -> dict[str, Any]:
         return self._get_config()
@@ -776,12 +790,14 @@ class TestSetupApiCallbacks:
             "toggle_schedule",
             "devices",
             "windows",
+            "monitors",
             "disk_space",
             "get_webhook_config",
             "configure_webhook",
             "test_webhook",
             "verify_recording",
             "repair_recording",
+            "switch_capture_source",
             "get_config",
             "update_config",
         ]
@@ -813,12 +829,14 @@ class TestSetupApiCallbacks:
             "toggle_schedule": mock_facade.toggle_schedule,
             "devices": mock_facade.get_devices,
             "windows": mock_facade.get_windows,
+            "monitors": mock_facade.get_monitors,
             "disk_space": mock_facade.get_disk_space,
             "get_webhook_config": mock_facade.get_webhook_config,
             "configure_webhook": mock_facade.configure_webhook,
             "test_webhook": mock_facade.test_webhook,
             "verify_recording": mock_facade.verify_recording,
             "repair_recording": mock_facade.repair_recording,
+            "switch_capture_source": mock_facade.switch_capture_source,
             "get_config": mock_facade.get_config_snapshot,
             "update_config": mock_facade.update_config,
         }

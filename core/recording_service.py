@@ -259,6 +259,41 @@ class RecordingService:
             self._publish_event(RecordingEventType.PAUSED, result)
             return result
 
+    def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Переключает источник захвата активной записи без остановки (#48)."""
+        with self._lock:
+            backend_status = self._backend.get_status()
+            if (
+                not backend_status.is_recording
+                and not backend_status.is_paused
+            ):
+                result = {"success": False, "error": "Recording is not active"}
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
+
+            try:
+                normalized = self._normalize_params(params)
+                capture = self._build_capture_settings(normalized)
+            except ValueError as e:
+                result = {"success": False, "error": str(e)}
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
+
+            success, error_msg = self._backend.switch_capture_source(capture)
+            if not success:
+                result = {
+                    "success": False,
+                    "error": error_msg or "Failed to switch capture source",
+                }
+                self._publish_event(RecordingEventType.ERROR, result)
+                return result
+
+            result = {"success": True}
+            self._publish_event(
+                RecordingEventType.CAPTURE_SOURCE_SWITCHED, result
+            )
+            return result
+
     def get_recordings(self) -> list[dict[str, Any]]:
         """Returns list of recent recordings from configuration."""
         return cast(

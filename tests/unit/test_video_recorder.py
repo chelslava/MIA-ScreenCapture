@@ -632,6 +632,245 @@ class TestVideoRecorder:
         assert kwargs["max_segment_duration_s"] == 120.0
 
 
+class TestVideoRecorderCaptureSourceSwitch:
+    """Тесты горячего переключения источника захвата (#48)."""
+
+    def test_switch_capture_source_rejected_when_not_recording(self) -> None:
+        """Переключение недоступно, если запись не активна."""
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._state = RecordingState.IDLE
+
+        success, error = recorder.switch_capture_source(
+            CaptureArea(type="full", width=32, height=32)
+        )
+
+        assert success is False
+        assert "не активна" in error
+
+    def test_switch_capture_source_rejected_for_non_ffmpeg_mode(self) -> None:
+        """Переключение недоступно в legacy-режиме без FFmpeg."""
+        recorder = VideoRecorder(use_ffmpeg=False)
+        recorder._state = RecordingState.RECORDING
+
+        success, error = recorder.switch_capture_source(
+            CaptureArea(type="full", width=32, height=32)
+        )
+
+        assert success is False
+        assert "FFmpeg" in error
+
+    def test_switch_capture_source_times_out_when_loop_not_running(
+        self,
+    ) -> None:
+        """Без обработки в capture loop переключение завершается таймаутом."""
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._state = RecordingState.RECORDING
+        recorder._ffmpeg_writer = MagicMock()
+
+        success, error = recorder.switch_capture_source(
+            CaptureArea(type="full", width=32, height=32), timeout=0.05
+        )
+
+        assert success is False
+        assert "Таймаут" in error
+        assert recorder._pending_switch_area is None
+
+    def test_capture_loop_applies_pending_switch_same_resolution(
+        self,
+    ) -> None:
+        """Переключение на источник того же размера не ротирует сегмент."""
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(type="full", width=32, height=32)
+        recorder._ffmpeg_writer = MagicMock()
+        recorder._ffmpeg_writer.write.return_value = True
+
+        new_area = CaptureArea(
+            type="window", width=32, height=32, window_title="Notepad"
+        )
+        recorder._pending_switch_area = new_area
+
+        class MockSession:
+            def __init__(self) -> None:
+                self.is_capture_lost = False
+                self.started_with: CaptureArea | None = None
+
+            def start(self, capture_area: CaptureArea) -> None:
+                self.started_with = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                recorder._shutdown_event.set()
+                return None
+
+            def stop(self) -> None:
+                return
+
+        new_session = MockSession()
+        with patch(
+            "recorder.video_recorder._WindowsCaptureSession",
+            side_effect=[MockSession(), new_session],
+        ):
+            recorder._capture_loop()
+
+        assert recorder._capture_area is new_area
+        assert recorder._switch_result == (True, None)
+        assert new_session.started_with is new_area
+        recorder._ffmpeg_writer.switch_resolution.assert_not_called()
+
+    def test_capture_loop_applies_pending_switch_different_resolution(
+        self,
+    ) -> None:
+        """Переключение на источник другого размера вызывает switch_resolution()."""
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(
+            type="full", width=1920, height=1080
+        )
+        recorder._ffmpeg_writer = MagicMock()
+        recorder._ffmpeg_writer.switch_resolution.return_value = True
+
+        new_area = CaptureArea(
+            type="window", width=800, height=600, window_title="Notepad"
+        )
+        recorder._pending_switch_area = new_area
+
+        class MockSession:
+            def __init__(self) -> None:
+                self.is_capture_lost = False
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                recorder._shutdown_event.set()
+                return None
+
+            def stop(self) -> None:
+                return
+
+        with patch(
+            "recorder.video_recorder._WindowsCaptureSession",
+            side_effect=[MockSession(), MockSession()],
+        ):
+            recorder._capture_loop()
+
+        recorder._ffmpeg_writer.switch_resolution.assert_called_once_with(
+            800, 600
+        )
+        assert recorder._capture_area is new_area
+        assert recorder._switch_result == (True, None)
+
+    def test_switch_rolls_back_when_new_session_fails_to_start(
+        self,
+    ) -> None:
+        """Неудача запуска новой сессии не должна прерывать текущую запись."""
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._state = RecordingState.RECORDING
+        original_area = CaptureArea(type="full", width=32, height=32)
+        recorder._capture_area = original_area
+        recorder._ffmpeg_writer = MagicMock()
+
+        new_area = CaptureArea(
+            type="window", width=32, height=32, window_title="Missing"
+        )
+        recorder._pending_switch_area = new_area
+
+        class OldSession:
+            def __init__(self) -> None:
+                self.is_capture_lost = False
+                self.read_frame_calls = 0
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                # Доказывает, что после отказа от переключения цикл
+                # продолжил работу со старой сессией, а не упал/завис.
+                self.read_frame_calls += 1
+                recorder._shutdown_event.set()
+                return None
+
+            def stop(self) -> None:
+                return
+
+        class FailingNewSession:
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+                raise RuntimeError("окно не найдено")
+
+        old_session = OldSession()
+        with patch(
+            "recorder.video_recorder._WindowsCaptureSession",
+            side_effect=[old_session, FailingNewSession()],
+        ):
+            recorder._capture_loop()
+
+        assert recorder._switch_result == (False, "окно не найдено")
+        assert recorder._capture_area is original_area
+        assert old_session.read_frame_calls == 1
+        recorder._ffmpeg_writer.switch_resolution.assert_not_called()
+
+    def test_switch_rolls_back_when_resolution_switch_fails(self) -> None:
+        """Неудача смены разрешения откатывает переключение без прерывания записи."""
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._state = RecordingState.RECORDING
+        original_area = CaptureArea(type="full", width=1920, height=1080)
+        recorder._capture_area = original_area
+        recorder._ffmpeg_writer = MagicMock()
+        recorder._ffmpeg_writer.switch_resolution.return_value = False
+
+        new_area = CaptureArea(
+            type="window", width=800, height=600, window_title="Notepad"
+        )
+        recorder._pending_switch_area = new_area
+
+        class OldSession:
+            def __init__(self) -> None:
+                self.is_capture_lost = False
+                self.read_frame_calls = 0
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                # Доказывает, что после отказа от переключения цикл
+                # продолжил работу со старой сессией, а не упал/завис.
+                self.read_frame_calls += 1
+                recorder._shutdown_event.set()
+                return None
+
+            def stop(self) -> None:
+                return
+
+        class NewSession:
+            def __init__(self) -> None:
+                self.stopped = False
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def stop(self) -> None:
+                self.stopped = True
+
+        old_session = OldSession()
+        new_session = NewSession()
+        with patch(
+            "recorder.video_recorder._WindowsCaptureSession",
+            side_effect=[old_session, new_session],
+        ):
+            recorder._capture_loop()
+
+        assert recorder._switch_result is not None
+        assert recorder._switch_result[0] is False
+        assert recorder._capture_area is original_area
+        assert new_session.stopped is True
+        assert old_session.read_frame_calls == 1
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")
 class TestVideoRecorderStart:
     """Тесты запуска видеозаписи."""

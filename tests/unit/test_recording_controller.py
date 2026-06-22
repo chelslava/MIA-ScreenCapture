@@ -255,6 +255,72 @@ class TestRecordingControllerPauseResume:
         ctrl._video_recorder.resume.assert_called_once()
 
 
+class TestRecordingControllerSwitchCaptureSource:
+    """Тесты переключения источника захвата (#48)."""
+
+    def test_returns_false_when_no_video_recorder(self) -> None:
+        """Без активного VideoRecorder переключение недоступно."""
+        ctrl = RecordingController()
+        capture = CaptureSettings(capture_type=CaptureMode.FULL)
+
+        success, error = ctrl.switch_capture_source(capture)
+
+        assert success is False
+        assert "не активна" in error
+
+    def test_delegates_to_video_recorder_with_built_area(self) -> None:
+        """Область строится через build_capture_area и передаётся рекордеру."""
+        ctrl = RecordingController()
+        ctrl._video_recorder = MagicMock()
+        ctrl._video_recorder.switch_capture_source.return_value = (True, None)
+        capture = CaptureSettings(capture_type=CaptureMode.FULL)
+
+        success, error = ctrl.switch_capture_source(capture)
+
+        assert success is True
+        assert error is None
+        ctrl._video_recorder.switch_capture_source.assert_called_once()
+        called_area = ctrl._video_recorder.switch_capture_source.call_args[0][
+            0
+        ]
+        assert called_area.type == "full"
+
+    def test_propagates_video_recorder_failure(self) -> None:
+        """Ошибка VideoRecorder.switch_capture_source пробрасывается как есть."""
+        ctrl = RecordingController()
+        ctrl._video_recorder = MagicMock()
+        ctrl._video_recorder.switch_capture_source.return_value = (
+            False,
+            "Таймаут переключения источника захвата",
+        )
+        capture = CaptureSettings(capture_type=CaptureMode.FULL)
+
+        success, error = ctrl.switch_capture_source(capture)
+
+        assert success is False
+        assert error == "Таймаут переключения источника захвата"
+
+    def test_returns_false_when_window_not_found(self) -> None:
+        """strict_window_match=True и ненайденное окно -> ошибка построения области."""
+        ctrl = RecordingController()
+        ctrl._video_recorder = MagicMock()
+        capture = CaptureSettings(
+            capture_type=CaptureMode.WINDOW,
+            window_title="Несуществующее окно XYZ",
+            strict_window_match=True,
+        )
+
+        with patch(
+            "recorder.video_recorder.get_available_windows",
+            return_value=[],
+        ):
+            success, error = ctrl.switch_capture_source(capture)
+
+        assert success is False
+        assert error is not None
+        ctrl._video_recorder.switch_capture_source.assert_not_called()
+
+
 class TestRecordingControllerStop:
     """Тесты остановки записи."""
 

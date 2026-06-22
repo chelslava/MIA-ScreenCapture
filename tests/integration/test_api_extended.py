@@ -157,6 +157,17 @@ def mock_callbacks() -> dict[str, MagicMock]:
                 "error": None,
             }
         ),
+        "switch_capture_source": MagicMock(return_value={"success": True}),
+        "monitors": MagicMock(
+            return_value=[
+                {
+                    "index": 0,
+                    "width": 1920,
+                    "height": 1080,
+                    "is_primary": True,
+                }
+            ]
+        ),
     }
 
 
@@ -674,6 +685,102 @@ class TestAPIRecordingIntegrityExtended:
             json={"file_path": "video.mp4"},
             content_type="application/json",
         )
+
+        assert response.status_code == 500
+
+
+class TestAPISwitchCaptureSourceExtended:
+    """Тесты для /api/v1/recording/switch-source (#48)."""
+
+    def test_switch_capture_source_success(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Успешное переключение источника захвата."""
+        response = client.post(
+            "/api/v1/recording/switch-source",
+            json={"area": "window", "window_title": "Notepad"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        mock_callbacks["switch_capture_source"].assert_called_once_with(
+            {"area": "window", "window_title": "Notepad"}
+        )
+
+    def test_switch_capture_source_invalid_rect(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """rect с неверным количеством координат отклоняется валидацией."""
+        response = client.post(
+            "/api/v1/recording/switch-source",
+            json={"area": "rect", "rect": [1, 2, 3]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        mock_callbacks["switch_capture_source"].assert_not_called()
+
+    def test_switch_capture_source_reports_failure(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Неуспешный результат callback -> success=False, код 400."""
+        mock_callbacks["switch_capture_source"].return_value = {
+            "success": False,
+            "error": "Recording is not active",
+        }
+
+        response = client.post(
+            "/api/v1/recording/switch-source",
+            json={"area": "full"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["success"] is False
+
+    def test_switch_capture_source_callback_error(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Ошибка callback должна возвращать 500."""
+        mock_callbacks["switch_capture_source"].side_effect = RuntimeError(
+            "capture session crashed"
+        )
+
+        response = client.post(
+            "/api/v1/recording/switch-source",
+            json={"area": "full"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 500
+
+
+class TestAPIMonitorsExtended:
+    """Тесты для /api/v1/resources/monitors (#48)."""
+
+    def test_get_monitors_returns_list(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Проверка получения списка мониторов."""
+        response = client.get("/api/v1/resources/monitors")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"][0]["width"] == 1920
+
+    def test_get_monitors_callback_error(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Ошибка callback должна возвращать 500."""
+        mock_callbacks["monitors"].side_effect = RuntimeError(
+            "Monitor enumeration error"
+        )
+
+        response = client.get("/api/v1/resources/monitors")
 
         assert response.status_code == 500
 
