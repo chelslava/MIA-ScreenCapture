@@ -158,6 +158,33 @@ def mock_callbacks() -> dict[str, MagicMock]:
             }
         ),
         "switch_capture_source": MagicMock(return_value={"success": True}),
+        "start_multi_recording": MagicMock(
+            return_value={
+                "success": True,
+                "outputs": {
+                    "primary": "/tmp/video_primary.mp4",
+                    "secondary": "/tmp/video_secondary.mp4",
+                },
+            }
+        ),
+        "stop_multi_recording": MagicMock(
+            return_value={
+                "success": True,
+                "outputs": {
+                    "primary": {
+                        "success": True,
+                        "output_path": "/tmp/video_primary.mp4",
+                    },
+                    "secondary": {
+                        "success": True,
+                        "output_path": "/tmp/video_secondary.mp4",
+                    },
+                },
+            }
+        ),
+        "get_multi_recording_status": MagicMock(
+            return_value={"active": False, "sources": {}}
+        ),
         "monitors": MagicMock(
             return_value=[
                 {
@@ -754,6 +781,204 @@ class TestAPISwitchCaptureSourceExtended:
             json={"area": "full"},
             content_type="application/json",
         )
+
+        assert response.status_code == 500
+
+
+class TestAPIMultiRecordingExtended:
+    """Тесты для /api/v1/recording/*-multi (#51)."""
+
+    _SOURCES = [
+        {"label": "primary", "area": "full", "monitor_index": 0},
+        {"label": "secondary", "area": "full", "monitor_index": 1},
+    ]
+
+    def test_start_multi_recording_success(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Успешный старт мультиисточниковой записи."""
+        response = client.post(
+            "/api/v1/recording/start-multi",
+            json={"sources": self._SOURCES},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        mock_callbacks["start_multi_recording"].assert_called_once()
+        called_with = mock_callbacks["start_multi_recording"].call_args[0][0]
+        assert called_with["sources"] == self._SOURCES
+
+    def test_start_multi_recording_rejects_single_source(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Меньше 2 источников отклоняется валидацией."""
+        response = client.post(
+            "/api/v1/recording/start-multi",
+            json={"sources": self._SOURCES[:1]},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        mock_callbacks["start_multi_recording"].assert_not_called()
+
+    def test_start_multi_recording_rejects_duplicate_labels(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Повторяющиеся label отклоняются валидацией."""
+        response = client.post(
+            "/api/v1/recording/start-multi",
+            json={
+                "sources": [
+                    {"label": "primary", "area": "full"},
+                    {"label": "primary", "area": "full", "monitor_index": 1},
+                ]
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        mock_callbacks["start_multi_recording"].assert_not_called()
+
+    def test_start_multi_recording_rejects_invalid_rect(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """rect с неверным количеством координат отклоняется валидацией."""
+        response = client.post(
+            "/api/v1/recording/start-multi",
+            json={
+                "sources": [
+                    {"label": "primary", "area": "rect", "rect": [1, 2, 3]},
+                    {"label": "secondary", "area": "full"},
+                ]
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        mock_callbacks["start_multi_recording"].assert_not_called()
+
+    def test_start_multi_recording_requires_window_title(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """area='window' без window_title отклоняется валидацией."""
+        response = client.post(
+            "/api/v1/recording/start-multi",
+            json={
+                "sources": [
+                    {"label": "primary", "area": "window"},
+                    {"label": "secondary", "area": "full"},
+                ]
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        mock_callbacks["start_multi_recording"].assert_not_called()
+
+    def test_start_multi_recording_reports_failure(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Неуспешный результат callback -> success=False, код 400."""
+        mock_callbacks["start_multi_recording"].return_value = {
+            "success": False,
+            "error": "Мультиисточниковая запись уже активна",
+        }
+
+        response = client.post(
+            "/api/v1/recording/start-multi",
+            json={"sources": self._SOURCES},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["success"] is False
+
+    def test_start_multi_recording_callback_error(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Ошибка callback должна возвращать 500."""
+        mock_callbacks["start_multi_recording"].side_effect = RuntimeError(
+            "capture session crashed"
+        )
+
+        response = client.post(
+            "/api/v1/recording/start-multi",
+            json={"sources": self._SOURCES},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 500
+
+    def test_stop_multi_recording_success(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Успешная остановка мультиисточниковой записи."""
+        response = client.post(
+            "/api/v1/recording/stop-multi",
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        mock_callbacks["stop_multi_recording"].assert_called_once()
+
+    def test_stop_multi_recording_reports_failure(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Неуспешный результат callback -> success=False, код 400."""
+        mock_callbacks["stop_multi_recording"].return_value = {
+            "success": False,
+            "error": "Мультиисточниковая запись не активна",
+        }
+
+        response = client.post(
+            "/api/v1/recording/stop-multi",
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        data = response.get_json()
+        assert data["success"] is False
+
+    def test_stop_multi_recording_callback_error(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Ошибка callback должна возвращать 500."""
+        mock_callbacks["stop_multi_recording"].side_effect = RuntimeError(
+            "capture session crashed"
+        )
+
+        response = client.post(
+            "/api/v1/recording/stop-multi",
+            content_type="application/json",
+        )
+
+        assert response.status_code == 500
+
+    def test_get_multi_recording_status_returns_data(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Получение статуса мультиисточниковой записи."""
+        response = client.get("/api/v1/recording/status-multi")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        mock_callbacks["get_multi_recording_status"].assert_called_once()
+
+    def test_get_multi_recording_status_callback_error(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Ошибка callback должна возвращать 500."""
+        mock_callbacks[
+            "get_multi_recording_status"
+        ].side_effect = RuntimeError("capture session crashed")
+
+        response = client.get("/api/v1/recording/status-multi")
 
         assert response.status_code == 500
 

@@ -115,6 +115,18 @@ class ApplicationService:
         """Переключает источник захвата активной записи без остановки."""
         return self._backend.switch_capture_source(params)
 
+    def start_multi_recording(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Запускает запись с нескольких источников одновременно."""
+        return self._backend.start_multi_recording(params)
+
+    def stop_multi_recording(self) -> dict[str, Any]:
+        """Останавливает мультиисточниковую запись."""
+        return self._backend.stop_multi_recording()
+
+    def get_multi_recording_status(self) -> dict[str, Any]:
+        """Возвращает статус мультиисточниковой записи."""
+        return self._backend.get_multi_recording_status()
+
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot конфигурации."""
         return self._backend.get_config_snapshot()

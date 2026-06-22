@@ -142,6 +142,113 @@ class StartRecordingRequest(BaseModel):
         return self
 
 
+class MultiCaptureSourceRequest(BaseModel):
+    """Схема одного источника мультиисточниковой записи (#51)."""
+
+    label: str = Field(
+        ..., min_length=1, description="Уникальная метка источника"
+    )
+    area: Literal["full", "window", "rect"] = Field(
+        default="full",
+        description="Тип области захвата: full, window или rect",
+    )
+    monitor_index: int = Field(
+        default=0,
+        ge=0,
+        description="Индекс монитора для захвата (при area='full')",
+    )
+    window_title: str | None = Field(
+        default=None,
+        description="Заголовок окна для захвата (требуется если area='window')",
+    )
+    rect: list[int] | None = Field(
+        default=None,
+        description="Координаты прямоугольника [x1, y1, x2, y2] (требуется если area='rect')",
+        min_length=4,
+        max_length=4,
+    )
+
+    @field_validator("rect")
+    @classmethod
+    def validate_rect(cls, v: list[int] | None) -> list[int] | None:
+        """Валидация координат прямоугольника."""
+        if v is not None:
+            if len(v) != 4:
+                raise ValueError(
+                    "rect должен содержать ровно 4 значения: [x1, y1, x2, y2]"
+                )
+
+            x1, y1, x2, y2 = v
+
+            if x2 <= x1 or y2 <= y1:
+                raise ValueError(
+                    "x2 должен быть больше x1 и y2 должен быть больше y1"
+                )
+
+            if any(coord < 0 for coord in v):
+                raise ValueError("Координаты не могут быть отрицательными")
+
+        return v
+
+    @model_validator(mode="after")
+    def validate_area_requirements(self) -> "MultiCaptureSourceRequest":
+        """Проверка требований для выбранного типа области."""
+        if self.area == "window" and not self.window_title:
+            raise ValueError('window_title обязателен когда area="window"')
+
+        if self.area == "rect" and not self.rect:
+            raise ValueError('rect обязателен когда area="rect"')
+
+        return self
+
+
+class StartMultiRecordingRequest(BaseModel):
+    """Схема запроса для начала мультиисточниковой записи (#51)."""
+
+    sources: list[MultiCaptureSourceRequest] = Field(
+        ...,
+        min_length=2,
+        description="Источники захвата для одновременной записи (минимум 2)",
+    )
+    output_path: str | None = Field(
+        default=None,
+        description="Базовый путь вывода (каждый источник получит свой файл)",
+    )
+    fps: int = Field(
+        default=30, ge=1, le=120, description="Кадров в секунду (1-120)"
+    )
+    codec: str = Field(default="libx264", description="Видеокодек")
+    bitrate: str = Field(
+        default="2M", description="Битрейт видео (например: 2M, 5000K)"
+    )
+    duration: int | None = Field(
+        default=None, ge=1, description="Длительность записи в секундах"
+    )
+
+    @field_validator("bitrate")
+    @classmethod
+    def validate_bitrate(cls, v: str) -> str:
+        """Валидация формата битрейта."""
+        if not re.match(r"^\d+[KMk]?$", v):
+            raise ValueError(
+                "Битрейт должен быть в формате: число + опционально K/M (например: 2M, 5000K, 2000000)"
+            )
+        return v
+
+    @field_validator("sources")
+    @classmethod
+    def validate_unique_labels(
+        cls, v: list[MultiCaptureSourceRequest]
+    ) -> list[MultiCaptureSourceRequest]:
+        """Проверка уникальности меток источников."""
+        labels = [source.label for source in v]
+        if len(labels) != len(set(labels)):
+            raise ValueError(
+                "Метки источников (label) должны быть уникальными"
+            )
+        return v
+
+
 class CreateScheduleRequest(BaseModel):
     """Схема запроса для создания запланированной задачи."""
 

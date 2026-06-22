@@ -18,6 +18,7 @@ from api.error_mapping import map_exception_to_api_error
 from api.rate_limiter import rate_limit
 from api.request_context import ensure_request_context
 from api.routes_config import register_config_routes
+from api.routes_multi_recording import register_multi_recording_routes
 from api.routes_recording import register_recording_routes
 from api.routes_resources import (
     register_observability_routes,
@@ -572,6 +573,20 @@ def _register_recording_routes(
     )
 
 
+def _register_multi_recording_routes(api_v1: Any, server: Any) -> None:
+    """Регистрирует маршруты мультиисточниковой записи (#51)."""
+    _ = register_multi_recording_routes(
+        api_v1,
+        server,
+        logger=logger,
+        parse_request_json=_parse_request_json,
+        handle_validation_error=handle_validation_error,
+        execute_with_idempotency=_execute_with_idempotency,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+    )
+
+
 def _register_schedule_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты планировщика."""
     _ = register_schedule_routes(
@@ -657,6 +672,7 @@ def register_routes(app, server) -> None:
     start_recording, stop_recording, pause_recording = (
         _register_recording_routes(api_v1, server)
     )
+    _register_multi_recording_routes(api_v1, server)
     _register_schedule_routes(api_v1, server)
     _register_resource_routes(api_v1, server)
     _register_config_routes(api_v1, server)

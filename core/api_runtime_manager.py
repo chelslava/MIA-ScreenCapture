@@ -429,5 +429,14 @@ class ApiRuntimeManager:
         server.set_callback(
             "switch_capture_source", facade.switch_capture_source
         )
+        server.set_callback(
+            "start_multi_recording", facade.start_multi_recording
+        )
+        server.set_callback(
+            "stop_multi_recording", facade.stop_multi_recording
+        )
+        server.set_callback(
+            "get_multi_recording_status", facade.get_multi_recording_status
+        )
         server.set_callback("get_config", facade.get_config_snapshot)
         server.set_callback("update_config", facade.update_config)

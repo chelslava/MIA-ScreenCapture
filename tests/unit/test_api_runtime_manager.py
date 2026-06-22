@@ -139,6 +139,21 @@ class MockApp:
     ) -> dict[str, Any]:
         return {"success": True}
 
+    def _start_multi_recording(
+        self, *args: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {"success": True}
+
+    def _stop_multi_recording(
+        self, *args: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {"success": True}
+
+    def _get_multi_recording_status(
+        self, *args: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {"active": False, "sources": {}}
+
     def _get_config(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {}
 
@@ -212,6 +227,15 @@ class MockApp:
 
     def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
         return self._switch_capture_source(params)
+
+    def start_multi_recording(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self._start_multi_recording(params)
+
+    def stop_multi_recording(self) -> dict[str, Any]:
+        return self._stop_multi_recording()
+
+    def get_multi_recording_status(self) -> dict[str, Any]:
+        return self._get_multi_recording_status()
 
     def get_config_snapshot(self) -> dict[str, Any]:
         return self._get_config()
@@ -798,6 +822,9 @@ class TestSetupApiCallbacks:
             "verify_recording",
             "repair_recording",
             "switch_capture_source",
+            "start_multi_recording",
+            "stop_multi_recording",
+            "get_multi_recording_status",
             "get_config",
             "update_config",
         ]
@@ -837,6 +864,11 @@ class TestSetupApiCallbacks:
             "verify_recording": mock_facade.verify_recording,
             "repair_recording": mock_facade.repair_recording,
             "switch_capture_source": mock_facade.switch_capture_source,
+            "start_multi_recording": mock_facade.start_multi_recording,
+            "stop_multi_recording": mock_facade.stop_multi_recording,
+            "get_multi_recording_status": (
+                mock_facade.get_multi_recording_status
+            ),
             "get_config": mock_facade.get_config_snapshot,
             "update_config": mock_facade.update_config,
         }

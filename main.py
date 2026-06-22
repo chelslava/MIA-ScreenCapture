@@ -53,6 +53,7 @@ from core.api_runtime_manager import ApiRuntimeManager
 from core.application_facade import ApplicationFacade
 from core.application_service import ApplicationService
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
+from core.multi_recording_service import MultiRecordingService
 from core.recording_service import RecordingService
 from core.webhook import (
     WebhookNotifier,
@@ -220,6 +221,12 @@ class VideoRecorderApp:
         self._webhook_notifier.attach_event_bus(
             self._recording_service.event_bus
         )
+        # Мультиисточниковая запись (#51) — отдельный путь, не зависящий от
+        # GUI/single-recording стека. Делит event_bus с _recording_service,
+        # чтобы события доходили до тех же WebSocket/webhook подписчиков.
+        self._multi_recording_service = MultiRecordingService(
+            event_bus=self._recording_service.event_bus
+        )
         self._gui_executor: MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
         self._gui_runtime_coordinator: _GuiRuntimeCoordinatorProtocol = (
@@ -313,6 +320,18 @@ class VideoRecorderApp:
     def switch_capture_source(self, params: dict[str, Any]) -> dict[str, Any]:
         """Переключает источник захвата через публичный фасад приложения."""
         return self._switch_capture_source(params)
+
+    def start_multi_recording(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Запускает запись с нескольких источников одновременно (#51)."""
+        return self._start_multi_recording(params)
+
+    def stop_multi_recording(self) -> dict[str, Any]:
+        """Останавливает мультиисточниковую запись (#51)."""
+        return self._stop_multi_recording()
+
+    def get_multi_recording_status(self) -> dict[str, Any]:
+        """Возвращает статус мультиисточниковой записи (#51)."""
+        return self._get_multi_recording_status()
 
     def get_recordings(self) -> list[Any]:
         """Возвращает список последних записей."""
@@ -932,6 +951,34 @@ class VideoRecorderApp:
         return self._recording_runtime_coordinator.switch_capture_source(
             params
         )
+
+    def _start_multi_recording(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Запуск мультиисточниковой записи (#51).
+
+        Не идёт через `_recording_runtime_coordinator`/GUI — отдельный путь,
+        не зависящий от single-recording стека. Но проверяет, что обычная
+        запись сейчас не активна, чтобы не конкурировать за источники
+        захвата/диск с уже идущей одиночной записью.
+        """
+        single_status = self._recording_runtime_coordinator.get_status()
+        if single_status.get("is_recording") or single_status.get("is_paused"):
+            return {
+                "success": False,
+                "error": (
+                    "Обычная запись уже активна — остановите её перед "
+                    "началом мультиисточниковой записи"
+                ),
+            }
+        return self._multi_recording_service.start_multi_recording(params)
+
+    def _stop_multi_recording(self) -> dict[str, Any]:
+        """Остановка мультиисточниковой записи (#51)."""
+        return self._multi_recording_service.stop_multi_recording()
+
+    def _get_multi_recording_status(self) -> dict[str, Any]:
+        """Статус мультиисточниковой записи (#51)."""
+        return self._multi_recording_service.get_multi_status()
 
     def _get_recordings(self) -> list[Any]:
         """Получение недавних записей."""

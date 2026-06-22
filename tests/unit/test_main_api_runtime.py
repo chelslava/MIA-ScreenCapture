@@ -476,6 +476,9 @@ class TestMainApiRuntime:
             "verify_recording",
             "repair_recording",
             "switch_capture_source",
+            "start_multi_recording",
+            "stop_multi_recording",
+            "get_multi_recording_status",
             "get_config",
             "update_config",
         }
@@ -515,6 +518,9 @@ class TestMainApiRuntime:
             "verify_recording": facade.verify_recording,
             "repair_recording": facade.repair_recording,
             "switch_capture_source": facade.switch_capture_source,
+            "start_multi_recording": facade.start_multi_recording,
+            "stop_multi_recording": facade.stop_multi_recording,
+            "get_multi_recording_status": facade.get_multi_recording_status,
             "get_config": facade.get_config_snapshot,
             "update_config": facade.update_config,
         }

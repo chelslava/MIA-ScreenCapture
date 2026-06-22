@@ -106,6 +106,18 @@ class ApplicationFacade(Protocol):
         """Переключает источник захвата активной записи без остановки."""
         ...
 
+    def start_multi_recording(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Запускает запись с нескольких источников одновременно."""
+        ...
+
+    def stop_multi_recording(self) -> dict[str, Any]:
+        """Останавливает мультиисточниковую запись."""
+        ...
+
+    def get_multi_recording_status(self) -> dict[str, Any]:
+        """Возвращает статус мультиисточниковой записи."""
+        ...
+
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot конфигурации."""
         ...

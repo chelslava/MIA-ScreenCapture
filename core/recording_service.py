@@ -34,6 +34,37 @@ from recorder.utils import attempt_repair_video, verify_video_integrity
 logger = get_module_logger(__name__)
 
 
+def build_recording_output_path(params: dict[str, Any]) -> Path:
+    """
+    Строит путь вывода записи из params API/CLI (`output_path` опционален).
+
+    Общая логика для `RecordingService` и `MultiRecordingService` (#51) —
+    оба принимают одинаковый необязательный `output_path` (файл, директория
+    или пусто — тогда генерируется путь по умолчанию).
+    """
+    config_manager = get_config()
+    value = params.get("output_path")
+    if not value:
+        return cast(Path, config_manager.get_output_path())
+
+    raw_path = str(value).strip()
+    if not raw_path:
+        return cast(Path, config_manager.get_output_path())
+
+    candidate = Path(raw_path)
+    is_dir_hint = raw_path.endswith(("/", "\\"))
+    if is_dir_hint or (candidate.exists() and candidate.is_dir()):
+        generated_name = str(config_manager.get_output_path().name)
+        return candidate / generated_name
+
+    if candidate.suffix:
+        return candidate
+
+    default_format = str(config_manager.settings.video.format)
+    extension = f".{default_format.lstrip('.')}"
+    return candidate.with_suffix(extension)
+
+
 class RecordingService:
     """Recording service that does not require GUI initialization."""
 
@@ -403,27 +434,7 @@ class RecordingService:
         )
 
     def _build_output_path(self, params: dict[str, Any]) -> Path:
-        config_manager = get_config()
-        value = params.get("output_path")
-        if not value:
-            return cast(Path, config_manager.get_output_path())
-
-        raw_path = str(value).strip()
-        if not raw_path:
-            return cast(Path, config_manager.get_output_path())
-
-        candidate = Path(raw_path)
-        is_dir_hint = raw_path.endswith(("/", "\\"))
-        if is_dir_hint or (candidate.exists() and candidate.is_dir()):
-            generated_name = str(config_manager.get_output_path().name)
-            return candidate / generated_name
-
-        if candidate.suffix:
-            return candidate
-
-        default_format = str(config_manager.settings.video.format)
-        extension = f".{default_format.lstrip('.')}"
-        return candidate.with_suffix(extension)
+        return build_recording_output_path(params)
 
     def _publish_event(
         self, event_type: RecordingEventType, payload: dict[str, Any]
