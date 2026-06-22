@@ -125,6 +125,20 @@ def mock_callbacks() -> dict[str, MagicMock]:
                 "path": "D:\\",
             }
         ),
+        "get_webhook_config": MagicMock(
+            return_value={"url": None, "enabled": False, "has_secret": False}
+        ),
+        "configure_webhook": MagicMock(
+            return_value={
+                "success": True,
+                "url": "https://example.com/webhook",
+                "enabled": True,
+                "has_secret": True,
+            }
+        ),
+        "test_webhook": MagicMock(
+            return_value={"success": True, "response_time_ms": 12.5}
+        ),
     }
 
 
@@ -460,6 +474,90 @@ class TestAPIDiskSpaceExtended:
         mock_callbacks["disk_space"].side_effect = RuntimeError("Disk error")
 
         response = client.get("/api/v1/resources/disk-space")
+
+        assert response.status_code == 500
+
+
+class TestAPIWebhookExtended:
+    """Тесты для эндпоинтов /api/v1/config/webhook (#52)."""
+
+    def test_get_webhook_config_returns_status(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Проверка получения настроек webhook."""
+        response = client.get("/api/v1/config/webhook")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["enabled"] is False
+        assert data["data"]["has_secret"] is False
+
+    def test_configure_webhook_success(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Проверка настройки webhook через POST."""
+        response = client.post(
+            "/api/v1/config/webhook",
+            json={"url": "https://example.com/webhook", "enabled": True},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        mock_callbacks["configure_webhook"].assert_called_once_with(
+            "https://example.com/webhook", None, True
+        )
+
+    def test_configure_webhook_rejects_invalid_url(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """URL без http(s):// схемы должен отклоняться валидацией."""
+        response = client.post(
+            "/api/v1/config/webhook",
+            json={"url": "not-a-url", "enabled": True},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        mock_callbacks["configure_webhook"].assert_not_called()
+
+    def test_webhook_test_endpoint_success(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Проверка тестовой отправки webhook."""
+        response = client.post("/api/v1/config/webhook/test")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["response_time_ms"] == 12.5
+
+    def test_webhook_test_endpoint_reports_failure(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Неуспешная тестовая отправка должна возвращать success=False."""
+        mock_callbacks["test_webhook"].return_value = {
+            "success": False,
+            "error": "Webhook URL не настроен",
+        }
+
+        response = client.post("/api/v1/config/webhook/test")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is False
+
+    def test_webhook_test_callback_error(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Ошибка callback должна возвращать 500."""
+        mock_callbacks["test_webhook"].side_effect = RuntimeError(
+            "Webhook error"
+        )
+
+        response = client.post("/api/v1/config/webhook/test")
 
         assert response.status_code == 500
 

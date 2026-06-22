@@ -112,6 +112,15 @@ class MockApp:
     def _get_disk_space(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"free_mb": 1024.0, "total_mb": 2048.0, "used_mb": 1024.0}
 
+    def _get_webhook_config(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"url": None, "enabled": False, "has_secret": False}
+
+    def _configure_webhook(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"success": True}
+
+    def _test_webhook(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"success": True, "response_time_ms": 1.0}
+
     def _get_config(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {}
 
@@ -162,6 +171,17 @@ class MockApp:
 
     def get_disk_space(self) -> dict[str, Any]:
         return self._get_disk_space()
+
+    def get_webhook_config(self) -> dict[str, Any]:
+        return self._get_webhook_config()
+
+    def configure_webhook(
+        self, url: str | None, secret: str | None, enabled: bool
+    ) -> dict[str, Any]:
+        return self._configure_webhook(url, secret, enabled)
+
+    def test_webhook(self) -> dict[str, Any]:
+        return self._test_webhook()
 
     def get_config_snapshot(self) -> dict[str, Any]:
         return self._get_config()
@@ -741,6 +761,9 @@ class TestSetupApiCallbacks:
             "devices",
             "windows",
             "disk_space",
+            "get_webhook_config",
+            "configure_webhook",
+            "test_webhook",
             "get_config",
             "update_config",
         ]
@@ -773,6 +796,9 @@ class TestSetupApiCallbacks:
             "devices": mock_facade.get_devices,
             "windows": mock_facade.get_windows,
             "disk_space": mock_facade.get_disk_space,
+            "get_webhook_config": mock_facade.get_webhook_config,
+            "configure_webhook": mock_facade.configure_webhook,
+            "test_webhook": mock_facade.test_webhook,
             "get_config": mock_facade.get_config_snapshot,
             "update_config": mock_facade.update_config,
         }

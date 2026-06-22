@@ -76,6 +76,20 @@ class ApplicationFacade(Protocol):
         """Возвращает статус свободного места на диске для пути записи."""
         ...
 
+    def get_webhook_config(self) -> dict[str, Any]:
+        """Возвращает настройки webhook (без значения секрета)."""
+        ...
+
+    def configure_webhook(
+        self, url: str | None, secret: str | None, enabled: bool
+    ) -> dict[str, Any]:
+        """Настраивает webhook-уведомления."""
+        ...
+
+    def test_webhook(self) -> dict[str, Any]:
+        """Отправляет тестовое webhook-уведомление."""
+        ...
+
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot конфигурации."""
         ...

@@ -119,6 +119,9 @@ class APISettingsSchema(BaseModel):
     port: int = Field(default=5000, ge=1, le=65535)
     server_threads: int = Field(default=4, ge=1, le=32)
     api_key: str | None = Field(default=None)
+    webhook_url: str | None = Field(default=None)
+    webhook_secret: str | None = Field(default=None)
+    webhook_enabled: bool = Field(default=False)
 
     @field_validator("api_key", mode="before")
     @classmethod
@@ -129,6 +132,16 @@ class APISettingsSchema(BaseModel):
 
         api_key = str(value).strip()
         return api_key or None
+
+    @field_validator("webhook_url", "webhook_secret", mode="before")
+    @classmethod
+    def validate_webhook_str_fields(cls, value: Any) -> str | None:
+        """Нормализует строковые поля webhook (пустая строка -> None)."""
+        if value is None:
+            return None
+
+        normalized = str(value).strip()
+        return normalized or None
 
 
 class SchedulerSettingsSchema(BaseModel):
@@ -220,6 +233,9 @@ class APISettings:
     port: int = 5000
     server_threads: int = 4
     api_key: str | None = None
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
+    webhook_enabled: bool = False
 
 
 @dataclass

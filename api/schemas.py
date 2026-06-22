@@ -286,6 +286,33 @@ class ToggleScheduleRequest(BaseModel):
     )
 
 
+class ConfigureWebhookRequest(BaseModel):
+    """Схема запроса настройки webhook-уведомлений."""
+
+    url: str | None = Field(default=None, description="URL получателя webhook")
+    secret: str | None = Field(
+        default=None,
+        description="Секрет для HMAC-подписи; не передавайте, чтобы "
+        "оставить текущий секрет или сгенерировать новый автоматически",
+    )
+    enabled: bool = Field(
+        default=False, description="Включить отправку webhook-уведомлений"
+    )
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str | None) -> str | None:
+        """Проверяет, что URL начинается с http:// или https://."""
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if not normalized.startswith(("http://", "https://")):
+            raise ValueError("URL должен начинаться с http:// или https://")
+        return normalized
+
+
 class UpdateConfigRequest(BaseModel):
     """Схема запроса для обновления конфигурации."""
 

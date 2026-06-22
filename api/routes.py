@@ -24,6 +24,7 @@ from api.routes_resources import (
     register_resource_routes,
 )
 from api.routes_schedule import register_schedule_routes
+from api.routes_webhook import register_webhook_routes
 from api.runtime_models import (
     APIOperation,
     APIOperationPayload,
@@ -620,6 +621,19 @@ def _register_observability_routes(api_v1: Any, server: Any) -> None:
     )
 
 
+def _register_webhook_routes(api_v1: Any, server: Any) -> None:
+    """Регистрирует маршруты настройки webhook."""
+    _ = register_webhook_routes(
+        api_v1,
+        server,
+        logger=logger,
+        parse_request_json=_parse_request_json,
+        handle_validation_error=handle_validation_error,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+    )
+
+
 def register_routes(app, server) -> None:
     """
     Регистрация всех маршрутов API с Flask приложением.
@@ -647,6 +661,7 @@ def register_routes(app, server) -> None:
     _register_resource_routes(api_v1, server)
     _register_config_routes(api_v1, server)
     _register_observability_routes(api_v1, server)
+    _register_webhook_routes(api_v1, server)
 
     # Регистрация Blueprint
     app.register_blueprint(api_v1)

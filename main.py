@@ -54,6 +54,11 @@ from core.application_facade import ApplicationFacade
 from core.application_service import ApplicationService
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
 from core.recording_service import RecordingService
+from core.webhook import (
+    WebhookNotifier,
+    WebhookSender,
+    generate_webhook_secret,
+)
 from exceptions import (
     ConfigValidationError,
     RecordingError,
@@ -205,6 +210,10 @@ class VideoRecorderApp:
         self._websocket_manager.attach_event_bus(
             self._recording_service.event_bus
         )
+        self._webhook_notifier = WebhookNotifier()
+        self._webhook_notifier.attach_event_bus(
+            self._recording_service.event_bus
+        )
         self._gui_executor: MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
         self._gui_runtime_coordinator: _GuiRuntimeCoordinatorProtocol = (
@@ -334,6 +343,20 @@ class VideoRecorderApp:
     def get_disk_space(self) -> dict[str, Any]:
         """Возвращает статус свободного места на диске для пути записи."""
         return self._get_disk_space()
+
+    def get_webhook_config(self) -> dict[str, Any]:
+        """Возвращает настройки webhook (без значения секрета)."""
+        return self._get_webhook_config()
+
+    def configure_webhook(
+        self, url: str | None, secret: str | None, enabled: bool
+    ) -> dict[str, Any]:
+        """Настраивает webhook-уведомления."""
+        return self._configure_webhook(url, secret, enabled)
+
+    def test_webhook(self) -> dict[str, Any]:
+        """Отправляет тестовое webhook-уведомление."""
+        return self._test_webhook()
 
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot текущей конфигурации."""
@@ -980,6 +1003,76 @@ class VideoRecorderApp:
         """Получение статуса свободного места на диске для пути записи."""
         output_path = get_config().get_output_path()
         return get_disk_space_status(output_path)
+
+    def _get_webhook_config(self) -> dict[str, Any]:
+        """Получение настроек webhook (без значения секрета)."""
+        api_settings = get_config().settings.api
+        return {
+            "url": api_settings.webhook_url,
+            "enabled": api_settings.webhook_enabled,
+            "has_secret": bool(api_settings.webhook_secret),
+        }
+
+    def _configure_webhook(
+        self, url: str | None, secret: str | None, enabled: bool
+    ) -> dict[str, Any]:
+        """
+        Настройка webhook-уведомлений.
+
+        Если `secret` не передан явно: при наличии уже сохранённого секрета
+        он сохраняется как есть; если секрета нет и `enabled=True` —
+        генерируется новый (возвращается в ответе один раз, далее не
+        раскрывается через `get_webhook_config`).
+        """
+        current_secret = get_config().settings.api.webhook_secret
+        generated_secret: str | None = None
+
+        if secret:
+            resolved_secret = secret
+        elif current_secret:
+            resolved_secret = current_secret
+        elif enabled:
+            resolved_secret = generate_webhook_secret()
+            generated_secret = resolved_secret
+        else:
+            resolved_secret = None
+
+        result = self._update_config(
+            {
+                "api": {
+                    "webhook_url": url,
+                    "webhook_secret": resolved_secret,
+                    "webhook_enabled": enabled,
+                }
+            }
+        )
+        if not result.get("success"):
+            return result
+
+        response: dict[str, Any] = {
+            "success": True,
+            "url": url,
+            "enabled": enabled,
+            "has_secret": bool(resolved_secret),
+        }
+        if generated_secret is not None:
+            response["secret"] = generated_secret
+        return response
+
+    def _test_webhook(self) -> dict[str, Any]:
+        """Отправка тестового webhook-уведомления текущими настройками."""
+        api_settings = get_config().settings.api
+        if not api_settings.webhook_url:
+            return {"success": False, "error": "Webhook URL не настроен"}
+
+        sender = WebhookSender()
+        success, response_time_ms = sender.send(
+            url=api_settings.webhook_url,
+            event="webhook.test",
+            data={"message": "Тестовое уведомление MIA-ScreenCapture"},
+            secret=api_settings.webhook_secret,
+        )
+        return {"success": success, "response_time_ms": response_time_ms}
 
     def _get_config(self) -> dict[str, Any]:
         """Получение текущей конфигурации."""

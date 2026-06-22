@@ -29,6 +29,16 @@ class FakeWebSocketManager:
         self.attached_event_bus = event_bus
 
 
+class FakeWebhookNotifier:
+    """Заглушка WebhookNotifier без реальной подписки на event bus."""
+
+    def __init__(self) -> None:
+        self.attached_event_bus: object | None = None
+
+    def attach_event_bus(self, event_bus: object) -> None:
+        self.attached_event_bus = event_bus
+
+
 class FakeApiServer:
     """Фейковый APIServer для проверки runtime-сценариев."""
 
@@ -142,6 +152,7 @@ def _build_app(
     monkeypatch.setattr(main, "RecordingService", FakeRecordingService)
     monkeypatch.setattr(main, "GUIRecordingBackend", lambda: object())
     monkeypatch.setattr(main, "WebSocketManager", FakeWebSocketManager)
+    monkeypatch.setattr(main, "WebhookNotifier", FakeWebhookNotifier)
     stored_key: dict[str, str | None] = {"value": None}
 
     def _get_stored_key() -> str | None:
@@ -458,6 +469,9 @@ class TestMainApiRuntime:
             "devices",
             "windows",
             "disk_space",
+            "get_webhook_config",
+            "configure_webhook",
+            "test_webhook",
             "get_config",
             "update_config",
         }
@@ -490,6 +504,9 @@ class TestMainApiRuntime:
             "devices": facade.get_devices,
             "windows": facade.get_windows,
             "disk_space": facade.get_disk_space,
+            "get_webhook_config": facade.get_webhook_config,
+            "configure_webhook": facade.configure_webhook,
+            "test_webhook": facade.test_webhook,
             "get_config": facade.get_config_snapshot,
             "update_config": facade.update_config,
         }

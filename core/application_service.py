@@ -85,6 +85,20 @@ class ApplicationService:
         """Возвращает статус свободного места на диске для пути записи."""
         return self._backend.get_disk_space()
 
+    def get_webhook_config(self) -> dict[str, Any]:
+        """Возвращает настройки webhook (без значения секрета)."""
+        return self._backend.get_webhook_config()
+
+    def configure_webhook(
+        self, url: str | None, secret: str | None, enabled: bool
+    ) -> dict[str, Any]:
+        """Настраивает webhook-уведомления."""
+        return self._backend.configure_webhook(url, secret, enabled)
+
+    def test_webhook(self) -> dict[str, Any]:
+        """Отправляет тестовое webhook-уведомление."""
+        return self._backend.test_webhook()
+
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot конфигурации."""
         return self._backend.get_config_snapshot()
