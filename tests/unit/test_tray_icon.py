@@ -221,13 +221,11 @@ class TestTrayIconExit:
     ) -> None:
         from gui import tray_icon as tray_icon_module
 
+        def _confirm(*args: object, **kwargs: object) -> int:
+            return tray_icon_module.QMessageBox.StandardButton.Yes
+
         monkeypatch.setattr(
-            tray_icon_module.QMessageBox,
-            "question",
-            staticmethod(
-                lambda *a,
-                **kw: tray_icon_module.QMessageBox.StandardButton.Yes
-            ),
+            tray_icon_module.QMessageBox, "question", staticmethod(_confirm)
         )
 
         tray = TrayIcon()
@@ -243,12 +241,11 @@ class TestTrayIconExit:
     ) -> None:
         from gui import tray_icon as tray_icon_module
 
+        def _cancel(*args: object, **kwargs: object) -> int:
+            return tray_icon_module.QMessageBox.StandardButton.No
+
         monkeypatch.setattr(
-            tray_icon_module.QMessageBox,
-            "question",
-            staticmethod(
-                lambda *a, **kw: tray_icon_module.QMessageBox.StandardButton.No
-            ),
+            tray_icon_module.QMessageBox, "question", staticmethod(_cancel)
         )
 
         tray = TrayIcon()
