@@ -109,6 +109,9 @@ class MockApp:
     def _get_windows(self, *args: Any, **kwargs: Any) -> list[Any]:
         return []
 
+    def _get_disk_space(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"free_mb": 1024.0, "total_mb": 2048.0, "used_mb": 1024.0}
+
     def _get_config(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {}
 
@@ -156,6 +159,9 @@ class MockApp:
 
     def get_windows(self) -> list[Any]:
         return self._get_windows()
+
+    def get_disk_space(self) -> dict[str, Any]:
+        return self._get_disk_space()
 
     def get_config_snapshot(self) -> dict[str, Any]:
         return self._get_config()
@@ -734,6 +740,7 @@ class TestSetupApiCallbacks:
             "toggle_schedule",
             "devices",
             "windows",
+            "disk_space",
             "get_config",
             "update_config",
         ]
@@ -765,6 +772,7 @@ class TestSetupApiCallbacks:
             "toggle_schedule": mock_facade.toggle_schedule,
             "devices": mock_facade.get_devices,
             "windows": mock_facade.get_windows,
+            "disk_space": mock_facade.get_disk_space,
             "get_config": mock_facade.get_config_snapshot,
             "update_config": mock_facade.update_config,
         }

@@ -11,13 +11,18 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, TypeVar
 
 import numpy as np
 
 from logger_config import get_module_logger
-from recorder.utils import get_ffmpeg_path, get_subprocess_creationflags
+from recorder.utils import (
+    get_available_disk_space,
+    get_ffmpeg_path,
+    get_subprocess_creationflags,
+)
 
 logger = get_module_logger(__name__)
 
@@ -84,6 +89,14 @@ def retry_with_backoff(
             )
             time.sleep(delay)
             delay = min(delay * policy.backoff_factor, policy.max_delay_s)
+
+
+class DiskSpaceLevel(Enum):
+    """Уровень свободного места на диске для текущего сегмента записи."""
+
+    OK = "ok"
+    WARNING = "warning"
+    CRITICAL = "critical"
 
 
 class FFmpegVideoWriter:
@@ -161,6 +174,9 @@ class FFmpegVideoWriter:
         pixel_format: str = "bgr24",
         retry_policy: RetryPolicy | None = None,
         max_recovery_attempts: int = 3,
+        disk_warning_mb: float = 1024.0,
+        disk_critical_mb: float = 100.0,
+        disk_check_interval_s: float = 30.0,
     ):
         """
         Инициализация FFmpeg видеозаписи.
@@ -180,6 +196,14 @@ class FFmpegVideoWriter:
                 пометить запись повреждённой. Каждый успешный перезапуск
                 продолжает запись в новый файл-сегмент
                 (`{stem}_part{N}{suffix}`) — см. `segment_paths`.
+            disk_warning_mb: Порог свободного места (MB), ниже которого
+                фиксируется предупреждение (запись продолжается).
+            disk_critical_mb: Порог свободного места (MB), ниже которого
+                запись останавливается превентивно (graceful stop), чтобы
+                не допустить падения FFmpeg из-за нехватки места.
+            disk_check_interval_s: Минимальный интервал между проверками
+                свободного места (секунды), чтобы не дёргать `shutil`
+                на каждый кадр.
         """
         self._output_path = Path(output_path)
         self._width = width
@@ -194,6 +218,9 @@ class FFmpegVideoWriter:
             retry_policy if retry_policy is not None else RetryPolicy()
         )
         self._max_recovery_attempts = max_recovery_attempts
+        self._disk_warning_mb = disk_warning_mb
+        self._disk_critical_mb = disk_critical_mb
+        self._disk_check_interval_s = disk_check_interval_s
 
         self._process: subprocess.Popen | None = None
         self._lock = threading.Lock()
@@ -208,6 +235,11 @@ class FFmpegVideoWriter:
         self._segment_paths: list[Path] = []
         self._recovery_count = 0
         self._total_downtime_s = 0.0
+
+        self._last_disk_check_time = 0.0
+        self._disk_space_critical = False
+        self._disk_space_warning_logged = False
+        self._last_free_mb: float | None = None
 
     @property
     def frame_count(self) -> int:
@@ -240,6 +272,16 @@ class FFmpegVideoWriter:
     def total_downtime_s(self) -> float:
         """Суммарное время простоя записи во время восстановлений (сек)."""
         return self._total_downtime_s
+
+    @property
+    def is_disk_space_critical(self) -> bool:
+        """Признак, что запись остановлена из-за критической нехватки места."""
+        return self._disk_space_critical
+
+    @property
+    def last_known_free_mb(self) -> float | None:
+        """Последнее известное свободное место (MB) на диске сегмента."""
+        return self._last_free_mb
 
     @property
     def segment_paths(self) -> list[Path]:
@@ -458,8 +500,70 @@ class FFmpegVideoWriter:
             logger.error(f"Ошибка открытия FFmpeg: {e}")
             return False
 
+    def _check_disk_space(self) -> DiskSpaceLevel:
+        """
+        Проверяет свободное место на диске текущего сегмента записи.
+
+        Rate-limited интервалом `disk_check_interval_s`, чтобы не вызывать
+        `shutil.disk_usage` на каждый кадр. Между проверками возвращает
+        последний известный уровень.
+
+        Returns:
+            Текущий (или последний известный) уровень свободного места.
+        """
+        now = time.time()
+        if now - self._last_disk_check_time < self._disk_check_interval_s:
+            if self._disk_space_critical:
+                return DiskSpaceLevel.CRITICAL
+            if self._disk_space_warning_logged:
+                return DiskSpaceLevel.WARNING
+            return DiskSpaceLevel.OK
+
+        self._last_disk_check_time = now
+
+        try:
+            free_bytes = get_available_disk_space(self._current_segment_path)
+        except OSError as e:
+            logger.warning("Не удалось проверить свободное место: %s", e)
+            return DiskSpaceLevel.OK
+
+        free_mb = free_bytes / (1024 * 1024)
+        self._last_free_mb = free_mb
+
+        if free_mb < self._disk_critical_mb:
+            return DiskSpaceLevel.CRITICAL
+
+        if free_mb < self._disk_warning_mb:
+            if not self._disk_space_warning_logged:
+                logger.warning(
+                    "Мало места на диске: %.1f MB свободно (порог %.1f MB)",
+                    free_mb,
+                    self._disk_warning_mb,
+                )
+                self._disk_space_warning_logged = True
+            return DiskSpaceLevel.WARNING
+
+        self._disk_space_warning_logged = False
+        return DiskSpaceLevel.OK
+
     def write(self, frame: np.ndarray) -> bool:
         if self._is_corrupted:
+            return False
+
+        if not self._disk_space_critical:
+            disk_level = self._check_disk_space()
+            if disk_level is DiskSpaceLevel.CRITICAL:
+                self._disk_space_critical = True
+                logger.error(
+                    "Критическая нехватка места на диске (%.1f MB) — "
+                    "запись останавливается превентивно, без потери "
+                    "уже записанных данных",
+                    self._last_free_mb
+                    if self._last_free_mb is not None
+                    else 0.0,
+                )
+
+        if self._disk_space_critical:
             return False
 
         def _do_write() -> None:

@@ -419,5 +419,6 @@ class ApiRuntimeManager:
         server.set_callback("toggle_schedule", facade.toggle_schedule)
         server.set_callback("devices", facade.get_devices)
         server.set_callback("windows", facade.get_windows)
+        server.set_callback("disk_space", facade.get_disk_space)
         server.set_callback("get_config", facade.get_config_snapshot)
         server.set_callback("update_config", facade.update_config)

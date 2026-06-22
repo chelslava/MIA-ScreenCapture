@@ -457,6 +457,7 @@ class TestMainApiRuntime:
             "toggle_schedule",
             "devices",
             "windows",
+            "disk_space",
             "get_config",
             "update_config",
         }
@@ -488,6 +489,7 @@ class TestMainApiRuntime:
             "toggle_schedule": facade.toggle_schedule,
             "devices": facade.get_devices,
             "windows": facade.get_windows,
+            "disk_space": facade.get_disk_space,
             "get_config": facade.get_config_snapshot,
             "update_config": facade.update_config,
         }

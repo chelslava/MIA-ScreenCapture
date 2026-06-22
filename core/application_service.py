@@ -81,6 +81,10 @@ class ApplicationService:
         """Возвращает список окон."""
         return self._backend.get_windows()
 
+    def get_disk_space(self) -> dict[str, Any]:
+        """Возвращает статус свободного места на диске для пути записи."""
+        return self._backend.get_disk_space()
+
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot конфигурации."""
         return self._backend.get_config_snapshot()

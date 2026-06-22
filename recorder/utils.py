@@ -685,6 +685,26 @@ def check_disk_space(
         return False, 0, error_msg
 
 
+def get_disk_space_status(path: Path) -> dict[str, float | str]:
+    """
+    Return free/total/used disk space (in MB) for the given path.
+
+    Args:
+        path: File or directory path to check.
+
+    Returns:
+        Dict with `free_mb`, `total_mb`, `used_mb`, `path`.
+    """
+    check_path = path.parent if path.suffix or path.is_file() else path
+    stat = shutil.disk_usage(str(check_path))
+    return {
+        "free_mb": stat.free / (1024 * 1024),
+        "total_mb": stat.total / (1024 * 1024),
+        "used_mb": stat.used / (1024 * 1024),
+        "path": str(check_path),
+    }
+
+
 class Singleton(type):
     """Metaclass that ensures only one instance of a class exists."""
 

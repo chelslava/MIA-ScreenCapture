@@ -66,6 +66,7 @@ from recorder.utils import (
     check_ffmpeg,
     get_audio_devices,
     get_available_windows,
+    get_disk_space_status,
 )
 from single_instance import SingleInstanceGuard, bring_existing_window_to_front
 
@@ -329,6 +330,10 @@ class VideoRecorderApp:
     def get_windows(self) -> list[Any]:
         """Возвращает список доступных окон."""
         return self._get_windows()
+
+    def get_disk_space(self) -> dict[str, Any]:
+        """Возвращает статус свободного места на диске для пути записи."""
+        return self._get_disk_space()
 
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot текущей конфигурации."""
@@ -970,6 +975,11 @@ class VideoRecorderApp:
     def _get_windows(self) -> list:
         """Получение доступных окон."""
         return cast(list, get_available_windows())
+
+    def _get_disk_space(self) -> dict[str, Any]:
+        """Получение статуса свободного места на диске для пути записи."""
+        output_path = get_config().get_output_path()
+        return get_disk_space_status(output_path)
 
     def _get_config(self) -> dict[str, Any]:
         """Получение текущей конфигурации."""

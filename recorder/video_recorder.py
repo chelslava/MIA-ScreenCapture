@@ -333,6 +333,9 @@ class VideoRecorder:
         use_ffmpeg: bool = True,
         preset: str = "medium",
         max_recovery_attempts: int = 3,
+        disk_warning_mb: float = 1024.0,
+        disk_critical_mb: float = 100.0,
+        disk_check_interval_s: float = 30.0,
     ):
         """
         Инициализация видеозаписи.
@@ -347,6 +350,12 @@ class VideoRecorder:
             max_recovery_attempts: Сколько раз перезапускать FFmpeg-процесс
                 при сбое, прежде чем пометить запись повреждённой (только
                 для `use_ffmpeg=True`).
+            disk_warning_mb: Порог свободного места (MB) для предупреждения
+                (только для `use_ffmpeg=True`).
+            disk_critical_mb: Порог свободного места (MB), при котором запись
+                останавливается превентивно (только для `use_ffmpeg=True`).
+            disk_check_interval_s: Минимальный интервал между проверками
+                свободного места (секунды).
         """
         self.fps = fps
         self.codec = codec
@@ -355,6 +364,9 @@ class VideoRecorder:
         self.use_ffmpeg = use_ffmpeg
         self.preset = preset
         self.max_recovery_attempts = max_recovery_attempts
+        self.disk_warning_mb = disk_warning_mb
+        self.disk_critical_mb = disk_critical_mb
+        self.disk_check_interval_s = disk_check_interval_s
 
         # Состояние
         self._state: VideoRecorderState = VideoRecorderState.IDLE
@@ -371,6 +383,7 @@ class VideoRecorder:
         self._capture_session: _WindowsCaptureSession | None = None
         self._duration: float | None = None
         self._last_segment_paths: list[Path] = []
+        self._stopped_due_to_low_disk_space: bool = False
 
         # Кэшированный флаг: нужна ли конвертация цвета при записи кадров.
         # False — кадры уже в целевом формате (zero-copy путь).
@@ -595,6 +608,17 @@ class VideoRecorder:
         return list(self._last_segment_paths)
 
     @property
+    def stopped_due_to_low_disk_space(self) -> bool:
+        """
+        Признак, что запись была остановлена превентивно из-за критической
+        нехватки места на диске (а не аварийно, как при сбое FFmpeg).
+
+        В этом случае файл записи финализирован штатно и не помечен
+        повреждённым.
+        """
+        return self._stopped_due_to_low_disk_space
+
+    @property
     def frame_count(self) -> int:
         """Получение общего количества захваченных кадров."""
         return self._frame_count
@@ -655,6 +679,7 @@ class VideoRecorder:
                 # Session windows-capture создаётся в потоке захвата.
                 self._capture_session = None
                 self._capture_lost = False  # Сброс флага потери захвата
+                self._stopped_due_to_low_disk_space = False
 
                 # Инициализация видеозаписи
                 if self.use_ffmpeg:
@@ -669,6 +694,9 @@ class VideoRecorder:
                         bitrate=self.bitrate,
                         preset=self.preset,
                         max_recovery_attempts=self.max_recovery_attempts,
+                        disk_warning_mb=self.disk_warning_mb,
+                        disk_critical_mb=self.disk_critical_mb,
+                        disk_check_interval_s=self.disk_check_interval_s,
                     )
                     if not self._ffmpeg_writer.open():
                         raise RuntimeError(
@@ -813,6 +841,7 @@ class VideoRecorder:
         frame_interval: float = 1.0 / self.fps
         next_frame_time: float = time.perf_counter()
         fatal_write_error = False
+        disk_space_stop = False
         capture_lost_requires_cleanup = False
         capture_lost_message = (
             "Захват потерян (окно закрыто или монитор отключен)"
@@ -934,13 +963,24 @@ class VideoRecorder:
                     if self._ffmpeg_writer is not None:
                         write_ok = self._ffmpeg_writer.write(frame)
                         if not write_ok:
-                            fatal_write_error = True
-                            self._ffmpeg_writer.mark_corrupted()
-                            message = (
-                                "Ошибка записи кадра в FFmpeg. "
-                                "Запись остановлена аварийно."
-                            )
-                            logger.error(message)
+                            if self._ffmpeg_writer.is_disk_space_critical:
+                                disk_space_stop = True
+                                self._stopped_due_to_low_disk_space = True
+                                message = (
+                                    "Критическое заполнение диска — запись "
+                                    "остановлена для предотвращения потери "
+                                    "данных. Файл будет финализирован "
+                                    "штатно."
+                                )
+                                logger.warning(message)
+                            else:
+                                fatal_write_error = True
+                                self._ffmpeg_writer.mark_corrupted()
+                                message = (
+                                    "Ошибка записи кадра в FFmpeg. "
+                                    "Запись остановлена аварийно."
+                                )
+                                logger.error(message)
                             if self._on_error:
                                 self._on_error(message)
                             self._state = VideoRecorderState.STOPPING
@@ -980,7 +1020,7 @@ class VideoRecorder:
                 )
             self._capture_session = None
 
-        if fatal_write_error:
+        if fatal_write_error or disk_space_stop:
             self._cleanup()
             return
 

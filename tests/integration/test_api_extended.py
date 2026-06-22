@@ -117,6 +117,14 @@ def mock_callbacks() -> dict[str, MagicMock]:
             }
         ),
         "update_config": MagicMock(return_value={"success": True}),
+        "disk_space": MagicMock(
+            return_value={
+                "free_mb": 1024.0,
+                "total_mb": 2048.0,
+                "used_mb": 1024.0,
+                "path": "D:\\",
+            }
+        ),
     }
 
 
@@ -426,6 +434,32 @@ class TestAPIWindowsExtended:
         mock_callbacks["windows"].side_effect = RuntimeError("Window error")
 
         response = client.get("/api/v1/windows")
+
+        assert response.status_code == 500
+
+
+class TestAPIDiskSpaceExtended:
+    """Тесты для эндпоинта /api/v1/resources/disk-space (#47)."""
+
+    def test_disk_space_returns_status(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Проверка получения статуса свободного места на диске."""
+        response = client.get("/api/v1/resources/disk-space")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["free_mb"] == 1024.0
+        mock_callbacks["disk_space"].assert_called_once()
+
+    def test_disk_space_callback_error(
+        self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
+    ):
+        """Проверка обработки ошибки при получении статуса диска."""
+        mock_callbacks["disk_space"].side_effect = RuntimeError("Disk error")
+
+        response = client.get("/api/v1/resources/disk-space")
 
         assert response.status_code == 500
 

@@ -72,6 +72,10 @@ class ApplicationFacade(Protocol):
         """Возвращает список окон."""
         ...
 
+    def get_disk_space(self) -> dict[str, Any]:
+        """Возвращает статус свободного места на диске для пути записи."""
+        ...
+
     def get_config_snapshot(self) -> dict[str, Any]:
         """Возвращает snapshot конфигурации."""
         ...

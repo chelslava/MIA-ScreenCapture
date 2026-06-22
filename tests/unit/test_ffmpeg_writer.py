@@ -774,3 +774,159 @@ class TestRetryWithBackoff:
         assert result is False
         assert writer.is_corrupted is True
         assert process.stdin.write.call_count == 2
+
+
+class TestFFmpegVideoWriterDiskSpace:
+    """Тесты проактивного мониторинга свободного места на диске (#47)."""
+
+    def _make_writer(self, **kwargs: object) -> FFmpegVideoWriter:
+        return FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+            **kwargs,
+        )
+
+    def test_check_disk_space_ok_when_plenty_free(self, monkeypatch) -> None:
+        """Достаточно места — уровень OK, write() не блокируется."""
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_available_disk_space",
+            MagicMock(return_value=2048 * 1024 * 1024),
+        )
+
+        writer = self._make_writer()
+
+        assert writer._check_disk_space() is (
+            ffmpeg_writer_module.DiskSpaceLevel.OK
+        )
+        assert writer.last_known_free_mb == pytest.approx(2048.0)
+
+    def test_check_disk_space_warning_below_threshold(
+        self, monkeypatch, caplog
+    ) -> None:
+        """Место ниже warning-порога, но выше critical — уровень WARNING."""
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_available_disk_space",
+            MagicMock(return_value=500 * 1024 * 1024),
+        )
+
+        writer = self._make_writer(
+            disk_warning_mb=1024.0, disk_critical_mb=100.0
+        )
+
+        with caplog.at_level(logging.WARNING, logger="recorder.ffmpeg_writer"):
+            level = writer._check_disk_space()
+
+        assert level is ffmpeg_writer_module.DiskSpaceLevel.WARNING
+        assert "Мало места на диске" in caplog.text
+
+    def test_check_disk_space_critical_below_threshold(
+        self, monkeypatch
+    ) -> None:
+        """Место ниже critical-порога — уровень CRITICAL."""
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_available_disk_space",
+            MagicMock(return_value=50 * 1024 * 1024),
+        )
+
+        writer = self._make_writer(disk_critical_mb=100.0)
+
+        assert writer._check_disk_space() is (
+            ffmpeg_writer_module.DiskSpaceLevel.CRITICAL
+        )
+
+    def test_check_disk_space_is_rate_limited(self, monkeypatch) -> None:
+        """Повторные проверки в пределах интервала не зовут syscall снова."""
+        disk_check = MagicMock(return_value=2048 * 1024 * 1024)
+        monkeypatch.setattr(
+            ffmpeg_writer_module, "get_available_disk_space", disk_check
+        )
+        fixed_time = [1_000_000.0]
+        monkeypatch.setattr(
+            ffmpeg_writer_module.time, "time", lambda: fixed_time[0]
+        )
+
+        writer = self._make_writer(disk_check_interval_s=30.0)
+
+        writer._check_disk_space()
+        writer._check_disk_space()
+        assert disk_check.call_count == 1
+
+        fixed_time[0] += 31.0
+        writer._check_disk_space()
+        assert disk_check.call_count == 2
+
+    def test_write_stops_gracefully_on_critical_disk_space(
+        self, monkeypatch
+    ) -> None:
+        """
+        При критической нехватке места write() возвращает False, но НЕ
+        помечает запись corrupted — в отличие от сбоя FFmpeg-процесса, файл
+        должен быть финализирован штатно вызывающей стороной.
+        """
+        import numpy as np
+
+        _setup_open_mocks(monkeypatch, "", returncode=0)
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_available_disk_space",
+            MagicMock(return_value=50 * 1024 * 1024),
+        )
+
+        writer = self._make_writer(disk_critical_mb=100.0)
+        assert writer.open() is True
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is False
+        assert writer.is_corrupted is False
+        assert writer.is_disk_space_critical is True
+        assert writer.last_known_free_mb == pytest.approx(50.0)
+
+    def test_write_continues_on_disk_space_warning(self, monkeypatch) -> None:
+        """WARNING не должен останавливать запись."""
+        import numpy as np
+
+        _setup_open_mocks(monkeypatch, "", returncode=0)
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_available_disk_space",
+            MagicMock(return_value=500 * 1024 * 1024),
+        )
+
+        writer = self._make_writer(
+            disk_warning_mb=1024.0, disk_critical_mb=100.0
+        )
+        assert writer.open() is True
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is True
+        assert writer.frame_count == 1
+        assert writer.is_disk_space_critical is False
+
+    def test_write_after_critical_does_not_recheck_disk(
+        self, monkeypatch
+    ) -> None:
+        """После фиксации critical повторные write() не зовут syscall снова."""
+        import numpy as np
+
+        _setup_open_mocks(monkeypatch, "", returncode=0)
+        disk_check = MagicMock(return_value=50 * 1024 * 1024)
+        monkeypatch.setattr(
+            ffmpeg_writer_module, "get_available_disk_space", disk_check
+        )
+
+        writer = self._make_writer(disk_critical_mb=100.0)
+        assert writer.open() is True
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        assert writer.write(frame) is False
+        assert writer.write(frame) is False
+        assert disk_check.call_count == 1

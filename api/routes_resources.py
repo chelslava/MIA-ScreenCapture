@@ -83,6 +83,21 @@ def register_resource_routes(
             logger.exception(f"Ошибка получения окон: {e}")
             return exception_response(e)
 
+    @api_v1.route("resources/disk-space", methods=["GET"])
+    @require_api_key
+    def get_disk_space() -> Any:
+        """Получение статуса свободного места на диске для пути записи."""
+        try:
+            callback = server.get_callback("disk_space")
+            if callback:
+                disk_space = callback()
+                return jsonify({"success": True, "data": disk_space})
+            return internal_error_response()
+
+        except Exception as e:
+            logger.exception(f"Ошибка получения статуса диска: {e}")
+            return exception_response(e)
+
     @api_v1.route("circuit-breakers", methods=["GET"])
     @require_api_key
     def get_circuit_breaker_metrics() -> Any:
