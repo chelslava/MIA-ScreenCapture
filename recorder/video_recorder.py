@@ -336,6 +336,8 @@ class VideoRecorder:
         disk_warning_mb: float = 1024.0,
         disk_critical_mb: float = 100.0,
         disk_check_interval_s: float = 30.0,
+        max_segment_size_mb: float | None = None,
+        max_segment_duration_s: float | None = None,
     ):
         """
         Инициализация видеозаписи.
@@ -356,6 +358,11 @@ class VideoRecorder:
                 останавливается превентивно (только для `use_ffmpeg=True`).
             disk_check_interval_s: Минимальный интервал между проверками
                 свободного места (секунды).
+            max_segment_size_mb: Лимит размера сегмента (MB), при достижении
+                которого запись продолжается в новом файле-сегменте (только
+                для `use_ffmpeg=True`). `None` — без лимита.
+            max_segment_duration_s: Лимит длительности сегмента (секунды),
+                аналогично `max_segment_size_mb`. `None` — без лимита.
         """
         self.fps = fps
         self.codec = codec
@@ -367,6 +374,8 @@ class VideoRecorder:
         self.disk_warning_mb = disk_warning_mb
         self.disk_critical_mb = disk_critical_mb
         self.disk_check_interval_s = disk_check_interval_s
+        self.max_segment_size_mb = max_segment_size_mb
+        self.max_segment_duration_s = max_segment_duration_s
 
         # Состояние
         self._state: VideoRecorderState = VideoRecorderState.IDLE
@@ -384,6 +393,7 @@ class VideoRecorder:
         self._duration: float | None = None
         self._last_segment_paths: list[Path] = []
         self._stopped_due_to_low_disk_space: bool = False
+        self._stopped_due_to_segment_rotation_failure: bool = False
 
         # Кэшированный флаг: нужна ли конвертация цвета при записи кадров.
         # False — кадры уже в целевом формате (zero-copy путь).
@@ -619,6 +629,17 @@ class VideoRecorder:
         return self._stopped_due_to_low_disk_space
 
     @property
+    def stopped_due_to_segment_rotation_failure(self) -> bool:
+        """
+        Признак, что запись была остановлена, потому что плановая ротация
+        сегмента (#53) не смогла открыть новый файл.
+
+        Ранее записанные сегменты при этом валидны и не помечены
+        повреждёнными.
+        """
+        return self._stopped_due_to_segment_rotation_failure
+
+    @property
     def frame_count(self) -> int:
         """Получение общего количества захваченных кадров."""
         return self._frame_count
@@ -680,6 +701,7 @@ class VideoRecorder:
                 self._capture_session = None
                 self._capture_lost = False  # Сброс флага потери захвата
                 self._stopped_due_to_low_disk_space = False
+                self._stopped_due_to_segment_rotation_failure = False
 
                 # Инициализация видеозаписи
                 if self.use_ffmpeg:
@@ -697,6 +719,8 @@ class VideoRecorder:
                         disk_warning_mb=self.disk_warning_mb,
                         disk_critical_mb=self.disk_critical_mb,
                         disk_check_interval_s=self.disk_check_interval_s,
+                        max_segment_size_mb=self.max_segment_size_mb,
+                        max_segment_duration_s=self.max_segment_duration_s,
                     )
                     if not self._ffmpeg_writer.open():
                         raise RuntimeError(
@@ -842,6 +866,7 @@ class VideoRecorder:
         next_frame_time: float = time.perf_counter()
         fatal_write_error = False
         disk_space_stop = False
+        rotation_failed_stop = False
         capture_lost_requires_cleanup = False
         capture_lost_message = (
             "Захват потерян (окно закрыто или монитор отключен)"
@@ -973,6 +998,18 @@ class VideoRecorder:
                                     "штатно."
                                 )
                                 logger.warning(message)
+                            elif (
+                                self._ffmpeg_writer.is_segment_rotation_failed
+                            ):
+                                rotation_failed_stop = True
+                                self._stopped_due_to_segment_rotation_failure = True
+                                message = (
+                                    "Не удалось открыть новый файл-сегмент "
+                                    "при плановой ротации — запись "
+                                    "остановлена, ранее записанные "
+                                    "сегменты сохранены."
+                                )
+                                logger.warning(message)
                             else:
                                 fatal_write_error = True
                                 self._ffmpeg_writer.mark_corrupted()
@@ -1020,7 +1057,7 @@ class VideoRecorder:
                 )
             self._capture_session = None
 
-        if fatal_write_error or disk_space_stop:
+        if fatal_write_error or disk_space_stop or rotation_failed_stop:
             self._cleanup()
             return
 

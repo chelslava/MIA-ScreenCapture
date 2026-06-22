@@ -412,6 +412,7 @@ class TestVideoRecorder:
         recorder._ffmpeg_writer = MagicMock()
         recorder._ffmpeg_writer.write.return_value = False
         recorder._ffmpeg_writer.is_disk_space_critical = False
+        recorder._ffmpeg_writer.is_segment_rotation_failed = False
 
         error_callback = MagicMock()
         recorder.set_callbacks(on_error=error_callback)
@@ -452,6 +453,7 @@ class TestVideoRecorder:
         error_callback.assert_called_once()
         recorder._ffmpeg_writer.mark_corrupted.assert_called_once()
         assert recorder.stopped_due_to_low_disk_space is False
+        assert recorder.stopped_due_to_segment_rotation_failure is False
 
     def test_capture_loop_stops_gracefully_on_disk_space_critical(
         self,
@@ -508,6 +510,63 @@ class TestVideoRecorder:
         recorder._ffmpeg_writer.mark_corrupted.assert_not_called()
         assert recorder.stopped_due_to_low_disk_space is True
 
+    def test_capture_loop_stops_gracefully_on_segment_rotation_failure(
+        self,
+    ) -> None:
+        """
+        Неудача плановой ротации сегмента (#53) останавливает запись без
+        mark_corrupted — предыдущие сегменты уже штатно закрыты и валидны.
+        """
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(type="full", width=32, height=32)
+        recorder._ffmpeg_writer = MagicMock()
+        recorder._ffmpeg_writer.write.return_value = False
+        recorder._ffmpeg_writer.is_disk_space_critical = False
+        recorder._ffmpeg_writer.is_segment_rotation_failed = True
+
+        error_callback = MagicMock()
+        recorder.set_callbacks(on_error=error_callback)
+
+        class MockSession:
+            """Простейший mock с одним кадром для цикла захвата."""
+
+            def __init__(self) -> None:
+                self.is_capture_lost = False
+                self._read_count = 0
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                if self._read_count == 0:
+                    self._read_count += 1
+                    return np.zeros((32, 32, 3), dtype=np.uint8)
+                return None
+
+            def stop(self) -> None:
+                return
+
+        mock_session = MockSession()
+        with (
+            patch(
+                "recorder.video_recorder._WindowsCaptureSession",
+                return_value=mock_session,
+            ),
+            patch.object(recorder, "_cleanup") as mock_cleanup,
+        ):
+            recorder._capture_loop()
+
+        assert recorder.frame_count == 0
+        assert recorder.state == RecordingState.STOPPING
+        mock_cleanup.assert_called_once()
+        error_callback.assert_called_once()
+        assert "ротации" in error_callback.call_args.args[0]
+        recorder._ffmpeg_writer.mark_corrupted.assert_not_called()
+        assert recorder.stopped_due_to_low_disk_space is False
+        assert recorder.stopped_due_to_segment_rotation_failure is True
+
     def test_start_passes_disk_thresholds_to_ffmpeg_writer(
         self, tmp_path: Path
     ) -> None:
@@ -540,6 +599,37 @@ class TestVideoRecorder:
         assert kwargs["disk_warning_mb"] == 512.0
         assert kwargs["disk_critical_mb"] == 64.0
         assert kwargs["disk_check_interval_s"] == 5.0
+
+    def test_start_passes_segment_limits_to_ffmpeg_writer(
+        self, tmp_path: Path
+    ) -> None:
+        """Лимиты сегмента из конструктора передаются в FFmpegVideoWriter."""
+        recorder = VideoRecorder(
+            use_ffmpeg=True,
+            max_segment_size_mb=256.0,
+            max_segment_duration_s=120.0,
+        )
+        capture_area = CaptureArea(type="full", width=1280, height=720)
+        mock_writer = MagicMock()
+        mock_writer.open.return_value = True
+        mock_writer_class = MagicMock(return_value=mock_writer)
+
+        with (
+            patch(
+                "recorder.video_recorder.get_platform", return_value="windows"
+            ),
+            patch(
+                "recorder.ffmpeg_writer.FFmpegVideoWriter",
+                mock_writer_class,
+            ),
+            patch.object(recorder, "_capture_loop"),
+        ):
+            result = recorder.start(tmp_path / "video.mp4", capture_area)
+
+        assert result is True
+        _, kwargs = mock_writer_class.call_args
+        assert kwargs["max_segment_size_mb"] == 256.0
+        assert kwargs["max_segment_duration_s"] == 120.0
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only test")

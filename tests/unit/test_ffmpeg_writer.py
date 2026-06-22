@@ -930,3 +930,162 @@ class TestFFmpegVideoWriterDiskSpace:
         assert writer.write(frame) is False
         assert writer.write(frame) is False
         assert disk_check.call_count == 1
+
+
+class TestFFmpegVideoWriterSegmentRotation:
+    """Тесты плановой ротации сегментов по размеру/длительности (#53)."""
+
+    def _make_writer(self, **kwargs: object) -> FFmpegVideoWriter:
+        return FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+            **kwargs,
+        )
+
+    def _setup_rotation_mocks(self, monkeypatch, processes: list) -> None:
+        monkeypatch.setattr(
+            ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.threading, "Thread", _ImmediateThread
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_ffmpeg_path",
+            MagicMock(return_value=r"C:\ffmpeg.exe"),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            MagicMock(side_effect=processes),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_available_disk_space",
+            MagicMock(return_value=10 * 1024**3),
+        )
+
+    def test_write_rotates_segment_on_size_limit(self, monkeypatch) -> None:
+        """При достижении лимита размера запись продолжается в новом файле."""
+        import numpy as np
+
+        processes = [_make_process("", 0), _make_process("", 0)]
+        self._setup_rotation_mocks(monkeypatch, processes)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        max_segment_size_mb = (frame.nbytes * 1.5) / (1024 * 1024)
+
+        writer = self._make_writer(max_segment_size_mb=max_segment_size_mb)
+        assert writer.open() is True
+
+        assert writer.write(frame) is True
+        assert ffmpeg_writer_module.subprocess.Popen.call_count == 1
+        assert writer.segment_paths == []
+
+        assert writer.write(frame) is True
+        assert ffmpeg_writer_module.subprocess.Popen.call_count == 2
+        assert writer.segment_paths == [
+            Path("test.mp4"),
+            Path("test_part2.mp4"),
+        ]
+        assert writer.is_corrupted is False
+        assert writer.is_segment_rotation_failed is False
+
+    def test_write_rotates_segment_on_duration_limit(
+        self, monkeypatch
+    ) -> None:
+        """При достижении лимита длительности сегмента запись ротируется."""
+        import numpy as np
+
+        processes = [_make_process("", 0), _make_process("", 0)]
+        self._setup_rotation_mocks(monkeypatch, processes)
+        fixed_time = [1_000_000.0]
+        monkeypatch.setattr(
+            ffmpeg_writer_module.time, "time", lambda: fixed_time[0]
+        )
+
+        writer = self._make_writer(max_segment_duration_s=10.0)
+        assert writer.open() is True
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        assert writer.write(frame) is True
+        assert ffmpeg_writer_module.subprocess.Popen.call_count == 1
+
+        fixed_time[0] += 11.0
+        assert writer.write(frame) is True
+        assert ffmpeg_writer_module.subprocess.Popen.call_count == 2
+        assert len(writer.segment_paths) == 2
+
+    def test_rotation_shares_numbering_with_recovery(
+        self, monkeypatch
+    ) -> None:
+        """Плановая ротация и crash-recovery делят единую нумерацию _partN."""
+        import numpy as np
+
+        processes = [
+            _make_process("", 0),
+            _make_process("", 0),
+            _make_process("", 0),
+        ]
+        self._setup_rotation_mocks(monkeypatch, processes)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        max_segment_size_mb = (frame.nbytes * 1.5) / (1024 * 1024)
+
+        writer = self._make_writer(
+            max_segment_size_mb=max_segment_size_mb,
+            max_recovery_attempts=3,
+        )
+        assert writer.open() is True
+
+        # Первая запись не превышает лимит, вторая -> плановая ротация в part2.
+        assert writer.write(frame) is True
+        assert writer.write(frame) is True
+        assert writer.segment_paths == [
+            Path("test.mp4"),
+            Path("test_part2.mp4"),
+        ]
+
+        # Текущий процесс (part2) "умирает" -> crash-recovery должен дать part3,
+        # а не повторно part2. Свежий счётчик размера part3 (1 кадр < лимита
+        # 1.5x) не должен сразу же запустить ещё одну плановую ротацию.
+        writer._process.poll.return_value = 1
+        assert writer.write(frame) is True
+        assert writer.segment_paths == [
+            Path("test.mp4"),
+            Path("test_part2.mp4"),
+            Path("test_part3.mp4"),
+        ]
+        assert writer.recovery_count == 1
+
+    def test_rotation_failure_preserves_previous_segment(
+        self, monkeypatch
+    ) -> None:
+        """
+        Неудача открытия нового сегмента не помечает запись corrupted —
+        предыдущий (уже штатно закрытый) сегмент не должен удаляться.
+        """
+        import numpy as np
+
+        first_process = _make_process("", 0)
+        self._setup_rotation_mocks(
+            monkeypatch, [first_process, OSError("disk error")]
+        )
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        writer = self._make_writer(
+            max_segment_size_mb=frame.nbytes / (1024 * 1024)
+        )
+        assert writer.open() is True
+
+        result = writer.write(frame)
+
+        assert result is True
+        assert writer.is_corrupted is False
+        assert writer.is_segment_rotation_failed is True
+        assert writer.segment_paths == []
+
+        # Последующие вызовы write() корректно отказывают без новой попытки.
+        assert writer.write(frame) is False

@@ -177,6 +177,8 @@ class FFmpegVideoWriter:
         disk_warning_mb: float = 1024.0,
         disk_critical_mb: float = 100.0,
         disk_check_interval_s: float = 30.0,
+        max_segment_size_mb: float | None = None,
+        max_segment_duration_s: float | None = None,
     ):
         """
         Инициализация FFmpeg видеозаписи.
@@ -204,6 +206,13 @@ class FFmpegVideoWriter:
             disk_check_interval_s: Минимальный интервал между проверками
                 свободного места (секунды), чтобы не дёргать `shutil`
                 на каждый кадр.
+            max_segment_size_mb: Если задано, при достижении этого размера
+                текущий сегмент завершается штатно и запись продолжается
+                в новом файле-сегменте (`{stem}_part{N}{suffix}`, та же
+                нумерация, что и при crash-recovery). `None` — разбиение
+                по размеру отключено.
+            max_segment_duration_s: Аналогично `max_segment_size_mb`, но по
+                длительности текущего сегмента. `None` — отключено.
         """
         self._output_path = Path(output_path)
         self._width = width
@@ -221,6 +230,8 @@ class FFmpegVideoWriter:
         self._disk_warning_mb = disk_warning_mb
         self._disk_critical_mb = disk_critical_mb
         self._disk_check_interval_s = disk_check_interval_s
+        self._max_segment_size_mb = max_segment_size_mb
+        self._max_segment_duration_s = max_segment_duration_s
 
         self._process: subprocess.Popen | None = None
         self._lock = threading.Lock()
@@ -240,6 +251,10 @@ class FFmpegVideoWriter:
         self._disk_space_critical = False
         self._disk_space_warning_logged = False
         self._last_free_mb: float | None = None
+
+        self._current_segment_bytes = 0
+        self._segment_start_time = 0.0
+        self._segment_rotation_failed = False
 
     @property
     def frame_count(self) -> int:
@@ -282,6 +297,17 @@ class FFmpegVideoWriter:
     def last_known_free_mb(self) -> float | None:
         """Последнее известное свободное место (MB) на диске сегмента."""
         return self._last_free_mb
+
+    @property
+    def is_segment_rotation_failed(self) -> bool:
+        """
+        Признак, что плановая ротация сегмента (#53) не смогла открыть
+        новый файл-сегмент.
+
+        В отличие от `is_corrupted`, предыдущие сегменты при этом валидны
+        и штатно закрыты — останов не аварийный, файл не должен удаляться.
+        """
+        return self._segment_rotation_failed
 
     @property
     def segment_paths(self) -> list[Path]:
@@ -361,6 +387,8 @@ class FFmpegVideoWriter:
         """
         self._current_segment_path = self._output_path
         self._start_time = time.time()
+        self._segment_start_time = self._start_time
+        self._current_segment_bytes = 0
         self._frame_count = 0
         return self._open_process(self._output_path)
 
@@ -407,6 +435,8 @@ class FFmpegVideoWriter:
         self._current_segment_path = new_segment_path
         self._recovery_count += 1
         self._total_downtime_s += time.time() - recovery_start
+        self._current_segment_bytes = 0
+        self._segment_start_time = time.time()
 
         logger.warning(
             "FFmpeg восстановлен (попытка %s/%s), запись продолжена в новом сегменте: %s",
@@ -546,8 +576,66 @@ class FFmpegVideoWriter:
         self._disk_space_warning_logged = False
         return DiskSpaceLevel.OK
 
+    def _should_rotate_segment(self) -> bool:
+        """Проверяет, нужно ли начать новый плановый сегмент записи (#53)."""
+        if (
+            self._max_segment_size_mb is not None
+            and self._current_segment_bytes / (1024 * 1024)
+            >= self._max_segment_size_mb
+        ):
+            return True
+
+        return (
+            self._max_segment_duration_s is not None
+            and time.time() - self._segment_start_time
+            >= self._max_segment_duration_s
+        )
+
+    def _rotate_segment(self) -> bool:
+        """
+        Завершает текущий сегмент штатно и открывает следующий.
+
+        Переиспользует `close()` (тот же graceful-путь, что и при
+        финальном завершении записи — корректный moov atom) и
+        `_next_segment_path()`/`_segment_paths` — те же примитивы, что
+        использует crash-recovery (#45), так что плановые и
+        восстановительные сегменты делят единую нумерацию `_partN`.
+
+        Returns:
+            True, если новый сегмент успешно открыт.
+        """
+        previous_segment_path = self._current_segment_path
+        finalized_ok = self.close()
+        if not finalized_ok:
+            logger.warning(
+                "Сегмент %s завершён с ошибкой при плановой ротации",
+                previous_segment_path,
+            )
+
+        new_segment_path = self._next_segment_path()
+        if not self._open_process(new_segment_path):
+            logger.error(
+                "Не удалось открыть новый сегмент при плановой ротации: %s",
+                new_segment_path,
+            )
+            return False
+
+        self._segment_paths.append(previous_segment_path)
+        self._current_segment_path = new_segment_path
+        self._current_segment_bytes = 0
+        self._segment_start_time = time.time()
+
+        logger.info(
+            "Плановая ротация сегмента записи (лимит размера/длительности): %s",
+            new_segment_path,
+        )
+        return True
+
     def write(self, frame: np.ndarray) -> bool:
         if self._is_corrupted:
+            return False
+
+        if self._segment_rotation_failed:
             return False
 
         if not self._disk_space_critical:
@@ -584,6 +672,12 @@ class FFmpegVideoWriter:
                 retry_with_backoff(_do_write, self._retry_policy)
                 with self._lock:
                     self._frame_count += 1
+                self._current_segment_bytes += frame.nbytes
+                if (
+                    self._should_rotate_segment()
+                    and not self._rotate_segment()
+                ):
+                    self._segment_rotation_failed = True
                 return True
             except OSError as e:
                 logger.warning(
