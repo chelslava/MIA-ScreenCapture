@@ -1,579 +1,359 @@
-# MIA-ScreenCapture v1.4.7
+<div align="center">
 
-Профессиональная программа для записи видео с экрана с графическим интерфейсом, REST API, WebSocket, планировщиком задач и поддержкой командной строки.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.png">
+  <img src="docs/assets/logo-light.png" alt="MIA-ScreenCapture" width="480">
+</picture>
 
-**⚠️ Платформа: Windows 10/11 только** — проект использует Windows Graphics Capture API.
+**Professional screen recorder for Windows — GUI, REST API, WebSocket, scheduler, and CLI in one tool.**
 
-## Возможности
+[🇬🇧 English](README.md) · [🇷🇺 Русский](README.ru.md)
 
-- **Графический интерфейс (GUI)** на базе PyQt6
-  - Выбор области захвата: весь экран, окно, прямоугольная область
-  - Настройки звука: микрофон, системный звук, без звука
-  - Параметры видео: FPS, кодек, битрейт
-  - Список последних записей
-  - Иконка в системном трее
-  - Вкладка API: порт, токен, запуск/остановка/перезапуск сервера
-  - Просмотр логов API в реальном времени
+[![CI](https://github.com/chelslava/MIA-ScreenCapture/actions/workflows/ci.yml/badge.svg)](https://github.com/chelslava/MIA-ScreenCapture/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/chelslava/MIA-ScreenCapture?label=version&sort=semver)](https://github.com/chelslava/MIA-ScreenCapture/tags)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)](https://learn.microsoft.com/en-us/windows/win32/winrt/windows-graphics-capture)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-- **REST API v1** для удаленного управления
-  - Запуск/остановка/пауза записи
-  - Получение статуса
-  - Управление планировщиком
-  - API versioning (`/api/v1/*`)
-  - Валидация через Pydantic
+</div>
 
-- **WebSocket** для real-time событий
-  - Подписка на события записи в реальном времени
-  - Каналы: `recording`, `system`, `api`, `metrics`
-  - Heartbeat и автоматический reconnect
-  - Endpoint: `ws://127.0.0.1:<port>/ws`
+---
 
-- **Планировщик задач** на базе APScheduler
-  - Одноразовые задачи
-  - Ежедневные задачи
-  - Еженедельные задачи
-  - Интервальные задачи
-  - Cron-выражения
+> ⚠️ **Platform: Windows 10/11 only** — the project relies on the Windows Graphics Capture API.
 
-- **Командная строка**
-  - Запуск записи с параметрами
-  - Остановка записи
-  - Получение статуса
-  - CRUD для планировщика
+## Table of Contents
 
-## Требования
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [CLI Reference](#cli-reference)
+- [REST API](#rest-api)
+- [Architecture](#architecture)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Known Limitations](#known-limitations)
+- [License](#license)
 
-- **Python 3.11+** (проект требует 3.11 и выше)
-- **Windows 10/11** (Windows Graphics Capture API)
-- **FFmpeg** (должен быть в PATH)
-- [UV](https://docs.astral.sh/uv/) — быстрый менеджер пакетов (рекомендуется)
+## Features
 
-## Установка
+### 🎥 Capture
+- Full screen, a specific window, or a rectangular region, via the **Windows Graphics Capture API**
+- **Simultaneous multi-monitor recording** — one independent file per monitor
+- **Hot-swap of the capture source** mid-recording, without stopping or losing frames
+- Configurable frame rate (1–120 FPS)
 
-### Способ 1: Через UV (рекомендуется)
+### 🔊 Audio
+- Microphone, system audio (loopback), both, or none
+- Device selection through `sounddevice`
 
-1. Клонируйте репозиторий:
+### 🛡️ Reliability
+- Automatic **crash recovery**: if the FFmpeg process dies, recording continues into a new segment (up to 3 attempts) instead of being lost
+- Segment size/duration limits with automatic rollover to a new file
+- **Disk-space monitoring** with a graceful auto-stop before the volume fills up
+- **Post-recording integrity verification** and automatic repair via FFmpeg/`ffprobe`
+- Retry policy with exponential backoff around the FFmpeg writer
+- **Single-instance guard** — a second launch brings the existing window to the front instead of fighting over the capture session
+
+### 🖥️ GUI (PyQt6)
+- Tabs: Capture, Audio, Video, Output, API, Scheduler, Diagnostics
+- System tray icon, global hotkeys, keyboard-first navigation
+- Pre-flight **readiness checklist** (FFmpeg, output path, window, microphone) before you can start recording
+- Centralized theming layer and accessibility metadata on key controls
+- Floating on-screen indicator over the active recording area
+
+### 🌐 REST API (Flask + Waitress)
+- Versioned routes under `/api/v1/*` (legacy `/api/*` kept for compatibility)
+- API key authentication (`X-API-Key` header or `Authorization: Bearer`)
+- `Idempotency-Key` support for safe POST retries
+- Sliding-window rate limiting and a circuit breaker around capture operations
+- Uniform error contract with `trace_id` / `X-Request-ID`
+- Interactive **Swagger UI** at `/api/docs`
+- Observability endpoints: request metrics and SLO baseline
+
+### 📡 WebSocket & Webhooks
+- `ws://host:port/ws` — real-time `recording` / `system` / `api` / `metrics` events, with heartbeat and auto-reconnect
+- **HMAC-signed webhook** notifications for recording lifecycle events
+
+### ⏱️ Scheduler (APScheduler)
+- One-off, daily, weekly, interval, and cron-based recording jobs
+- CLI-compatible presets, next-run preview, per-task enable/disable
+
+### ⌨️ CLI & Headless mode
+- Start/stop/status, full scheduler CRUD, presets
+- `--headless` runs the API server only, with no GUI
+
+## Requirements
+
+| Requirement | Value |
+|---|---|
+| OS | Windows 10/11 (Windows Graphics Capture API) |
+| Python | 3.11+ |
+| FFmpeg | Must be available on `PATH` |
+| Package manager | [uv](https://docs.astral.sh/uv/) (recommended) or pip |
+
+## Installation
+
+### Option 1 — uv (recommended)
+
 ```bash
-git clone <repository-url>
+git clone https://github.com/chelslava/MIA-ScreenCapture.git
 cd MIA-ScreenCapture
-```
 
-2. Установите UV (если не установлен):
-```bash
-# Windows (PowerShell)
+# Install uv if you don't have it yet
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-# Linux/macOS
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# Create the venv and install dependencies
+uv sync                # all dependencies, including dev
+uv sync --no-dev        # production only
 ```
 
-3. Создайте виртуальное окружение и установите зависимости:
+### Option 2 — pip
+
 ```bash
-# Создать venv и установить все зависимости
-uv sync
-
-# Или только production зависимости
-uv sync --no-dev
-```
-
-4. Активируйте виртуальное окружение:
-
-Windows:
-```bash
-.venv\Scripts\activate
-```
-
-Linux/macOS:
-```bash
-source .venv/bin/activate
-```
-
-### Способ 2: Через pip (классический)
-
-1. Клонируйте репозиторий:
-```bash
-git clone <repository-url>
+git clone https://github.com/chelslava/MIA-ScreenCapture.git
 cd MIA-ScreenCapture
-```
 
-2. Создайте виртуальное окружение:
-```bash
 python -m venv .venv
-```
-
-3. Активируйте виртуальное окружение:
-
-Windows:
-```bash
 .venv\Scripts\activate
+
+pip install -r requirements.txt        # production
+pip install -r requirements-dev.txt    # + dev tools
 ```
 
-Linux/macOS:
-```bash
-source .venv/bin/activate
-```
+### Verify FFmpeg
 
-4. Установите зависимости:
-```bash
-# Production зависимости
-pip install -r requirements.txt
-
-# Или все зависимости включая dev
-pip install -r requirements-dev.txt
-```
-
-### Проверка FFmpeg
-
-Убедитесь, что FFmpeg установлен:
 ```bash
 ffmpeg -version
 ```
 
-Если FFmpeg не установлен:
-- Официальный сайт: https://ffmpeg.org/download.html
-- GitHub репозиторий: https://github.com/FFmpeg/FFmpeg
+If it's missing, install it from the [official site](https://ffmpeg.org/download.html) and add it to `PATH`.
 
-После установки добавьте FFmpeg в PATH.
+## Quick Start
 
-## Разработка
-
-### Установка dev-зависимостей
+### GUI (default)
 
 ```bash
-# Через UV
-uv sync
-
-# Через pip
-pip install -r requirements-dev.txt
-```
-
-### Запуск тестов
-
-```bash
-# Через UV (рекомендуется)
-uv run pytest
-
-# С покрытием кода
-uv run pytest --cov=. --cov-report=html
-
-# Только unit-тесты
-uv run pytest tests/unit/
-
-# Или через активированный venv
-pytest
-```
-
-### Линтинг и форматирование
-
-```bash
-# Через UV (рекомендуется)
-uv run ruff check .
-uv run ruff format .
-uv run mypy .
-
-# Или через активированный venv
-ruff check .
-ruff format .
-mypy .
-```
-
-## Использование
-
-### Графический интерфейс
-
-Запуск с GUI (по умолчанию):
-```bash
-# Через UV (рекомендуется)
 uv run python main.py
-
-# Или через активированный venv
-python main.py
 ```
 
-### Командная строка
+### CLI
 
-Запуск записи с параметрами по умолчанию:
 ```bash
+# Start recording with defaults
 uv run python main.py --start
-```
 
-Запуск записи с указанием области:
-```bash
+# Record a rectangular region
 uv run python main.py --start --area rect --rect 100 100 800 600
-```
 
-Запись с микрофоном:
-```bash
+# Record with microphone audio, 60 seconds
 uv run python main.py --start --audio mic --duration 60
-```
 
-Остановка записи:
-```bash
+# Stop / status
 uv run python main.py --stop
-```
-
-Получение статуса:
-```bash
 uv run python main.py --status
 ```
 
-Список запланированных задач:
-```bash
-uv run python main.py --schedule-list
-```
+### Scheduler
 
-Создание запланированной задачи:
 ```bash
-# Ежедневная запись в 09:30
+# Daily recording at 09:30
 uv run python main.py --schedule-create --trigger daily --time "09:30" --audio mic --duration 1800
 
-# Еженедельная запись по будням в 14:00
+# Weekdays at 14:00
 uv run python main.py --schedule-create --trigger weekly --time "14:00" --days "0,2,4" --audio both
 
-# Использование preset шаблона
+# Apply a built-in preset
 uv run python main.py --schedule-create --preset workday-morning
-
-# Показать список presets
 uv run python main.py --list-presets
-```
 
-Управление задачами:
-```bash
-# Обновить задачу
+# Manage tasks
+uv run python main.py --schedule-list
 uv run python main.py --schedule-update TASK_ID --time "10:00"
-
-# Удалить задачу
-uv run python main.py --schedule-delete TASK_ID
-
-# Включить/выключить задачу
 uv run python main.py --schedule-toggle TASK_ID --enabled false
-
-# Показать предстоящие запуски
+uv run python main.py --schedule-delete TASK_ID
 uv run python main.py --schedule-preview
 ```
 
-### Headless режим (только API)
+### Headless (API only)
 
 ```bash
 uv run python main.py --headless
 ```
 
-### Параметры командной строки
+## CLI Reference
 
-| Параметр | Описание | По умолчанию |
-|----------|----------|--------------|
-| `--gui` | Запуск с GUI | Да |
-| `--headless` | Запуск без GUI (только API) | - |
-| `--start` | Начать запись | - |
-| `--stop` | Остановить запись | - |
-| `--status` | Показать статус | - |
-| `--area` | Область захвата: full, window, rect | full |
-| `--rect X1 Y1 X2 Y2` | Координаты прямоугольника | - |
-| `--window TITLE` | Заголовок окна | - |
-| `--audio` | Источник звука: mic, system, none, both | none |
-| `--output PATH` | Путь к выходному файлу | Авто |
-| `--fps FPS` | Кадров в секунду | 30 |
-| `--codec CODEC` | Видеокодек | libx264 |
-| `--bitrate RATE` | Битрейт | 2M |
-| `--duration SECONDS` | Длительность записи | Без ограничений |
-| `--api-host HOST` | Хост API сервера | 127.0.0.1 |
-| `--api-port PORT` | Порт API сервера | 5000 |
-| `--no-api` | Отключить API | - |
+| Flag | Description | Default |
+|---|---|---|
+| `--gui` | Run with the GUI | yes |
+| `--headless` | Run without the GUI (API only) | – |
+| `--start` / `--stop` / `--status` | Recording control | – |
+| `--area` | `full`, `window`, or `rect` | `full` |
+| `--rect X1 Y1 X2 Y2` | Rectangle coordinates | – |
+| `--window TITLE` | Window title to capture | – |
+| `--monitor INDEX` | Monitor index for `full` capture | primary |
+| `--audio` | `mic`, `system`, `both`, or `none` | `none` |
+| `--output PATH` | Output file path | auto |
+| `--fps FPS` | Frames per second | `30` |
+| `--codec CODEC` | Video codec | `libx264` |
+| `--bitrate RATE` | Bitrate | `2M` |
+| `--cursor` | Show the cursor in the recording | off |
+| `--duration SECONDS` | Recording duration | unlimited |
+| `--api-host` / `--api-port` | API bind address | `127.0.0.1` / `5000` |
+| `--no-api` | Disable the API server | – |
+| `--version` | Print the installed version | – |
+
+Run `python main.py --help` for the full list, including all scheduler subcommands.
 
 ## REST API
 
-API сервер запускается по адресу `http://127.0.0.1:5000`
+The API listens on `http://127.0.0.1:5000` by default. All endpoints (except `/health`) require an API key via the `X-API-Key` header or `Authorization: Bearer`. Versioned endpoints live under `/api/v1/*`; legacy `/api/*` aliases are kept for backward compatibility.
 
-**API Versioning:** Все endpoints доступны с префиксом `/api/v1/`. Legacy endpoints (`/api/*`) сохранены для обратной совместимости.
+Full reference with request/response schemas: [`docs/API.md`](docs/API.md). Interactive docs: `GET /api/docs` (Swagger UI) while the server is running.
 
-### Health
+### Endpoint groups
 
-#### GET /health
-Проверка доступности сервиса (без API key).
+| Group | Examples | Purpose |
+|---|---|---|
+| Health | `GET /health` | Liveness check, no auth required |
+| Recording | `POST /api/v1/start`, `stop`, `pause`, `GET status` | Core recording control |
+| Hot source switch | `POST /api/v1/recording/switch-source` | Change capture source without stopping |
+| Multi-monitor | `POST /api/v1/recording/start-multi`, `stop-multi`, `GET status-multi` | Simultaneous per-monitor recording |
+| Recordings | `GET /api/v1/recordings`, `POST recordings/verify`, `recordings/repair` | History, integrity check, repair |
+| Scheduler | `GET/POST /api/v1/schedule`, `PUT/DELETE .../<id>`, `POST .../<id>/toggle` | Scheduled job CRUD |
+| Resources | `GET /api/v1/devices`, `windows`, `resources/monitors`, `resources/disk-space` | Audio devices, windows, monitors, disk space |
+| Webhooks | `GET/POST /api/v1/config/webhook`, `POST .../test` | HMAC-signed event notifications |
+| Events | `GET /api/v1/events/recent`, `events/stats` | Polling-friendly event history |
+| Observability | `GET /api/v1/observability/metrics`, `observability/baseline`, `circuit-breakers` | RPS, latency, SLO baseline, breaker state |
+| Config | `GET/PUT /api/v1/config` | Read/update runtime configuration |
+| WebSocket | `ws://host:port/ws` | Real-time event stream with heartbeat |
 
-**Ответ:**
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-03-27T18:12:34.567890+00:00",
-  "version": "1.4.7",
-  "uptime_seconds": 123.456,
-  "websocket": {
-    "transport_ready": false
-  }
-}
-```
-
-### Эндпоинты v1
-
-#### GET /api/v1/status
-Получить текущий статус записи.
-
-**Ответ:**
-```json
-{
-  "success": true,
-  "data": {
-    "is_recording": true,
-    "is_paused": false,
-    "elapsed_time": 45.2,
-    "current_file": "/path/to/recording.mp4"
-  }
-}
-```
-
-#### GET /api/events/recent?limit=50
-Получить последние события записи (transport-ready слой для WebSocket/SSE).
-`limit` должен быть числом в диапазоне `1..500`.
-
-#### GET /api/events/stats
-Получить статистику event-менеджера (буфер, количество событий, готовность транспорта).
-
-#### GET /api/observability/metrics
-Получить эксплуатационные метрики API (RPS, latency, статусы ответов, ресурсы процесса).
-
-#### GET /api/observability/baseline
-Получить baseline SLO и текущие значения (`p95 latency`, `error rate`, `requests_per_second`, `rss_mb`).
-
-### Формат ошибок
-
-Для ошибок используется единый контракт:
+### Error format
 
 ```json
 {
   "success": false,
   "error": {
     "code": "validation_error",
-    "message": "Ошибка валидации данных",
+    "message": "Request validation failed",
     "details": [
-      {
-        "field": "fps",
-        "message": "Input should be less than or equal to 120",
-        "type": "less_than_equal"
-      }
+      {"field": "fps", "message": "Input should be less than or equal to 120", "type": "less_than_equal"}
     ]
   },
   "trace_id": "a1b2c3d4e5f6478a9b0c1234567890ab"
 }
 ```
 
-`trace_id` дублируется в заголовке `X-Request-ID`.
-Примечание: успешные ответы остаются в формате `{ "success": true, "data": ... }`.
+`trace_id` is duplicated in the `X-Request-ID` response header. Successful responses use `{"success": true, "data": {...}}`.
 
-#### POST /api/start
-Начать запись.
+### curl examples
 
-**Тело запроса:**
-```json
-{
-  "area": "full",
-  "audio": "mic",
-  "output_path": "/path/to/output.mp4",
-  "fps": 30,
-  "codec": "libx264",
-  "bitrate": "2M",
-  "duration": 60
-}
-```
-
-**Ответ:**
-```json
-{
-  "success": true,
-  "data": {
-    "output_path": "/path/to/output.mp4"
-  }
-}
-```
-
-#### POST /api/stop
-Остановить текущую запись.
-
-#### POST /api/pause
-Поставить на паузу или возобновить.
-
-#### GET /api/recordings
-Получить список последних записей.
-
-#### GET /api/schedule
-Получить список запланированных задач.
-
-#### POST /api/schedule
-Создать новую задачу.
-
-**Тело запроса:**
-```json
-{
-  "trigger": "cron",
-  "day_of_week": "0,2,4",
-  "time": "10:00",
-  "params": {
-    "area": "full",
-    "audio": "mic",
-    "duration": 3600
-  }
-}
-```
-
-#### DELETE /api/schedule/<task_id>
-Удалить задачу.
-
-#### GET /api/devices
-Получить список аудиоустройств.
-
-#### GET /api/windows
-Получить список окон для захвата.
-
-### Примеры curl
-
-Начать запись:
 ```bash
+# Start a recording
 curl -X POST http://localhost:5000/api/v1/start \
-  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
   -d '{"area":"full", "audio":"mic", "fps":30}'
-```
 
-Остановить запись:
-```bash
-curl -X POST http://localhost:5000/api/v1/stop
-```
+# Status
+curl -H "X-API-Key: your-api-key" http://localhost:5000/api/v1/status
 
-Получить статус:
-```bash
-curl http://localhost:5000/api/v1/status
-```
-
-Создать задачу планировщика:
-```bash
+# Create a cron schedule
 curl -X POST http://localhost:5000/api/v1/schedule \
-  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
   -d '{
     "trigger": "cron",
     "day_of_week": "mon,wed,fri",
     "time": "15:00",
-    "params": {
-      "area": "window",
-      "window_title": "Zoom",
-      "audio": "system",
-      "duration": 3600
-    }
+    "params": {"area": "window", "window_title": "Zoom", "audio": "system", "duration": 3600}
   }'
 ```
 
-## Архитектура
+## Architecture
+
+Layered architecture with a single public contract (`ApplicationFacade`, a `Protocol`) shared by the GUI, API, and CLI, and an `EventBus` for pub/sub notifications between them:
 
 ```
-MIA-ScreenCapture/
-├── main.py                 # Точка входа
-├── config.py               # Управление настройками
-├── logger_config.py        # Конфигурация логирования
-├── pyproject.toml          # Конфигурация проекта (UV/pip)
-├── requirements.txt        # Production зависимости
-├── requirements-dev.txt    # Dev зависимости
-├── recorder/
-│   ├── __init__.py
-│   ├── video_recorder.py   # Захват видео
-│   ├── audio_recorder.py   # Захват аудио
-│   ├── encoder.py          # Кодирование через FFmpeg
-│   └── utils.py            # Вспомогательные функции
-├── gui/
-│   ├── __init__.py
-│   ├── main_window.py      # Главное окно
-│   ├── tray_icon.py        # Иконка в трее
-│   └── scheduler_tab.py    # Вкладка планировщика
-├── api/
-│   ├── __init__.py
-│   ├── server.py           # Flask сервер
-│   ├── routes.py           # API эндпоинты
-│   └── schemas.py          # Pydantic схемы валидации
-├── scheduler/
-│   ├── __init__.py
-│   └── task_scheduler.py   # Планировщик задач
-├── cli/
-│   ├── __init__.py
-│   └── parser.py           # Парсер аргументов
-└── tests/                  # Тесты
-    ├── unit/
-    └── integration/
+CLI / API / GUI
+      │  commands
+      ▼
+ApplicationFacade (Protocol)
+      │  orchestration
+      ▼
+ApplicationService
+      ├── RecordingService  → RecordingBackend → recorder/
+      ├── TaskScheduler     → APScheduler
+      └── EventBus          → GUI / API / WebSocket / webhooks
 ```
 
-### Компоненты
+```
+api/            REST API: Flask routes, auth, rate limiting, idempotency,
+                circuit breaker, WebSocket transport, Swagger
+app_runtime/    Thin runtime coordinators between core/ and GUI/API
+cli/            argparse-based CLI and scheduler subcommands
+core/           Domain layer: event bus, DI container, lifecycle, facade
+gui/            PyQt6 GUI (MVC: views/controllers/models, backends, styles)
+recorder/       Physical capture: Windows Graphics Capture, sounddevice,
+                FFmpeg encoding, crash recovery, segment rollover
+scheduler/      APScheduler-based task scheduling and persistence
+tests/          79+ unit tests, 11+ integration tests
+```
 
-1. **VideoRecorder** - захват экрана с помощью Windows Graphics Capture (`windows-capture` библиотека)
-2. **AudioRecorder** - захват звука через sounddevice
-3. **Encoder** - объединение видео и аудио через FFmpeg
-4. **MainWindow** - главное окно приложения на PyQt6
-5. **TrayIcon** - иконка в системном трее
-6. **APIServer** - REST API сервер на Flask с versioning
-7. **TaskScheduler** - планировщик задач на APScheduler
+## Configuration
 
-## Логирование
-
-Логи сохраняются в папку `logs/recorder.log` с ротацией по размеру (5 MB, 5 файлов).
-
-## Конфигурация
-
-Настройки сохраняются в `config/config.json`:
+Settings are persisted to `config/config.json`:
 
 ```json
 {
-  "video": {
-    "fps": 30,
-    "codec": "libx264",
-    "bitrate": "2M",
-    "format": "mp4"
-  },
-  "audio": {
-    "record_mic": true,
-    "sample_rate": 44100,
-    "channels": 2
-  },
-  "api": {
-    "enabled": true,
-    "host": "127.0.0.1",
-    "port": 5000,
-    "api_key": "your-secret-api-key"
-  }
+  "video": { "fps": 30, "codec": "libx264", "bitrate": "2M", "format": "mp4" },
+  "audio": { "record_mic": true, "sample_rate": 44100, "channels": 2 },
+  "api": { "enabled": true, "host": "127.0.0.1", "port": 5000, "api_key": null }
 }
 ```
 
-## Известные ограничения
+The API key can also come from the `MIA_API_KEY` environment variable or Windows Credential Manager (target name `MIA-ScreenCapture/APIKey`).
 
-1. **Платформа**: Windows 10/11 только (Windows Graphics Capture API)
+## Development
 
-2. **Системный звук**:
-   - Windows: Требует наличия устройства "Stereo Mix" или loopback
-
-3. **Захват окон**:
-   - Работает с большинством приложений Windows
-   - Некоторые защищённые окна (DRM контент) не захватываются
-
-4. **Кодирование**:
-   - OpenCV используется для предварительной записи
-   - FFmpeg применяется для финального кодирования
-
-## Решение проблем
-
-### FFmpeg не найден
-Убедитесь, что FFmpeg установлен и добавлен в PATH:
 ```bash
-ffmpeg -version
+uv sync                                    # install dev dependencies
+
+uv run pytest                              # all tests
+uv run pytest tests/unit/                  # unit tests only
+uv run pytest --cov=. --cov-report=html    # with coverage
+
+uv run ruff check .                        # lint
+uv run ruff format .                       # format
+uv run mypy .                              # type-check
 ```
 
-### Нет звука при записи
-1. Проверьте, что микрофон включен в настройках системы
-2. Выберите правильное устройство ввода в GUI
-3. Для системного звука убедитесь, что настроено соответствующее устройство
+Pre-commit hooks (ruff, mypy) are configured in `.pre-commit-config.yaml`:
 
-### Ошибка при кодировании
-1. Проверьте наличие свободного места на диске
-2. Убедитесь, что FFmpeg корректно установлен
-3. Проверьте логи в `logs/recorder.log`
+```bash
+uv run pre-commit install
+```
 
-## Лицензия
+## Troubleshooting
 
-MIT License
+**FFmpeg not found** — confirm `ffmpeg -version` works and FFmpeg is on `PATH`.
 
-## Автор
+**No audio in the recording** — check the system microphone settings, pick the correct input device in the GUI, and confirm a loopback/"Stereo Mix" device exists for system audio.
 
-Chelischev Vyacheslav [@ChelSlava](https://github.com/chelslava)
+**Encoding errors** — check free disk space, confirm FFmpeg is installed correctly, and inspect `logs/recorder.log`.
+
+## Known Limitations
+
+- Windows 10/11 only (Windows Graphics Capture API dependency)
+- Some DRM-protected windows cannot be captured
+- System audio capture requires a loopback ("Stereo Mix") device
+- No RTMP/HLS streaming or cloud storage integration
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history and [GitHub Issues](https://github.com/chelslava/MIA-ScreenCapture/issues) for the roadmap.
+
+## License
+
+[MIT](LICENSE)
+
+## Author
+
+Vyacheslav Chelischev — [@chelslava](https://github.com/chelslava)
