@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from exceptions import AudioCaptureError, AudioError
 from logger_config import get_module_logger
@@ -27,6 +27,42 @@ logger = get_module_logger(__name__)
 
 _AUDIO_QUEUE_MAX_CHUNKS = 256
 _AUDIO_QUEUE_GET_TIMEOUT_SECONDS = 0.1
+
+
+class _PyAudioStreamProtocol(Protocol):
+    """
+    Минимальный интерфейс `pyaudio.Stream`, используемый `AudioRecorder`.
+
+    `pyaudio` не поставляет type stubs (нет `py.typed`), поэтому реальные
+    объекты библиотеки типизируются mypy как `Any` — Protocol описывает
+    только реально используемые здесь методы, не требуя стабов.
+    """
+
+    def read(
+        self, num_frames: int, exception_on_overflow: bool = ...
+    ) -> bytes:
+        """Читает блок аудио-данных из потока."""
+        ...
+
+    def stop_stream(self) -> None:
+        """Останавливает поток."""
+        ...
+
+    def close(self) -> None:
+        """Закрывает поток."""
+        ...
+
+
+class _PyAudioInterfaceProtocol(Protocol):
+    """Минимальный интерфейс `pyaudio.PyAudio`, используемый `AudioRecorder`."""
+
+    def open(self, **kwargs: Any) -> _PyAudioStreamProtocol:
+        """Открывает новый аудиопоток."""
+        ...
+
+    def terminate(self) -> None:
+        """Завершает работу с PyAudio и освобождает ресурсы."""
+        ...
 
 
 class AudioState(Enum):
@@ -91,8 +127,8 @@ class AudioRecorder:
 
         # Информация о записи
         self._output_path: Path | None = None
-        self._audio_interface = None
-        self._audio_stream = None
+        self._audio_interface: _PyAudioInterfaceProtocol | None = None
+        self._audio_stream: _PyAudioStreamProtocol | None = None
         self._wave_file: wave.Wave_write | None = None
 
         # Статистика
@@ -273,7 +309,7 @@ class AudioRecorder:
             self._audio_interface = pyaudio.PyAudio()
 
             # Открытие потока
-            self._audio_stream = self._audio_interface.open(  # type: ignore[attr-defined]
+            self._audio_stream = self._audio_interface.open(
                 format=pyaudio.paInt16,
                 channels=self.config.channels,
                 rate=self.config.sample_rate,

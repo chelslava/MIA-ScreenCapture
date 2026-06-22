@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import IO, Any, TypeVar
 
 import numpy as np
 
@@ -239,7 +239,7 @@ class FFmpegVideoWriter:
         self._start_time = 0.0
         self._stderr_tail: deque[str] = deque(maxlen=_FFMPEG_STDERR_TAIL_LINES)
         self._stderr_reader: threading.Thread | None = None
-        self._stderr_stream: Any | None = None
+        self._stderr_stream: IO[bytes] | None = None
         self._is_corrupted = False
 
         self._current_segment_path = self._output_path
@@ -787,7 +787,7 @@ class FFmpegVideoWriter:
                     [str(p) for p in self.segment_paths],
                 )
 
-    def _start_stderr_reader(self, stream: Any | None) -> None:
+    def _start_stderr_reader(self, stream: IO[bytes] | None) -> None:
         """
         Запуск фонового чтения stderr.
 
@@ -834,7 +834,7 @@ class FFmpegVideoWriter:
                     _FFMPEG_STDERR_READER_JOIN_TIMEOUT_SECONDS,
                 )
 
-    def _read_stderr(self, stream: Any) -> None:
+    def _read_stderr(self, stream: IO[bytes]) -> None:
         """
         Чтение stderr FFmpeg в фоновом потоке.
 
@@ -843,14 +843,17 @@ class FFmpegVideoWriter:
         """
         try:
             while self._process is not None:
-                line = stream.readline()
-                if not line:
+                raw_line = stream.readline()
+                if not raw_line:
                     break
 
-                if isinstance(line, bytes):
-                    line = line.decode("utf-8", errors="replace")
+                text_line = (
+                    raw_line.decode("utf-8", errors="replace")
+                    if isinstance(raw_line, bytes)
+                    else raw_line
+                )
 
-                cleaned_line = line.rstrip("\r\n")
+                cleaned_line = text_line.rstrip("\r\n")
                 with self._lock:
                     self._stderr_tail.append(cleaned_line)
         except Exception as e:
