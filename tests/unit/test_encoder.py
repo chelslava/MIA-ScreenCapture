@@ -177,7 +177,7 @@ class TestEncoder:
             )
             # Создаём выходной файл для проверки
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.touch()
+            output_path.write_bytes(b"data")
 
             success, error = encoder.merge_video_audio(
                 video_path, audio_path, output_path
@@ -200,7 +200,7 @@ class TestEncoder:
                 returncode=0, stderr="", stdout=""
             )
             # Создаём выходной файл для имитации успешного объединения
-            output_path.touch()
+            output_path.write_bytes(b"data")
 
             success, error = encoder.merge_video_audio(
                 video_path, audio_path, output_path
@@ -269,7 +269,7 @@ class TestEncoder:
             mock_run.return_value = MagicMock(
                 returncode=0, stderr="", stdout=""
             )
-            output_path.touch()
+            output_path.write_bytes(b"data")
 
             success, error = encoder.merge_video_audio(
                 video_path,
@@ -296,7 +296,7 @@ class TestEncoder:
             mock_run.return_value = MagicMock(
                 returncode=0, stderr="", stdout=""
             )
-            output_path.touch()
+            output_path.write_bytes(b"data")
 
             success, error = encoder.merge_video_audio(
                 video_path,
@@ -332,6 +332,29 @@ class TestEncoder:
         assert success is False
         assert "не был создан" in error
 
+    def test_merge_video_audio_output_empty(
+        self, encoder: Encoder, tmp_path: Path
+    ) -> None:
+        """Проверка когда выходной файл создан, но пуст (0 байт)."""
+        video_path = tmp_path / "video.mp4"
+        video_path.touch()
+        audio_path = tmp_path / "audio.wav"
+        audio_path.touch()
+        output_path = tmp_path / "output.mp4"
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stderr="", stdout=""
+            )
+            output_path.touch()  # 0 байт
+
+            success, error = encoder.merge_video_audio(
+                video_path, audio_path, output_path
+            )
+
+        assert success is False
+        assert "пуст" in error
+
     def test_encode_video_success(
         self, encoder: Encoder, tmp_path: Path
     ) -> None:
@@ -344,7 +367,7 @@ class TestEncoder:
             mock_run.return_value = MagicMock(
                 returncode=0, stderr="", stdout=""
             )
-            output_path.touch()
+            output_path.write_bytes(b"data")
 
             success, error = encoder.encode_video(input_path, output_path)
 
@@ -363,6 +386,44 @@ class TestEncoder:
         assert success is False
         assert "не найден" in error
 
+    def test_encode_video_output_not_created(
+        self, encoder: Encoder, tmp_path: Path
+    ) -> None:
+        """Проверка перекодирования когда выходной файл не был создан."""
+        input_path = tmp_path / "input.mp4"
+        input_path.touch()
+        output_path = tmp_path / "output.mp4"
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stderr="", stdout=""
+            )
+            # Не создаём выходной файл
+
+            success, error = encoder.encode_video(input_path, output_path)
+
+        assert success is False
+        assert "не был создан" in error
+
+    def test_encode_video_output_empty(
+        self, encoder: Encoder, tmp_path: Path
+    ) -> None:
+        """Проверка перекодирования когда выходной файл создан, но пуст."""
+        input_path = tmp_path / "input.mp4"
+        input_path.touch()
+        output_path = tmp_path / "output.mp4"
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0, stderr="", stdout=""
+            )
+            output_path.touch()  # 0 байт
+
+            success, error = encoder.encode_video(input_path, output_path)
+
+        assert success is False
+        assert "пуст" in error
+
     def test_encode_video_with_custom_settings(
         self, encoder: Encoder, tmp_path: Path
     ) -> None:
@@ -379,7 +440,7 @@ class TestEncoder:
             mock_run.return_value = MagicMock(
                 returncode=0, stderr="", stdout=""
             )
-            output_path.touch()
+            output_path.write_bytes(b"data")
 
             success, error = encoder.encode_video(
                 input_path, output_path, settings=custom_settings
@@ -596,7 +657,7 @@ class TestEncoderAdditionalMethods:
             mock_run.return_value = MagicMock(
                 returncode=0, stderr="", stdout=""
             )
-            output_path.touch()
+            output_path.write_bytes(b"data")
 
             encoder.merge_video_audio(video_path, audio_path, output_path)
 

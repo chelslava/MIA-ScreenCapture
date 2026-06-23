@@ -175,6 +175,11 @@ class Encoder:
             # Проверка вывода
             if not output_path.exists():
                 return False, "Выходной файл не был создан"
+            try:
+                if output_path.stat().st_size == 0:
+                    return False, "Выходной файл пуст"
+            except OSError:
+                pass
 
             # Удаление оригиналов если запрошено
             if not keep_originals:
@@ -266,6 +271,14 @@ class Encoder:
                     False,
                     result.stderr_tail or "Неизвестная ошибка FFmpeg",
                 )
+
+            if not output_path.exists():
+                return False, "Выходной файл не был создан"
+            try:
+                if output_path.stat().st_size == 0:
+                    return False, "Выходной файл пуст"
+            except OSError:
+                pass
 
             return True, None
 
