@@ -5,12 +5,47 @@
 Определяет Pydantic модели для валидации входных данных API запросов.
 """
 
+import ipaddress
 import re
+import socket
 from datetime import UTC, datetime
 from typing import Literal, Optional
+from urllib.parse import urlparse
 
 import tzlocal
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def _is_private_or_reserved_host(hostname: str) -> bool:
+    """
+    Проверяет, ведёт ли хост на приватную/служебную сеть (защита от SSRF).
+
+    Хост считается небезопасным, если сам является приватным/loopback/
+    link-local/reserved/multicast IP-адресом, либо резолвится (любой из
+    адресов DNS-ответа) в такой адрес. Хост, который не удалось
+    зарезолвить, тоже считается небезопасным (fail closed) — иначе нельзя
+    дать гарантию, что итоговый IP не приватный.
+    """
+    try:
+        addresses = [ipaddress.ip_address(hostname)]
+    except ValueError:
+        try:
+            addresses = [
+                ipaddress.ip_address(info[4][0])
+                for info in socket.getaddrinfo(hostname, None)
+            ]
+        except (OSError, ValueError):
+            return True
+
+    return any(
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+        for addr in addresses
+    )
 
 
 class FilePathRequest(BaseModel):
@@ -452,6 +487,12 @@ class ConfigureWebhookRequest(BaseModel):
     enabled: bool = Field(
         default=False, description="Включить отправку webhook-уведомлений"
     )
+    allow_private_network: bool = Field(
+        default=False,
+        description="Разрешить приватные/internal-адреса в URL webhook "
+        "(локальная разработка/тесты); по умолчанию запрещено из-за "
+        "риска SSRF",
+    )
 
     @field_validator("url")
     @classmethod
@@ -465,6 +506,21 @@ class ConfigureWebhookRequest(BaseModel):
         if not normalized.startswith(("http://", "https://")):
             raise ValueError("URL должен начинаться с http:// или https://")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_url_not_private(self) -> "ConfigureWebhookRequest":
+        """Запрещает приватные/internal-адреса в URL webhook (SSRF, #73)."""
+        if self.url is None or self.allow_private_network:
+            return self
+
+        hostname = urlparse(self.url).hostname
+        if hostname and _is_private_or_reserved_host(hostname):
+            raise ValueError(
+                "URL webhook не может указывать на приватный/internal "
+                "адрес (риск SSRF); для локальной разработки передайте "
+                "allow_private_network=true"
+            )
+        return self
 
 
 class UpdateConfigRequest(BaseModel):

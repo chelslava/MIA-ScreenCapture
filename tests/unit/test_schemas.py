@@ -5,12 +5,15 @@
 Проверяет Pydantic модели валидации в api/schemas.py.
 """
 
+import socket
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
 
 from api.schemas import (
+    ConfigureWebhookRequest,
     CreateScheduleRequest,
     StartRecordingRequest,
     ToggleScheduleRequest,
@@ -365,6 +368,79 @@ class TestToggleScheduleRequest:
         request = ToggleScheduleRequest(enabled=False)
 
         assert request.enabled is False
+
+
+class TestConfigureWebhookRequest:
+    """Тесты для схемы ConfigureWebhookRequest (защита от SSRF, #73)."""
+
+    def test_public_url_accepted(self):
+        """Публичный URL проходит валидацию."""
+        request = ConfigureWebhookRequest(url="https://example.com/hook")
+
+        assert request.url == "https://example.com/hook"
+
+    def test_loopback_ip_rejected(self):
+        """IPv4 loopback (127.0.0.1) отклоняется."""
+        with pytest.raises(ValidationError):
+            ConfigureWebhookRequest(url="http://127.0.0.1:9000/hook")
+
+    def test_link_local_cloud_metadata_rejected(self):
+        """Link-local адрес облачных метаданных (169.254.169.254) отклоняется."""
+        with pytest.raises(ValidationError):
+            ConfigureWebhookRequest(
+                url="http://169.254.169.254/latest/meta-data"
+            )
+
+    def test_ipv6_loopback_rejected(self):
+        """IPv6 loopback (::1) отклоняется."""
+        with pytest.raises(ValidationError):
+            ConfigureWebhookRequest(url="http://[::1]:9000/hook")
+
+    def test_private_ipv4_rejected(self):
+        """Приватный диапазон (192.168.0.0/16) отклоняется."""
+        with pytest.raises(ValidationError):
+            ConfigureWebhookRequest(url="http://192.168.1.10/hook")
+
+    def test_hostname_resolving_to_private_ip_rejected(self):
+        """Хост, резолвящийся в приватный IP через DNS, отклоняется."""
+        fake_addrinfo = [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                6,
+                "",
+                ("10.0.0.5", 0),
+            )
+        ]
+        with patch(
+            "api.schemas.socket.getaddrinfo", return_value=fake_addrinfo
+        ):
+            with pytest.raises(ValidationError):
+                ConfigureWebhookRequest(url="http://internal.example.com/hook")
+
+    def test_dns_resolution_failure_rejected(self):
+        """Хост, который не удалось зарезолвить, отклоняется (fail closed)."""
+        with patch(
+            "api.schemas.socket.getaddrinfo",
+            side_effect=socket.gaierror("not found"),
+        ):
+            with pytest.raises(ValidationError):
+                ConfigureWebhookRequest(url="http://unresolvable.invalid/hook")
+
+    def test_allow_private_network_bypasses_check(self):
+        """allow_private_network=True разрешает приватный адрес (dev/тесты)."""
+        request = ConfigureWebhookRequest(
+            url="http://127.0.0.1:9000/hook",
+            allow_private_network=True,
+        )
+
+        assert request.url == "http://127.0.0.1:9000/hook"
+
+    def test_none_url_skips_private_check(self):
+        """Отсутствующий URL не запускает проверку приватных адресов."""
+        request = ConfigureWebhookRequest(url=None)
+
+        assert request.url is None
 
 
 class TestUpdateConfigRequest:
