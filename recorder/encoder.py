@@ -433,7 +433,9 @@ class Encoder:
                 )
 
             if result.returncode == 0:
-                return json.loads(result.stdout)  # type: ignore[no-any-return]
+                data = json.loads(result.stdout)
+                if isinstance(data, dict):
+                    return data
 
         except Exception as e:
             logger.error(f"Ошибка получения информации о видео: {e}")
