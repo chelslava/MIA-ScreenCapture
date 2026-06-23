@@ -124,6 +124,8 @@ class APISettingsSchema(BaseModel):
     webhook_url: str | None = Field(default=None)
     webhook_secret: str | None = Field(default=None)
     webhook_enabled: bool = Field(default=False)
+    # Доверять X-Forwarded-For/X-Real-IP только за доверенным reverse-proxy
+    trust_proxy_headers: bool = Field(default=False)
 
     @field_validator("api_key", mode="before")
     @classmethod
@@ -240,6 +242,7 @@ class APISettings:
     webhook_url: str | None = None
     webhook_secret: str | None = None
     webhook_enabled: bool = False
+    trust_proxy_headers: bool = False
 
 
 @dataclass

@@ -64,6 +64,8 @@ class RateLimitConfig:
     enabled: bool = True
     # IP-адреса без ограничений
     whitelist: list[str] = field(default_factory=list)
+    # Доверять X-Forwarded-For/X-Real-IP только за доверенным reverse-proxy
+    trust_proxy_headers: bool = False
 
 
 @dataclass
@@ -108,6 +110,12 @@ class InMemoryRateLimiter:
 
     def _get_client_ip(self) -> str:
         """Получение IP-адреса клиента с валидацией."""
+        # Без доверенного reverse-proxy заголовки клиента не заслуживают
+        # доверия — любой клиент может подставить в них чужой IP и обойти
+        # per-IP лимиты (см. issue #74).
+        if not self.config.trust_proxy_headers:
+            return request.remote_addr or "unknown"
+
         # Проверка заголовков прокси с валидацией
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:

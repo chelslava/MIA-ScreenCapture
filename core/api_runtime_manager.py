@@ -177,6 +177,9 @@ class ApiRuntimeManager:
                 port=api_config.get("port", 5000),
                 server_threads=api_config.get("server_threads", 4),
                 api_key=api_config.get("api_key"),
+                trust_proxy_headers=api_config.get(
+                    "trust_proxy_headers", False
+                ),
             )
             self._host.set_api_server_instance(api_server)
             self.sync_api_key_env(api_config.get("api_key"))
@@ -220,6 +223,7 @@ class ApiRuntimeManager:
                 "port": config_api.port,
                 "server_threads": config_api.server_threads,
                 "api_key": self.get_effective_api_key(),
+                "trust_proxy_headers": config_api.trust_proxy_headers,
             }
 
         return {
@@ -231,6 +235,9 @@ class ApiRuntimeManager:
                 config_api.server_threads,
             ),
             "api_key": self.get_effective_api_key(),
+            "trust_proxy_headers": cli_api.get(
+                "trust_proxy_headers", config_api.trust_proxy_headers
+            ),
         }
 
     def get_api_status(self) -> dict[str, Any]:
@@ -255,6 +262,7 @@ class ApiRuntimeManager:
             "port": config_api.port,
             "server_threads": config_api.server_threads,
             "api_key": effective_api_key,
+            "trust_proxy_headers": config_api.trust_proxy_headers,
         }
         runtime_status["log_dir"] = str(get_api_log_dir())
         runtime_status["lifecycle_state"] = self._get_lifecycle_state()

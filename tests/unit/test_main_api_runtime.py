@@ -50,11 +50,13 @@ class FakeApiServer:
         port: int = 5000,
         server_threads: int = 4,
         api_key: str | None = None,
+        trust_proxy_headers: bool = False,
     ) -> None:
         self.host = host
         self.port = port
         self.server_threads = server_threads
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
+        self.trust_proxy_headers = trust_proxy_headers
         self.app = SimpleNamespace(name="fake-app")
         self.callbacks: dict[str, object] = {}
         self.websocket_manager: object | None = None
@@ -135,6 +137,7 @@ def _build_app(
         port=port,
         server_threads=server_threads,
         api_key=api_key,
+        trust_proxy_headers=False,
     )
     fake_config = SimpleNamespace(
         settings=SimpleNamespace(

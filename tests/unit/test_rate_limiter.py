@@ -30,6 +30,7 @@ class TestRateLimitConfig:
         assert config.block_duration == 10
         assert config.enabled is True
         assert config.whitelist == []
+        assert config.trust_proxy_headers is False
 
     def test_custom_values(self):
         """Тест пользовательских значений."""
@@ -248,8 +249,9 @@ class TestInMemoryRateLimiter:
                 assert allowed is True
 
     def test_x_forwarded_for_header(self, app):
-        """Тест обработки заголовка X-Forwarded-For."""
-        limiter = InMemoryRateLimiter()
+        """X-Forwarded-For учитывается только при trust_proxy_headers=True."""
+        config = RateLimitConfig(trust_proxy_headers=True)
+        limiter = InMemoryRateLimiter(config)
 
         with app.test_request_context(
             headers={"X-Forwarded-For": "203.0.113.1, 70.41.3.18"}
@@ -258,12 +260,53 @@ class TestInMemoryRateLimiter:
             assert ip == "203.0.113.1"
 
     def test_x_real_ip_header(self, app):
-        """Тест обработки заголовка X-Real-IP."""
-        limiter = InMemoryRateLimiter()
+        """X-Real-IP учитывается только при trust_proxy_headers=True."""
+        config = RateLimitConfig(trust_proxy_headers=True)
+        limiter = InMemoryRateLimiter(config)
 
         with app.test_request_context(headers={"X-Real-IP": "198.51.100.1"}):
             ip = limiter._get_client_ip()
             assert ip == "198.51.100.1"
+
+    def test_x_forwarded_for_ignored_by_default(self, app):
+        """
+        Без доверенного proxy заголовок X-Forwarded-For не используется
+        (#74) — клиент не может подменить IP для обхода rate limit.
+        """
+        limiter = InMemoryRateLimiter()
+
+        with app.test_request_context(
+            headers={"X-Forwarded-For": "203.0.113.1, 70.41.3.18"},
+            environ_base={"REMOTE_ADDR": "192.0.2.50"},
+        ):
+            ip = limiter._get_client_ip()
+            assert ip == "192.0.2.50"
+
+    def test_x_real_ip_ignored_by_default(self, app):
+        """Без доверенного proxy X-Real-IP не используется (#74)."""
+        limiter = InMemoryRateLimiter()
+
+        with app.test_request_context(
+            headers={"X-Real-IP": "198.51.100.1"},
+            environ_base={"REMOTE_ADDR": "192.0.2.51"},
+        ):
+            ip = limiter._get_client_ip()
+            assert ip == "192.0.2.51"
+
+    def test_trust_proxy_headers_still_validates_ip(self, app):
+        """
+        trust_proxy_headers=True не отключает валидацию IP — невалидное
+        значение в заголовке всё равно отбрасывается в пользу remote_addr.
+        """
+        config = RateLimitConfig(trust_proxy_headers=True)
+        limiter = InMemoryRateLimiter(config)
+
+        with app.test_request_context(
+            headers={"X-Forwarded-For": "not-an-ip"},
+            environ_base={"REMOTE_ADDR": "192.0.2.52"},
+        ):
+            ip = limiter._get_client_ip()
+            assert ip == "192.0.2.52"
 
     def test_blocked_client(self, app):
         """Тест блокировки клиента."""

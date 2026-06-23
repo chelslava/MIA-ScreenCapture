@@ -122,6 +122,7 @@ class APIServer:
         port: int = 5000,
         server_threads: int = 4,
         api_key: str | None = None,
+        trust_proxy_headers: bool = False,
     ):
         """
         Инициализация API сервера.
@@ -131,6 +132,9 @@ class APIServer:
             port: Номер порта для прослушивания
             server_threads: Количество потоков waitress
             api_key: Токен API для аутентификации
+            trust_proxy_headers: Доверять X-Forwarded-For/X-Real-IP при
+                определении IP клиента для rate limiting (включать только
+                за доверенным reverse-proxy, см. #74)
 
         Raises:
             Не выбрасывает собственных исключений — создание Flask
@@ -142,6 +146,7 @@ class APIServer:
         self.port = port
         self.server_threads = max(1, int(server_threads))
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
+        self.trust_proxy_headers = trust_proxy_headers
         _patch_waitress_shutdown_for_windows()
 
         # Flask приложение
@@ -171,7 +176,7 @@ class APIServer:
     def _create_app(self) -> None:
         """Создание и настройка Flask приложения."""
         from api.auth import init_api_auth
-        from api.rate_limiter import init_rate_limiter
+        from api.rate_limiter import RateLimitConfig, init_rate_limiter
 
         self.app = Flask(__name__)
         CORS(
@@ -188,7 +193,10 @@ class APIServer:
         # Инициализация API аутентификации
         self.api_key = init_api_auth(self.app, self.api_key)
         # Инициализация rate limiter (применяется декораторами в routes.py)
-        init_rate_limiter(self.app)
+        init_rate_limiter(
+            self.app,
+            RateLimitConfig(trust_proxy_headers=self.trust_proxy_headers),
+        )
 
         # Логирование API ключа для пользователя (частично, для безопасности)
         api_key = self.get_api_key()
