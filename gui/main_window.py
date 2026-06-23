@@ -191,8 +191,8 @@ class MainWindow(QMainWindow):
     def _setup_window(self) -> None:
         """Настройка свойств окна."""
         self.setWindowTitle("MIA-ScreenCapture")
-        self.setMinimumSize(700, 500)
-        self.resize(800, 600)
+        self.setMinimumSize(900, 650)
+        self.resize(1000, 750)
 
         # Центрирование на экране
         from PyQt6.QtGui import QGuiApplication
