@@ -7,7 +7,9 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
-from gui import scheduler_tab
+from PyQt6.QtCore import QDate, QTime
+from PyQt6.QtWidgets import QDialog, QMessageBox
+
 from gui.scheduler import scheduler_tab as scheduler_tab_impl
 from gui.scheduler import task_dialog as task_dialog_module
 from scheduler.task_scheduler import (
@@ -187,9 +189,11 @@ def _make_task(
     )
 
 
-def _build_scheduler_tab() -> scheduler_tab.SchedulerTab:
+def _build_scheduler_tab() -> scheduler_tab_impl.SchedulerTab:
     """Создаёт SchedulerTab без вызова Qt-инициализации."""
-    tab = scheduler_tab.SchedulerTab.__new__(scheduler_tab.SchedulerTab)
+    tab = scheduler_tab_impl.SchedulerTab.__new__(
+        scheduler_tab_impl.SchedulerTab
+    )
     tab._tasks = []
     tab.table = _FakeTable()
     tab.add_btn = _FakeButton()
@@ -202,11 +206,6 @@ def _build_scheduler_tab() -> scheduler_tab.SchedulerTab:
     tab.task_deleted = _Emitter()
     tab.task_toggled = _Emitter()
     return tab
-
-
-def test_scheduler_tab_module_exists() -> None:
-    """Проверка доступности модуля."""
-    assert scheduler_tab is not None
 
 
 def test_selection_changes_button_states() -> None:
@@ -230,7 +229,7 @@ def test_scheduler_tab_accessibility_metadata_is_assigned() -> None:
     """Ключевые controls планировщика получают accessibility metadata."""
     tab = _build_scheduler_tab()
 
-    scheduler_tab.SchedulerTab._apply_accessibility_metadata(tab)
+    scheduler_tab_impl.SchedulerTab._apply_accessibility_metadata(tab)
 
     assert tab.add_btn._accessible_name == "Добавить задачу планировщика"
     assert tab.edit_btn._accessible_name == "Редактировать задачу планировщика"
@@ -253,7 +252,7 @@ def test_add_task_emits_task_created(monkeypatch) -> None:
     tab = _build_scheduler_tab()
     payload = {"name": "Created Task", "schedule_type": ScheduleType.ONCE}
     monkeypatch.setattr(
-        scheduler_tab.QDialog,
+        QDialog,
         "DialogCode",
         SimpleNamespace(Accepted=1),
         raising=False,
@@ -264,7 +263,7 @@ def test_add_task_emits_task_created(monkeypatch) -> None:
             return None
 
         def exec(self) -> int:  # noqa: A003
-            return scheduler_tab.QDialog.DialogCode.Accepted
+            return QDialog.DialogCode.Accepted
 
         def get_task_data(self) -> dict[str, Any]:
             return payload
@@ -283,7 +282,7 @@ def test_edit_task_emits_task_updated_with_id(monkeypatch) -> None:
     tab.table.setCurrentRow(0)
     payload = {"name": "Updated"}
     monkeypatch.setattr(
-        scheduler_tab.QDialog,
+        QDialog,
         "DialogCode",
         SimpleNamespace(Accepted=1),
         raising=False,
@@ -294,7 +293,7 @@ def test_edit_task_emits_task_updated_with_id(monkeypatch) -> None:
             assert task is existing
 
         def exec(self) -> int:  # noqa: A003
-            return scheduler_tab.QDialog.DialogCode.Accepted
+            return QDialog.DialogCode.Accepted
 
         def get_task_data(self) -> dict[str, Any]:
             return dict(payload)
@@ -313,9 +312,9 @@ def test_delete_task_emits_task_deleted_on_confirm_yes(monkeypatch) -> None:
     tab.table.setCurrentRow(0)
 
     monkeypatch.setattr(
-        scheduler_tab.QMessageBox,
+        QMessageBox,
         "question",
-        lambda *args, **kwargs: scheduler_tab.QMessageBox.StandardButton.Yes,
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
     )
     tab._delete_task()
 
@@ -361,7 +360,9 @@ def test_format_schedule_for_weekly() -> None:
 
 def test_task_dialog_get_task_data_for_weekly() -> None:
     """TaskDialog возвращает expected payload для weekly."""
-    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog = task_dialog_module.TaskDialog.__new__(
+        task_dialog_module.TaskDialog
+    )
     dialog.name_edit = SimpleNamespace(text=lambda: "Weekly task")
     dialog.type_combo = SimpleNamespace(currentIndex=lambda: 2)
     dialog.area_combo = SimpleNamespace(currentIndex=lambda: 0)
@@ -401,7 +402,9 @@ def test_task_dialog_get_task_data_for_weekly() -> None:
 
 def test_task_dialog_accept_rejects_weekly_without_days(monkeypatch) -> None:
     """Диалог блокирует weekly без выбранных дней."""
-    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog = task_dialog_module.TaskDialog.__new__(
+        task_dialog_module.TaskDialog
+    )
     dialog.type_combo = SimpleNamespace(currentIndex=lambda: 2)
     dialog.day_checks = [SimpleNamespace(isChecked=lambda: False)] * 7
     dialog.interval_hours = SimpleNamespace(value=lambda: 1)
@@ -410,7 +413,7 @@ def test_task_dialog_accept_rejects_weekly_without_days(monkeypatch) -> None:
 
     warning_calls: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
-        scheduler_tab.QMessageBox,
+        QMessageBox,
         "warning",
         lambda *args: warning_calls.append(args),
     )
@@ -423,7 +426,9 @@ def test_task_dialog_accept_rejects_weekly_without_days(monkeypatch) -> None:
 
 def test_task_dialog_accept_rejects_zero_interval(monkeypatch) -> None:
     """Диалог блокирует interval с нулевым интервалом."""
-    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog = task_dialog_module.TaskDialog.__new__(
+        task_dialog_module.TaskDialog
+    )
     dialog.type_combo = SimpleNamespace(currentIndex=lambda: 3)
     dialog.day_checks = [SimpleNamespace(isChecked=lambda: True)] * 7
     dialog.interval_hours = SimpleNamespace(value=lambda: 0)
@@ -432,7 +437,7 @@ def test_task_dialog_accept_rejects_zero_interval(monkeypatch) -> None:
 
     warning_calls: list[tuple[Any, ...]] = []
     monkeypatch.setattr(
-        scheduler_tab.QMessageBox,
+        QMessageBox,
         "warning",
         lambda *args: warning_calls.append(args),
     )
@@ -445,7 +450,9 @@ def test_task_dialog_accept_rejects_zero_interval(monkeypatch) -> None:
 
 def test_task_dialog_validate_schedule_inputs_for_once_in_past() -> None:
     """Разовая задача в прошлом должна валидироваться до submit."""
-    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog = task_dialog_module.TaskDialog.__new__(
+        task_dialog_module.TaskDialog
+    )
     dialog.type_combo = SimpleNamespace(currentIndex=lambda: 0)
     dialog.day_checks = [SimpleNamespace(isChecked=lambda: True)] * 7
     dialog.interval_hours = SimpleNamespace(value=lambda: 1)
@@ -453,17 +460,15 @@ def test_task_dialog_validate_schedule_inputs_for_once_in_past() -> None:
     dialog.cron_edit = SimpleNamespace(text=lambda: "")
     past_time = datetime.now() - timedelta(days=1)
     dialog.date_edit = _DialogDateEdit(
-        scheduler_tab.QDate(
+        QDate(
             past_time.year,
             past_time.month,
             past_time.day,
         )
     )
-    dialog.time_edit = _DialogTimeEdit(
-        scheduler_tab.QTime(past_time.hour, past_time.minute)
-    )
+    dialog.time_edit = _DialogTimeEdit(QTime(past_time.hour, past_time.minute))
 
-    error = scheduler_tab.TaskDialog._validate_schedule_inputs(dialog)
+    error = task_dialog_module.TaskDialog._validate_schedule_inputs(dialog)
 
     assert error is not None
     assert "будущем" in error.lower()
@@ -482,10 +487,12 @@ def test_task_dialog_apply_preset_sets_fields_and_params(
         ),
     )
 
-    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog = task_dialog_module.TaskDialog.__new__(
+        task_dialog_module.TaskDialog
+    )
     dialog.type_combo = _DialogCombo()
     dialog.name_edit = _DialogLineEdit()
-    dialog.time_edit = _DialogTimeEdit(scheduler_tab.QTime(0, 0))
+    dialog.time_edit = _DialogTimeEdit(QTime(0, 0))
     dialog.day_checks = [_DialogCheck() for _ in range(7)]
     dialog.interval_hours = _DialogSpin()
     dialog.interval_minutes = _DialogSpin()
@@ -496,7 +503,7 @@ def test_task_dialog_apply_preset_sets_fields_and_params(
     dialog.duration_unit_combo = _DialogCombo()
     dialog._refresh_schedule_preview = lambda: None
 
-    scheduler_tab.TaskDialog._apply_preset(
+    task_dialog_module.TaskDialog._apply_preset(
         dialog,
         {
             "name": "Еженедельная встреча",
@@ -532,7 +539,9 @@ def test_task_dialog_apply_preset_sets_fields_and_params(
 
 def test_task_dialog_refresh_schedule_preview_updates_labels() -> None:
     """Preview должен показывать рассчитанные запуски и next_run задачи."""
-    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog = task_dialog_module.TaskDialog.__new__(
+        task_dialog_module.TaskDialog
+    )
     dialog._existing_next_run_text = "2026-04-16 09:00"
     dialog._existing_next_run_label = _DialogLabel()
     dialog._inline_validation_label = _DialogLabel()
@@ -543,7 +552,7 @@ def test_task_dialog_refresh_schedule_preview_updates_labels() -> None:
         None,
     )
 
-    scheduler_tab.TaskDialog._refresh_schedule_preview(dialog)
+    task_dialog_module.TaskDialog._refresh_schedule_preview(dialog)
 
     assert dialog._existing_next_run_label.visible is True
     assert "Сохранённый next_run" in dialog._existing_next_run_label.text_value
@@ -553,7 +562,9 @@ def test_task_dialog_refresh_schedule_preview_updates_labels() -> None:
 
 def test_task_dialog_refresh_schedule_preview_shows_inline_error() -> None:
     """При ошибке в расписании preview должен показывать inline сообщение."""
-    dialog = scheduler_tab.TaskDialog.__new__(scheduler_tab.TaskDialog)
+    dialog = task_dialog_module.TaskDialog.__new__(
+        task_dialog_module.TaskDialog
+    )
     dialog._existing_next_run_text = ""
     dialog._existing_next_run_label = _DialogLabel()
     dialog._inline_validation_label = _DialogLabel()
@@ -563,7 +574,7 @@ def test_task_dialog_refresh_schedule_preview_shows_inline_error() -> None:
     )
     dialog._calculate_schedule_preview = lambda: ([], None)
 
-    scheduler_tab.TaskDialog._refresh_schedule_preview(dialog)
+    task_dialog_module.TaskDialog._refresh_schedule_preview(dialog)
 
     assert dialog._inline_validation_label.visible is True
     assert "Интервал" in dialog._inline_validation_label.text_value

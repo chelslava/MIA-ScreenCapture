@@ -225,7 +225,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(recording_tab, "Запись")
 
         # Вкладка планировщика
-        from gui.scheduler_tab import SchedulerTab
+        from gui.scheduler.scheduler_tab import SchedulerTab
 
         self.scheduler_tab = SchedulerTab()
         self.tabs.addTab(self.scheduler_tab, "Планировщик")

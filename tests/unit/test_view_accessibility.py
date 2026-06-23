@@ -3,7 +3,7 @@
 import pytest
 from PyQt6.QtWidgets import QApplication
 
-from gui.scheduler_tab import SchedulerTab
+from gui.scheduler.scheduler_tab import SchedulerTab
 from gui.views.diagnostics_view import DiagnosticsView
 from gui.views.output_view import OutputView
 from gui.views.readiness_center_view import ReadinessCenterView

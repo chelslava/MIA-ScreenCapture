@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-05-07 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-23 -->
 
 # gui/
 
@@ -16,7 +16,6 @@ PyQt6 GUI-слой приложения. Реализует MVC-паттерн: 
 | `desktop_actions.py` | `DesktopActions` — действия рабочего стола (уведомления, открытие файлов) |
 | `accessibility.py` | Accessibility атрибуты и ARIA-роли для виджетов |
 | `notifications.py` | `NotificationManager` — системные уведомления через plyer |
-| `scheduler_tab.py` | Устаревший файл — UI планировщика перенесён в `gui/scheduler/` |
 
 ## Subdirectories
 
@@ -37,7 +36,6 @@ PyQt6 GUI-слой приложения. Реализует MVC-паттерн: 
 - Не вызывай `ApplicationFacade` напрямую из views — только через controllers.
 - `accessibility.py` добавляет `setAccessibleName`/`setAccessibleDescription` к виджетам.
 - При изменении темы — только в `styles/theme.py`.
-- `gui/scheduler_tab.py` в корне gui/ — legacy файл, новый код в `gui/scheduler/`.
 
 ### Testing Requirements
 - `tests/unit/test_main_window.py` — тесты главного окна

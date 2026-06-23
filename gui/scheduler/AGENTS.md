@@ -1,10 +1,10 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-04-29 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-23 -->
 
 # gui/scheduler/
 
 ## Purpose
-UI-компоненты планировщика задач. Содержит вкладку планировщика (`SchedulerTab`) с таблицей задач и диалог создания/редактирования задачи (`TaskDialog`). Это текущее расположение кода — файл `gui/scheduler_tab.py` в корне `gui/` является устаревшим legacy.
+UI-компоненты планировщика задач. Содержит вкладку планировщика (`SchedulerTab`) с таблицей задач и диалог создания/редактирования задачи (`TaskDialog`).
 
 ## Key Files
 
@@ -23,7 +23,6 @@ UI-компоненты планировщика задач. Содержит в
 - `SchedulerTab` использует `QTableWidget` для отображения задач.
 - Взаимодействие с `scheduler/task_scheduler.py` — через `ApplicationFacade` (методы `get_schedule`, `create_schedule`, `delete_schedule`, `update_schedule`).
 - `TaskDialog` — модальный диалог, возвращает `dict` с параметрами задачи.
-- `gui/scheduler_tab.py` в корне `gui/` — устаревший файл, новый код здесь.
 - `apply_accessible_metadata` вызывается для каждого виджета диалога.
 
 ### Testing Requirements
