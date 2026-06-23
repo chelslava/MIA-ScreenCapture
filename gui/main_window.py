@@ -192,8 +192,8 @@ class MainWindow(QMainWindow):
     def _setup_window(self) -> None:
         """Настройка свойств окна."""
         self.setWindowTitle("MIA-ScreenCapture")
-        self.setMinimumSize(800, 600)
-        self.resize(900, 700)
+        self.setMinimumSize(700, 500)
+        self.resize(800, 600)
 
         # Центрирование на экране
         from PyQt6.QtGui import QGuiApplication
@@ -215,6 +215,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
 
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(4)
 
         # Создание вкладок
         self.tabs = QTabWidget()
@@ -287,6 +289,8 @@ class MainWindow(QMainWindow):
         """Создание левой панели с элементами управления."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
 
         # Представления (Views)
         self._capture_view = CaptureView()
@@ -302,7 +306,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._output_view)
 
         self._readiness_center_view = ReadinessCenterView()
-        layout.addWidget(self._readiness_center_view)
+        layout.addWidget(self._readiness_center_view, stretch=0)
 
         # Кнопки управления
         buttons_layout = self._create_control_buttons()
@@ -313,20 +317,22 @@ class MainWindow(QMainWindow):
     def _create_control_buttons(self) -> QHBoxLayout:
         """Создание кнопок управления."""
         layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
 
         self.start_btn = QPushButton("Начать запись")
-        self.start_btn.setMinimumHeight(40)
+        self.start_btn.setMinimumHeight(32)
         self.start_btn.setAccessibleName("Начать запись")
         layout.addWidget(self.start_btn)
 
         self.pause_btn = QPushButton("Пауза")
-        self.pause_btn.setMinimumHeight(40)
+        self.pause_btn.setMinimumHeight(32)
         self.pause_btn.setEnabled(False)
         self.pause_btn.setAccessibleName("Пауза / Продолжить запись")
         layout.addWidget(self.pause_btn)
 
         self.stop_btn = QPushButton("Стоп")
-        self.stop_btn.setMinimumHeight(40)
+        self.stop_btn.setMinimumHeight(32)
         self.stop_btn.setEnabled(False)
         self.stop_btn.setAccessibleName("Остановить запись")
         layout.addWidget(self.stop_btn)
@@ -337,11 +343,15 @@ class MainWindow(QMainWindow):
         """Создание правой панели с последними записями."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
 
         from PyQt6.QtWidgets import QGroupBox
 
         group = QGroupBox("Последние записи")
         group_layout = QVBoxLayout(group)
+        group_layout.setContentsMargins(4, 4, 4, 4)
+        group_layout.setSpacing(4)
 
         filter_layout = QHBoxLayout()
         self._recordings_filter_input = QLineEdit()
