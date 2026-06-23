@@ -238,7 +238,7 @@ class SettingsController:
         Получить текущий режим темы из конфигурации.
 
         Returns:
-            `"system"`, `"light"` или `"dark"`.
+            `"system"` или один из ключей `gui.styles.theme.THEME_REGISTRY`.
         """
         return str(self._config.settings.theme)
 
@@ -251,9 +251,31 @@ class SettingsController:
         сессии записи.
 
         Args:
-            mode: `"system"`, `"light"` или `"dark"`.
+            mode: `"system"` или один из ключей `gui.styles.theme.THEME_REGISTRY`.
         """
         self._config.settings.theme = mode
+        self._config.save()
+
+    def get_sidebar_width(self) -> int:
+        """
+        Получить сохранённую ширину боковой панели из конфигурации.
+
+        Returns:
+            Ширина в пикселях (по умолчанию 110).
+        """
+        return int(self._config.settings.sidebar_width)
+
+    def set_sidebar_width(self, width: int) -> None:
+        """
+        Установить и немедленно сохранить ширину боковой панели.
+
+        Как и тема — UI-preference, сохраняется сразу, а не при закрытии
+        окна.
+
+        Args:
+            width: Новая ширина боковой панели в пикселях.
+        """
+        self._config.settings.sidebar_width = width
         self._config.save()
 
     def get_output_path(self) -> Path:

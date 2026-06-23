@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
+    QMenu,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -27,6 +30,17 @@ from .task_dialog import TaskDialog
 
 logger = get_module_logger(__name__)
 
+_EMPTY_TASKS_TEXT = "Нет запланированных задач"
+_EMPTY_FILTER_TEXT = "Нет задач, соответствующих фильтру"
+
+_TYPE_LABELS = {
+    ScheduleType.ONCE: "Разовая",
+    ScheduleType.DAILY: "Ежедневная",
+    ScheduleType.WEEKLY: "Еженедельная",
+    ScheduleType.INTERVAL: "Интервал",
+    ScheduleType.CRON: "Cron",
+}
+
 
 class SchedulerTab(QWidget):
     """Виджет вкладки для управления запланированными задачами."""
@@ -42,6 +56,7 @@ class SchedulerTab(QWidget):
         super().__init__(parent)
 
         self._tasks: list[ScheduleTask] = []
+        self._visible_tasks: list[ScheduleTask] = []
 
         self._setup_ui()
 
@@ -75,6 +90,20 @@ class SchedulerTab(QWidget):
 
         layout.addLayout(toolbar)
 
+        # Фильтр задач
+        filter_layout = QHBoxLayout()
+
+        self._filter_input = QLineEdit()
+        self._filter_input.setPlaceholderText("Поиск по имени задачи")
+        self._filter_input.textChanged.connect(self._on_filter_text_changed)
+        filter_layout.addWidget(self._filter_input)
+
+        self._clear_filter_btn = QPushButton("Сбросить")
+        self._clear_filter_btn.clicked.connect(self._clear_filter)
+        filter_layout.addWidget(self._clear_filter_btn)
+
+        layout.addLayout(filter_layout)
+
         # Таблица задач
         self.table = QTableWidget()
         self.table.setColumnCount(6)
@@ -99,11 +128,15 @@ class SchedulerTab(QWidget):
         )
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.doubleClicked.connect(self._edit_task)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(
+            self._show_table_context_menu
+        )
 
         layout.addWidget(self.table)
 
         # Информационная метка
-        self.info_label = QLabel("Нет запланированных задач")
+        self.info_label = QLabel(_EMPTY_TASKS_TEXT)
         self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.info_label)
         self._apply_accessibility_metadata()
@@ -135,6 +168,18 @@ class SchedulerTab(QWidget):
             "Включает или отключает выбранную задачу.",
         )
         apply_accessible_metadata(
+            self._filter_input,
+            "Поиск задач планировщика",
+            "Фильтрует список задач по имени, типу и расписанию.",
+            "Фильтрует задачи планировщика.",
+        )
+        apply_accessible_metadata(
+            self._clear_filter_btn,
+            "Сбросить фильтр задач планировщика",
+            "Очищает текст фильтра и показывает все задачи.",
+            "Сбрасывает фильтр задач планировщика.",
+        )
+        apply_accessible_metadata(
             self.table,
             "Список задач планировщика",
             "Показывает все созданные задачи и их состояние.",
@@ -159,13 +204,21 @@ class SchedulerTab(QWidget):
             data = dialog.get_task_data()
             self.task_created.emit(data)
 
+    def _task_at_row(self, row: int) -> ScheduleTask | None:
+        """Задача для строки таблицы с учётом активного фильтра."""
+        tasks = getattr(self, "_visible_tasks", None)
+        if tasks is None:
+            tasks = self._tasks
+        if row < 0 or row >= len(tasks):
+            return None
+        return tasks[row]
+
     def _edit_task(self) -> None:
         """Открытие диалога для редактирования выбранной задачи."""
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self._tasks):
+        task = self._task_at_row(self.table.currentRow())
+        if task is None:
             return
 
-        task = self._tasks[row]
         dialog = TaskDialog(self, task)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             data = dialog.get_task_data()
@@ -174,11 +227,9 @@ class SchedulerTab(QWidget):
 
     def _delete_task(self) -> None:
         """Удаление выбранной задачи."""
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self._tasks):
+        task = self._task_at_row(self.table.currentRow())
+        if task is None:
             return
-
-        task = self._tasks[row]
 
         reply = QMessageBox.question(
             self,
@@ -193,12 +244,78 @@ class SchedulerTab(QWidget):
 
     def _toggle_task(self) -> None:
         """Переключение состояния включения выбранной задачи."""
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self._tasks):
+        task = self._task_at_row(self.table.currentRow())
+        if task is None:
             return
 
-        task = self._tasks[row]
         self.task_toggled.emit(task.id, not task.enabled)
+
+    def _show_table_context_menu(self, pos: Any) -> None:
+        """Контекстное меню по правому клику на задаче в таблице."""
+        row = self.table.rowAt(pos.y())
+        if self._task_at_row(row) is None:
+            return
+        self.table.setCurrentCell(row, 0)
+
+        menu = QMenu(self)
+
+        edit_action = QAction("Редактировать", menu)
+        edit_action.triggered.connect(self._edit_task)
+        menu.addAction(edit_action)
+
+        toggle_action = QAction("Включить/Отключить", menu)
+        toggle_action.triggered.connect(self._toggle_task)
+        menu.addAction(toggle_action)
+
+        menu.addSeparator()
+
+        delete_action = QAction("Удалить", menu)
+        delete_action.triggered.connect(self._delete_task)
+        menu.addAction(delete_action)
+
+        viewport = self.table.viewport()
+        global_pos = viewport.mapToGlobal(pos) if viewport else pos
+        menu.exec(global_pos)
+
+    def _on_filter_text_changed(self, _text: str) -> None:
+        """Реакция на изменение текста фильтра поиска задач."""
+        self._refresh_table()
+
+    def _clear_filter(self) -> None:
+        """Сброс фильтра поиска задач."""
+        self._filter_input.setText("")
+        self._refresh_table()
+
+    def _normalized_filter(self) -> str:
+        """Нормализация текста фильтра для сравнения."""
+        filter_input = getattr(self, "_filter_input", None)
+        if filter_input is None:
+            return ""
+        return str(filter_input.text()).strip().lower()
+
+    def _task_matches_filter(
+        self, task: ScheduleTask, filter_text: str
+    ) -> bool:
+        """Проверка попадания задачи под фильтр по имени и расписанию."""
+        haystack = " ".join(
+            [
+                task.name.lower(),
+                _TYPE_LABELS.get(task.schedule_type, "").lower(),
+                self._format_schedule(task).lower(),
+            ]
+        )
+        return filter_text in haystack
+
+    def _filtered_tasks(self) -> list[ScheduleTask]:
+        """Список задач, прошедших текущий фильтр поиска."""
+        filter_text = self._normalized_filter()
+        if not filter_text:
+            return list(self._tasks)
+        return [
+            task
+            for task in self._tasks
+            if self._task_matches_filter(task, filter_text)
+        ]
 
     def set_tasks(self, tasks: list[ScheduleTask]) -> None:
         """
@@ -211,26 +328,20 @@ class SchedulerTab(QWidget):
         self._refresh_table()
 
     def _refresh_table(self) -> None:
-        """Обновление таблицы задач."""
-        self.table.setRowCount(len(self._tasks))
+        """Обновление таблицы задач с учётом активного фильтра."""
+        self._visible_tasks = self._filtered_tasks()
+        self.table.setRowCount(len(self._visible_tasks))
 
-        for row, task in enumerate(self._tasks):
+        for row, task in enumerate(self._visible_tasks):
             # Имя
             self.table.setItem(row, 0, QTableWidgetItem(task.name))
 
             # Тип
-            type_names = {
-                ScheduleType.ONCE: "Разовая",
-                ScheduleType.DAILY: "Ежедневная",
-                ScheduleType.WEEKLY: "Еженедельная",
-                ScheduleType.INTERVAL: "Интервал",
-                ScheduleType.CRON: "Cron",
-            }
             self.table.setItem(
                 row,
                 1,
                 QTableWidgetItem(
-                    type_names.get(task.schedule_type, "Неизвестно")
+                    _TYPE_LABELS.get(task.schedule_type, "Неизвестно")
                 ),
             )
 
@@ -256,7 +367,14 @@ class SchedulerTab(QWidget):
             # Количество запусков
             self.table.setItem(row, 5, QTableWidgetItem(str(task.run_count)))
 
-        self.info_label.setVisible(len(self._tasks) == 0)
+        if not self._tasks:
+            self.info_label.setText(_EMPTY_TASKS_TEXT)
+            self.info_label.setVisible(True)
+        elif not self._visible_tasks:
+            self.info_label.setText(_EMPTY_FILTER_TEXT)
+            self.info_label.setVisible(True)
+        else:
+            self.info_label.setVisible(False)
 
     def _format_schedule(self, task: ScheduleTask) -> str:
         """Форматирование расписания для отображения."""

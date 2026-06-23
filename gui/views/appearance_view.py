@@ -9,19 +9,20 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QGroupBox,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui.accessibility import apply_accessible_metadata
+from gui.styles.theme import THEME_LABELS
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
 
 _THEME_MODES: tuple[tuple[str, str], ...] = (
     ("system", "Как в системе"),
-    ("light", "Светлая"),
-    ("dark", "Тёмная"),
+    *THEME_LABELS.items(),
 )
 
 
@@ -30,10 +31,11 @@ class AppearanceView(QWidget):
     Представление для настройки внешнего вида.
 
     Содержит:
-    - Выбор темы оформления (системная/светлая/тёмная).
+    - Выбор темы оформления (системная или одна из тем `THEME_LABELS`).
     """
 
     theme_changed = pyqtSignal(str)
+    hotkeys_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None):
         """
@@ -60,6 +62,10 @@ class AppearanceView(QWidget):
         )
         group_layout.addWidget(self._theme_combo)
 
+        self._hotkeys_btn = QPushButton("Горячие клавиши")
+        self._hotkeys_btn.clicked.connect(self._on_hotkeys_clicked)
+        group_layout.addWidget(self._hotkeys_btn)
+
         self._apply_accessibility_metadata()
         layout.addWidget(group)
 
@@ -68,10 +74,21 @@ class AppearanceView(QWidget):
         apply_accessible_metadata(
             self._theme_combo,
             "Тема оформления",
-            "Выбирает тему оформления приложения: системную, светлую или "
-            "тёмную.",
+            "Выбирает тему оформления приложения: системную или одну из "
+            "тем в стиле Visual Studio (светлая, голубая, тёмная, тёмная "
+            "контрастная).",
             "Выберите тему оформления.",
         )
+        apply_accessible_metadata(
+            self._hotkeys_btn,
+            "Открыть список горячих клавиш",
+            "Показывает экран со всеми горячими клавишами приложения.",
+            "Открывает список горячих клавиш.",
+        )
+
+    def _on_hotkeys_clicked(self) -> None:
+        """Обработка клика по кнопке открытия списка горячих клавиш."""
+        self.hotkeys_requested.emit()
 
     def _on_theme_index_changed(self, index: int) -> None:
         """Обработка выбора пункта темы."""
@@ -85,7 +102,7 @@ class AppearanceView(QWidget):
         Установить выбранный пункт темы без отправки сигнала.
 
         Args:
-            mode: `"system"`, `"light"` или `"dark"`.
+            mode: `"system"` или один из ключей `gui.styles.theme.THEME_LABELS`.
         """
         for index, (mode_value, _) in enumerate(_THEME_MODES):
             if mode_value == mode:
@@ -97,7 +114,7 @@ class AppearanceView(QWidget):
         Получить текущий выбранный режим темы.
 
         Returns:
-            `"system"`, `"light"` или `"dark"`.
+            `"system"` или один из ключей `gui.styles.theme.THEME_LABELS`.
         """
         index = self._theme_combo.currentIndex()
         if 0 <= index < len(_THEME_MODES):

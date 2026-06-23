@@ -178,7 +178,7 @@ def api_view_environment(
     monkeypatch.setattr(
         api_settings_view.QLineEdit,
         "EchoMode",
-        types.SimpleNamespace(Password=object()),
+        types.SimpleNamespace(Password=object(), Normal=object()),
         raising=False,
     )
     monkeypatch.setattr(api_settings_view, "QTimer", _FakeTimer)
@@ -255,6 +255,27 @@ def test_copy_token_empty_value(
         view._status_label.text()
         == "Статус: токен не задан. Сначала введите и сохраните его."
     )
+
+
+def test_toggle_token_visibility_shows_and_hides(
+    qapp,
+    api_view_environment: types.SimpleNamespace,
+) -> None:
+    """Кнопка переключает echo mode токена и свой текст."""
+
+    view = api_settings_view.ApiSettingsView()
+    echo_mode = api_settings_view.QLineEdit.EchoMode
+
+    assert view._token_edit._echo_mode is echo_mode.Password
+    assert view._toggle_token_visibility_btn.text() == "Показать"
+
+    view._on_toggle_token_visibility(True)
+    assert view._token_edit._echo_mode is echo_mode.Normal
+    assert view._toggle_token_visibility_btn.text() == "Скрыть"
+
+    view._on_toggle_token_visibility(False)
+    assert view._token_edit._echo_mode is echo_mode.Password
+    assert view._toggle_token_visibility_btn.text() == "Показать"
 
 
 def test_refresh_logs_without_file(
@@ -403,5 +424,9 @@ def test_accessibility_metadata_is_assigned(
 
     assert view._port_spinbox._accessible_name == "Порт API"
     assert view._token_edit._accessible_name == "API токен"
+    assert (
+        view._toggle_token_visibility_btn._accessible_name
+        == "Показать или скрыть API токен"
+    )
     assert view._start_btn._accessible_name == "Запустить API сервер"
     assert view._log_view._accessible_name == "Журнал API"

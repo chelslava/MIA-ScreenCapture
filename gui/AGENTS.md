@@ -36,6 +36,15 @@ PyQt6 GUI-слой приложения. Реализует MVC-паттерн: 
 - Не вызывай `ApplicationFacade` напрямую из views — только через controllers.
 - `accessibility.py` добавляет `setAccessibleName`/`setAccessibleDescription` к виджетам.
 - При изменении темы — только в `styles/theme.py`.
+- Две конвенции для ошибок/предупреждений (см. UX-аудит, [[development-log]]
+  в базе знаний проекта): блокирующий `QMessageBox.warning`/`critical` —
+  только для валидации форм внутри уже открытого модального диалога
+  (пример: `scheduler/task_dialog.py`); неблокирующий
+  `Theme.apply_error_status(status_label, status_bar, message)` — для всех
+  ambient app-level ошибок (пример: `main_window._show_non_modal_error`).
+  `QMessageBox.question` для подтверждения деструктивных действий
+  (выход/удаление) — отдельная категория, не относится к этим двум. Новый
+  третий паттерн отображения ошибок не вводить без явного решения.
 
 ### Testing Requirements
 - `tests/unit/test_main_window.py` — тесты главного окна

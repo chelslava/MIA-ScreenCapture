@@ -91,7 +91,7 @@ class ApiSettingsView(QWidget):
     def _setup_ui(self) -> None:
         """Настройка интерфейса вкладки."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(Theme.SPACING)
 
         title = QLabel("API сервер")
         title.setStyleSheet(Theme.title_style())
@@ -116,7 +116,18 @@ class ApiSettingsView(QWidget):
         self._token_edit = QLineEdit()
         self._token_edit.setPlaceholderText("Введите API токен")
         self._token_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addRow("Токен:", self._token_edit)
+
+        self._toggle_token_visibility_btn = QPushButton()
+        self._toggle_token_visibility_btn.setText("Показать")
+        self._toggle_token_visibility_btn.setCheckable(True)
+        self._toggle_token_visibility_btn.toggled.connect(
+            self._on_toggle_token_visibility
+        )
+
+        token_row = QHBoxLayout()
+        token_row.addWidget(self._token_edit)
+        token_row.addWidget(self._toggle_token_visibility_btn)
+        layout.addRow("Токен:", token_row)
 
         buttons_layout = QHBoxLayout()
 
@@ -216,6 +227,12 @@ class ApiSettingsView(QWidget):
             "Введите токен API.",
         )
         apply_accessible_metadata(
+            self._toggle_token_visibility_btn,
+            "Показать или скрыть API токен",
+            "Переключает отображение токена между скрытым и открытым текстом.",
+            "Переключает видимость токена API.",
+        )
+        apply_accessible_metadata(
             self._apply_btn,
             "Сохранить настройки API",
             "Сохраняет порт и токен API сервера.",
@@ -309,6 +326,18 @@ class ApiSettingsView(QWidget):
     def _on_open_logs_clicked(self) -> None:
         """Открытие папки с логами API."""
         open_api_logs_folder()
+
+    def _on_toggle_token_visibility(self, checked: bool) -> None:
+        """Переключение видимости токена между скрытым и открытым режимом."""
+        mode = (
+            QLineEdit.EchoMode.Normal
+            if checked
+            else QLineEdit.EchoMode.Password
+        )
+        self._token_edit.setEchoMode(mode)
+        self._toggle_token_visibility_btn.setText(
+            "Скрыть" if checked else "Показать"
+        )
 
     def _on_copy_token_clicked(self) -> None:
         """Копирование токена в буфер обмена."""

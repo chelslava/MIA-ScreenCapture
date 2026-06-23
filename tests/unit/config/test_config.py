@@ -197,9 +197,11 @@ class TestAppSettings:
 class TestAppSettingsThemeSchema:
     """Тесты валидации поля `theme` в AppSettingsSchema."""
 
-    @pytest.mark.parametrize("value", ["system", "light", "dark"])
+    @pytest.mark.parametrize(
+        "value", ["system", "light", "blue", "dark", "dark_contrast"]
+    )
     def test_accepts_valid_theme_values(self, value: str):
-        """Pydantic-схема должна принимать все 3 допустимых значения."""
+        """Pydantic-схема должна принимать все 5 допустимых значений."""
         validated = AppSettingsSchema.model_validate({"theme": value})
 
         assert validated.theme == value
@@ -207,7 +209,7 @@ class TestAppSettingsThemeSchema:
     def test_rejects_invalid_theme_value(self):
         """Pydantic-схема должна отклонять неизвестное значение темы."""
         with pytest.raises(ValidationError):
-            AppSettingsSchema.model_validate({"theme": "blue"})
+            AppSettingsSchema.model_validate({"theme": "purple"})
 
     def test_defaults_to_system(self):
         """Без явного значения схема должна выбирать 'system'."""

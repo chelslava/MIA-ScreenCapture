@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from config import get_config
 from core.event_bus import (
@@ -45,11 +45,11 @@ def build_recording_output_path(params: dict[str, Any]) -> Path:
     config_manager = get_config()
     value = params.get("output_path")
     if not value:
-        return cast(Path, config_manager.get_output_path())
+        return config_manager.get_output_path()
 
     raw_path = str(value).strip()
     if not raw_path:
-        return cast(Path, config_manager.get_output_path())
+        return config_manager.get_output_path()
 
     candidate = Path(raw_path)
     is_dir_hint = raw_path.endswith(("/", "\\"))
@@ -380,9 +380,7 @@ class RecordingService:
             исключение `get_config()` (например, при повреждённом
             конфиге), если оно возникнет.
         """
-        return cast(
-            list[dict[str, Any]], get_config().settings.recent_recordings
-        )
+        return get_config().settings.recent_recordings
 
     def stop_active_recording_if_any(self) -> dict[str, Any] | None:
         """

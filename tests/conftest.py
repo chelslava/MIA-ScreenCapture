@@ -164,6 +164,14 @@ class MockQWidgetBase:
         """Для QRadioButton, QCheckBox."""
         return getattr(self, "_checked", False)
 
+    def setCheckable(self, checkable: bool):
+        """Для QPushButton, QAction."""
+        self._checkable = checkable
+
+    def isCheckable(self) -> bool:
+        """Для QPushButton, QAction."""
+        return getattr(self, "_checkable", False)
+
     def setEnabled(self, enabled: bool):
         self._enabled = enabled
 
@@ -175,6 +183,27 @@ class MockQWidgetBase:
 
     def isVisible(self) -> bool:
         return self._visible
+
+    def setWindowTitle(self, title: str):
+        """Для QDialog, QMainWindow, QWidget."""
+        self._window_title = title
+
+    def windowTitle(self) -> str:
+        """Для QDialog, QMainWindow, QWidget."""
+        return getattr(self, "_window_title", "")
+
+    def setModal(self, modal: bool):
+        """Для QDialog."""
+        self._modal = modal
+
+    def isModal(self) -> bool:
+        """Для QDialog."""
+        return getattr(self, "_modal", False)
+
+    def close(self) -> bool:
+        """Для QWidget, QDialog."""
+        self._visible = False
+        return True
 
     def setLayout(self, layout):
         self._layout = layout
@@ -382,6 +411,7 @@ def _create_widget_mock_class(name: str):
         MockWidget.textChanged = MockSignal()
     elif name == "QPushButton":
         MockWidget.clicked = MockSignal()
+        MockWidget.toggled = MockSignal()
     return MockWidget
 
 

@@ -107,6 +107,68 @@ class TestSendWindowsToast:
         pass
 
 
+class TestPowerShellFallbackSafety:
+    """Проверки защиты PowerShell-fallback от инъекции спецсимволов."""
+
+    @staticmethod
+    def _decode_b64_unicode(value: str) -> str:
+        """Декодировать base64(utf-16-le)-строку, как это делает PowerShell."""
+        import base64
+
+        return base64.b64decode(value).decode("utf-16-le")
+
+    @staticmethod
+    def _extract_script(mock_run: MagicMock) -> str:
+        """Достать переданный PowerShell-скрипт из вызова subprocess.run."""
+        call_args = mock_run.call_args
+        command = call_args[0][0]
+        return str(command[2])
+
+    def test_quotes_and_subexpression_are_base64_encoded(self) -> None:
+        """Кавычки и $(...) не должны попадать в скрипт буквально."""
+        from gui.notifications import _send_windows_toast
+
+        malicious_title = 'rec"; Remove-Item C:\\; $(calc) `whoami`'
+        malicious_message = "запись.mp4"
+
+        with patch.dict("sys.modules", {"winotify": None, "win10toast": None}):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                result = _send_windows_toast(
+                    malicious_title, malicious_message, "MIA-ScreenCapture"
+                )
+
+        assert result is True
+        script = self._extract_script(mock_run)
+
+        # Опасные символы не должны встречаться буквально в скрипте —
+        # они существуют только внутри base64-блоба.
+        assert malicious_title not in script
+        assert '"; Remove-Item' not in script
+        assert "$(calc)" not in script
+        assert "`whoami`" not in script
+
+        # Но base64-блоб при декодировании восстанавливает оригинал —
+        # фикс не теряет данные, только обезвреживает их.
+        title_b64 = script.split('FromBase64String("')[1].split('"')[0]
+        assert self._decode_b64_unicode(title_b64) == malicious_title
+
+    def test_unicode_title_round_trips(self) -> None:
+        """Кириллица/эмодзи в имени файла должны сохраняться без потерь."""
+        from gui.notifications import _send_windows_toast
+
+        title = "Запись остановлена: запись_2026-06-24.mp4 🎬"
+
+        with patch.dict("sys.modules", {"winotify": None, "win10toast": None}):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=0)
+                _send_windows_toast(title, "ok", "MIA-ScreenCapture")
+
+        script = self._extract_script(mock_run)
+        title_b64 = script.split('FromBase64String("')[1].split('"')[0]
+        assert self._decode_b64_unicode(title_b64) == title
+
+
 class TestSendMacosNotification:
     """Тесты macOS уведомлений."""
 

@@ -9,7 +9,7 @@ Unit тесты для MainWindow
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -23,6 +23,36 @@ from gui.models.recording_state import (
     RecordingStatus,
     VideoSettings,
 )
+
+
+class _FakeSidebarItem:
+    """Минимальный QListWidgetItem-подобный объект для тестов сайдбара."""
+
+    def __init__(self, label: str) -> None:
+        self._tooltip = label
+        self._text = label
+
+    def toolTip(self) -> str:  # noqa: N802
+        return self._tooltip
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._text = text
+
+    def text(self) -> str:
+        return self._text
+
+
+class _FakeSplitter:
+    """Минимальный QSplitter-подобный объект для тестов сайдбара."""
+
+    def __init__(self, sizes: list[int] | None = None) -> None:
+        self._sizes = sizes or [110, 700]
+
+    def sizes(self) -> list[int]:  # noqa: N802
+        return list(self._sizes)
+
+    def setSizes(self, sizes: list[int]) -> None:  # noqa: N802
+        self._sizes = list(sizes)
 
 
 def _build_window():
@@ -58,6 +88,11 @@ def _build_window():
     window.status_bar = MagicMock()
     window._ws_status_label = MagicMock()
     window.tabs = MagicMock()
+    window._sidebar = MagicMock()
+    window._sidebar_splitter = _FakeSplitter()
+    window._sidebar_toggle_btn = MagicMock()
+    window._sidebar_expanded_width = 110
+    window._settings_controller.get_sidebar_width.return_value = 110
     window._registered_shortcuts = {}
     window._tab_navigation_order = []
     window.recording_started = MagicMock()
@@ -94,6 +129,65 @@ def _build_window():
         time_label=window.time_label,
     )
     return window
+
+
+class _FakeMenuSignal:
+    """Минимальный сигнал для триггера действий контекстного меню."""
+
+    def __init__(self) -> None:
+        self._callbacks: list = []
+
+    def connect(self, callback) -> None:
+        self._callbacks.append(callback)
+
+    def emit(self, *args) -> None:
+        for callback in self._callbacks:
+            callback(*args)
+
+
+class _FakeMenuAction:
+    """Минимальное QAction-подобное действие контекстного меню."""
+
+    def __init__(self, text: str, _parent=None) -> None:
+        self.text = text
+        self.triggered = _FakeMenuSignal()
+
+
+class _FakeContextMenu:
+    """Минимальное QMenu-подобное меню, собирающее добавленные действия."""
+
+    created: list["_FakeContextMenu"] = []
+
+    def __init__(self, _parent=None) -> None:
+        self.actions: dict[str, _FakeMenuAction] = {}
+        _FakeContextMenu.created.append(self)
+
+    def addAction(self, action: _FakeMenuAction) -> None:  # noqa: N802
+        self.actions[action.text] = action
+
+    def addSeparator(self) -> None:  # noqa: N802
+        pass
+
+    def exec(self, _pos) -> None:  # noqa: A003
+        pass
+
+
+class TestSidebarIcons:
+    """Проверки наличия PNG-иконок сайдбара (замена emoji)."""
+
+    def test_all_sidebar_icon_files_exist(self) -> None:
+        """Все 5 иконок сайдбара должны существовать на диске."""
+        from gui.main_window import _SIDEBAR_ICONS_DIR
+
+        for icon_name in (
+            "record",
+            "settings",
+            "scheduler",
+            "diagnostics",
+            "api",
+        ):
+            icon_path = _SIDEBAR_ICONS_DIR / f"{icon_name}.png"
+            assert icon_path.is_file(), f"missing icon: {icon_path}"
 
 
 class TestMainWindowBasics:
@@ -596,6 +690,116 @@ class TestMainWindowElapsedtime:
 class TestMainWindowMethods:
     """Тесты методов MainWindow без полного GUI-init."""
 
+    def test_sidebar_toggle_collapses_and_expands(self) -> None:
+        """Клик по кнопке сворачивает до минимума, повторный — восстанавливает ширину."""
+        window = _build_window()
+        window._sidebar_splitter = _FakeSplitter([150, 650])
+        window._sidebar_expanded_width = 110
+
+        window._on_sidebar_toggle_clicked()
+        assert window._sidebar_splitter.sizes()[0] == 44
+        window._settings_controller.set_sidebar_width.assert_called_with(44)
+
+        window._on_sidebar_toggle_clicked()
+        assert window._sidebar_splitter.sizes()[0] == 150
+        window._settings_controller.set_sidebar_width.assert_called_with(150)
+
+    def test_sidebar_splitter_moved_persists_width(self) -> None:
+        """Ручное перетаскивание handle должно сохранять новую ширину."""
+        window = _build_window()
+        window._sidebar_splitter = _FakeSplitter([180, 620])
+
+        window._on_sidebar_splitter_moved(180, 1)
+
+        window._settings_controller.set_sidebar_width.assert_called_once_with(
+            180
+        )
+        assert window._sidebar_expanded_width == 180
+
+    def test_sidebar_splitter_moved_to_collapsed_does_not_update_expanded_width(
+        self,
+    ) -> None:
+        """Сворачивание через drag не должно затирать запомненную ширину."""
+        window = _build_window()
+        window._sidebar_splitter = _FakeSplitter([44, 756])
+        window._sidebar_expanded_width = 150
+
+        window._on_sidebar_splitter_moved(44, 1)
+
+        window._settings_controller.set_sidebar_width.assert_called_once_with(
+            44
+        )
+        assert window._sidebar_expanded_width == 150
+
+    def test_update_sidebar_text_visibility_hides_below_threshold(
+        self,
+    ) -> None:
+        """Ниже порога остаются только иконки — текст пунктов скрывается."""
+        window = _build_window()
+        items = [_FakeSidebarItem("Запись"), _FakeSidebarItem("Настройки")]
+        window._sidebar.count.return_value = len(items)
+        window._sidebar.item.side_effect = lambda row: items[row]
+
+        window._update_sidebar_text_visibility(50)
+
+        assert [item.text() for item in items] == ["", ""]
+        assert [item.toolTip() for item in items] == ["Запись", "Настройки"]
+
+    def test_update_sidebar_text_visibility_shows_above_threshold(
+        self,
+    ) -> None:
+        """На/выше порога подписи должны восстанавливаться из toolTip."""
+        window = _build_window()
+        items = [_FakeSidebarItem("Запись"), _FakeSidebarItem("Настройки")]
+        items[0].setText("")
+        items[1].setText("")
+        window._sidebar.count.return_value = len(items)
+        window._sidebar.item.side_effect = lambda row: items[row]
+
+        window._update_sidebar_text_visibility(110)
+
+        assert [item.text() for item in items] == ["Запись", "Настройки"]
+
+    def test_sidebar_splitter_moved_hides_text_at_narrow_width(self) -> None:
+        """Ручное перетаскивание до узкой ширины тоже скрывает текст."""
+        window = _build_window()
+        window._sidebar_splitter = _FakeSplitter([50, 750])
+        items = [_FakeSidebarItem("Запись")]
+        window._sidebar.count.return_value = len(items)
+        window._sidebar.item.side_effect = lambda row: items[row]
+
+        window._on_sidebar_splitter_moved(50, 1)
+
+        assert items[0].text() == ""
+
+    def test_apply_sidebar_width_clamps_to_minimum(self) -> None:
+        """Ширина меньше минимума должна подниматься до collapsed-предела."""
+        window = _build_window()
+        window._sidebar_splitter = _FakeSplitter([110, 700])
+
+        window._apply_sidebar_width(10)
+
+        assert window._sidebar_splitter.sizes()[0] == 44
+
+    def test_show_hotkeys_view_creates_and_reuses_dialog(self) -> None:
+        """Первый вызов создаёт диалог, повторный — переиспользует тот же."""
+        window = _build_window()
+        window._desktop_actions = MagicMock()
+        fake_view = MagicMock()
+
+        with patch(
+            "gui.views.hotkeys_view.HotkeysView", return_value=fake_view
+        ) as mocked_class:
+            window._show_hotkeys_view()
+            window._show_hotkeys_view()
+
+        mocked_class.assert_called_once_with(
+            window._desktop_actions, parent=window
+        )
+        assert fake_view.show.call_count == 2
+        assert fake_view.raise_.call_count == 2
+        assert fake_view.activateWindow.call_count == 2
+
     def test_apply_settings_to_views_applies_rect_capture_and_output(
         self,
     ) -> None:
@@ -623,6 +827,17 @@ class TestMainWindowMethods:
             "D:/Recordings"
         )
         window._refresh_recent_recordings.assert_called_once()
+
+    def test_apply_settings_to_views_restores_sidebar_width(self) -> None:
+        """Сохранённая ширина сайдбара должна применяться при загрузке."""
+        window = _build_window()
+        window._refresh_recent_recordings = MagicMock()
+        window._sidebar_splitter = _FakeSplitter([110, 700])
+        window._settings_controller.get_sidebar_width.return_value = 200
+
+        window._apply_settings_to_views()
+
+        assert window._sidebar_splitter.sizes()[0] == 200
 
     def test_refresh_recent_recordings_adds_only_existing_matching_items(
         self, tmp_path: Path
@@ -819,9 +1034,7 @@ class TestMainWindowMethods:
 
         window._recording_controller.start_recording.assert_not_called()
         window.status_bar.showMessage.assert_called()
-        window.tabs.setCurrentWidget.assert_called_once_with(
-            window._diagnostics_view
-        )
+        window._sidebar.setCurrentRow.assert_called_once_with(3)
         window._run_diagnostics.assert_called_once_with()
 
     def test_apply_action_metadata_sets_shortcut_and_accessibility(
@@ -944,7 +1157,10 @@ class TestMainWindowMethods:
         MainWindow._on_diagnostics_fix(window, "Аудиоустройства")
         MainWindow._on_diagnostics_fix(window, "Окно захвата")
 
-        assert window.tabs.setCurrentIndex.call_count == 2
+        assert window._sidebar.setCurrentRow.call_args_list == [
+            call(1),
+            call(0),
+        ]
         window._audio_view._refresh_audio_devices.assert_called_once_with()
         window._capture_view.refresh_windows.assert_called_once_with()
 
@@ -1408,6 +1624,87 @@ class TestMainWindowMethods:
 
         assert window._open_file.call_count == 3
 
+    def test_recordings_context_menu_noop_without_item(self) -> None:
+        """Без записи под курсором меню не строится и фокус не меняется."""
+        window = _build_window()
+        window.recordings_list.itemAt.return_value = None
+
+        window._show_recordings_context_menu(None)
+
+        window.recordings_list.setCurrentItem.assert_not_called()
+
+    def test_recordings_context_menu_wires_expected_actions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Меню записи выбирает элемент под курсором и вызывает 3 действия."""
+        import gui.main_window as main_window_module
+
+        window = _build_window()
+        fake_item = MagicMock()
+        window.recordings_list.itemAt.return_value = fake_item
+        window._open_selected_recording = MagicMock()
+        window._open_recording_folder = MagicMock()
+        window._copy_selected_recording_path = MagicMock()
+
+        _FakeContextMenu.created = []
+        monkeypatch.setattr(main_window_module, "QMenu", _FakeContextMenu)
+        monkeypatch.setattr(main_window_module, "QAction", _FakeMenuAction)
+
+        window._show_recordings_context_menu(None)
+
+        window.recordings_list.setCurrentItem.assert_called_once_with(
+            fake_item
+        )
+        menu = _FakeContextMenu.created[0]
+        assert set(menu.actions) == {
+            "Открыть файл",
+            "Открыть папку",
+            "Копировать путь",
+        }
+
+        menu.actions["Открыть файл"].triggered.emit()
+        window._open_selected_recording.assert_called_once()
+
+        menu.actions["Открыть папку"].triggered.emit()
+        window._open_recording_folder.assert_called_once()
+
+        menu.actions["Копировать путь"].triggered.emit()
+        window._copy_selected_recording_path.assert_called_once()
+
+    def test_copy_selected_recording_path_sets_clipboard(self) -> None:
+        """Путь выбранной записи копируется в буфер обмена."""
+        window = _build_window()
+        fake_item = MagicMock()
+        fake_item.data.return_value = "D:/Recordings/capture.mp4"
+        window.recordings_list.currentItem.return_value = fake_item
+        fake_clipboard = MagicMock()
+
+        with patch(
+            "PyQt6.QtGui.QGuiApplication.clipboard",
+            return_value=fake_clipboard,
+        ):
+            window._copy_selected_recording_path()
+
+        fake_clipboard.setText.assert_called_once_with(
+            "D:/Recordings/capture.mp4"
+        )
+        window.status_bar.showMessage.assert_called_once()
+
+    def test_copy_selected_recording_path_noop_without_selection(
+        self,
+    ) -> None:
+        """Без выбранной записи буфер обмена не трогаем."""
+        window = _build_window()
+        window.recordings_list.currentItem.return_value = None
+
+        with patch(
+            "PyQt6.QtGui.QGuiApplication.clipboard"
+        ) as clipboard_factory:
+            window._copy_selected_recording_path()
+
+        clipboard_factory.assert_not_called()
+        window.status_bar.showMessage.assert_not_called()
+
     @pytest.mark.parametrize(
         ("requested", "fmt", "expected"),
         [
@@ -1648,7 +1945,7 @@ class TestMainWindowMethods:
             window._desktop_actions.execute(DesktopActionId.SHOW_SCHEDULER_TAB)
             is True
         )
-        window.tabs.setCurrentWidget.assert_called_with(window.scheduler_tab)
+        window._sidebar.setCurrentRow.assert_called_with(2)
 
         assert (
             window._desktop_actions.execute(DesktopActionId.OPEN_APP_LOGS)

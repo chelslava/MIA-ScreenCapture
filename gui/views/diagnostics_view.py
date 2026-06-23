@@ -62,7 +62,7 @@ class DiagnosticsView(QWidget):
 
         self._checks_widget = QWidget()
         self._checks_layout = QVBoxLayout(self._checks_widget)
-        self._checks_layout.setSpacing(10)
+        self._checks_layout.setSpacing(Theme.SPACING)
 
         # Группы проверок
         self._ffmpeg_group = self._create_check_group(

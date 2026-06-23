@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QGuiApplication, QPainter, QPen
 from PyQt6.QtWidgets import QDialog, QWidget
 
@@ -548,8 +548,8 @@ class AreaSelectorDialog(QDialog):
 
         painter.setPen(QPen(QColor("#ffffff"), 1))
         painter.drawText(
-            24,
-            36,
+            QRect(24, 12, self.width() - 48, 90),
+            int(Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap),
             (
                 "Потяните мышью для выбора области. "
                 "Перетащите внутри рамки для перемещения, "

@@ -16,7 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -24,8 +25,11 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
+    QSplitter,
+    QStackedWidget,
     QStatusBar,
     QVBoxLayout,
     QWidget,
@@ -73,6 +77,10 @@ from recorder.utils import (
 
 logger = get_module_logger(__name__)
 _STATUS_UPDATE_INTERVAL_MS = 100
+_SIDEBAR_DEFAULT_WIDTH = 110
+_SIDEBAR_COLLAPSED_WIDTH = 44
+_SIDEBAR_TEXT_VISIBLE_THRESHOLD = 70
+_SIDEBAR_ICONS_DIR = Path(__file__).resolve().parent / "assets" / "icons"
 
 if TYPE_CHECKING:
     from core.application_facade import ApplicationFacade
@@ -211,53 +219,67 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self) -> None:
         """Настройка пользовательского интерфейса."""
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        self._sidebar_expanded_width = _SIDEBAR_DEFAULT_WIDTH
 
-        main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        # Боковая панель навигации + содержимое — в QSplitter, чтобы дать
+        # пользователю drag-resize handle (раньше был обычный QHBoxLayout
+        # без какой-либо возможности менять ширину сайдбара).
+        self._sidebar_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._sidebar_splitter.setChildrenCollapsible(False)
+        self.setCentralWidget(self._sidebar_splitter)
 
-        # Боковая панель навигации
+        sidebar_container = QWidget()
+        sidebar_layout = QVBoxLayout(sidebar_container)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+
+        self._sidebar_toggle_btn = QPushButton("◂")
+        self._sidebar_toggle_btn.setFixedHeight(20)
+        self._sidebar_toggle_btn.setToolTip(
+            "Свернуть/развернуть боковую панель"
+        )
+        self._sidebar_toggle_btn.clicked.connect(
+            self._on_sidebar_toggle_clicked
+        )
+        sidebar_layout.addWidget(self._sidebar_toggle_btn)
+
         self._sidebar = QListWidget()
-        self._sidebar.setMaximumWidth(120)
-        self._sidebar.setMinimumWidth(100)
+        self._sidebar.setIconSize(QSize(20, 20))
         self._sidebar.itemSelectionChanged.connect(
             self._on_sidebar_selection_changed
         )
-        main_layout.addWidget(self._sidebar)
+        sidebar_layout.addWidget(self._sidebar)
 
-        # Разделитель
-        from PyQt6.QtWidgets import QFrame
-
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.VLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        main_layout.addWidget(separator)
+        self._sidebar_splitter.addWidget(sidebar_container)
 
         # Содержимое (stacked widget)
-        from PyQt6.QtWidgets import QStackedWidget
-
         self._content_stack = QStackedWidget()
-        main_layout.addWidget(self._content_stack, stretch=1)
+        self._sidebar_splitter.addWidget(self._content_stack)
+        self._sidebar_splitter.setStretchFactor(0, 0)
+        self._sidebar_splitter.setStretchFactor(1, 1)
+        self._sidebar_splitter.splitterMoved.connect(
+            self._on_sidebar_splitter_moved
+        )
 
         # Добавление страниц в stacked widget
         # 0 - Запись
         recording_tab = self._create_recording_tab()
         self._content_stack.addWidget(recording_tab)
-        self._sidebar.addItem("📹 Запись")
+        self._sidebar.addItem(self._make_sidebar_item("record", "Запись"))
 
         # 1 - Настройки
         settings_tab = self._create_settings_tab()
         self._content_stack.addWidget(settings_tab)
-        self._sidebar.addItem("⚙️  Настройки")
+        self._sidebar.addItem(self._make_sidebar_item("settings", "Настройки"))
 
         # 2 - Планировщик
         from gui.scheduler.scheduler_tab import SchedulerTab
 
         self.scheduler_tab = SchedulerTab()
         self._content_stack.addWidget(self.scheduler_tab)
-        self._sidebar.addItem("📅 Планировщик")
+        self._sidebar.addItem(
+            self._make_sidebar_item("scheduler", "Планировщик")
+        )
 
         # 3 - Диагностика
         from gui.views.diagnostics_view import DiagnosticsView
@@ -271,14 +293,16 @@ class MainWindow(QMainWindow):
             )
         )
         self._content_stack.addWidget(self._diagnostics_view)
-        self._sidebar.addItem("🔧 Диагностика")
+        self._sidebar.addItem(
+            self._make_sidebar_item("diagnostics", "Диагностика")
+        )
 
         # 4 - API
         from gui.views.api_settings_view import ApiSettingsView
 
         self._api_settings_view = ApiSettingsView()
         self._content_stack.addWidget(self._api_settings_view)
-        self._sidebar.addItem("🔌 API")
+        self._sidebar.addItem(self._make_sidebar_item("api", "API"))
 
         # Выбрать первую страницу по умолчанию
         self._sidebar.setCurrentRow(0)
@@ -312,15 +336,98 @@ class MainWindow(QMainWindow):
         if current_row >= 0:
             self._content_stack.setCurrentIndex(current_row)
 
+    def _make_sidebar_item(
+        self, icon_name: str, label: str
+    ) -> QListWidgetItem:
+        """
+        Создать пункт сайдбара с PNG-иконкой вместо emoji.
+
+        Args:
+            icon_name: Имя файла иконки без расширения (`gui/assets/icons/`).
+            label: Текстовая подпись пункта.
+        """
+        icon_path = _SIDEBAR_ICONS_DIR / f"{icon_name}.png"
+        item = QListWidgetItem(QIcon(str(icon_path)), label)
+        item.setToolTip(label)
+        return item
+
+    def _update_sidebar_text_visibility(self, width: int) -> None:
+        """
+        Скрыть/показать текстовые подписи пунктов сайдбара по ширине.
+
+        При узкой ширине (свёрнутое состояние или перетаскивание handle
+        ниже порога, когда текст всё равно не виден целиком) остаются
+        только иконки — полный текст хранится в `toolTip()` и не теряется.
+
+        Args:
+            width: Текущая ширина сайдбара в пикселях.
+        """
+        show_text = width >= _SIDEBAR_TEXT_VISIBLE_THRESHOLD
+        for row in range(self._sidebar.count()):
+            item = self._sidebar.item(row)
+            if item is None:
+                continue
+            label = item.toolTip()
+            if not label:
+                continue
+            item.setText(label if show_text else "")
+
+    def _apply_sidebar_width(self, width: int) -> None:
+        """
+        Применить ширину боковой панели к splitter (без сохранения).
+
+        Args:
+            width: Желаемая ширина сайдбара в пикселях.
+        """
+        width = max(width, _SIDEBAR_COLLAPSED_WIDTH)
+        sizes = self._sidebar_splitter.sizes()
+        total = sum(sizes) if sizes else width + 400
+        self._sidebar_splitter.setSizes([width, max(total - width, 1)])
+        if width > _SIDEBAR_COLLAPSED_WIDTH:
+            self._sidebar_expanded_width = width
+        self._sidebar_toggle_btn.setText(
+            "▸" if width <= _SIDEBAR_COLLAPSED_WIDTH else "◂"
+        )
+        self._update_sidebar_text_visibility(width)
+
+    def _on_sidebar_toggle_clicked(self) -> None:
+        """Свернуть боковую панель до минимума или развернуть обратно."""
+        sizes = self._sidebar_splitter.sizes()
+        current_width = sizes[0] if sizes else _SIDEBAR_DEFAULT_WIDTH
+        if current_width <= _SIDEBAR_COLLAPSED_WIDTH:
+            target_width = self._sidebar_expanded_width
+        else:
+            self._sidebar_expanded_width = current_width
+            target_width = _SIDEBAR_COLLAPSED_WIDTH
+        self._apply_sidebar_width(target_width)
+        self._settings_controller.set_sidebar_width(target_width)
+
+    def _on_sidebar_splitter_moved(self, _pos: int, _index: int) -> None:
+        """
+        Реакция на ручное перетаскивание handle сайдбара.
+
+        Скрывает текстовые подписи, когда пользователь утягивает handle
+        ниже порога читаемости (а не только при клике на кнопку
+        сворачивания), и сохраняет итоговую ширину в конфигурации.
+        """
+        sizes = self._sidebar_splitter.sizes()
+        if not sizes:
+            return
+        width = sizes[0]
+        if width > _SIDEBAR_COLLAPSED_WIDTH:
+            self._sidebar_expanded_width = width
+        self._update_sidebar_text_visibility(width)
+        self._settings_controller.set_sidebar_width(width)
+
     @property
-    def tabs(self) -> QWidget | None:
+    def tabs(self) -> QStackedWidget | None:
         """Совместимость с тестами - возвращает content_stack."""
         if not hasattr(self, "_content_stack"):
             return None
         return self._content_stack
 
     @tabs.setter
-    def tabs(self, value: QWidget) -> None:
+    def tabs(self, value: QStackedWidget) -> None:
         """Совместимость с тестами - устанавливает content_stack."""
         self._content_stack = value
 
@@ -474,6 +581,12 @@ class MainWindow(QMainWindow):
 
         self.recordings_list = QListWidget()
         self.recordings_list.itemDoubleClicked.connect(self._open_recording)
+        self.recordings_list.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.recordings_list.customContextMenuRequested.connect(
+            self._show_recordings_context_menu
+        )
         group_layout.addWidget(self.recordings_list)
 
         # Кнопки
@@ -559,6 +672,9 @@ class MainWindow(QMainWindow):
 
         # Сигналы AppearanceView
         self._appearance_view.theme_changed.connect(self._on_theme_changed)
+        self._appearance_view.hotkeys_requested.connect(
+            self._show_hotkeys_view
+        )
         self.stop_operation_finished.connect(self._on_stop_operation_finished)
         self.dependency_check_completed.connect(
             self._on_dependency_check_completed
@@ -913,6 +1029,11 @@ class MainWindow(QMainWindow):
             self._settings_controller.get_theme_mode()
         )
 
+        # Ширина боковой панели
+        self._apply_sidebar_width(
+            self._settings_controller.get_sidebar_width()
+        )
+
         # Недавние записи
         self._refresh_recent_recordings()
 
@@ -1010,6 +1131,18 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             apply_theme(app, mode)
+
+    def _show_hotkeys_view(self) -> None:
+        """Показать немодальный экран со списком горячих клавиш."""
+        if getattr(self, "_hotkeys_view", None) is None:
+            from gui.views.hotkeys_view import HotkeysView
+
+            self._hotkeys_view = HotkeysView(
+                self._desktop_actions, parent=self
+            )
+        self._hotkeys_view.show()
+        self._hotkeys_view.raise_()
+        self._hotkeys_view.activateWindow()
 
     def _refresh_readiness_summary(self) -> None:
         """Асинхронно обновить compact readiness center."""
@@ -1750,6 +1883,49 @@ class MainWindow(QMainWindow):
             if path.parent.exists():
                 self._open_folder(str(path.parent))
 
+    def _copy_selected_recording_path(self) -> None:
+        """Копирование пути выбранной записи в буфер обмена."""
+        item = self.recordings_list.currentItem()
+        if not item:
+            return
+        path = item.data(Qt.ItemDataRole.UserRole)
+        if not path:
+            return
+
+        from PyQt6.QtGui import QGuiApplication
+
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(str(path))
+        self.status_bar.showMessage(
+            "Путь записи скопирован в буфер обмена", 5000
+        )
+
+    def _show_recordings_context_menu(self, pos: Any) -> None:
+        """Контекстное меню по правому клику на записи в списке."""
+        item = self.recordings_list.itemAt(pos)
+        if item is None:
+            return
+        self.recordings_list.setCurrentItem(item)
+
+        menu = QMenu(self)
+
+        open_action = QAction("Открыть файл", menu)
+        open_action.triggered.connect(self._open_selected_recording)
+        menu.addAction(open_action)
+
+        folder_action = QAction("Открыть папку", menu)
+        folder_action.triggered.connect(self._open_recording_folder)
+        menu.addAction(folder_action)
+
+        menu.addSeparator()
+
+        copy_action = QAction("Копировать путь", menu)
+        copy_action.triggered.connect(self._copy_selected_recording_path)
+        menu.addAction(copy_action)
+
+        menu.exec(self.recordings_list.mapToGlobal(pos))
+
     def _open_file(self, path: str) -> None:
         """Открытие файла с помощью системного приложения по умолчанию."""
         system = platform.system()
@@ -1800,9 +1976,9 @@ class MainWindow(QMainWindow):
             message: Текст ошибки.
             duration_ms: Длительность сообщения в status bar.
         """
-        self.status_label.setText("Ошибка")
-        self.status_label.setStyleSheet(Theme.status_style("danger"))
-        self.status_bar.showMessage(message, duration_ms)
+        Theme.apply_error_status(
+            self.status_label, self.status_bar, message, duration_ms
+        )
         self.error_occurred.emit(message)
 
     def _check_dependencies(self) -> None:

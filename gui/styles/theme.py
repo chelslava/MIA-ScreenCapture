@@ -5,8 +5,6 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
-VALID_THEME_MODES = ("system", "light", "dark")
-
 
 @dataclass(frozen=True)
 class ColorPalette:
@@ -33,16 +31,54 @@ LIGHT_PALETTE = ColorPalette(
     selection="#CCE4F7",
 )
 
+BLUE_PALETTE = ColorPalette(
+    background="#EAEEF6",
+    surface="#DCE4F0",
+    border="#A9B7C6",
+    text_primary="#1A2733",
+    text_secondary="#51637A",
+    accent="#005AC1",
+    accent_hover="#0846A3",
+    selection="#BCD2EE",
+)
+
 DARK_PALETTE = ColorPalette(
     background="#1E1E1E",
-    surface="#252526",
-    border="#3C3C3C",
-    text_primary="#CCCCCC",
-    text_secondary="#9D9D9D",
-    accent="#0A84FF",
-    accent_hover="#3794FF",
+    surface="#2D2D30",
+    border="#3F3F46",
+    text_primary="#F1F1F1",
+    text_secondary="#A0A0A0",
+    accent="#007ACC",
+    accent_hover="#1C97EA",
     selection="#264F78",
 )
+
+DARK_CONTRAST_PALETTE = ColorPalette(
+    background="#000000",
+    surface="#1A1A1A",
+    border="#6B6B6B",
+    text_primary="#FFFFFF",
+    text_secondary="#D0D0D0",
+    accent="#3FB6FF",
+    accent_hover="#6FCBFF",
+    selection="#1F6FB2",
+)
+
+THEME_REGISTRY: dict[str, ColorPalette] = {
+    "light": LIGHT_PALETTE,
+    "blue": BLUE_PALETTE,
+    "dark": DARK_PALETTE,
+    "dark_contrast": DARK_CONTRAST_PALETTE,
+}
+
+THEME_LABELS: dict[str, str] = {
+    "light": "Светлая",
+    "blue": "Голубая",
+    "dark": "Тёмная",
+    "dark_contrast": "Тёмная (контраст)",
+}
+
+VALID_THEME_MODES = ("system", *THEME_REGISTRY.keys())
 
 
 def detect_system_theme() -> str:
@@ -70,26 +106,26 @@ def detect_system_theme() -> str:
 
 def resolve_theme(mode: str) -> str:
     """
-    Преобразовать режим темы из настроек в конкретную палитру.
+    Преобразовать режим темы из настроек в конкретный ключ палитры.
 
     Args:
-        mode: `"system"`, `"light"` или `"dark"`.
+        mode: `"system"` или один из ключей `THEME_REGISTRY`
+            (`"light"`, `"blue"`, `"dark"`, `"dark_contrast"`).
 
     Returns:
-        `"light"` или `"dark"`.
+        Ключ `THEME_REGISTRY` (`"system"` разрешается в `"light"`/`"dark"`
+        через определение системной темы Windows).
     """
-    if mode == "dark":
-        return "dark"
-    if mode == "light":
-        return "light"
+    if mode in THEME_REGISTRY:
+        return mode
     if mode == "system":
         return detect_system_theme()
     return "light"
 
 
 def get_palette(resolved: str) -> ColorPalette:
-    """Вернуть палитру для разрешённой темы (`"light"`/`"dark"`)."""
-    return DARK_PALETTE if resolved == "dark" else LIGHT_PALETTE
+    """Вернуть палитру для разрешённого ключа темы из `THEME_REGISTRY`."""
+    return THEME_REGISTRY.get(resolved, LIGHT_PALETTE)
 
 
 def build_stylesheet(palette: ColorPalette) -> str:
@@ -194,10 +230,10 @@ def apply_theme(app: object, mode: str) -> str:
 
     Args:
         app: Объект с методом `setStyleSheet` (как правило `QApplication`).
-        mode: `"system"`, `"light"` или `"dark"`.
+        mode: `"system"` или один из ключей `THEME_REGISTRY`.
 
     Returns:
-        Фактически применённая тема (`"light"`/`"dark"`).
+        Фактически применённый ключ темы из `THEME_REGISTRY`.
     """
     resolved = resolve_theme(mode)
     palette = get_palette(resolved)
@@ -217,6 +253,10 @@ class Theme:
         "info": "#2563eb",
         "muted": "#6b7280",
     }
+
+    # Единая шкала отступов для layout.setContentsMargins()/setSpacing().
+    MARGIN = 4
+    SPACING = 6
 
     @classmethod
     def title_style(cls) -> str:
@@ -243,6 +283,36 @@ class Theme:
         """
         color = cls.COLORS.get(tone, cls.COLORS["muted"])
         return f"font-weight: bold; color: {color};"
+
+    @classmethod
+    def apply_error_status(
+        cls,
+        status_label: object,
+        status_bar: object,
+        message: str,
+        duration_ms: int = 10000,
+        label_text: str = "Ошибка",
+    ) -> None:
+        """
+        Показать неблокирующую (non-modal) ambient-ошибку приложения.
+
+        Единая точка для всех ambient app-level ошибок, которые не должны
+        блокировать UI (в отличие от валидации форм внутри уже открытого
+        модального диалога — там по-прежнему уместен блокирующий
+        `QMessageBox.warning`/`critical`). См. конвенцию в `gui/AGENTS.md`.
+
+        Args:
+            status_label: Виджет с методами `setText`/`setStyleSheet`.
+            status_bar: Виджет с методом `showMessage`.
+            message: Текст ошибки для status bar.
+            duration_ms: Длительность отображения сообщения.
+            label_text: Краткая подпись статус-метки (по умолчанию «Ошибка»).
+        """
+        status_label.setText(label_text)  # type: ignore[attr-defined]
+        status_label.setStyleSheet(  # type: ignore[attr-defined]
+            cls.status_style("danger")
+        )
+        status_bar.showMessage(message, duration_ms)  # type: ignore[attr-defined]
 
     @staticmethod
     def apply_style(widget: object, style: str) -> None:
