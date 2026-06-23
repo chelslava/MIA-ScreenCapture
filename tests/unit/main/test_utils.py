@@ -22,7 +22,7 @@ class TestGetAppIconPath:
         path = get_app_icon_path()
 
         assert path == (
-            Path(__file__).parent.parent.parent
+            Path(__file__).parent.parent.parent.parent
             / "docs"
             / "assets"
             / "MIA-ScreenCapture.ico"

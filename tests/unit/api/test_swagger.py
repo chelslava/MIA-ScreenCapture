@@ -22,7 +22,7 @@ from api.schemas import (
 from api.server import APIServer
 from api.swagger import SWAGGER_SPEC, get_swagger_spec, register_swagger_routes
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _load_version_from_pyproject() -> str:
