@@ -9,9 +9,13 @@ import json
 import threading
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from config import (
     APISettings,
     AppSettings,
+    AppSettingsSchema,
     AudioSettings,
     CaptureSettings,
     ConfigManager,
@@ -170,6 +174,7 @@ class TestAppSettings:
         assert settings.minimize_to_tray is True
         assert settings.show_notifications is True
         assert settings.language == "en"
+        assert settings.theme == "system"
         assert settings.recent_recordings == []
         assert settings.max_recent_recordings == 20
 
@@ -181,6 +186,34 @@ class TestAppSettings:
 
         assert settings.video.fps == 60
         assert settings.audio.sample_rate == 48000
+
+    def test_theme_custom_value(self):
+        """Проверка пользовательского значения темы."""
+        settings = AppSettings(theme="dark")
+
+        assert settings.theme == "dark"
+
+
+class TestAppSettingsThemeSchema:
+    """Тесты валидации поля `theme` в AppSettingsSchema."""
+
+    @pytest.mark.parametrize("value", ["system", "light", "dark"])
+    def test_accepts_valid_theme_values(self, value: str):
+        """Pydantic-схема должна принимать все 3 допустимых значения."""
+        validated = AppSettingsSchema.model_validate({"theme": value})
+
+        assert validated.theme == value
+
+    def test_rejects_invalid_theme_value(self):
+        """Pydantic-схема должна отклонять неизвестное значение темы."""
+        with pytest.raises(ValidationError):
+            AppSettingsSchema.model_validate({"theme": "blue"})
+
+    def test_defaults_to_system(self):
+        """Без явного значения схема должна выбирать 'system'."""
+        validated = AppSettingsSchema.model_validate({})
+
+        assert validated.theme == "system"
 
 
 class TestConfigManager:
@@ -241,6 +274,34 @@ class TestConfigManager:
         manager2 = ConfigManager(temp_config_file)
         assert manager2.settings.video.fps == 60
         assert manager2.settings.api.port == 8080
+
+    def test_save_and_reload_theme(self, temp_config_file: Path):
+        """Тема должна сохраняться и переживать перезагрузку конфигурации."""
+        manager = ConfigManager(temp_config_file)
+        manager.settings.theme = "dark"
+
+        assert manager.save() is True
+
+        manager2 = ConfigManager(temp_config_file)
+        assert manager2.settings.theme == "dark"
+
+    def test_dict_to_settings_reads_theme_field(self, temp_config_file: Path):
+        """`_dict_to_settings` должен читать поле `theme` из словаря."""
+        manager = ConfigManager(temp_config_file)
+
+        settings = manager._dict_to_settings({"theme": "dark"})
+
+        assert settings.theme == "dark"
+
+    def test_dict_to_settings_defaults_theme_when_missing(
+        self, temp_config_file: Path
+    ):
+        """Без ключа `theme` (старый config.json) должен подставляться 'system'."""
+        manager = ConfigManager(temp_config_file)
+
+        settings = manager._dict_to_settings({})
+
+        assert settings.theme == "system"
 
     def test_save_config_uses_atomic_replace(
         self, temp_config_file: Path, monkeypatch

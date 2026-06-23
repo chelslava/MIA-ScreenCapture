@@ -55,7 +55,8 @@ from gui.models.recording_state import (
     RecordingStatus,
     VideoSettings,
 )
-from gui.styles.theme import Theme
+from gui.styles.theme import Theme, apply_theme
+from gui.views.appearance_view import AppearanceView
 from gui.views.audio_view import AudioView
 from gui.views.capture_view import CaptureView
 from gui.views.output_view import OutputView
@@ -381,6 +382,10 @@ class MainWindow(QMainWindow):
         self._output_view = OutputView()
         layout.addWidget(self._output_view)
 
+        # Внешний вид (тема)
+        self._appearance_view = AppearanceView()
+        layout.addWidget(self._appearance_view)
+
         layout.addStretch()
         return widget
 
@@ -551,6 +556,9 @@ class MainWindow(QMainWindow):
         self._output_view.output_path_changed.connect(
             self._on_output_path_changed
         )
+
+        # Сигналы AppearanceView
+        self._appearance_view.theme_changed.connect(self._on_theme_changed)
         self.stop_operation_finished.connect(self._on_stop_operation_finished)
         self.dependency_check_completed.connect(
             self._on_dependency_check_completed
@@ -900,6 +908,11 @@ class MainWindow(QMainWindow):
         if self._state.output.default_path:
             self._output_view.set_output_path(self._state.output.default_path)
 
+        # Тема оформления
+        self._appearance_view.set_current_mode(
+            self._settings_controller.get_theme_mode()
+        )
+
         # Недавние записи
         self._refresh_recent_recordings()
 
@@ -988,6 +1001,15 @@ class MainWindow(QMainWindow):
         """Обработка изменения пути вывода."""
         self._settings_controller.update_output_settings(output_path=path)
         self._refresh_readiness_summary()
+
+    def _on_theme_changed(self, mode: str) -> None:
+        """Обработка выбора темы оформления."""
+        self._settings_controller.set_theme_mode(mode)
+        from PyQt6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app, mode)
 
     def _refresh_readiness_summary(self) -> None:
         """Асинхронно обновить compact readiness center."""

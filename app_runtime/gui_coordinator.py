@@ -41,6 +41,11 @@ class GuiRuntimeCoordinator:
         if icon_path.exists():
             self._app._app.setWindowIcon(QIcon(str(icon_path)))
 
+        from config import get_config
+        from gui.styles.theme import apply_theme
+
+        apply_theme(self._app._app, get_config().settings.theme)
+
         self._setup_main_window()
         self._setup_tray_icon()
         self._bind_window_and_tray_signals()

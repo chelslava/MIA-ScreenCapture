@@ -40,6 +40,7 @@ def _build_window():
     window._audio_view = MagicMock()
     window._video_view = MagicMock()
     window._output_view = MagicMock()
+    window._appearance_view = MagicMock()
     window._readiness_center_view = MagicMock()
     window._api_settings_view = MagicMock()
     window._application_facade = None

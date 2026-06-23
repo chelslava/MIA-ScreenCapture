@@ -172,8 +172,16 @@ class AppSettingsSchema(BaseModel):
     minimize_to_tray: bool = Field(default=True)
     show_notifications: bool = Field(default=True)
     language: str = Field(default="en")
+    theme: str = Field(default="system")
     recent_recordings: list[dict[str, Any]] = Field(default_factory=list)
     max_recent_recordings: int = Field(default=20, ge=1, le=100)
+
+    @field_validator("theme")
+    @classmethod
+    def validate_theme(cls, v: str) -> str:
+        if v not in ("system", "light", "dark"):
+            raise ValueError("theme должен быть 'system', 'light' или 'dark'")
+        return v
 
 
 # ============================================================================
@@ -267,6 +275,7 @@ class AppSettings:
     minimize_to_tray: bool = True
     show_notifications: bool = True
     language: str = "en"
+    theme: str = "system"
 
     # Недавние записи (путь, дата, размер)
     recent_recordings: list[dict[str, Any]] = field(default_factory=list)
@@ -359,6 +368,7 @@ class ConfigManager:
                 minimize_to_tray=data.get("minimize_to_tray", True),
                 show_notifications=data.get("show_notifications", True),
                 language=data.get("language", "en"),
+                theme=data.get("theme", "system"),
                 recent_recordings=data.get("recent_recordings", []),
                 max_recent_recordings=data.get("max_recent_recordings", 20),
             )

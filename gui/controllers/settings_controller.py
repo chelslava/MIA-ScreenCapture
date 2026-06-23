@@ -233,6 +233,29 @@ class SettingsController:
         self._state.recent_recordings.clear()
         self._config.clear_recent_recordings()
 
+    def get_theme_mode(self) -> str:
+        """
+        Получить текущий режим темы из конфигурации.
+
+        Returns:
+            `"system"`, `"light"` или `"dark"`.
+        """
+        return str(self._config.settings.theme)
+
+    def set_theme_mode(self, mode: str) -> None:
+        """
+        Установить и немедленно сохранить режим темы.
+
+        В отличие от video/audio-настроек, тема сохраняется на диск сразу,
+        а не только при закрытии окна — это UI-preference, а не часть
+        сессии записи.
+
+        Args:
+            mode: `"system"`, `"light"` или `"dark"`.
+        """
+        self._config.settings.theme = mode
+        self._config.save()
+
     def get_output_path(self) -> Path:
         """
         Получить путь к выходному файлу.
