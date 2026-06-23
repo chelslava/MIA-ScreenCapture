@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-06-05 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-06-23 -->
 
 # core/
 
@@ -22,7 +22,6 @@
 | `recording_backend.py` | `RecordingBackend` Protocol — абстракция над физическим рекордером |
 | `api_lifecycle_manager.py` | Управление жизненным циклом API сервера |
 | `api_runtime_manager.py` | Runtime-операции API: запуск/остановка/перезапуск/настройки |
-| `error_format.py` | Форматирование ошибок FFmpeg и доменных исключений для диагностики |
 | `geometry.py` | Геометрические утилиты: прямоугольники, координаты, нормализация областей |
 
 ## Subdirectories
