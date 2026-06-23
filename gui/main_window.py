@@ -283,6 +283,9 @@ class MainWindow(QMainWindow):
         self._sidebar.setCurrentRow(0)
         self._content_stack.setCurrentIndex(0)
 
+        # Для совместимости с тестами - связать tabs с content_stack
+        self.tabs = self._content_stack
+
         # Строка состояния
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
@@ -307,6 +310,18 @@ class MainWindow(QMainWindow):
         current_row = self._sidebar.currentRow()
         if current_row >= 0:
             self._content_stack.setCurrentIndex(current_row)
+
+    @property
+    def tabs(self) -> QWidget | None:
+        """Совместимость с тестами - возвращает content_stack."""
+        if not hasattr(self, "_content_stack"):
+            return None
+        return self._content_stack
+
+    @tabs.setter
+    def tabs(self, value: QWidget) -> None:
+        """Совместимость с тестами - устанавливает content_stack."""
+        self._content_stack = value
 
     def _create_recording_tab(self) -> QWidget:
         """Создание вкладки записи (минимум - только для быстрого старта)."""
@@ -635,7 +650,11 @@ class MainWindow(QMainWindow):
                 action_id=DesktopActionId.SHOW_RECORDING_TAB,
                 title=recording_tab_spec.title,
                 description=recording_tab_spec.description,
-                callback=lambda: self.tabs.setCurrentIndex(0),
+                callback=lambda: (
+                    self._sidebar.setCurrentRow(0)
+                    if hasattr(self, "_sidebar")
+                    else None
+                ),
                 shortcut=recording_tab_spec.shortcut,
             )
         )
@@ -647,8 +666,10 @@ class MainWindow(QMainWindow):
                 action_id=DesktopActionId.SHOW_SCHEDULER_TAB,
                 title=scheduler_tab_spec.title,
                 description=scheduler_tab_spec.description,
-                callback=lambda: self.tabs.setCurrentWidget(
-                    self.scheduler_tab
+                callback=lambda: (
+                    self._sidebar.setCurrentRow(2)
+                    if hasattr(self, "_sidebar")
+                    else None
                 ),
                 shortcut=scheduler_tab_spec.shortcut,
             )
@@ -661,8 +682,10 @@ class MainWindow(QMainWindow):
                 action_id=DesktopActionId.SHOW_DIAGNOSTICS_TAB,
                 title=diagnostics_tab_spec.title,
                 description=diagnostics_tab_spec.description,
-                callback=lambda: self.tabs.setCurrentWidget(
-                    self._diagnostics_view
+                callback=lambda: (
+                    self._sidebar.setCurrentRow(3)
+                    if hasattr(self, "_sidebar")
+                    else None
                 ),
                 shortcut=diagnostics_tab_spec.shortcut,
             )
@@ -673,8 +696,10 @@ class MainWindow(QMainWindow):
                 action_id=DesktopActionId.SHOW_API_TAB,
                 title=api_tab_spec.title,
                 description=api_tab_spec.description,
-                callback=lambda: self.tabs.setCurrentWidget(
-                    self._api_settings_view
+                callback=lambda: (
+                    self._sidebar.setCurrentRow(4)
+                    if hasattr(self, "_sidebar")
+                    else None
                 ),
                 shortcut=api_tab_spec.shortcut,
             )
@@ -711,12 +736,13 @@ class MainWindow(QMainWindow):
             DesktopActionId.OPEN_RECORDING_FOLDER,
         )
 
-        self._apply_accessible_metadata(
-            self.tabs,
-            "Основные вкладки приложения",
-            "Позволяет переключаться между записью, планировщиком, "
-            "диагностикой и API.",
-        )
+        if hasattr(self, "_sidebar"):
+            self._apply_accessible_metadata(
+                self._sidebar,
+                "Боковая панель навигации",
+                "Позволяет переключаться между записью, планировщиком, "
+                "диагностикой и API.",
+            )
         self._apply_accessible_metadata(
             self.status_label,
             "Статус записи",
@@ -1055,8 +1081,8 @@ class MainWindow(QMainWindow):
 
     def _show_readiness_details(self) -> None:
         """Открыть вкладку диагностики и запустить подробную проверку."""
-        if hasattr(self, "tabs") and hasattr(self, "_diagnostics_view"):
-            self.tabs.setCurrentWidget(self._diagnostics_view)
+        if hasattr(self, "_sidebar") and hasattr(self, "_diagnostics_view"):
+            self._sidebar.setCurrentRow(3)
         self._run_diagnostics()
 
     def _handle_readiness_action(self, action_key: str) -> None:
@@ -1070,30 +1096,35 @@ class MainWindow(QMainWindow):
             return
 
         if action_key == "refresh_windows":
-            self.tabs.setCurrentIndex(0)
+            if hasattr(self, "_sidebar"):
+                self._sidebar.setCurrentRow(0)
             self._capture_view.refresh_windows()
             return
 
         if action_key == "focus_capture_window":
-            self.tabs.setCurrentIndex(0)
+            if hasattr(self, "_sidebar"):
+                self._sidebar.setCurrentRow(0)
             self._capture_view.set_capture_type(CaptureMode.WINDOW)
             self._capture_view.focus_window_combo()
             return
 
         if action_key == "refresh_audio_devices":
-            self.tabs.setCurrentIndex(0)
+            if hasattr(self, "_sidebar"):
+                self._sidebar.setCurrentRow(1)
             self._audio_view._refresh_audio_devices()
             return
 
         if action_key == "focus_microphone_selection":
-            self.tabs.setCurrentIndex(0)
+            if hasattr(self, "_sidebar"):
+                self._sidebar.setCurrentRow(1)
             focus = getattr(self._audio_view._mic_combo, "setFocus", None)
             if callable(focus):
                 focus()
             return
 
         if action_key == "API сервер":
-            self.tabs.setCurrentWidget(self._api_settings_view)
+            if hasattr(self, "_sidebar"):
+                self._sidebar.setCurrentRow(4)
             return
 
         fallback_action_map = {
@@ -1190,8 +1221,8 @@ class MainWindow(QMainWindow):
             f"Старт заблокирован: {snapshot.summary_text()}",
             10000,
         )
-        if hasattr(self, "tabs") and hasattr(self, "_diagnostics_view"):
-            self.tabs.setCurrentWidget(self._diagnostics_view)
+        if hasattr(self, "_sidebar") and hasattr(self, "_diagnostics_view"):
+            self._sidebar.setCurrentRow(3)
             self._run_diagnostics()
         return False
 
