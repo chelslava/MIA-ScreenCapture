@@ -9,7 +9,6 @@ REST API сервер на базе Flask для удалённого управ
 
 import logging
 import os
-import re
 import shutil
 import socket
 import threading
@@ -32,12 +31,11 @@ from api.operation_store import APIOperationStore
 from api.request_lifecycle import register_request_lifecycle
 from api.runtime_models import APIOperation, IdempotencyBeginResult
 from logger_config import get_module_logger
+from version import get_version
 
 logger = get_module_logger(__name__)
 
-_VERSION_FALLBACK = "unknown"
 _REQUEST_ID_HEADER = "X-Request-ID"
-_PYPROJECT_PATH = Path(__file__).resolve().parent.parent / "pyproject.toml"
 _SERVER_STOP_WAIT_SECONDS = 10.0
 _MAX_REQUEST_BODY_BYTES = 1024 * 1024
 _CORS_ALLOWED_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
@@ -156,7 +154,7 @@ class APIServer:
         self._running = False
         self._lock = threading.Lock()
         self._start_time = time.monotonic()
-        self._version = self._load_version()
+        self._version = get_version()
         self._operations = APIOperationStore()
         self._idempotency = APIIdempotencyStore()
         self._observability = APIServerObservability(
@@ -722,17 +720,6 @@ class APIServer:
         if isinstance(self.api_key, str) and self.api_key.strip():
             return self.api_key.strip()
         return None
-
-    def _load_version(self) -> str:
-        """Читает версию из pyproject.toml или возвращает fallback."""
-        try:
-            text = _PYPROJECT_PATH.read_text(encoding="utf-8")
-            match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
-            if match:
-                return match.group(1)
-        except (OSError, ValueError) as e:
-            logger.debug(f"Не удалось прочитать версию из pyproject.toml: {e}")
-        return _VERSION_FALLBACK
 
     def _check_ffmpeg(self) -> dict[str, Any]:
         """Проверяет доступность FFmpeg."""

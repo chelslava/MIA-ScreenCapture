@@ -7,21 +7,13 @@
 """
 
 import argparse
-import importlib.metadata
 from pathlib import Path
 from typing import Any
 
 from logger_config import get_module_logger
+from version import get_version
 
 logger = get_module_logger(__name__)
-
-
-def get_version() -> str:
-    """Получить версию пакета из метаданных."""
-    try:
-        return importlib.metadata.version("mia-screencapture")
-    except importlib.metadata.PackageNotFoundError:
-        return "1.3.2"
 
 
 def create_parser() -> argparse.ArgumentParser:

@@ -5,7 +5,7 @@
   <img src="docs/assets/logo-light.png" alt="MIA-ScreenCapture" width="480">
 </picture>
 
-# MIA-ScreenCapture v1.4.7
+# MIA-ScreenCapture v1.4.8
 
 **Professional screen recorder for Windows — GUI, REST API, WebSocket, scheduler, and CLI in one tool.**
 

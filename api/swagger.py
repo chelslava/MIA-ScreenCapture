@@ -8,13 +8,15 @@
 from copy import deepcopy
 from typing import Any
 
+from version import get_version
+
 # OpenAPI спецификация для API MIA-ScreenCapture
 SWAGGER_SPEC: dict[str, Any] = {
     "openapi": "3.0.3",
     "info": {
         "title": "MIA-ScreenCapture API",
         "description": "REST API для управления записью экрана",
-        "version": "1.4.7",
+        "version": get_version(),
         "contact": {
             "name": "MIA Development Team",
         },
@@ -200,7 +202,7 @@ SWAGGER_SPEC: dict[str, Any] = {
                     },
                     "version": {
                         "type": "string",
-                        "example": "1.4.7",
+                        "example": get_version(),
                     },
                     "uptime_seconds": {
                         "type": "number",
