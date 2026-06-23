@@ -27,7 +27,6 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStatusBar,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -214,29 +213,52 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(4, 4, 4, 4)
-        main_layout.setSpacing(4)
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # Создание вкладок
-        self.tabs = QTabWidget()
-        main_layout.addWidget(self.tabs)
+        # Боковая панель навигации
+        self._sidebar = QListWidget()
+        self._sidebar.setMaximumWidth(120)
+        self._sidebar.setMinimumWidth(100)
+        self._sidebar.itemSelectionChanged.connect(
+            self._on_sidebar_selection_changed
+        )
+        main_layout.addWidget(self._sidebar)
 
-        # Вкладка записи (минималистичная - только для быстрого старта)
+        # Разделитель
+        from PyQt6.QtWidgets import QFrame
+
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        main_layout.addWidget(separator)
+
+        # Содержимое (stacked widget)
+        from PyQt6.QtWidgets import QStackedWidget
+
+        self._content_stack = QStackedWidget()
+        main_layout.addWidget(self._content_stack, stretch=1)
+
+        # Добавление страниц в stacked widget
+        # 0 - Запись
         recording_tab = self._create_recording_tab()
-        self.tabs.addTab(recording_tab, "Запись")
+        self._content_stack.addWidget(recording_tab)
+        self._sidebar.addItem("📹 Запись")
 
-        # Вкладка настроек записи (аудио, видео, путь вывода)
+        # 1 - Настройки
         settings_tab = self._create_settings_tab()
-        self.tabs.addTab(settings_tab, "Настройки")
+        self._content_stack.addWidget(settings_tab)
+        self._sidebar.addItem("⚙️  Настройки")
 
-        # Вкладка планировщика
+        # 2 - Планировщик
         from gui.scheduler.scheduler_tab import SchedulerTab
 
         self.scheduler_tab = SchedulerTab()
-        self.tabs.addTab(self.scheduler_tab, "Планировщик")
+        self._content_stack.addWidget(self.scheduler_tab)
+        self._sidebar.addItem("📅 Планировщик")
 
-        # Вкладка диагностики
+        # 3 - Диагностика
         from gui.views.diagnostics_view import DiagnosticsView
 
         self._diagnostics_view = DiagnosticsView()
@@ -247,13 +269,19 @@ class MainWindow(QMainWindow):
                 DesktopActionId.OPEN_APP_LOGS
             )
         )
-        self.tabs.addTab(self._diagnostics_view, "Диагностика")
+        self._content_stack.addWidget(self._diagnostics_view)
+        self._sidebar.addItem("🔧 Диагностика")
 
-        # Вкладка API
+        # 4 - API
         from gui.views.api_settings_view import ApiSettingsView
 
         self._api_settings_view = ApiSettingsView()
-        self.tabs.addTab(self._api_settings_view, "API")
+        self._content_stack.addWidget(self._api_settings_view)
+        self._sidebar.addItem("🔌 API")
+
+        # Выбрать первую страницу по умолчанию
+        self._sidebar.setCurrentRow(0)
+        self._content_stack.setCurrentIndex(0)
 
         # Строка состояния
         self.status_bar = QStatusBar()
@@ -273,6 +301,12 @@ class MainWindow(QMainWindow):
         # Индикатор времени
         self.time_label = QLabel("00:00")
         self.status_bar.addPermanentWidget(self.time_label)
+
+    def _on_sidebar_selection_changed(self) -> None:
+        """Обработчик переключения страниц при клике на боковую панель."""
+        current_row = self._sidebar.currentRow()
+        if current_row >= 0:
+            self._content_stack.setCurrentIndex(current_row)
 
     def _create_recording_tab(self) -> QWidget:
         """Создание вкладки записи (минимум - только для быстрого старта)."""
