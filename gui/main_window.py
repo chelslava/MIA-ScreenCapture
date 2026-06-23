@@ -222,9 +222,13 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
 
-        # Вкладка записи
+        # Вкладка записи (минималистичная - только для быстрого старта)
         recording_tab = self._create_recording_tab()
         self.tabs.addTab(recording_tab, "Запись")
+
+        # Вкладка настроек записи (аудио, видео, путь вывода)
+        settings_tab = self._create_settings_tab()
+        self.tabs.addTab(settings_tab, "Настройки")
 
         # Вкладка планировщика
         from gui.scheduler.scheduler_tab import SchedulerTab
@@ -271,12 +275,14 @@ class MainWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self.time_label)
 
     def _create_recording_tab(self) -> QWidget:
-        """Создание вкладки записи."""
+        """Создание вкладки записи (минимум - только для быстрого старта)."""
         widget = QWidget()
         layout = QHBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
 
-        # Левая панель - Элементы управления
-        left_panel = self._create_left_panel()
+        # Левая панель - Только область захвата и кнопки
+        left_panel = self._create_quick_start_panel()
         layout.addWidget(left_panel, stretch=2)
 
         # Правая панель - Последние записи
@@ -285,8 +291,52 @@ class MainWindow(QMainWindow):
 
         return widget
 
+    def _create_quick_start_panel(self) -> QWidget:
+        """Создание панели быстрого старта (только захват + кнопки)."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        # Только область захвата
+        self._capture_view = CaptureView()
+        layout.addWidget(self._capture_view)
+
+        # Статус готовности (компактно)
+        self._readiness_center_view = ReadinessCenterView()
+        layout.addWidget(self._readiness_center_view, stretch=0)
+
+        # Кнопки управления
+        buttons_layout = self._create_control_buttons()
+        layout.addLayout(buttons_layout)
+
+        layout.addStretch()
+        return widget
+
+    def _create_settings_tab(self) -> QWidget:
+        """Создание вкладки настроек (аудио, видео, вывод)."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
+
+        # Аудио настройки
+        self._audio_view = AudioView()
+        layout.addWidget(self._audio_view)
+
+        # Видео настройки
+        self._video_view = VideoView()
+        layout.addWidget(self._video_view)
+
+        # Путь вывода
+        self._output_view = OutputView()
+        layout.addWidget(self._output_view)
+
+        layout.addStretch()
+        return widget
+
     def _create_left_panel(self) -> QWidget:
-        """Создание левой панели с элементами управления."""
+        """Создание левой панели (устаревший метод - не используется)."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(4, 4, 4, 4)
