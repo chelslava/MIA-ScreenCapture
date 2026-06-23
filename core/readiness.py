@@ -130,8 +130,8 @@ class RecordingReadinessService:
         """
         issues: list[ReadinessIssue] = []
 
-        ffmpeg_available, _version = self._ffmpeg_checker()
-        if not ffmpeg_available:
+        ffmpeg_status = self._ffmpeg_checker()
+        if not ffmpeg_status.available:
             issues.append(
                 ReadinessIssue(
                     code="ffmpeg_missing",

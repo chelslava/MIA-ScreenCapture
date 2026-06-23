@@ -13,6 +13,7 @@ from gui.models.recording_state import (
     CaptureSettings,
     CaptureType,
 )
+from recorder.utils import FFmpegStatus
 
 
 class TestRecordingReadinessService:
@@ -21,7 +22,7 @@ class TestRecordingReadinessService:
     def test_ffmpeg_missing_is_blocking(self) -> None:
         """Отсутствие FFmpeg должно блокировать старт."""
         service = RecordingReadinessService()
-        service._ffmpeg_checker = lambda: (False, None)
+        service._ffmpeg_checker = lambda: FFmpegStatus(available=False)
         service._window_provider = lambda: []
         service._audio_devices_provider = lambda: {"input": []}
 
@@ -37,7 +38,9 @@ class TestRecordingReadinessService:
     def test_missing_window_for_window_capture_is_blocking(self) -> None:
         """Режим захвата окна блокируется, если окно не найдено."""
         service = RecordingReadinessService()
-        service._ffmpeg_checker = lambda: (True, "7.0")
+        service._ffmpeg_checker = lambda: FFmpegStatus(
+            available=True, version="7.0"
+        )
         service._window_provider = lambda: [{"title": "Explorer"}]
         service._audio_devices_provider = lambda: {"input": []}
 
@@ -56,7 +59,9 @@ class TestRecordingReadinessService:
     def test_missing_microphone_is_blocking_for_mic_mode(self) -> None:
         """Микрофонный режим без доступных input-устройств блокирует старт."""
         service = RecordingReadinessService()
-        service._ffmpeg_checker = lambda: (True, "7.0")
+        service._ffmpeg_checker = lambda: FFmpegStatus(
+            available=True, version="7.0"
+        )
         service._window_provider = lambda: []
         service._audio_devices_provider = lambda: {"input": []}
 
@@ -72,7 +77,9 @@ class TestRecordingReadinessService:
     def test_default_microphone_is_warning(self) -> None:
         """Отсутствие явного выбора микрофона даёт warning, а не blocking."""
         service = RecordingReadinessService()
-        service._ffmpeg_checker = lambda: (True, "7.0")
+        service._ffmpeg_checker = lambda: FFmpegStatus(
+            available=True, version="7.0"
+        )
         service._window_provider = lambda: []
         service._audio_devices_provider = lambda: {
             "input": [{"id": 1, "name": "Mic"}]
@@ -90,7 +97,9 @@ class TestRecordingReadinessService:
     def test_build_readiness_checks_exposes_actionable_warning(self) -> None:
         """Checklist должен сохранять warning и remediation-action."""
         service = RecordingReadinessService()
-        service._ffmpeg_checker = lambda: (True, "7.0")
+        service._ffmpeg_checker = lambda: FFmpegStatus(
+            available=True, version="7.0"
+        )
         service._window_provider = lambda: []
         service._audio_devices_provider = lambda: {
             "input": [{"id": 1, "name": "Mic"}]
