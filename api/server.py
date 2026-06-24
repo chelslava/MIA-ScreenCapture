@@ -165,6 +165,7 @@ class APIServer:
         self._callbacks: dict[str, Callable] = {}
         self._websocket_manager: Any | None = None
         self._ws_transport: Any = None
+        # time.monotonic(), не time.time() — см. check_health_rate_limit().
         self._health_last_request_time: float = 0.0
         self._health_lock = threading.Lock()
 
@@ -776,10 +777,15 @@ class APIServer:
         """
         Возвращает True если запрос разрешён, False если нужно вернуть 429.
 
+        Использует time.monotonic(), а не time.time(): на свежей CI VM
+        коррекция системных часов (NTP) в первые секунды после старта
+        может откатить wall-clock назад и навсегда заблокировать
+        health-check (см. flaky smoke-test при релизе v1.4.8).
+
         Raises:
             Не выбрасывает исключений.
         """
-        now = time.time()
+        now = time.monotonic()
         with self._health_lock:
             if (
                 now - self._health_last_request_time

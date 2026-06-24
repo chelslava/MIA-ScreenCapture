@@ -1100,7 +1100,7 @@ class TestHealthCheckEndpoint:
 
     def test_health_rate_limit_returns_429(self) -> None:
         client, server = self._make_client()
-        server._health_last_request_time = time.time()
+        server._health_last_request_time = time.monotonic()
 
         response = client.get("/health")
 
@@ -1108,7 +1108,7 @@ class TestHealthCheckEndpoint:
 
     def test_health_rate_limit_allows_after_interval(self) -> None:
         client, server = self._make_client()
-        server._health_last_request_time = time.time() - 2.0
+        server._health_last_request_time = time.monotonic() - 2.0
 
         with (
             patch("recorder.utils.check_ffmpeg") as mock_ffmpeg,
