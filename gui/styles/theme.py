@@ -169,6 +169,33 @@ def build_stylesheet(palette: ColorPalette) -> str:
             color: {palette.text_secondary};
             border-color: {palette.border};
         }}
+        QCheckBox, QRadioButton {{
+            color: {palette.text_primary};
+            spacing: 6px;
+        }}
+        QCheckBox::indicator, QRadioButton::indicator {{
+            width: 14px;
+            height: 14px;
+            border: 1px solid {palette.border};
+            background-color: {palette.background};
+        }}
+        QCheckBox::indicator {{
+            border-radius: 3px;
+        }}
+        QRadioButton::indicator {{
+            border-radius: 8px;
+        }}
+        QCheckBox::indicator:hover, QRadioButton::indicator:hover {{
+            border-color: {palette.accent};
+        }}
+        QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
+            background-color: {palette.accent};
+            border-color: {palette.accent};
+        }}
+        QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
+            border-color: {palette.border};
+            background-color: {palette.surface};
+        }}
         QLineEdit, QComboBox, QSpinBox {{
             background-color: {palette.background};
             border: 1px solid {palette.border};
