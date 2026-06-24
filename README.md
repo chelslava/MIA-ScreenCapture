@@ -29,18 +29,42 @@
 
 ## Table of Contents
 
+- [Why MIA-ScreenCapture](#why-mia-screencapture)
 - [Features](#features)
+- [Interface Layout](#interface-layout)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+  - [Your First Recording in 60 Seconds](#your-first-recording-in-60-seconds)
+  - [GUI](#gui)
+  - [CLI](#cli)
+  - [Scheduler](#scheduler)
+  - [Headless (API only)](#headless-api-only)
 - [CLI Reference](#cli-reference)
 - [REST API](#rest-api)
+  - [Endpoint Groups](#endpoint-groups)
+  - [Authentication](#authentication)
+  - [Error Format](#error-format)
+  - [curl Examples](#curl-examples)
+  - [Python Client Example](#python-client-example)
 - [Architecture](#architecture)
 - [Configuration](#configuration)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
 - [Known Limitations](#known-limitations)
+- [Documentation & Community](#documentation--community)
+- [Contributing](#contributing)
 - [License](#license)
+
+## Why MIA-ScreenCapture
+
+Most Windows screen recorders give you a button to click and little else. MIA-ScreenCapture is built for people who need recording to be **controllable, automatable, and trustworthy**:
+
+- **One engine, four ways in.** The same recording core is driven by the GUI, a REST API, a CLI, and a scheduler — automate exactly what you'd otherwise click through by hand.
+- **It doesn't quietly lose your recording.** Crash recovery, segment rollover, disk-space monitoring, and post-recording integrity verification exist because long recordings are exactly when things go wrong.
+- **Built to be integrated, not just used.** Versioned REST API, WebSocket event stream, HMAC-signed webhooks, idempotent requests, and Swagger docs — wire it into your own tooling without reverse-engineering anything.
+- **Native performance.** Captures through the Windows Graphics Capture API (the same low-overhead pipeline Windows itself uses), not a screen-scraping hack.
+- **Multi-monitor done right.** Record every monitor simultaneously into separate files, or hot-swap the capture source mid-recording without dropping a frame.
 
 ## Features
 
@@ -66,7 +90,7 @@
 - Tabs: Capture, Audio, Video, Output, API, Scheduler, Diagnostics
 - System tray icon, global hotkeys, keyboard-first navigation
 - Pre-flight **readiness checklist** (FFmpeg, output path, window, microphone) before you can start recording
-- Centralized theming layer and accessibility metadata on key controls
+- Centralized theming layer (4 themes: light, blue, dark, dark high-contrast) and accessibility metadata on key controls
 - Floating on-screen indicator over the active recording area
 
 ### 🌐 REST API (Flask + Waitress)
@@ -208,11 +232,39 @@ If it's missing, install it from the [official site](https://ffmpeg.org/download
 
 ## Quick Start
 
-### GUI (default)
+### Your First Recording in 60 Seconds
+
+A minimal end-to-end path from a fresh clone to a finished video file:
+
+```bash
+# 1. Clone and install
+git clone https://github.com/chelslava/MIA-ScreenCapture.git
+cd MIA-ScreenCapture
+uv sync
+
+# 2. Confirm FFmpeg is reachable
+ffmpeg -version
+
+# 3. Record the full screen for 10 seconds, with microphone audio
+uv run python main.py --start --audio mic --duration 10
+
+# 4. Check status while it's running (in another terminal)
+uv run python main.py --status
+
+# 5. The recording stops automatically after --duration,
+#    or stop it early with:
+uv run python main.py --stop
+```
+
+The finished file lands in the default output directory printed by `--status`/`--start`, ready to play back. From here, explore the [GUI](#gui) for a visual workflow, the [Scheduler](#scheduler) for unattended recording, or the [REST API](#rest-api) to drive recordings from your own application.
+
+### GUI
 
 ```bash
 uv run python main.py
 ```
+
+Launches the full desktop interface — pick a capture mode on the **Capture** tab, run the **Diagnostics** readiness checklist, and press **Start**.
 
 ### CLI
 
@@ -258,6 +310,8 @@ uv run python main.py --schedule-preview
 uv run python main.py --headless
 ```
 
+Starts only the REST API and WebSocket server — useful for servers, containers, or any environment where the GUI shouldn't run.
+
 ## CLI Reference
 
 | Flag | Description | Default |
@@ -280,7 +334,7 @@ uv run python main.py --headless
 | `--no-api` | Disable the API server | – |
 | `--version` | Print the installed version | – |
 
-Run `python main.py --help` for the full list, including all scheduler subcommands.
+Scheduler-specific flags (`--schedule-create`, `--schedule-list`, `--trigger`, `--preset`, etc.) are covered in [Scheduler](#scheduler) above. Run `python main.py --help` for the complete, authoritative list.
 
 ## REST API
 
@@ -288,7 +342,7 @@ The API listens on `http://127.0.0.1:5000` by default. All endpoints (except `/h
 
 Full reference with request/response schemas: [`docs/API.md`](docs/API.md). Interactive docs: `GET /api/docs` (Swagger UI) while the server is running.
 
-### Endpoint groups
+### Endpoint Groups
 
 | Group | Examples | Purpose |
 |---|---|---|
@@ -305,7 +359,21 @@ Full reference with request/response schemas: [`docs/API.md`](docs/API.md). Inte
 | Config | `GET/PUT /api/v1/config` | Read/update runtime configuration |
 | WebSocket | `ws://host:port/ws` | Real-time event stream with heartbeat |
 
-### Error format
+### Authentication
+
+The API key is generated automatically on first run. Find it via:
+
+- The `MIA_API_KEY` environment variable, or
+- Windows Credential Manager (target name `MIA-ScreenCapture/APIKey`), or
+- The **API** tab in the GUI (generate/rotate/reveal)
+
+Send it with every request (except `/health`):
+
+```bash
+curl -H "X-API-Key: your-api-key" http://localhost:5000/api/v1/status
+```
+
+### Error Format
 
 ```json
 {
@@ -323,7 +391,7 @@ Full reference with request/response schemas: [`docs/API.md`](docs/API.md). Inte
 
 `trace_id` is duplicated in the `X-Request-ID` response header. Successful responses use `{"success": true, "data": {...}}`.
 
-### curl examples
+### curl Examples
 
 ```bash
 # Start a recording
@@ -331,10 +399,14 @@ curl -X POST http://localhost:5000/api/v1/start \
   -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
   -d '{"area":"full", "audio":"mic", "fps":30}'
 
-# Status
+# Check status
 curl -H "X-API-Key: your-api-key" http://localhost:5000/api/v1/status
 
-# Create a cron schedule
+# Stop the active recording
+curl -X POST http://localhost:5000/api/v1/stop \
+  -H "X-API-Key: your-api-key"
+
+# Create a cron schedule (weekday afternoons, 1 hour)
 curl -X POST http://localhost:5000/api/v1/schedule \
   -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
   -d '{
@@ -343,7 +415,47 @@ curl -X POST http://localhost:5000/api/v1/schedule \
     "time": "15:00",
     "params": {"area": "window", "window_title": "Zoom", "audio": "system", "duration": 3600}
   }'
+
+# Retry-safe start using an Idempotency-Key
+curl -X POST http://localhost:5000/api/v1/start \
+  -H "X-API-Key: your-api-key" -H "Content-Type: application/json" \
+  -H "Idempotency-Key: 7f3a9c1e-2b4d-4a5f-9e6a-1c2d3e4f5a6b" \
+  -d '{"area":"full", "audio":"none"}'
 ```
+
+### Python Client Example
+
+A small, dependency-light example showing a start → poll → stop cycle:
+
+```python
+import time
+import requests
+
+BASE_URL = "http://localhost:5000/api/v1"
+HEADERS = {"X-API-Key": "your-api-key"}
+
+# Start recording
+resp = requests.post(
+    f"{BASE_URL}/start",
+    headers=HEADERS,
+    json={"area": "full", "audio": "mic", "fps": 30},
+)
+resp.raise_for_status()
+print("Started:", resp.json()["data"])
+
+# Poll status every second for 10 seconds
+for _ in range(10):
+    status = requests.get(f"{BASE_URL}/status", headers=HEADERS).json()
+    print("Status:", status["data"]["state"])
+    time.sleep(1)
+
+# Stop recording
+resp = requests.post(f"{BASE_URL}/stop", headers=HEADERS)
+resp.raise_for_status()
+print("Stopped:", resp.json()["data"])
+```
+
+For real-time events instead of polling, connect to the WebSocket endpoint (`ws://host:port/ws`) and subscribe to `recording` events — see [`docs/API.md`](docs/API.md) for the full event schema.
 
 ## Architecture
 
@@ -417,6 +529,10 @@ uv run pre-commit install
 
 **Encoding errors** — check free disk space, confirm FFmpeg is installed correctly, and inspect `logs/recorder.log`.
 
+**API returns 401 Unauthorized** — verify you're sending `X-API-Key`, and that it matches the value in `MIA_API_KEY`, Windows Credential Manager, or the GUI's API tab.
+
+More scenarios, plus a full GitHub Wiki, are listed in [Documentation & Community](#documentation--community) below.
+
 ## Known Limitations
 
 - Windows 10/11 only (Windows Graphics Capture API dependency)
@@ -425,6 +541,26 @@ uv run pre-commit install
 - No RTMP/HLS streaming or cloud storage integration
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full history and [GitHub Issues](https://github.com/chelslava/MIA-ScreenCapture/issues) for the roadmap.
+
+## Documentation & Community
+
+- 📘 **[GitHub Wiki](https://github.com/chelslava/MIA-ScreenCapture/wiki)** — installation, GUI walkthrough, REST API, CLI, scheduler, logs & diagnostics, architecture, and troubleshooting in depth
+- 📗 **[`docs/API.md`](docs/API.md)** — complete REST API reference with request/response schemas
+- 🐛 **[Issues](https://github.com/chelslava/MIA-ScreenCapture/issues)** — bug reports, feature requests, questions, and the project roadmap
+- 📝 **[`CHANGELOG.md`](CHANGELOG.md)** — release history
+
+Found a bug or have an idea? Opening an issue is the fastest way to get it seen — please include your Windows version, Python version, and (for bugs) the relevant lines from `logs/recorder.log`.
+
+## Contributing
+
+Contributions are welcome, from typo fixes to new features. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md), which covers:
+
+- Setting up the dev environment (`uv sync` + `pre-commit install`)
+- The check suite expected before opening a PR (`pytest`, `ruff`, `mypy`)
+- Code style and architectural conventions (see [`AGENTS.md`](AGENTS.md))
+- What makes a PR easy to review and merge
+
+New to the codebase? Look for issues labeled [`good first issue`](https://github.com/chelslava/MIA-ScreenCapture/labels/good%20first%20issue).
 
 ## License
 
