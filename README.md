@@ -88,16 +88,16 @@
 
 ## Interface Preview
 
-### 📸 Screenshots
+### 📸 Demo
 
-#### Main Recording Window
-![Main Window - Recording Tab](docs/assets/screenshots/main-window-recording-tab.png)
+![MIA-ScreenCapture Demo](docs/assets/demo.gif)
 
-#### Settings & Configuration
-![Settings Tab](docs/assets/screenshots/main-window-settings-tab.png)
-
-#### REST API Documentation (Swagger UI)
-![Swagger UI - REST API](docs/assets/screenshots/swagger-ui.png)
+**Features in action:**
+- 🎯 Full screen, window, and region capture modes
+- ⏱️ Real-time recording duration and frame count
+- 🎨 Dark/light theme support
+- ⚙️ Settings panel for audio/video configuration
+- 📅 Scheduler for automated recording tasks
 
 ### 🎨 Interface Layout (ASCII Preview)
 
