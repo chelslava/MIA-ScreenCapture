@@ -88,7 +88,18 @@
 
 ## Interface Preview
 
-### 📸 Visual Layout
+### 📸 Screenshots
+
+#### Main Recording Window
+![Main Window - Recording Tab](docs/assets/screenshots/main-window-recording-tab.png)
+
+#### Settings & Configuration
+![Settings Tab](docs/assets/screenshots/main-window-settings-tab.png)
+
+#### REST API Documentation (Swagger UI)
+![Swagger UI - REST API](docs/assets/screenshots/swagger-ui.png)
+
+### 🎨 Interface Layout (ASCII Preview)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -109,6 +120,9 @@
 └──────────┴───────────────────────────────────────────────────────┘
   System Tray: ▶ ◆ (Recording Indicator)
 ```
+
+> **Note:** Screenshots are stored in `docs/assets/screenshots/`.
+> To update them, run `python scripts/take_screenshots.py` after building the application.
 
 ### 🎨 GUI Components
 
