@@ -90,15 +90,24 @@ jobs:
         run: |
           $apiPort = 5015
           $exePath = Join-Path $PWD "dist/MIA-ScreenCapture.exe"
+          $stdoutLog = Join-Path $PWD "dist/smoke-stdout.log"
+          $stderrLog = Join-Path $PWD "dist/smoke-stderr.log"
           $proc = Start-Process -FilePath $exePath -ArgumentList @(
             "--headless",
             "--api-host", "127.0.0.1",
             "--api-port", "$apiPort"
-          ) -PassThru
+          ) -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
 
           try {
             $ready = $false
-            for ($attempt = 1; $attempt -le 30; $attempt++) {
+            # 90 попыток x 2s = 180s — свежесобранный (несигнированный) EXE
+            # на CI-раннере может ловить задержку из-за антивирусного
+            # сканирования при первом запуске; 60s оказалось мало (issue
+            # при релизе v1.4.8).
+            for ($attempt = 1; $attempt -le 90; $attempt++) {
+              if ($proc.HasExited) {
+                throw "Smoke test failed: процесс EXE завершился раньше времени (exit code $($proc.ExitCode))."
+              }
               try {
                 $response = Invoke-RestMethod `
                   -Method Get `
@@ -123,6 +132,10 @@ jobs:
               Stop-Process -Id $proc.Id -Force
               Wait-Process -Id $proc.Id -ErrorAction SilentlyContinue
             }
+            Write-Host "--- EXE stdout ---"
+            if (Test-Path $stdoutLog) { Get-Content $stdoutLog }
+            Write-Host "--- EXE stderr ---"
+            if (Test-Path $stderrLog) { Get-Content $stderrLog }
           }
 
       - name: Upload Windows EXE
@@ -130,6 +143,19 @@ jobs:
         with:
           name: windows-exe
           path: dist/MIA-ScreenCapture.exe
+
+      - name: Build Windows Installer
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DMyAppVersion=$version" scripts\installer.iss
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/MIA-ScreenCapture-Setup.exe
 
   release:
     name: Publish Release
@@ -150,6 +176,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: windows-exe
+          path: dist/windows
+
+      - name: Download Windows Installer
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
           path: dist/windows
 
       - name: Generate SHA256 checksums
