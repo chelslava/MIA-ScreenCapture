@@ -2,7 +2,27 @@
 
 ## [Unreleased]
 
-### Fixed
+## [1.4.8] - 2026-06-24
+
+### Added
+- Добавлена тема оформления приложения (issue #77): светлая/тёмная
+  палитра с автоопределением системной темы Windows и переключателем в
+  Настройках.
+- Добавлены ещё 2 темы в стиле Visual Studio — Голубая и Тёмная
+  (повышенный контраст), итого 4 темы оформления на выбор.
+- Добавлена возможность показать/скрыть значение API-токена в настройках.
+- Добавлен фильтр по имени, типу и расписанию в списке задач
+  планировщика.
+- Добавлено контекстное меню по правому клику в списке последних
+  записей и в таблице задач планировщика.
+- Добавлен экран со списком горячих клавиш приложения (issue #78).
+- Добавлены SVG/PNG-иконки вместо emoji в боковой панели навигации; при
+  сужении панели (сворачивание или ручное перетаскивание) текстовые
+  подписи скрываются, остаются только иконки.
+- Боковая панель теперь поддерживает сворачивание и ручное изменение
+  ширины (drag-resize); выбранная ширина сохраняется между запусками.
+- Добавлен `CONTRIBUTING.md` с гайдом для внешних контрибьюторов
+  (issue #81).
 - Добавлена возможность отмены длительной остановки записи:
   финализация записи теперь запускается в фоне, пользователь может
   запросить отмену затянувшейся операции, а отменяемый FFmpeg pipeline
@@ -14,102 +34,65 @@
 - Добавлен pre-start health-check FFmpeg перед запуском записи:
   если FFmpeg недоступен во время работы приложения, запись теперь не
   стартует и возвращает понятную ошибку вместо позднего сбоя в процессе.
-- Улучшена обработка потери захвата экрана во время записи:
-  для `window capture` добавлено автоматическое восстановление захвата,
-  при окончательной потере корректно отправляется ошибка пользователю,
-  сохраняется последний доступный кадр и выполняется предсказуемая
-  финализация ресурсов.
-- Исправлена интерпретация cron `day_of_week` в планировщике:
-  значения в стандартном формате crontab (например, `1-5`) теперь
-  корректно означают `понедельник-пятница`, а не смещённые дни недели.
+- Добавлен compact readiness center перед стартом записи: вкладка
+  `Запись` теперь показывает inline checklist готовности для FFmpeg,
+  пути вывода, окна захвата и микрофона, блокирующие проблемы не
+  пускают дальше runtime-path, а diagnostics использует тот же
+  readiness checklist и one-click remediation actions.
+- Добавлен единый action registry для keyboard-first desktop actions
+  (start/pause/stop, открытие последних записей, навигация по вкладкам)
+  с shortcuts, tab order и базовыми accessible metadata; расширен
+  shortcuts `Alt+2`/`Ctrl+Alt+L` (issue #42).
+- Диалог задач планировщика получил UX parity slice (issue #41):
+  CLI-совместимые presets, inline validation расписания до submit,
+  preview следующих запусков.
 
 ### Changed
-- Проверка доступности FFmpeg кэшируется на короткий TTL в
-  `RecordingController`, чтобы единообразно покрывать GUI/API/scheduler
-  path без лишних повторных вызовов `ffmpeg -version`.
+- Каналы отображения неблокирующих ошибок приложения унифицированы в
+  единый helper оформления.
+- Введена единая шкала отступов интерфейса.
+- Версия пакета теперь читается из единой точки (`version.py`) вместо
+  трёх независимых реализаций в разных модулях.
+- Проверка доступности FFmpeg кэшируется на короткий TTL, чтобы
+  единообразно покрывать GUI/API/scheduler path без лишних повторных
+  вызовов `ffmpeg -version`.
 - Конфигурация видеокодеков GUI вынесена в единый каталог
-  `gui.models.video_codecs`; `VideoView` больше не хранит локальные
-  дублирующиеся маппинги `display <-> codec id`.
-- GUI стал менее poll-driven при загрузке системных данных:
-  `MainWindow` больше не держит постоянный timer времени в idle,
-  вкладка API включает автообновление логов только когда активна,
-  чтение API-логов вынесено в фоновый worker, списки окон и микрофонов
-  обновляются в фоне, а первичная проверка FFmpeg вынесена из blocking
-  startup path.
-- Добавлен compact readiness center перед стартом записи:
-  вкладка `Запись` теперь показывает inline checklist готовности для
-  FFmpeg, пути вывода, окна захвата и микрофона, блокирующие проблемы
-  не пускают дальше runtime-path, а diagnostics использует тот же
-  readiness checklist и one-click remediation actions.
-- Введён concrete `ApplicationService` поверх `ApplicationFacade`:
-  GUI runtime, tray/hotkeys, scheduler и API callbacks теперь
-  привязываются к общему command/query service contract вместо
-  прямого связывания с composition-root объектом приложения.
-- Стартовый warning про отсутствие FFmpeg переведён в non-modal UX:
-  вместо отдельного modal dialog пользователь получает подсказку через
-  readiness center, status bar и вкладку диагностики.
-- Добавлен первый слой keyboard-first desktop actions:
-  в `MainWindow` появился единый action registry для start/pause/stop,
-  открытия последних записей и навигации по ключевым вкладкам; для
-  основных действий добавлены shortcuts, tab order и базовые accessible
-  metadata.
-- Keyboard/action слой расширен для issue #42:
-  добавлены shortcuts `Alt+2` (вкладка планировщика) и `Ctrl+Alt+L`
-  (папка логов приложения), а кнопка `Открыть логи` на диагностике теперь
-  делегирует действие через общий desktop action registry.
-- Диалог задач планировщика получил UX parity slice для issue #41:
-  добавлены CLI-совместимые presets, inline validation расписания до
-  submit, preview следующих запусков и отдельный hint с сохранённым
-  `next_run` при редактировании.
-- Базовые accessibility metadata расширены на secondary views:
-  API, захват, аудио, видео, вывод и диагностика теперь помечают
-  ключевые controls и status labels через `accessibleName` /
-  `accessibleDescription`, а типовые recoverable ошибки в GUI start/API
-  flows дублируются non-modal feedback через status bar и сигнал ошибок.
-- Начат первый slice централизованной темы GUI:
-  добавлен `gui.styles.theme.Theme`, а common title/status styles для
-  `MainWindow`, `ApiSettingsView`, `CaptureView`, `AudioView` и
-  `DiagnosticsView` переведены с inline-строк на общий theme helper.
-- Добавлен первый slice централизованного управления recording UI state:
-  `MainWindow` теперь использует единый `_update_ui_state(...)` для idle /
-  recording / paused / stopping состояний вместо разрозненных ручных
-  обновлений кнопок и status labels.
+  (`gui.models.video_codecs`) вместо локальных дублирующихся маппингов.
+- GUI стал менее poll-driven при загрузке системных данных: убран
+  постоянный timer времени в idle, автообновление логов API только при
+  активной вкладке, фоновая загрузка списков окон/микрофонов.
+- Введён concrete `ApplicationService` поверх `ApplicationFacade`: GUI
+  runtime, tray/hotkeys, scheduler и API callbacks привязаны к общему
+  command/query service contract.
+- Стартовый warning про отсутствие FFmpeg переведён в non-modal UX
+  (readiness center, status bar, вкладка диагностики).
+- Базовые accessibility metadata расширены на secondary views (API,
+  захват, аудио, видео, вывод, диагностика).
+- Начат первый slice централизованной темы GUI и централизованного
+  управления recording UI state (`_update_ui_state`).
+
+### Fixed
+- Устранена потенциальная инъекция в PowerShell-fallback системных
+  уведомлений: текст уведомления (включая имя файла записи) теперь
+  безопасно кодируется перед передачей в PowerShell-скрипт.
+- Исправлено отсутствие переноса строк в подсказке поверх области выбора
+  при записи — длинный текст больше не обрезается на высоком DPI.
+- Улучшена обработка потери захвата экрана во время записи: для `window
+  capture` добавлено автоматическое восстановление, при окончательной
+  потере — понятная ошибка и предсказуемая финализация ресурсов.
+- Исправлена интерпретация cron `day_of_week` в планировщике: значения
+  в стандартном формате crontab (например, `1-5`) теперь корректно
+  означают `понедельник-пятница`.
 
 ### Tests
-- Добавлены unit-тесты на stop/cancel flow долгой остановки записи в
-  encoder, RecordingController и MainWindow.
-- Добавлены unit-тесты на расчёт и lifecycle визуального индикатора
-  активной области записи.
-- Добавлены unit-тесты на отказ старта без FFmpeg и на поведение
-  TTL-кэша проверки перед записью.
-- Добавлены unit-тесты на reconnect/finalization сценарии при потере
-  захвата экрана.
-- Добавлен regression test на cron weekday semantics в scheduler.
-- Добавлены unit-тесты каталога видеокодеков и актуализированы
-  проверки `VideoView` под единый порядок кодеков.
-- Добавлены lifecycle/regression тесты для `ApiSettingsView`,
-  `MainWindow`, `CaptureView` и `AudioView` под visibility-aware
-  обновление статуса и асинхронную загрузку системных данных.
-- Добавлены unit-тесты readiness-сервиса и preflight-блокировок
-  `MainWindow` для GUI/API start paths.
-- Добавлены unit-тесты compact readiness center и фонового чтения
-  API-логов.
-- Добавлены unit-тесты concrete application facade и обновлены runtime
-  tests для binding через общий service contract.
-- Добавлены unit-тесты для desktop action registry и базовой keyboard /
-  accessibility конфигурации `MainWindow`.
-- Добавлены regression-тесты на action shortcuts `Alt+2` и
-  `Ctrl+Alt+L`, а также на non-modal feedback при открытии логов из
-  `MainWindow`.
-- Добавлены view-level accessibility tests для secondary views и
-  regression tests на non-modal error feedback в `MainWindow`.
-- Добавлены тесты accessibility metadata для key controls вкладки
-  `Планировщик`.
-- Добавлены unit-тесты TaskDialog на preset apply, inline validation и
-  preview ближайших запусков.
-- Добавлены unit-тесты theme helper layer для централизованных GUI-стилей.
-- Добавлены regression tests на централизованный helper состояния кнопок
-  и статуса в `MainWindow`.
+- Добавлены regression-тесты на новую тему оформления, фильтр
+  планировщика, контекстные меню, экран горячих клавиш, сворачивание
+  боковой панели и безопасность fallback-уведомлений.
+- Добавлены unit-тесты на stop/cancel flow долгой остановки записи,
+  визуальный индикатор активной области, отказ старта без FFmpeg,
+  reconnect/finalization при потере захвата, cron weekday semantics,
+  readiness-сервис, desktop action registry, TaskDialog presets и
+  theme helper layer.
 
 ## [1.4.7] - 2026-04-03
 
@@ -161,7 +144,7 @@
 - **FFmpeg process leak**: При `BrokenPipeError` процесс теперь корректно
   завершается через `_terminate_process_safely()`, файл помечается как
   повреждённый.
-- **Silent fallback при ненайденном окне**: `CaptureArea.from_window()` 
+- **Silent fallback при ненайденном окне**: `CaptureArea.from_window()`
   теперь принимает параметр `raise_if_not_found`. API/scheduler пути
   используют строгий режим с ошибкой при ненайденном окне.
 
