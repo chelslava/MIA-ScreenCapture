@@ -259,6 +259,10 @@ class StartMultiRecordingRequest(BaseModel):
     duration: int | None = Field(
         default=None, ge=1, description="Длительность записи в секундах"
     )
+    audio_type: str = Field(
+        default="none",
+        description='Тип записи аудио: "none", "mic", "system", "both" (по умолчанию: "none")',
+    )
 
     @field_validator("bitrate")
     @classmethod

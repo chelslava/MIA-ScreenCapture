@@ -78,12 +78,13 @@ class MultiRecordingService:
             codec = str(params.get("codec", "libx264"))
             bitrate = str(params.get("bitrate", "2M"))
             duration = params.get("duration")
+            audio_type = str(params.get("audio_type", "none"))
 
             recorder = MultiSourceRecorder(
                 fps=fps, codec=codec, bitrate=bitrate
             )
             success, outputs, error = recorder.start(
-                sources, base_output_path, duration
+                sources, base_output_path, duration, audio_type=audio_type
             )
             if not success:
                 result = {
