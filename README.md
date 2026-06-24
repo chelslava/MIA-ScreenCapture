@@ -88,6 +88,28 @@
 
 ## Interface Preview
 
+### 📸 Visual Layout
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  MIA-ScreenCapture v1.4.9                               [_][□][×] │
+├──────────┬───────────────────────────────────────────────────────┤
+│ 📹 Record│  🎯 Full Screen  🪟 Window  📐 Region                │
+│ ⚙️ Settings│  ┌─────────────────────────────────────────────┐  │
+│ 📅 Scheduler│  │ Preview: Area Selector Overlay             │  │
+│ 📡 API    │  │ (Live capture area visualization)          │  │
+│ 🔍 Diagnostics│  │                                             │  │
+│           │  └─────────────────────────────────────────────┘  │
+│           │  ▶ Start   ⏸ Pause   ⏹ Stop                       │
+│           │  Duration: 00:00:15  Status: Recording...         │
+│           │                                                   │
+│           │  [Recent Recordings]                             │
+│           │  ✓ 2026-06-24_150530.mp4 (2:34)                  │
+│           │  ✓ 2026-06-24_143012.mp4 (5:12)                  │
+└──────────┴───────────────────────────────────────────────────────┘
+  System Tray: ▶ ◆ (Recording Indicator)
+```
+
 ### 🎨 GUI Components
 
 **Recording Tab** — Main interface for screen capture:
