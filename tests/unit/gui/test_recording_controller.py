@@ -547,3 +547,49 @@ class TestRecordingControllerFfmpegCache:
             )
 
         assert mock_ffmpeg.call_count == 2
+
+
+class TestRecordingControllerErrorCallback:
+    """Тесты установки и использования error callback."""
+
+    def test_set_error_callback_stores_callback(self) -> None:
+        ctrl = RecordingController()
+        callback = MagicMock()
+        ctrl.set_error_callback(callback)
+        assert ctrl._on_error is callback
+
+    def test_set_error_callback_none_disables(self) -> None:
+        ctrl = RecordingController()
+        callback = MagicMock()
+        ctrl.set_error_callback(callback)
+        ctrl.set_error_callback(None)
+        assert ctrl._on_error is None
+
+    @patch("gui.controllers.recording_controller.RecordingEncoder")
+    @patch("gui.controllers.recording_controller.VideoRecorder")
+    @patch("gui.controllers.recording_controller.check_ffmpeg")
+    def test_error_callback_passed_to_video_recorder(
+        self,
+        mock_ffmpeg,
+        mock_video_recorder_cls,
+        mock_encoder_cls,
+    ) -> None:
+        mock_ffmpeg.return_value = FFmpegStatus(available=True, version="5.0")
+        encoder = MagicMock()
+        encoder.setup.return_value = (Path("/tmp/v.mp4"), Path("/tmp/a.wav"))
+        mock_encoder_cls.return_value = encoder
+        video_recorder = MagicMock()
+        video_recorder.start.return_value = True
+        mock_video_recorder_cls.return_value = video_recorder
+
+        ctrl = RecordingController()
+        callback = MagicMock()
+        ctrl.set_error_callback(callback)
+        ctrl.start_recording(
+            Path("/out/test.mp4"),
+            CaptureSettings(),
+            AudioSettings(),
+            VideoSettings(),
+        )
+
+        video_recorder.set_callbacks.assert_called_once_with(on_error=callback)

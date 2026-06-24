@@ -8,6 +8,7 @@
 
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -56,6 +57,7 @@ class RecordingController:
         self._temp_video: Path | None = None
         self._temp_audio: Path | None = None
         self._ffmpeg_check_cache: tuple[float, bool, str | None] | None = None
+        self._on_error: Callable[[str], None] | None = None
 
     @property
     def state(self) -> RecordingState:
@@ -68,6 +70,18 @@ class RecordingController:
         if self._video_recorder:
             return float(self._video_recorder.elapsed_time)
         return 0.0
+
+    def set_error_callback(
+        self, callback: Callable[[str], None] | None
+    ) -> None:
+        """
+        Установить callback для обработки ошибок при записи.
+
+        Args:
+            callback: Функция с сигнатурой (str) -> None, вызывается при ошибке.
+                      Если None, отключает callback.
+        """
+        self._on_error = callback
 
     def build_capture_area(self, capture: CaptureSettings) -> CaptureArea:
         """
@@ -218,6 +232,8 @@ class RecordingController:
                 use_ffmpeg=True,
                 preset=preset,
             )
+            if self._on_error:
+                self._video_recorder.set_callbacks(on_error=self._on_error)
 
             # Построение области захвата
             capture_area = self.build_capture_area(capture)

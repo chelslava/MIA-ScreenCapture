@@ -156,6 +156,9 @@ class MainWindow(QMainWindow):
         # Инициализация модели и контроллеров
         self._state = RecordingState()
         self._recording_controller = RecordingController(self._state)
+        self._recording_controller.set_error_callback(
+            self._show_non_modal_error
+        )
         self._settings_controller = SettingsController(
             self._state, get_config()
         )
