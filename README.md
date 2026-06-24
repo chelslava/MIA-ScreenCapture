@@ -21,6 +21,10 @@
 
 ---
 
+## Quick Demo
+
+![MIA-ScreenCapture Demo](docs/assets/demo.gif)
+
 > ⚠️ **Platform: Windows 10/11 only** — the project relies on the Windows Graphics Capture API.
 
 ## Table of Contents
@@ -86,20 +90,7 @@
 - Start/stop/status, full scheduler CRUD, presets
 - `--headless` runs the API server only, with no GUI
 
-## Interface Preview
-
-### 📸 Demo
-
-![MIA-ScreenCapture Demo](docs/assets/demo.gif)
-
-**Features in action:**
-- 🎯 Full screen, window, and region capture modes
-- ⏱️ Real-time recording duration and frame count
-- 🎨 Dark/light theme support
-- ⚙️ Settings panel for audio/video configuration
-- 📅 Scheduler for automated recording tasks
-
-### 🎨 Interface Layout (ASCII Preview)
+## Interface Layout
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
