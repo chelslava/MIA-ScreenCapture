@@ -86,6 +86,53 @@
 - Start/stop/status, full scheduler CRUD, presets
 - `--headless` runs the API server only, with no GUI
 
+## Interface Preview
+
+### 🎨 GUI Components
+
+**Recording Tab** — Main interface for screen capture:
+- Capture mode selector (full screen, window, or region)
+- Live preview and area selector overlay
+- Start/Stop/Pause controls
+- Real-time recording duration and statistics
+
+**Settings Tab** — Audio and video configuration:
+- Microphone and system audio device selection
+- Video codec, bitrate, and FPS settings
+- Output path and file naming
+- Theme selection (light, blue, dark, dark-contrast)
+
+**Scheduler Tab** — Recording automation:
+- Schedule tasks (one-off, daily, weekly, cron)
+- Task management with enable/disable toggles
+- Filter and search for scheduled tasks
+- Next-run time preview
+
+**API Tab** — REST API key management:
+- Generate and rotate API keys
+- API documentation link
+- Base URL configuration
+
+**Diagnostics Tab** — System health check:
+- FFmpeg availability and version
+- Audio device status
+- Disk space monitoring
+- Windows Graphics Capture API status
+
+### 📱 Tray Icon & Overlay
+
+- **System tray icon** with quick actions (start/stop/show/hide)
+- **On-screen recording indicator** — floating overlay showing recording area and elapsed time
+- **Global hotkeys** — Ctrl+Alt+T (toggle), Ctrl+Alt+P (pause)
+
+### 🎯 Workflows
+
+1. **GUI Recording** — Point-and-click interface, start/stop via buttons or hotkeys
+2. **Scheduled Recording** — Create tasks for automated unattended recording
+3. **REST API** — Remote control via HTTP endpoints (programmatic)
+4. **CLI** — Command-line interface for automation scripts
+5. **Headless Mode** — API server only, no GUI window
+
 ## Requirements
 
 | Requirement | Value |
