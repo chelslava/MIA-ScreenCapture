@@ -777,26 +777,20 @@ class APIServer:
         """
         Возвращает True если запрос разрешён, False если нужно вернуть 429.
 
-        Использует time.monotonic(), а не time.time(): на свежей CI VM
-        коррекция системных часов (NTP) в первые секунды после старта
-        может откатить wall-clock назад и навсегда заблокировать
-        health-check (см. flaky smoke-test при релизе v1.4.8).
+        Использует time.monotonic(), а не time.time(): измерение
+        интервала между запросами не должно зависеть от коррекции
+        системных часов (NTP), как и в общем InMemoryRateLimiter
+        (api/rate_limiter.py).
 
         Raises:
             Не выбрасывает исключений.
         """
         now = time.monotonic()
         with self._health_lock:
-            delta = now - self._health_last_request_time
-            if delta < _HEALTH_RATE_LIMIT_SECONDS:
-                logger.warning(
-                    "DEBUG health rate limit: blocked thread=%s now=%.6f "
-                    "last=%.6f delta=%.6f",
-                    threading.get_ident(),
-                    now,
-                    self._health_last_request_time,
-                    delta,
-                )
+            if (
+                now - self._health_last_request_time
+                < _HEALTH_RATE_LIMIT_SECONDS
+            ):
                 return False
             self._health_last_request_time = now
             return True
