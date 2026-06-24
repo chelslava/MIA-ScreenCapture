@@ -41,12 +41,15 @@ class SchedulerExecutionEngine:
         scheduler: _SchedulerProtocol,
         save_tasks: Callable[[], None],
         get_on_task_execute: Callable[[], Callable[[Any], None] | None],
+        get_on_task_error: Callable[[], Callable[[str, str], None] | None]
+        | None = None,
     ) -> None:
         self._lock = lock
         self._tasks = tasks
         self._scheduler = scheduler
         self._save_tasks = save_tasks
         self._get_on_task_execute = get_on_task_execute
+        self._get_on_task_error = get_on_task_error or (lambda: None)
 
     def execute(self, task_id: str) -> None:
         """Выполняет задачу и обновляет её runtime-метаданные."""
@@ -76,9 +79,15 @@ class SchedulerExecutionEngine:
         try:
             callback(task.params)
         except (OSError, ValueError, RuntimeError) as e:
-            logger.error("Ошибка выполнения обратного вызова задачи: %s", e)
+            error_msg = f"Ошибка выполнения обратного вызова задачи: {e}"
+            logger.error(error_msg)
+            error_callback = self._get_on_task_error()
+            if error_callback is not None:
+                error_callback(task_id, error_msg)
         except Exception as e:
             # Последний барьер: callback может быть любым внешним кодом
-            logger.exception(
-                "Непредвиденная ошибка обратного вызова задачи: %s", e
-            )
+            error_msg = f"Непредвиденная ошибка обратного вызова задачи: {e}"
+            logger.exception(error_msg)
+            error_callback = self._get_on_task_error()
+            if error_callback is not None:
+                error_callback(task_id, error_msg)

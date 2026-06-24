@@ -850,8 +850,9 @@ class VideoRecorderApp:
         )
         assert self._scheduler is not None
 
-        # Установка обратного вызова выполнения задачи
+        # Установка обратных вызовов выполнения и ошибок задач
         self._scheduler.set_task_callback(self._execute_scheduled_task)
+        self._scheduler.set_task_error_callback(self._on_scheduled_task_error)
 
         # Запуск планировщика
         self._scheduler.start()
@@ -912,6 +913,20 @@ class VideoRecorderApp:
                 "Ошибка запуска записи из планировщика: task_id=%s, error=%s",
                 task_id,
                 e,
+            )
+
+    def _on_scheduled_task_error(self, task_id: str, error_msg: str) -> None:
+        """Обработка ошибки при выполнении запланированной задачи."""
+        logger.error(
+            "Ошибка выполнения запланированной задачи %s: %s",
+            task_id,
+            error_msg,
+        )
+        if self._main_window:
+            self._run_on_gui_thread(
+                lambda: self._main_window._show_non_modal_error(
+                    f"Ошибка выполнения запланированной задачи: {error_msg}"
+                )
             )
 
     # Реализации обратных вызовов API

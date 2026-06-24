@@ -872,6 +872,9 @@ class TestMainApiRuntime:
             def set_task_callback(self, _callback: object) -> None:
                 return None
 
+            def set_task_error_callback(self, _callback: object) -> None:
+                return None
+
             def start(self) -> None:
                 return None
 

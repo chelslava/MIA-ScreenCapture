@@ -183,8 +183,9 @@ class TaskScheduler:
         self._lock = threading.Lock()
         self._max_concurrent_tasks = max(1, int(max_concurrent_tasks))
 
-        # Обратный вызов для выполнения задачи
+        # Обратные вызовы для выполнения задачи
         self._on_task_execute: Callable | None = None
+        self._on_task_error: Callable[[str, str], None] | None = None
 
         # Инициализация APScheduler
         self._scheduler = BackgroundScheduler(
@@ -202,6 +203,7 @@ class TaskScheduler:
             scheduler=self._scheduler,
             save_tasks=self._save_tasks,
             get_on_task_execute=lambda: self._on_task_execute,
+            get_on_task_error=lambda: self._on_task_error,
         )
 
         # Загрузка сохранённых задач
@@ -241,6 +243,18 @@ class TaskScheduler:
             callback: Функция для вызова при выполнении задачи (получает RecordingParams)
         """
         self._on_task_execute = callback
+
+    def set_task_error_callback(
+        self, callback: Callable[[str, str], None] | None
+    ) -> None:
+        """
+        Установка функции обратного вызова для обработки ошибок задачи.
+
+        Args:
+            callback: Функция для вызова при ошибке (получает task_id и error_message).
+                      Если None, отключает callback.
+        """
+        self._on_task_error = callback
 
     def add_task(self, task: ScheduleTask) -> bool:
         """
