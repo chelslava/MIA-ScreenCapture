@@ -787,10 +787,16 @@ class APIServer:
         """
         now = time.monotonic()
         with self._health_lock:
-            if (
-                now - self._health_last_request_time
-                < _HEALTH_RATE_LIMIT_SECONDS
-            ):
+            delta = now - self._health_last_request_time
+            if delta < _HEALTH_RATE_LIMIT_SECONDS:
+                logger.warning(
+                    "DEBUG health rate limit: blocked thread=%s now=%.6f "
+                    "last=%.6f delta=%.6f",
+                    threading.get_ident(),
+                    now,
+                    self._health_last_request_time,
+                    delta,
+                )
                 return False
             self._health_last_request_time = now
             return True
