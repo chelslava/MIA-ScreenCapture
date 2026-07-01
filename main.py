@@ -1489,6 +1489,18 @@ class VideoRecorderApp:
         else:
             # Fallback: базовая очистка если shutdown manager не инициализирован
             logger.info("Очистка (fallback)...")
+            # Отключение от EventBus в обратном порядке (LIFO) — #100
+            # Предотвращает вызовы освобождённых объектов после shutdown
+            if hasattr(self, "_webhook_notifier"):
+                try:
+                    self._webhook_notifier.detach_event_bus()
+                except AttributeError:
+                    pass
+            if hasattr(self, "_websocket_manager"):
+                try:
+                    self._websocket_manager.detach_event_bus()
+                except AttributeError:
+                    pass
             # Остановка активной записи (критически важно!)
             self._stop_active_recording()
             # Сохранение конфигурации

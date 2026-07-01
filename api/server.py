@@ -9,6 +9,7 @@ REST API сервер на базе Flask для удалённого управ
 
 import logging
 import os
+import secrets
 import shutil
 import socket
 import threading
@@ -121,6 +122,7 @@ class APIServer:
         server_threads: int = 4,
         api_key: str | None = None,
         trust_proxy_headers: bool = False,
+        state_persistence: Any | None = None,
     ):
         """
         Инициализация API сервера.
@@ -133,6 +135,9 @@ class APIServer:
             trust_proxy_headers: Доверять X-Forwarded-For/X-Real-IP при
                 определении IP клиента для rate limiting (включать только
                 за доверенным reverse-proxy, см. #74)
+            state_persistence: Опциональный кастомный StatePersistence для rate limiter.
+                Если не указан, используется RateLimiterStatePersistence() по умолчанию.
+                Тесты передают уникальный state_file через temp_dir fixture.
 
         Raises:
             Не выбрасывает собственных исключений — создание Flask
@@ -145,6 +150,7 @@ class APIServer:
         self.server_threads = max(1, int(server_threads))
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.trust_proxy_headers = trust_proxy_headers
+        self.state_persistence = state_persistence
         _patch_waitress_shutdown_for_windows()
 
         # Flask приложение
@@ -181,7 +187,7 @@ class APIServer:
             RateLimiterStatePersistence,
         )
 
-        state_persistence = RateLimiterStatePersistence()
+        state_persistence = self.state_persistence or RateLimiterStatePersistence()
         self._rate_limiter = PersistentRateLimiter(
             config=RateLimitConfig(trust_proxy_headers=self.trust_proxy_headers),
             persistence=state_persistence,
@@ -193,7 +199,14 @@ class APIServer:
 
         self._rate_limiter.load_state_on_init()
 
+        # Инициализация Flask приложения
         self.app = Flask(__name__)
+
+        # Установка собственного rate limiter в конфиг Flask для использования декоратором @rate_limit
+        # Это гарантирует, что routes используют PersistentRateLimiter с уникальным state_file
+        from api.rate_limiter import init_rate_limiter
+        init_rate_limiter(self.app, self._rate_limiter.config)
+        self.app.config["RATE_LIMITER"] = self._rate_limiter
         CORS(
             self.app,
             origins=[_CORS_ALLOWED_ORIGIN_REGEX],
@@ -354,11 +367,13 @@ class APIServer:
             self._ws_transport = None
 
     def _check_ws_auth(self, token: str) -> bool:
-        """Проверка токена для WebSocket подключения."""
+        """Проверка токена для WebSocket подключения (constant-time comparison)."""
         api_key = self.get_api_key()
         if not api_key:
             return True
-        return token == api_key
+        if not token:
+            return False
+        return secrets.compare_digest(token, api_key)
 
     @staticmethod
     def _resolve_access_log_level(path: str, status_code: int) -> int:
