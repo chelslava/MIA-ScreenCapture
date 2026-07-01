@@ -36,6 +36,7 @@ from PyQt6.QtWidgets import (
 )
 
 from config import get_config
+from core.event_bus import RecordingEvent, RecordingEventType
 from core.readiness import (
     ReadinessSnapshot,
     RecordingReadinessService,
@@ -73,6 +74,7 @@ from recorder.utils import (
     check_ffmpeg,
     format_filesize,
     format_time,
+    generate_thumbnail,
 )
 
 logger = get_module_logger(__name__)
@@ -138,13 +140,8 @@ class MainWindow(QMainWindow):
         object,
     )
 
-    def __init__(self, headless: bool = False):
-        """
-        Инициализация главного окна.
-
-        Args:
-            headless: Если True, окно будет скрыто
-        """
+    def __init__(self, headless: bool = False, event_bus: Any | None = None):
+        """Инициализация главного окна."""
         super().__init__()
 
         self._headless = headless
@@ -153,9 +150,16 @@ class MainWindow(QMainWindow):
         self._stop_operation_in_progress = False
         self._thread_tracker = _ThreadTracker()
 
+        # Таймер для toast уведомлений
+        self._toast_timer = QTimer()
+        self._toast_timer.timeout.connect(self._hide_toast)
+        self._event_bus = event_bus
+
         # Инициализация модели и контроллеров
         self._state = RecordingState()
-        self._recording_controller = RecordingController(self._state)
+        self._recording_controller = RecordingController(
+            self._state, event_bus=event_bus
+        )
         self._recording_controller.set_error_callback(
             self._show_non_modal_error
         )
@@ -323,13 +327,16 @@ class MainWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self.status_label)
 
         # Индикатор WebSocket соединения
-        self._ws_status_label = QLabel("WS: —")
+        self._ws_status_label = QLabel("● Disconnected")
         self._ws_status_label.setToolTip(
             "Статус WebSocket-соединения с API сервером"
         )
+        self._ws_status_label.setStyleSheet(Theme.status_style("danger"))
         self.status_bar.addPermanentWidget(self._ws_status_label)
 
-        # Индикатор времени
+        self._toast_timer = QTimer()
+        self._toast_timer.timeout.connect(self._hide_toast)
+
         self.time_label = QLabel("00:00")
         self.status_bar.addPermanentWidget(self.time_label)
 
@@ -706,6 +713,20 @@ class MainWindow(QMainWindow):
             self._handle_readiness_action
         )
 
+        self._ws_controller = WebSocketClientController(
+            base_url="ws://localhost:5000/ws"
+        )
+        self._ws_controller.status_changed.connect(self._update_ws_status)
+        self._ws_controller.connected.connect(
+            lambda: self._show_toast("WebSocket подключён")
+        )
+        self._ws_controller.disconnected.connect(
+            lambda: self._show_toast("WebSocket отключён")
+        )
+        self._ws_controller.error_occurred.connect(
+            lambda msg: self._show_toast(f"WebSocket ошибка: {msg}", 5000)
+        )
+
     def _setup_desktop_actions(self) -> None:
         """Создать action registry, shortcuts и accessibility metadata."""
         start_spec = get_desktop_action_spec(DesktopActionId.START_RECORDING)
@@ -1056,6 +1077,28 @@ class MainWindow(QMainWindow):
             )
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, str(rec.path))
+
+            # Попытаться загрузить существующую миниатюру
+            cache_dir = None
+            try:
+                from config import get_config
+
+                cfg = get_config()
+                if cfg.settings.output.default_path:
+                    cache_dir = (
+                        Path(cfg.settings.output.default_path).parent
+                        / ".cache"
+                    )
+            except Exception:
+                cache_dir = None
+
+            thumbnail_path = generate_thumbnail(rec.path, cache_dir)
+            if thumbnail_path:
+                item.setIcon(QIcon(str(thumbnail_path)))
+            else:
+                # Показать placeholder если миниатюра не создана
+                item.setIcon(self._get_recorded_video_icon())
+
             self.recordings_list.addItem(item)
 
     def _clear_recordings_filter(self) -> None:
@@ -1242,6 +1285,66 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_sidebar") and hasattr(self, "_diagnostics_view"):
             self._sidebar.setCurrentRow(3)
         self._run_diagnostics()
+
+    def _update_ws_status(self, status: str) -> None:
+        label_labels = {
+            "disconnected": ("● Disconnected", "danger"),
+            "connecting": ("● Connecting...", "warning"),
+            "connected": ("● Connected", "success"),
+            "reconnecting": ("◌ Reconnecting...", "warning"),
+            "error": ("● Error", "danger"),
+        }
+
+        label, color = label_labels.get(status, ("● Disconnected", "danger"))
+        self._ws_status_label.setText(label)
+        self._ws_status_label.setStyleSheet(Theme.status_style(color))
+
+    def _show_toast(self, message: str, duration_ms: int = 3000) -> None:
+        if self._toast_timer.isActive():
+            self._toast_timer.stop()
+
+        toast_label = QLabel(message)
+        toast_label.setStyleSheet(
+            f"background-color: {Theme.COLORS['muted']};"
+            f"color: white;"
+            f"padding: 8px 16px;"
+            f"border-radius: 4px;"
+        )
+        toast_label.setFixedWidth(300)
+        toast_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.status_bar.insertWidget(0, toast_label, 1)
+
+        self._toast_timer.setSingleShot(True)
+        self._toast_timer.start(duration_ms)
+
+    def _hide_toast(self) -> None:
+        self.status_bar.clearMessage()
+
+    def _subscribe_to_ffmpeg_events(self, event_bus: Any) -> None:
+        """Подписаться на события FFmpeg через EventBus."""
+
+        def handler(event: RecordingEvent) -> None:
+            if event.event_type not in (
+                RecordingEventType.WARNING,
+                RecordingEventType.ERROR,
+            ):
+                return
+
+            payload = event.payload
+            event_type = payload.get("type", "")
+
+            if event_type == "ffmpeg_recovery":
+                message = payload.get("message", "FFmpeg восстановлен")
+                self._show_toast(message, duration_ms=3000)
+
+            elif event_type == "ffmpeg_crash":
+                message = payload.get("message", "FFmpeg завершился с ошибкой")
+                self._show_toast(message, duration_ms=5000)
+                self._show_non_modal_error(message)
+
+        event_bus.subscribe(RecordingEventType.WARNING, handler)
+        event_bus.subscribe(RecordingEventType.ERROR, handler)
 
     def _handle_readiness_action(self, action_key: str) -> None:
         """Выполнить one-click action из readiness center или диагностики."""
@@ -1564,10 +1667,104 @@ class MainWindow(QMainWindow):
         if output_path.exists():
             size = output_path.stat().st_size
             self._settings_controller.add_recent_recording(output_path, size)
-            self._refresh_recent_recordings()
+            # Запустить генерацию миниатюры в фоновом потоке
+            self._generate_thumbnail_for_recording(output_path)
+        self._refresh_recent_recordings()
 
         self.recording_stopped.emit(str(output_path))
         logger.info(f"Запись остановлена: {output_path}")
+
+    def _generate_thumbnail_for_recording(self, output_path: Path) -> None:
+        """
+        Генерировать миниатюру для новой записи в фоновом потоке.
+
+        Args:
+            output_path: Путь к записи, для которой нужно сгенерировать миниатюру.
+        """
+        t = threading.Thread(
+            target=self._generate_thumbnail_worker,
+            args=(output_path,),
+            daemon=True,
+        )
+        self._thread_tracker.track(t)
+        t.start()
+
+    def _generate_thumbnail_worker(self, output_path: Path) -> None:
+        """
+        Фоновый worker для генерации миниатюры.
+
+        Args:
+            output_path: Путь к записи.
+        """
+        cache_dir = None
+        try:
+            from config import get_config
+
+            cfg = get_config()
+            if cfg.settings.output.default_path:
+                cache_dir = (
+                    Path(cfg.settings.output.default_path).parent / ".cache"
+                )
+        except Exception:
+            cache_dir = None
+
+        thumbnail_path = generate_thumbnail(output_path, cache_dir)
+
+        # Обновить UI в главном потоке через сигнал
+        if thumbnail_path:
+            # Запустить второй поток для обновления UI
+            QTimer.singleShot(
+                0,
+                lambda: self._update_thumbnail_icon(
+                    output_path, thumbnail_path
+                ),
+            )
+        else:
+            # Показать placeholder если миниатюра не создана
+            QTimer.singleShot(
+                0, lambda: self._update_thumbnail_icon(output_path, None)
+            )
+
+    def _update_thumbnail_icon(
+        self, output_path: Path, thumbnail_path: Path | None
+    ) -> None:
+        """
+        Обновить иконку миниатюры для элемента списка записей.
+
+        Args:
+            output_path: Путь к записи.
+            thumbnail_path: Путь к миниатюре, или None если миниатюра не создана.
+        """
+        for i in range(self.recordings_list.count()):
+            item = self.recordings_list.item(i)
+            if item is None:
+                continue
+            item_path = item.data(Qt.ItemDataRole.UserRole)
+            if item_path is None:
+                continue
+            if Path(item_path) == output_path:
+                if thumbnail_path:
+                    item.setIcon(QIcon(str(thumbnail_path)))
+                else:
+                    # Показать placeholder если миниатюра не создана
+                    item.setIcon(self._get_recorded_video_icon())
+                break
+
+    def _get_recorded_video_icon(self) -> QIcon:
+        """
+        Получить placeholder иконку для записи без миниатюры.
+
+        Returns:
+            QIcon с placeholder (видеокамера или аналогичная иконка).
+        """
+        # Создать placeholder иконку (простой квадрат с текстом "VID")
+        # Используем стандартный icon для файлов видео
+        from PyQt6.QtWidgets import QStyle
+
+        style = self.style()
+        if style is not None:
+            return style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+        return QIcon()
 
     def _on_recording_paused(self) -> None:
         """Обработка приостановки записи."""
@@ -1808,28 +2005,35 @@ class MainWindow(QMainWindow):
     def _on_ws_status_changed(self, status: str) -> None:
         """Обработка изменения статуса WebSocket."""
         status_map = {
-            "connected": ("WS: ●", "#22c55e", "Подключено"),
-            "connecting": ("WS: ◐", "#f59e0b", "Подключение..."),
-            "disconnected": ("WS: ○", "#6b7280", "Отключено"),
+            "connected": (
+                "● Connected",
+                Theme.COLORS["success"],
+                "Подключено",
+            ),
+            "connecting": (
+                "● Connecting...",
+                Theme.COLORS["warning"],
+                "Подключение...",
+            ),
+            "disconnected": (
+                "● Disconnected",
+                Theme.COLORS["danger"],
+                "Отключено",
+            ),
             "reconnecting": (
-                "WS: ◐",
-                "#f59e0b",
+                "◌ Reconnecting...",
+                Theme.COLORS["warning"],
                 "Переподключение...",
             ),
-            "error": ("WS: ✗", "#ef4444", "Ошибка"),
+            "error": ("● Error", Theme.COLORS["danger"], "Ошибка"),
         }
         text, color, tooltip = status_map.get(
-            status, ("WS: ?", "#6b7280", "Неизвестно")
+            status, ("● Unknown", Theme.COLORS["muted"], "Неизвестно")
         )
         self._ws_status_label.setText(text)
-        tone = "muted"
-        if color == "green":
-            tone = "success"
-        elif color == "orange":
-            tone = "warning"
-        elif color == "red":
-            tone = "danger"
-        self._ws_status_label.setStyleSheet(Theme.status_style(tone))
+        self._ws_status_label.setStyleSheet(
+            f"color: {color}; font-weight: bold;"
+        )
         self._ws_status_label.setToolTip(tooltip)
 
     def _on_ws_event_received(self, event_type: str, payload: dict) -> None:
@@ -2143,12 +2347,17 @@ class MainWindow(QMainWindow):
             )
 
             logger.info(f"api_running: {api_running}")
+
+            # Получить количество восстановлений FFmpeg
+            recovery_count = self._recording_controller.get_recoveries_count()
+
             self._diagnostics_view.run_checks(
                 api_enabled=api_running,
                 output_path=output_path,
                 capture=capture,
                 audio=audio,
                 snapshot=readiness_snapshot,
+                recovery_count=recovery_count,
             )
             logger.info("Диагностика завершена")
         except Exception as e:
