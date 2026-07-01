@@ -633,7 +633,9 @@ class TestFilePathRequest:
             assert "Path traversal detected" in str(exc_info.value)
             assert "../config.json" in str(exc_info.value)
 
-    def test_windows_parent_directory_escape_rejected(self, tmp_path: Path) -> None:
+    def test_windows_parent_directory_escape_rejected(
+        self, tmp_path: Path
+    ) -> None:
         """Побег через ..\\ отклоняется."""
         with patch("pathlib.Path.cwd", return_value=tmp_path):
             with pytest.raises(ValidationError) as exc_info:

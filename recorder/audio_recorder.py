@@ -314,7 +314,10 @@ class AudioRecorder:
             return False
 
         current_delay = self._recovery_backoff_delays[
-            min(self._recovery_attempts - 1, len(self._recovery_backoff_delays) - 1)
+            min(
+                self._recovery_attempts - 1,
+                len(self._recovery_backoff_delays) - 1,
+            )
         ]
         elapsed_since_last = time.time() - self._last_recovery_time
         if elapsed_since_last < current_delay:
@@ -331,7 +334,9 @@ class AudioRecorder:
         )
 
         if self._state == AudioState.RECORDING:
-            logger.info("AudioRecorder: продолжение записи после восстановления")
+            logger.info(
+                "AudioRecorder: продолжение записи после восстановления"
+            )
             return True
 
         return False
@@ -346,7 +351,10 @@ class AudioRecorder:
             self._event_bus.publish(
                 RecordingEvent(
                     event_type=RecordingEventType.ERROR,
-                    payload={"type": "audio_failure", "message": str(exception)},
+                    payload={
+                        "type": "audio_failure",
+                        "message": str(exception),
+                    },
                 )
             )
         except Exception as e:
@@ -534,7 +542,9 @@ class AudioRecorder:
                         if self._on_error:
                             self._on_error(str(e))
                         break
-                    logger.info("Попытка восстановления PyAudio записи прошла успешно")
+                    logger.info(
+                        "Попытка восстановления PyAudio записи прошла успешно"
+                    )
 
                 # Проверка лимита длительности
                 if self._duration and self.elapsed_time >= self._duration:

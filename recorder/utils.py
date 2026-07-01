@@ -209,7 +209,9 @@ def generate_thumbnail(
             cfg = get_config()
             # Используем настройки вывода как основу для кэша
             if cfg.settings.output.default_path:
-                cache_dir = Path(cfg.settings.output.default_path).parent / ".cache"
+                cache_dir = (
+                    Path(cfg.settings.output.default_path).parent / ".cache"
+                )
             else:
                 cache_dir = Path.home() / ".cache" / "mia-screencapture"
         except Exception:
@@ -874,8 +876,7 @@ def _validate_path_safe(path: Path, base_dir: Path) -> None:
     resolved = path.resolve()
     if not resolved.is_relative_to(base_dir):
         raise ValueError(
-            f"Path traversal detected: {path}. "
-            f"Allowed only inside {base_dir}/"
+            f"Path traversal detected: {path}. Allowed only inside {base_dir}/"
         )
 
 

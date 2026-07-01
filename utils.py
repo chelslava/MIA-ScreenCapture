@@ -57,9 +57,7 @@ def _restrict_file_permissions(path: Path, mode: int) -> None:
         )
 
 
-def _check_permissions(
-    path: Path, expected_mode: int
-) -> None:
+def _check_permissions(path: Path, expected_mode: int) -> None:
     """
     Проверяет, что права файла не шире запрошенных.
 
@@ -83,9 +81,7 @@ def _check_permissions(
         pass  # stat-ошибка не критична
 
 
-def atomic_write_json(
-    path: Path, data: Any, *, mode: int = 0o600
-) -> bool:
+def atomic_write_json(path: Path, data: Any, *, mode: int = 0o600) -> bool:
     """
     Атомарная запись JSON в файл через временный файл в той же директории.
 

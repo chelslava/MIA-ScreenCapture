@@ -719,6 +719,7 @@ class MockQTimerBase:
 
 qt_core_mock.QTimer = _create_mock_class("QTimer", (MockQTimerBase,))
 
+
 def _qtimer_singleShot(msec, callback):
     import threading
 
@@ -1101,6 +1102,3 @@ def qapp() -> "QApplication":
     if app is None:
         app = QApplication([])
     return app
-
-
-

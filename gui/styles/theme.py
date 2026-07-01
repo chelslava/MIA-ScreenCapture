@@ -348,8 +348,8 @@ class Theme:
         "danger": "#dc2626",  # WCAG AA: 6.3:1 (light), 4.6:1 (dark) ✓
         "warning": "#ca8a04",  # WCAG AA: 4.8:1 (light), 4.9:1 (dark) ✓ (was 3.2:1 ✗)
         "success": "#16a34a",  # WCAG AA: 4.6:1 (light), 6.1:1 (dark) ✓
-        "info": "#2563eb",     # WCAG AA: 5.6:1 (light), 7.1:1 (dark) ✓
-        "muted": "#6b7280",    # WCAG AA: 6.4:1 (light), 5.0:1 (dark) ✓
+        "info": "#2563eb",  # WCAG AA: 5.6:1 (light), 7.1:1 (dark) ✓
+        "muted": "#6b7280",  # WCAG AA: 6.4:1 (light), 5.0:1 (dark) ✓
     }
 
     # Единая шкала отступов для layout.setContentsMargins()/setSpacing().

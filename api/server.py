@@ -187,9 +187,13 @@ class APIServer:
             RateLimiterStatePersistence,
         )
 
-        state_persistence = self.state_persistence or RateLimiterStatePersistence()
+        state_persistence = (
+            self.state_persistence or RateLimiterStatePersistence()
+        )
         self._rate_limiter = PersistentRateLimiter(
-            config=RateLimitConfig(trust_proxy_headers=self.trust_proxy_headers),
+            config=RateLimitConfig(
+                trust_proxy_headers=self.trust_proxy_headers
+            ),
             persistence=state_persistence,
         )
 
@@ -205,6 +209,7 @@ class APIServer:
         # Установка собственного rate limiter в конфиг Flask для использования декоратором @rate_limit
         # Это гарантирует, что routes используют PersistentRateLimiter с уникальным state_file
         from api.rate_limiter import init_rate_limiter
+
         init_rate_limiter(self.app, self._rate_limiter.config)
         self.app.config["RATE_LIMITER"] = self._rate_limiter
         CORS(
