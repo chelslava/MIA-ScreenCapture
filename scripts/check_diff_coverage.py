@@ -139,7 +139,7 @@ def main() -> int:
     stdout_utf8 = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
     stderr_utf8 = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
-    def safe_print(message: str, file=None) -> None:
+    def safe_print(message: str, file: io.TextIOWrapper | None = None) -> None:
         target = file or stdout_utf8
         target.write(message + "\n")
         target.flush()

@@ -152,7 +152,7 @@ class DiagnosticsView(QWidget):
         fix_btn = QPushButton("Исправить")
         fix_btn.setVisible(False)
         fix_btn.setObjectName("fix_btn")
-        fix_btn._fallback_action = title
+        fix_btn._fallback_action = title  # type: ignore[attr-defined]
         fix_btn.clicked.connect(
             lambda _checked=False: self._on_fix_clicked(fix_btn)
         )
@@ -308,5 +308,5 @@ class DiagnosticsView(QWidget):
                 fix_btn.setText(action_label)
             else:
                 fix_btn.setText("Исправить")
-            fix_btn._readiness_action = action_key
+            fix_btn._readiness_action = action_key  # type: ignore[attr-defined]
             fix_btn.setVisible((not ok) or warning)

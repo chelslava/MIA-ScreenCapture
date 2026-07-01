@@ -1003,6 +1003,29 @@ def tasks_file(temp_dir: Path) -> Path:
     return tasks_path
 
 
+@pytest.fixture
+def temp_state_file(temp_dir: Path) -> Path:
+    state_file = temp_dir / "rate_limiter_state.json"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    return state_file
+
+
+@pytest.fixture
+def persistence(temp_state_file: Path) -> "RateLimiterStatePersistence":
+    from api.rate_limiter_persistence import RateLimiterStatePersistence
+
+    return RateLimiterStatePersistence(state_file=temp_state_file)
+
+
+@pytest.fixture
+def app():
+    from flask import Flask
+
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    return app
+
+
 @pytest.fixture(scope="module")
 def qapp() -> "QApplication":
     """

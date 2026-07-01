@@ -443,3 +443,7 @@ def get_rate_limit_headers() -> dict[str, str]:
         "X-RateLimit-Remaining-Minute": str(stats.get("minute_remaining", 0)),
         "X-RateLimit-Remaining-Hour": str(stats.get("hour_remaining", 0)),
     }
+
+
+def get_rate_limiter_compat() -> InMemoryRateLimiter:
+    return get_rate_limiter()

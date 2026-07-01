@@ -7,6 +7,7 @@
 
 import os
 import secrets
+import time
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
@@ -14,6 +15,8 @@ from typing import Any
 from flask import Flask, current_app, g, jsonify, request
 
 from logger_config import get_module_logger
+
+from .auth_rate_limiter import get_auth_rate_limiter
 
 logger = get_module_logger(__name__)
 
@@ -252,46 +255,68 @@ def init_api_auth(app: Flask, api_key: str | None = None) -> str:
 
 def require_api_key(f: Callable) -> Callable:
     """
-    Декоратор для защиты эндпоинтов API ключом.
+    Декоратор для защиты эндпоинтов API API-ключом.
 
-    Проверяет наличие и валидность API ключа в заголовке запроса.
-
-    Usage:
-        @app.route('/api/protected')
-        @require_api_key
-        def protected_endpoint():
-            return {'data': 'sensitive'}
+    Проверяет наличие и валидность API ключа. Использует AuthRateLimiter
+    для защиты от перебора ключей (brute force атак).
 
     Args:
-        f: Функция для защиты
+        f: Декорируемая функция
 
     Returns:
-        Декорированная функция с проверкой аутентификации
+        Декорированная функция
     """
+    from functools import wraps
 
     @wraps(f)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        # Получаем ключ из заголовка
-        provided_key = request.headers.get(API_KEY_HEADER)
+        # Получаем IP-адрес клиента (поддержка X-Forwarded-For для прокси)
+        client_ip = (
+            request.headers.get("X-Forwarded-For")
+            or request.remote_addr
+            or "unknown"
+        )
 
-        # Получаем ожидаемый ключ из конфигурации
+        # Получаем AuthRateLimiter
+        auth_limiter = get_auth_rate_limiter()
+
+        # Проверка блокировки перед обработкой
+        if auth_limiter.is_blocked(client_ip):
+            # Проверяем оставшееся время блокировки
+            remaining_delay = 0
+            with auth_limiter._lock:
+                if client_ip in auth_limiter._blocked_until:
+                    remaining_delay = max(
+                        0,
+                        int(
+                            auth_limiter._blocked_until[client_ip]
+                            - time.monotonic()
+                        ),
+                    )
+            logger.warning(
+                f"Заблокированный IP пытается доступ: {client_ip}, "
+                f"осталось {remaining_delay} сек."
+            )
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "Too Many Requests",
+                    "message": f"Защита от перебора. Повторите через {remaining_delay} сек.",
+                }
+            ), 429
+
+        provided_key = request.headers.get(API_KEY_HEADER)
         expected_key = current_app.config.get(API_KEY_CONFIG_KEY)
 
         # Если ключ не настроен, проверяем режим тестирования с явным отключением
         if expected_key is None:
-            # Требуем оба флага (TESTING=True И AUTH_DISABLED=True) для защиты
-            # от случайного отключения аутентификации в production окружении.
-            # Это обеспечивает безопасность: в production TESTING=False, поэтому
-            # даже если AUTH_DISABLED=True, аутентификация не будет отключена.
             if current_app.config.get("TESTING") and current_app.config.get(
                 AUTH_DISABLED_CONFIG_KEY
             ):
-                # Аутентификация явно отключена для тестирования
                 logger.debug(
                     f"Аутентификация отключена для тестирования: {request.endpoint}"
                 )
                 return f(*args, **kwargs)
-            # В production режиме или без явного отключения - ошибка
             logger.error(
                 "API аутентификация не инициализирована. "
                 "Вызовите init_api_auth() при инициализации приложения."
@@ -309,6 +334,7 @@ def require_api_key(f: Callable) -> Callable:
             logger.warning(
                 f"Попытка доступа без API ключа: {request.endpoint}"
             )
+            auth_limiter.record_failed_attempt(client_ip)
             return jsonify(
                 {
                     "success": False,
@@ -320,9 +346,13 @@ def require_api_key(f: Callable) -> Callable:
         # Проверяем валидность ключа (constant-time comparison для защиты от timing attacks)
         if not secrets.compare_digest(provided_key, expected_key):
             logger.warning(f"Неверный API ключ: {request.endpoint}")
+            auth_limiter.record_failed_attempt(client_ip)
             return jsonify(
                 {"success": False, "error": "Неверный API ключ"}
             ), 401
+
+        # Ключ валиден, сбрасываем счётчик неудачных попыток
+        auth_limiter.record_success(client_ip)
 
         # Ключ валиден, выполняем функцию
         return f(*args, **kwargs)

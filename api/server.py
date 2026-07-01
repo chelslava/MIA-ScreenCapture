@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -173,9 +173,25 @@ class APIServer:
         self._create_app()
 
     def _create_app(self) -> None:
-        """Создание и настройка Flask приложения."""
         from api.auth import init_api_auth
-        from api.rate_limiter import RateLimitConfig, init_rate_limiter
+        from api.auth_rate_limiter import AuthRateLimitConfig, AuthRateLimiter
+        from api.rate_limiter import RateLimitConfig
+        from api.rate_limiter_persistence import (
+            PersistentRateLimiter,
+            RateLimiterStatePersistence,
+        )
+
+        state_persistence = RateLimiterStatePersistence()
+        self._rate_limiter = PersistentRateLimiter(
+            config=RateLimitConfig(trust_proxy_headers=self.trust_proxy_headers),
+            persistence=state_persistence,
+        )
+
+        self._auth_rate_limiter = AuthRateLimiter(
+            config=AuthRateLimitConfig(max_attempts=5, base_delay=60)
+        )
+
+        self._rate_limiter.load_state_on_init()
 
         self.app = Flask(__name__)
         CORS(
@@ -191,11 +207,6 @@ class APIServer:
 
         # Инициализация API аутентификации
         self.api_key = init_api_auth(self.app, self.api_key)
-        # Инициализация rate limiter (применяется декораторами в routes.py)
-        init_rate_limiter(
-            self.app,
-            RateLimitConfig(trust_proxy_headers=self.trust_proxy_headers),
-        )
 
         # Логирование API ключа для пользователя (частично, для безопасности)
         api_key = self.get_api_key()
@@ -842,10 +853,7 @@ class APIServer:
             `APIIdempotencyStore.get_size()` и
             `APIOperationStore.get_metrics_snapshot()`.
         """
-        payload = cast(
-            dict[str, Any],
-            self._observability.get_metrics_snapshot(),
-        )
+        payload = self._observability.get_metrics_snapshot()
         payload["idempotency_store_size"] = self._idempotency.get_size()
         payload["background_operations"] = (
             self._operations.get_metrics_snapshot()
@@ -860,4 +868,4 @@ class APIServer:
             Не выбрасывает собственных исключений напрямую — делегирует в
             `APIServerObservability.get_baseline()`.
         """
-        return cast(dict[str, Any], self._observability.get_baseline())
+        return self._observability.get_baseline()

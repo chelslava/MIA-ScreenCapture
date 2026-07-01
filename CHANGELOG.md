@@ -1,6 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [Unreleased] - 2026-07-01
+
+### Security
+- **Closed issues #92, #93 (Phase 1):** Persistent rate limiter with JSON state persistence (`api/rate_limiter_persistence.py`) + Auth rate limiter for 401 tracking (`api/auth_rate_limiter.py`)
+- **New:** `RateLimiterStatePersistence` class with atomic writes via `atomic_write_json`
+- **New:** `PersistentRateLimiter` extends `InMemoryRateLimiter` with auto-load/save state
+- **New:** `AuthRateLimiter` tracks failed auth attempts (401 responses) with exponential backoff
+- **Updated:** API server now uses `PersistentRateLimiter` for persistence across restarts
+- **Updated:** `require_api_key` decorator now uses `AuthRateLimiter` for brute-force protection (5 attempts, 60*2^N sec backoff)
 
 ## [1.4.9] - 2026-06-24
 

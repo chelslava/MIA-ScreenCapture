@@ -7,7 +7,7 @@
 
 import hashlib
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 from flask import current_app, g, jsonify, request
 from pydantic import ValidationError
@@ -346,10 +346,7 @@ def _serialize_operation(
     operation: APIOperation,
 ) -> dict[str, Any]:
     """Преобразует внутреннее представление операции в API payload."""
-    return cast(
-        dict[str, Any],
-        APIOperationPayload.from_operation(operation).to_dict(),
-    )
+    return APIOperationPayload.from_operation(operation).to_dict()
 
 
 def _background_operation_status_response(
@@ -556,26 +553,23 @@ def _register_recording_routes(
     server: Any,
 ) -> tuple[Any, Any, Any]:
     """Регистрирует маршруты управления записью."""
-    return cast(
-        tuple[Any, Any, Any],
-        register_recording_routes(
-            api_v1,
-            server,
-            logger=logger,
-            parse_request_json=_parse_request_json,
-            handle_validation_error=handle_validation_error,
-            execute_with_idempotency=_execute_with_idempotency,
-            stop_operation_response=_stop_operation_response,
-            internal_error_response=_internal_error_response,
-            exception_response=_exception_response,
-            error_response=_error_response,
-        ),
+    return register_recording_routes(
+        api_v1,
+        server,
+        logger=logger,
+        parse_request_json=_parse_request_json,
+        handle_validation_error=handle_validation_error,
+        execute_with_idempotency=_execute_with_idempotency,
+        stop_operation_response=_stop_operation_response,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+        error_response=_error_response,
     )
 
 
 def _register_multi_recording_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты мультиисточниковой записи (#51)."""
-    _ = register_multi_recording_routes(
+    register_multi_recording_routes(
         api_v1,
         server,
         logger=logger,
@@ -589,7 +583,7 @@ def _register_multi_recording_routes(api_v1: Any, server: Any) -> None:
 
 def _register_schedule_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты планировщика."""
-    _ = register_schedule_routes(
+    register_schedule_routes(
         api_v1,
         server,
         logger=logger,
@@ -603,7 +597,7 @@ def _register_schedule_routes(api_v1: Any, server: Any) -> None:
 
 def _register_resource_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты ресурсов окружения."""
-    _ = register_resource_routes(
+    register_resource_routes(
         api_v1,
         server,
         logger=logger,
@@ -614,7 +608,7 @@ def _register_resource_routes(api_v1: Any, server: Any) -> None:
 
 def _register_config_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты конфигурации."""
-    _ = register_config_routes(
+    register_config_routes(
         api_v1,
         server,
         logger=logger,
@@ -628,7 +622,7 @@ def _register_config_routes(api_v1: Any, server: Any) -> None:
 
 def _register_observability_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты observability."""
-    _ = register_observability_routes(
+    register_observability_routes(
         api_v1,
         server,
         logger=logger,
@@ -638,7 +632,7 @@ def _register_observability_routes(api_v1: Any, server: Any) -> None:
 
 def _register_webhook_routes(api_v1: Any, server: Any) -> None:
     """Регистрирует маршруты настройки webhook."""
-    _ = register_webhook_routes(
+    register_webhook_routes(
         api_v1,
         server,
         logger=logger,

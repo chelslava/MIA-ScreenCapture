@@ -22,8 +22,7 @@ def take_screenshots() -> None:
     app = QApplication(sys.argv)
 
     # Создать главное окно
-    state = RecordingState()
-    window = MainWindow(state)
+    window = MainWindow(headless=False)
     window.show()
 
     # Подождать загрузки окна

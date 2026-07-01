@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
@@ -380,7 +380,7 @@ class SchedulerTab(QWidget):
         """Форматирование расписания для отображения."""
         if task.schedule_type == ScheduleType.ONCE:
             if task.start_time:
-                return cast(str, task.start_time.strftime("%Y-%m-%d %H:%M"))
+                return task.start_time.strftime("%Y-%m-%d %H:%M")
         elif task.schedule_type == ScheduleType.DAILY:
             return f"Ежедневно в {task.time_of_day}"
         elif task.schedule_type == ScheduleType.WEEKLY:
