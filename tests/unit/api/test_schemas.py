@@ -7,6 +7,7 @@
 
 import socket
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -15,6 +16,7 @@ from pydantic import ValidationError
 from api.schemas import (
     ConfigureWebhookRequest,
     CreateScheduleRequest,
+    FilePathRequest,
     StartRecordingRequest,
     ToggleScheduleRequest,
     UpdateConfigRequest,
@@ -567,3 +569,127 @@ class TestModelDump:
         assert data["area"] == "full"
         assert data["fps"] == 30
         assert data["codec"] == "libx264"
+
+
+class TestFilePathRequest:
+    """Тесты для схемы FilePathRequest (защита от path traversal, #106)."""
+
+    def test_valid_relative_path_accepted(self, tmp_path: Path) -> None:
+        """Относительный путь внутри recordings/ принимается."""
+        recordings_dir = tmp_path / "recordings"
+        recordings_dir.mkdir()
+        test_file = recordings_dir / "video.mp4"
+        test_file.write_bytes(b"fake video")
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            request = FilePathRequest(file_path="video.mp4")
+            assert request.file_path == "video.mp4"
+
+    def test_valid_nested_relative_path_accepted(self, tmp_path: Path) -> None:
+        """Относительный путь с вложенной директорией принимается."""
+        recordings_dir = tmp_path / "recordings"
+        recordings_dir.mkdir()
+        subdir = recordings_dir / "subdir"
+        subdir.mkdir()
+        test_file = subdir / "video.mp4"
+        test_file.write_bytes(b"fake video")
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            request = FilePathRequest(file_path="subdir/video.mp4")
+            assert request.file_path == "subdir/video.mp4"
+
+    def test_unix_absolute_path_rejected(self, tmp_path: Path) -> None:
+        """Unix absolute path (начинается с /) отклоняется."""
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            with pytest.raises(ValidationError) as exc_info:
+                FilePathRequest(file_path="/etc/passwd")
+
+            assert "Path traversal detected" in str(exc_info.value)
+            assert "/etc/passwd" in str(exc_info.value)
+
+    def test_windows_absolute_path_rejected(self, tmp_path: Path) -> None:
+        """Windows absolute path (C:\\) отклоняется."""
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            with pytest.raises(ValidationError) as exc_info:
+                FilePathRequest(file_path="C:\\Windows\\System32\\config")
+
+            assert "Path traversal detected" in str(exc_info.value)
+            assert "C:\\Windows" in str(exc_info.value)
+
+    def test_unc_path_rejected(self, tmp_path: Path) -> None:
+        """UNC path (\\\\server\\share) отклоняется."""
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            with pytest.raises(ValidationError) as exc_info:
+                FilePathRequest(file_path="\\\\server\\share\\secret.txt")
+
+            assert "Path traversal detected" in str(exc_info.value)
+
+    def test_parent_directory_escape_rejected(self, tmp_path: Path) -> None:
+        """Побег через ../ отклоняется."""
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            with pytest.raises(ValidationError) as exc_info:
+                FilePathRequest(file_path="../config.json")
+
+            assert "Path traversal detected" in str(exc_info.value)
+            assert "../config.json" in str(exc_info.value)
+
+    def test_windows_parent_directory_escape_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        """Побег через ..\\ отклоняется."""
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            with pytest.raises(ValidationError) as exc_info:
+                FilePathRequest(file_path="..\\Windows\\System32")
+
+            assert "Path traversal detected" in str(exc_info.value)
+
+    def test_deep_parent_escape_rejected(self, tmp_path: Path) -> None:
+        """Многоуровневый побег через ../../ отклоняется."""
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            with pytest.raises(ValidationError) as exc_info:
+                FilePathRequest(file_path="../../.env")
+
+            assert "Path traversal detected" in str(exc_info.value)
+
+    def test_mixed_parent_escape_rejected(self, tmp_path: Path) -> None:
+        """Смешанный побег через ../..\\ отклоняется."""
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            with pytest.raises(ValidationError) as exc_info:
+                FilePathRequest(file_path="../../..\\Windows")
+
+            assert "Path traversal detected" in str(exc_info.value)
+
+    def test_path_outside_recordings_rejected(self, tmp_path: Path) -> None:
+        """Путь к файлу вне recordings/ отклоняется."""
+        # Создаём recordings/ и корневую директорию
+        recordings_dir = tmp_path / "recordings"
+        recordings_dir.mkdir()
+        other_dir = tmp_path / "other"
+        other_dir.mkdir()
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            with pytest.raises(ValidationError) as exc_info:
+                FilePathRequest(file_path="../other/secret.txt")
+
+            assert "Path traversal detected" in str(exc_info.value)
+
+    def test_backslash_separator_normalized(self, tmp_path: Path) -> None:
+        """Windows-пути с \\ нормализуются при проверке."""
+        recordings_dir = tmp_path / "recordings"
+        recordings_dir.mkdir()
+        test_file = recordings_dir / "video.mp4"
+        test_file.write_bytes(b"fake video")
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            # Путь с обратными слешами должен работать если внутри recordings
+            request = FilePathRequest(file_path="subdir\\video.mp4")
+            assert request.file_path == "subdir\\video.mp4"
+
+    def test_empty_path_rejected(self) -> None:
+        """Пустой путь отклоняется."""
+        with pytest.raises(ValidationError) as exc_info:
+            FilePathRequest(file_path="")
+
+        assert "field required" in str(exc_info.value) or "file_path" in str(
+            exc_info.value
+        )

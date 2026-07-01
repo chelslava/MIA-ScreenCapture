@@ -26,7 +26,7 @@ from recorder.utils import check_disk_space, check_ffmpeg
 from recorder.video_recorder import CaptureArea, VideoRecorder
 
 if TYPE_CHECKING:
-    pass
+    from core.event_bus import EventBus
 
 logger = get_module_logger(__name__)
 
@@ -43,14 +43,14 @@ class RecordingController:
     - Управление кодировщиком
     """
 
-    def __init__(self, state: RecordingState | None = None):
-        """
-        Инициализация контроллера.
-
-        Args:
-            state: Модель состояния записи (создаётся новая, если не указана)
-        """
+    def __init__(
+        self,
+        state: RecordingState | None = None,
+        event_bus: "EventBus | None" = None,
+    ):
+        """Инициализация контроллера."""
         self._state = state or RecordingState()
+        self._event_bus = event_bus
         self._video_recorder: VideoRecorder | None = None
         self._audio_recorder: AudioRecorder | None = None
         self._encoder: RecordingEncoder | None = None
@@ -231,6 +231,7 @@ class RecordingController:
                 bitrate=video.bitrate,
                 use_ffmpeg=True,
                 preset=preset,
+                event_bus=self._event_bus,
             )
             if self._on_error:
                 self._video_recorder.set_callbacks(on_error=self._on_error)
@@ -514,4 +515,13 @@ class RecordingController:
         """Количество потерянных аудио-чанков."""
         if self._audio_recorder:
             return int(self._audio_recorder.dropped_chunks)
+        return 0
+
+    def get_recoveries_count(self) -> int:
+        if self._video_recorder and hasattr(
+            self._video_recorder, "_ffmpeg_writer"
+        ):
+            ffmpeg_writer = self._video_recorder._ffmpeg_writer
+            if ffmpeg_writer:
+                return getattr(ffmpeg_writer, "recovery_count", 0)
         return 0

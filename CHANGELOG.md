@@ -10,6 +10,22 @@
 - **Updated:** API server now uses `PersistentRateLimiter` for persistence across restarts
 - **Updated:** `require_api_key` decorator now uses `AuthRateLimiter` for brute-force protection (5 attempts, 60*2^N sec backoff)
 
+## [Unreleased] - 2026-07-01
+
+### Fixed
+- **Closed issue #97:** AudioRecorder crash recovery with exponential backoff and EventBus integration — `AudioRecorder._attempt_recovery()` method with 3 max retries, `1s/2s/4s` backoff delays, `logger.warning` for all silent `except Exception: pass`, `RecordingEvent(RecordingEventType.ERROR)` published to EventBus on audio failure
+- **Closed issue #98:** FFmpeg segment auto-merge on recording stop — `FFmpegVideoWriter._merge_segments()` creates concat file and runs FFmpeg concat, called in `close()`, temp segment files cleaned up after successful merge
+- **Closed issue #99:** EventBus exception logging enhanced with subscriber name, event_type, and `traceback.format_exc()` for full stack trace on subscriber failures
+- **Closed issue #100:** Proper EventBus cleanup on application shutdown — `detach_event_bus()` calls added to `_cleanup()` in `main.py` for `WebSocketManager` and `WebhookNotifier` in LIFO order
+- **Closed issue #101:** WebSocket status indicator with colored ● icon (Connected/Disconnected/Reconnecting) in `MainWindow._ws_status_label`, toast notifications on WebSocket state transitions connected to `WebSocketController` signals
+- **Closed issue #102:** EventBus notification on FFmpeg crash/recovery from `FFmpegVideoWriter` — `RecordingEvent(RecordingEventType.WARNING)` published on FFmpeg exit, `gui/main_window.py` subscribes and shows toast, `recovery_count` in `diagnostics_view.py`
+- **Closed issue #103:** Recording thumbnail generation via `generate_thumbnail()` in `recorder/utils.py` with `{cache_dir}/thumbnails/` caching, background QThread in `output_view.py`, placeholder if FFmpeg unavailable
+- **Closed issue #104:** WCAG AA contrast ratio audit of all 4 theme palettes in `gui/styles/theme.py` — `_relative_luminance()` and `_contrast_ratio()` helper functions, failing colors adjusted (e.g., `border` in dark palettes, `selection` in light)
+- **Closed issue #105:** Loading overlay widget (`gui/views/loading_overlay.py`) with semi-transparent spinner and "Загрузка..." text, integrated into `capture_view.py`, `diagnostics_view.py`, `video_view.py` with 500ms timer threshold
+- **Closed issue #106:** Path traversal protection via `@field_validator("file_path", mode="after")` in `api/schemas.py` `FilePathRequest`, `_validate_path_safe()` helper in `recorder/utils.py` with path normalization and `..` blocking
+- **Closed issue #107:** Timing-safe WebSocket auth via `secrets.compare_digest()` in `api/server.py` `_check_ws_auth()` and `api/websocket_transport.py` fallback
+- **Closed issue #108:** Secure config file permissions — `atomic_write_json()` in `utils.py` accepts `mode` parameter, `_restrict_file_permissions()` sets `0o600` owner-only access, `config.py` `save()` passes `mode=0o600`
+
 ## [1.4.9] - 2026-06-24
 
 ### Fixed

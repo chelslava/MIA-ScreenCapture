@@ -9,6 +9,7 @@ import ipaddress
 import re
 import socket
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal, Optional
 from urllib.parse import urlparse
 
@@ -49,9 +50,36 @@ def _is_private_or_reserved_host(hostname: str) -> bool:
 
 
 class FilePathRequest(BaseModel):
-    """Схема запроса с путём к видеофайлу (#46: verify/repair)."""
+    """Схема запроса с путём к видеофайлу (#46: verify/repair, #106: path traversal)."""
 
     file_path: str = Field(..., min_length=1, description="Путь к видеофайлу")
+
+    @field_validator("file_path", mode="after")
+    @classmethod
+    def validate_file_path(cls, v: str) -> str:
+        """Валидирует путь к файлу против path traversal атак (#106)."""
+        # Отклоняем абсолютные пути (Unix: /, UNC: \\)
+        if v.startswith("/") or v.startswith("\\"):
+            raise ValueError(
+                f"Path traversal detected: {v}. Allowed only inside recordings/"
+            )
+        # Windows drive letter (C:\)
+        if len(v) >= 2 and v[1] == ":":
+            raise ValueError(
+                f"Path traversal detected: {v}. Allowed only inside recordings/"
+            )
+
+        # Нормализуем разделители для кросс-платформенной проверки
+        normalized = v.replace("\\", "/")
+        base_dir = (Path.cwd() / "recordings").resolve()
+        resolved = (base_dir / normalized).resolve()
+
+        if not resolved.is_relative_to(base_dir):
+            raise ValueError(
+                f"Path traversal detected: {v}. Allowed only inside recordings/"
+            )
+
+        return v
 
 
 class SwitchCaptureSourceRequest(BaseModel):

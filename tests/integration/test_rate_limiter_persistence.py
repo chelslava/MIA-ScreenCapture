@@ -107,7 +107,7 @@ class TestConcurrentWrites:
         def load_thread():
             try:
                 for _ in range(20):
-                    state = persistence.load()
+                    persistence.load()
                     time.sleep(0.001)
             except Exception as e:
                 errors.append(str(e))
@@ -190,8 +190,6 @@ class TestDataIntegrity:
         client1 = RateLimiterClientState(minute_count=20)
         state1.clients["192.168.1.1"] = client1
         persistence.save(state1)
-
-        backup_path = Path(str(state_file) + ".bak")
 
         current_state = persistence.load()
         assert current_state is not None

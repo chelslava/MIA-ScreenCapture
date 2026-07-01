@@ -1,4 +1,3 @@
-
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -92,7 +91,9 @@ class TestAuthRateLimiter:
 
         blocked_until = limiter._blocked_until["192.168.1.1"]
         expected_delay = 60
-        assert blocked_until == pytest.approx(current_time + expected_delay, abs=1)
+        assert blocked_until == pytest.approx(
+            current_time + expected_delay, abs=1
+        )
 
     def test_record_success_resets_counter(self):
         limiter = AuthRateLimiter(max_attempts=3)

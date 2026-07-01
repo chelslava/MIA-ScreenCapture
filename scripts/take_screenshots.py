@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import QApplication
 # Добавить корневую директорию в путь
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.recording_state import RecordingState
 from gui.main_window import MainWindow
 
 

@@ -24,6 +24,8 @@ import pytest
 from _pytest import pathlib as pytest_pathlib
 from _pytest import tmpdir as pytest_tmpdir
 
+from api.rate_limiter_persistence import RateLimiterStatePersistence
+
 _original_cleanup_dead_symlinks = pytest_pathlib.cleanup_dead_symlinks
 _LOCAL_TMP_ROOT = Path(__file__).parent / ".local_tmp"
 _LOCAL_SYSTEM_TMP = _LOCAL_TMP_ROOT / "system"
@@ -211,6 +213,14 @@ class MockQWidgetBase:
     def layout(self):
         return self._layout
 
+    def setStyleSheet(self, style: str):
+        """Для QWidget."""
+        self._style_sheet = style
+
+    def styleSheet(self) -> str:
+        """Для QWidget."""
+        return getattr(self, "_style_sheet", "")
+
     def setText(self, text: str):
         """Для QLabel, QPushButton, QLineEdit."""
         self._text = text
@@ -348,11 +358,16 @@ class MockQWidgetBase:
         return getattr(self, "_plain_text", "")
 
     def setPlainText(self, text: str):
-        """Для QTextEdit."""
         self._plain_text = text
 
     def __iter__(self):
         return iter([])
+
+    def style(self):
+        return self
+
+    def standardIcon(self, icon):
+        return MagicMock()
 
 
 # Signal mock
@@ -703,6 +718,16 @@ class MockQTimerBase:
 
 
 qt_core_mock.QTimer = _create_mock_class("QTimer", (MockQTimerBase,))
+
+
+def _qtimer_singleShot(msec, callback):
+    import threading
+
+    timer = threading.Timer(msec / 1000.0, callback)
+    timer.start()
+
+
+qt_core_mock.QTimer.singleShot = _qtimer_singleShot
 qt_core_mock.QSettings = _create_mock_class("QSettings")
 
 
@@ -1011,10 +1036,47 @@ def temp_state_file(temp_dir: Path) -> Path:
 
 
 @pytest.fixture
-def persistence(temp_state_file: Path) -> "RateLimiterStatePersistence":
+def persistence(
+    temp_state_file: Path,
+) -> Generator["RateLimiterStatePersistence", None, None]:
     from api.rate_limiter_persistence import RateLimiterStatePersistence
 
-    return RateLimiterStatePersistence(state_file=temp_state_file)
+    persistence = RateLimiterStatePersistence(state_file=temp_state_file)
+    try:
+        yield persistence
+    finally:
+        pass
+
+
+@pytest.fixture
+def api_rate_limiter_persistence(
+    temp_dir: Path,
+) -> Generator["RateLimiterStatePersistence", None, None]:
+    from api.rate_limiter_persistence import RateLimiterStatePersistence
+
+    state_file = temp_dir / f"rate_limiter_state_{uuid.uuid4().hex[:8]}.json"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    persistence = RateLimiterStatePersistence(state_file=state_file)
+    try:
+        yield persistence
+    finally:
+        if state_file.exists():
+            try:
+                state_file.unlink()
+            except OSError:
+                pass
+        try:
+            state_file.parent.rmdir()
+        except OSError:
+            pass
+
+
+@pytest.fixture(autouse=True)
+def clear_rate_limiter_state():
+    from api.rate_limiter import _rate_limiter
+
+    if _rate_limiter is not None:
+        _rate_limiter.clear_all()
 
 
 @pytest.fixture

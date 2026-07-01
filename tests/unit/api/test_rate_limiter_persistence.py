@@ -1,24 +1,17 @@
-
 import json
 import threading
 import time
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
-
-from unittest.mock import patch
 
 from api.rate_limiter_persistence import (
-    ClientState,
-    InMemoryRateLimiter,
-    RateLimitConfig,
-    RateLimiterState,
-    RateLimiterStatePersistence,
-    RateLimiterClientState,
-    PersistentRateLimiter,
     CURRENT_SCHEMA_VERSION,
     RATE_LIMITER_STATE_FILE,
+    ClientState,
+    PersistentRateLimiter,
+    RateLimitConfig,
+    RateLimiterClientState,
+    RateLimiterState,
+    RateLimiterStatePersistence,
 )
 
 
@@ -190,7 +183,9 @@ class TestRateLimiterState:
 
 
 class TestPersistentRateLimiter:
-    def test_init_loads_state_from_file(self, temp_state_file: Path, persistence: RateLimiterStatePersistence):
+    def test_init_loads_state_from_file(
+        self, temp_state_file: Path, persistence: RateLimiterStatePersistence
+    ):
         state = RateLimiterState()
         client_state = RateLimiterClientState(minute_count=10)
         state.clients["192.168.1.1"] = client_state
@@ -203,7 +198,9 @@ class TestPersistentRateLimiter:
 
         assert "192.168.1.1" in limiter._clients
 
-    def test_check_rate_limit_saves_state(self, temp_state_file: Path, persistence: RateLimiterStatePersistence):
+    def test_check_rate_limit_saves_state(
+        self, temp_state_file: Path, persistence: RateLimiterStatePersistence
+    ):
         config = RateLimitConfig(requests_per_minute=60)
         limiter = PersistentRateLimiter(config=config, persistence=persistence)
 
@@ -216,7 +213,9 @@ class TestPersistentRateLimiter:
         assert loaded_state is not None
         assert loaded_state.version == CURRENT_SCHEMA_VERSION
 
-    def test_reset_client_saves_state(self, temp_state_file: Path, persistence: RateLimiterStatePersistence):
+    def test_reset_client_saves_state(
+        self, temp_state_file: Path, persistence: RateLimiterStatePersistence
+    ):
         config = RateLimitConfig(requests_per_minute=1)
         limiter = PersistentRateLimiter(config=config, persistence=persistence)
 
@@ -230,7 +229,9 @@ class TestPersistentRateLimiter:
         loaded_state = persistence.load()
         assert loaded_state is not None
 
-    def test_clear_all_saves_state(self, temp_state_file: Path, persistence: RateLimiterStatePersistence):
+    def test_clear_all_saves_state(
+        self, temp_state_file: Path, persistence: RateLimiterStatePersistence
+    ):
         config = RateLimitConfig(requests_per_minute=60)
         limiter = PersistentRateLimiter(config=config, persistence=persistence)
 
@@ -250,17 +251,23 @@ class TestPersistentRateLimiter:
         persistence1 = RateLimiterStatePersistence(state_file=state_file)
 
         config = RateLimitConfig(requests_per_minute=60)
-        limiter1 = PersistentRateLimiter(config=config, persistence=persistence1)
+        limiter1 = PersistentRateLimiter(
+            config=config, persistence=persistence1
+        )
 
         limiter1.load_state_on_init()
 
         current_time = time.monotonic()
-        limiter1._clients["192.168.1.1"] = ClientState(blocked_until=current_time + 100)
+        limiter1._clients["192.168.1.1"] = ClientState(
+            blocked_until=current_time + 100
+        )
 
         limiter1._persist_state()
 
         persistence2 = RateLimiterStatePersistence(state_file=state_file)
-        limiter2 = PersistentRateLimiter(config=config, persistence=persistence2)
+        limiter2 = PersistentRateLimiter(
+            config=config, persistence=persistence2
+        )
         limiter2.load_state_on_init()
 
         assert "192.168.1.1" in limiter2._clients
@@ -281,7 +288,7 @@ class TestConcurrentAccess:
 
         def load_thread():
             for _ in range(10):
-                state = persistence.load()
+                persistence.load()
                 time.sleep(0.01)
 
         thread1 = threading.Thread(target=save_thread)

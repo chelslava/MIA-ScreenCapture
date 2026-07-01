@@ -209,7 +209,9 @@ class RateLimiterStatePersistence:
                     version=state.version,
                     last_updated=state.last_updated,
                     clients={
-                        ip: RateLimiterClientStateSchema(**state.clients[ip].to_dict())
+                        ip: RateLimiterClientStateSchema(
+                            **state.clients[ip].to_dict()
+                        )
                         for ip in state.clients
                     },
                 )
@@ -234,9 +236,7 @@ class RateLimiterStatePersistence:
                             encoding="utf-8",
                         )
                     except Exception as e:
-                        logger.warning(
-                            f"Ошибка сохранения backup файла: {e}"
-                        )
+                        logger.warning(f"Ошибка сохранения backup файла: {e}")
 
                     logger.info(
                         f"Состояние rate limiter сохранено в "
@@ -244,9 +244,7 @@ class RateLimiterStatePersistence:
                     )
                 return bool(result)
             except Exception as e:
-                logger.error(
-                    f"Ошибка сохранения состояния rate limiter: {e}"
-                )
+                logger.error(f"Ошибка сохранения состояния rate limiter: {e}")
                 return False
 
     def save_merge(self, state: RateLimiterState) -> bool:
@@ -307,9 +305,7 @@ class RateLimiterStatePersistence:
                             encoding="utf-8",
                         )
                     except Exception as e:
-                        logger.warning(
-                            f"Ошибка сохранения backup файла: {e}"
-                        )
+                        logger.warning(f"Ошибка сохранения backup файла: {e}")
 
                     logger.info(
                         f"Состояние rate limiter сохранено (merge) в "
@@ -372,9 +368,13 @@ class PersistentRateLimiter(InMemoryRateLimiter):
                 for ip, client_state in self._clients.items():
                     if ip in self._state.clients:
                         rate_client_state = self._state.clients[ip]
-                        rate_client_state.minute_count = client_state.minute_count
+                        rate_client_state.minute_count = (
+                            client_state.minute_count
+                        )
                         rate_client_state.hour_count = client_state.hour_count
-                        rate_client_state.burst_count = client_state.burst_count
+                        rate_client_state.burst_count = (
+                            client_state.burst_count
+                        )
                         rate_client_state.last_minute_reset = (
                             client_state.last_minute_reset
                         )
@@ -392,9 +392,13 @@ class PersistentRateLimiter(InMemoryRateLimiter):
                         )
                     else:
                         rate_client_state = RateLimiterClientState()
-                        rate_client_state.minute_count = client_state.minute_count
+                        rate_client_state.minute_count = (
+                            client_state.minute_count
+                        )
                         rate_client_state.hour_count = client_state.hour_count
-                        rate_client_state.burst_count = client_state.burst_count
+                        rate_client_state.burst_count = (
+                            client_state.burst_count
+                        )
                         rate_client_state.last_minute_reset = (
                             client_state.last_minute_reset
                         )
@@ -418,7 +422,9 @@ class PersistentRateLimiter(InMemoryRateLimiter):
                 with self._persistence._save_lock:
                     result = self._persistence.save(self._state)
                     if not result:
-                        logger.error("Не удалось сохранить состояние rate limiter")
+                        logger.error(
+                            "Не удалось сохранить состояние rate limiter"
+                        )
             except Exception as e:
                 logger.error(f"Ошибка сохранения состояния rate limiter: {e}")
 

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -25,6 +26,7 @@ class RecordingEventType(StrEnum):
     RESUMED = "resumed"
     PROGRESS = "progress"
     ERROR = "error"
+    WARNING = "warning"
     STATUS = "status"
     AUDIO_CHUNKS_DROPPED = "audio_chunks_dropped"
     CAPTURE_SOURCE_SWITCHED = "capture_source_switched"
@@ -137,7 +139,10 @@ class InMemoryEventBus:
         for handler in handlers:
             try:
                 handler(event)
-            except Exception as e:
+            except Exception:
+                tb = traceback.format_exc()
+                subscriber_name = getattr(handler, "__name__", str(handler))
                 logger.warning(
-                    f"Ошибка обработчика события {event.event_type}: {e}"
+                    f"Subscriber '{subscriber_name}' failed for event "
+                    f"'{event.event_type}': {tb}"
                 )
