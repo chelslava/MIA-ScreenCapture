@@ -3,22 +3,16 @@ import json
 import threading
 import time
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
-
-from unittest.mock import patch
 
 from api.rate_limiter_persistence import (
-    ClientState,
-    InMemoryRateLimiter,
-    RateLimitConfig,
-    RateLimiterState,
-    RateLimiterStatePersistence,
-    RateLimiterClientState,
-    PersistentRateLimiter,
     CURRENT_SCHEMA_VERSION,
     RATE_LIMITER_STATE_FILE,
+    ClientState,
+    PersistentRateLimiter,
+    RateLimitConfig,
+    RateLimiterClientState,
+    RateLimiterState,
+    RateLimiterStatePersistence,
 )
 
 
@@ -281,7 +275,7 @@ class TestConcurrentAccess:
 
         def load_thread():
             for _ in range(10):
-                state = persistence.load()
+                persistence.load()
                 time.sleep(0.01)
 
         thread1 = threading.Thread(target=save_thread)
