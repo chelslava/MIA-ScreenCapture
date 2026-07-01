@@ -338,6 +338,7 @@ class VideoRecorder:
         disk_check_interval_s: float = 30.0,
         max_segment_size_mb: float | None = None,
         max_segment_duration_s: float | None = None,
+        event_bus: Any | None = None,
     ):
         """
         Инициализация видеозаписи.
@@ -376,6 +377,7 @@ class VideoRecorder:
         self.disk_check_interval_s = disk_check_interval_s
         self.max_segment_size_mb = max_segment_size_mb
         self.max_segment_duration_s = max_segment_duration_s
+        self._event_bus = event_bus
 
         # Состояние
         self._state: VideoRecorderState = VideoRecorderState.IDLE
@@ -737,6 +739,7 @@ class VideoRecorder:
                         disk_check_interval_s=self.disk_check_interval_s,
                         max_segment_size_mb=self.max_segment_size_mb,
                         max_segment_duration_s=self.max_segment_duration_s,
+                        event_bus=self._event_bus,
                     )
                     if not self._ffmpeg_writer.open():
                         raise RuntimeError(

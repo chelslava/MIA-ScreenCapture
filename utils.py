@@ -4,6 +4,7 @@
 
 import json
 import os
+import stat
 import sys
 import tempfile
 from pathlib import Path
@@ -34,13 +35,64 @@ def get_app_icon_path() -> Path:
     return base_path / "docs" / "assets" / "MIA-ScreenCapture.ico"
 
 
-def atomic_write_json(path: Path, data: Any) -> bool:
+def _restrict_file_permissions(path: Path, mode: int) -> None:
+    """
+    Устанавливает restricted permissions на файл.
+
+    Args:
+        path: Путь к файлу
+        mode: Запрашиваемые права (например, 0o600)
+    """
+    try:
+        os.chmod(path, mode)
+        logger.debug("Установлены права %s на %s", oct(mode), path)
+    except OSError as e:
+        # На Windows без elevated rights chmod может не сработать —
+        # логируем предупреждение, не падаем
+        logger.warning(
+            "Не удалось установить права %s на %s: %s",
+            oct(mode),
+            path,
+            e,
+        )
+
+
+def _check_permissions(
+    path: Path, expected_mode: int
+) -> None:
+    """
+    Проверяет, что права файла не шире запрошенных.
+
+    Args:
+        path: Путь к файлу
+        expected_mode: Ожидаемые права
+    """
+    try:
+        file_stat = os.stat(path)
+        actual_mode = stat.S_IMODE(file_stat.st_mode)
+        # Проверяем: actual должен быть подмножеством expected
+        # (т.е. не шире, чем мы запрашивали)
+        if actual_mode & ~expected_mode:
+            logger.warning(
+                "Файл %s имеет слишком широкие права: %s (ожидается подмножество %s)",
+                path,
+                oct(actual_mode),
+                oct(expected_mode),
+            )
+    except OSError:
+        pass  # stat-ошибка не критична
+
+
+def atomic_write_json(
+    path: Path, data: Any, *, mode: int = 0o600
+) -> bool:
     """
     Атомарная запись JSON в файл через временный файл в той же директории.
 
     Args:
         path: Путь к целевому файлу
         data: Данные для записи (будут сериализованы в JSON)
+        mode: Права на файл после записи (по умолчанию 0o600)
 
     Returns:
         True если запись успешна, False в противном случае
@@ -63,6 +115,10 @@ def atomic_write_json(path: Path, data: Any) -> bool:
             os.fsync(tmp_file.fileno())
 
         os.replace(temp_path, path)
+        temp_path = None  # os.replace удалил temp, больше не нужно
+
+        _restrict_file_permissions(path, mode)
+        _check_permissions(path, mode)
         return True
     except Exception as e:
         logger.error(f"Ошибка атомарной записи в {path}: {e}")
