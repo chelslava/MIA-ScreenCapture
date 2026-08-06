@@ -1,11 +1,13 @@
 import json
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
+import api.rate_limiter_persistence as rate_limiter_persistence_module
 from api.rate_limiter_persistence import (
     CURRENT_SCHEMA_VERSION,
-    RATE_LIMITER_STATE_FILE,
     ClientState,
     PersistentRateLimiter,
     RateLimitConfig,
@@ -13,6 +15,30 @@ from api.rate_limiter_persistence import (
     RateLimiterState,
     RateLimiterStatePersistence,
 )
+
+_T = TypeVar("_T")
+
+
+def _run_in_bounded_daemon_thread(operation: Callable[[], _T]) -> _T:
+    """Выполняет операцию в daemon-потоке с ограниченным ожиданием."""
+    results: list[_T] = []
+    errors: list[BaseException] = []
+
+    def target() -> None:
+        try:
+            results.append(operation())
+        except BaseException as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    thread.join(timeout=5)
+
+    assert not thread.is_alive(), "Операция не завершилась за 5 секунд"
+    if errors:
+        raise errors[0]
+    assert results, "Операция завершилась без результата"
+    return results[0]
 
 
 class TestRateLimiterStatePersistence:
@@ -25,7 +51,10 @@ class TestRateLimiterStatePersistence:
 
     def test_init_default_path(self):
         persistence = RateLimiterStatePersistence()
-        assert persistence.state_file == RATE_LIMITER_STATE_FILE
+        assert (
+            persistence.state_file
+            == rate_limiter_persistence_module.RATE_LIMITER_STATE_FILE
+        )
 
     def test_save_state_json_structure(self, temp_state_file: Path):
         persistence = RateLimiterStatePersistence(state_file=temp_state_file)
@@ -205,7 +234,9 @@ class TestPersistentRateLimiter:
         limiter = PersistentRateLimiter(config=config, persistence=persistence)
 
         limiter.load_state_on_init()
-        allowed, info = limiter.check_rate_limit("127.0.0.1")
+        allowed, info = _run_in_bounded_daemon_thread(
+            lambda: limiter.check_rate_limit("127.0.0.1")
+        )
 
         assert allowed is True
 
@@ -220,14 +251,22 @@ class TestPersistentRateLimiter:
         limiter = PersistentRateLimiter(config=config, persistence=persistence)
 
         limiter.load_state_on_init()
+        limiter._clients["127.0.0.1"] = ClientState(minute_count=1)
+        limiter._clients["192.168.1.1"] = ClientState(minute_count=7)
+        limiter._persist_state()
 
-        allowed, _ = limiter.check_rate_limit("127.0.0.1")
-        assert allowed is True
+        _run_in_bounded_daemon_thread(
+            lambda: limiter.reset_client("127.0.0.1")
+        )
 
-        limiter.reset_client("127.0.0.1")
+        restarted_limiter = PersistentRateLimiter(
+            config=config,
+            persistence=RateLimiterStatePersistence(temp_state_file),
+        )
+        restarted_limiter.load_state_on_init()
 
-        loaded_state = persistence.load()
-        assert loaded_state is not None
+        assert set(restarted_limiter._clients) == {"192.168.1.1"}
+        assert restarted_limiter._clients["192.168.1.1"].minute_count == 7
 
     def test_clear_all_saves_state(
         self, temp_state_file: Path, persistence: RateLimiterStatePersistence
@@ -239,12 +278,17 @@ class TestPersistentRateLimiter:
 
         limiter._clients["192.168.1.1"] = ClientState(minute_count=5)
         limiter._clients["192.168.1.2"] = ClientState(minute_count=10)
+        limiter._persist_state()
 
-        limiter.clear_all()
+        _run_in_bounded_daemon_thread(limiter.clear_all)
 
-        loaded_state = persistence.load()
-        assert loaded_state is not None
-        assert len(loaded_state.clients) == 0
+        restarted_limiter = PersistentRateLimiter(
+            config=config,
+            persistence=RateLimiterStatePersistence(temp_state_file),
+        )
+        restarted_limiter.load_state_on_init()
+
+        assert not restarted_limiter._clients
 
     def test_survives_restart(self, temp_state_file: Path):
         state_file = temp_state_file

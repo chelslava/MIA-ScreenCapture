@@ -24,7 +24,10 @@ from flask_cors import CORS
 from waitress.server import create_server
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
-from api.auth import API_KEY_CONFIG_KEY
+from api.auth import (
+    API_KEY_CONFIG_KEY,
+    AUTH_DISABLED_CONFIG_KEY,
+)
 from api.error_mapping import map_exception_to_api_error
 from api.idempotency_store import APIIdempotencyStore
 from api.observability import APIServerObservability
@@ -206,12 +209,13 @@ class APIServer:
         # Инициализация Flask приложения
         self.app = Flask(__name__)
 
-        # Установка собственного rate limiter в конфиг Flask для использования декоратором @rate_limit
-        # Это гарантирует, что routes используют PersistentRateLimiter с уникальным state_file
-        from api.rate_limiter import init_rate_limiter
-
-        init_rate_limiter(self.app, self._rate_limiter.config)
+        # Декораторы маршрутов получают этот persistent-экземпляр из конфига.
         self.app.config["RATE_LIMITER"] = self._rate_limiter
+        self.app.config["RATE_LIMIT_CONFIG"] = self._rate_limiter.config
+        self.app.config["AUTH_RATE_LIMITER"] = self._auth_rate_limiter
+        self.app.config["AUTH_RATE_LIMIT_CONFIG"] = (
+            self._auth_rate_limiter.config
+        )
         CORS(
             self.app,
             origins=[_CORS_ALLOWED_ORIGIN_REGEX],
@@ -373,9 +377,13 @@ class APIServer:
 
     def _check_ws_auth(self, token: str) -> bool:
         """Проверка токена для WebSocket подключения (constant-time comparison)."""
-        api_key = self.get_api_key()
+        api_key = self.get_runtime_api_key()
         if not api_key:
-            return True
+            return bool(
+                self.app is not None
+                and self.app.config.get("TESTING")
+                and self.app.config.get(AUTH_DISABLED_CONFIG_KEY)
+            )
         if not token:
             return False
         return secrets.compare_digest(token, api_key)
@@ -873,11 +881,11 @@ class APIServer:
             `APIIdempotencyStore.get_size()` и
             `APIOperationStore.get_metrics_snapshot()`.
         """
-        payload = self._observability.get_metrics_snapshot()
-        payload["idempotency_store_size"] = self._idempotency.get_size()
-        payload["background_operations"] = (
-            self._operations.get_metrics_snapshot()
-        )
+        payload: dict[str, Any] = {
+            **self._observability.get_metrics_snapshot(),
+            "idempotency_store_size": self._idempotency.get_size(),
+            "background_operations": (self._operations.get_metrics_snapshot()),
+        }
         return payload
 
     def get_observability_baseline(self) -> dict[str, Any]:
@@ -888,4 +896,5 @@ class APIServer:
             Не выбрасывает собственных исключений напрямую — делегирует в
             `APIServerObservability.get_baseline()`.
         """
-        return self._observability.get_baseline()
+        baseline: dict[str, Any] = self._observability.get_baseline()
+        return baseline

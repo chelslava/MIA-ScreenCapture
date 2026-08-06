@@ -258,7 +258,7 @@ class WebSocketTransport:
             return False
         if self._auth_check:
             return self._auth_check(token)
-        return True
+        return False
 
     def register_client(self, client_id: str) -> WebSocketClient:
         """Регистрация нового клиента."""

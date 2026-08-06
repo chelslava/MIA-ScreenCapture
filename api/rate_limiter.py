@@ -11,10 +11,10 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import wraps
-from threading import Lock
+from threading import RLock
 from typing import Any
 
-from flask import Flask, current_app, jsonify, request
+from flask import Flask, current_app, has_app_context, jsonify, request
 
 from logger_config import get_module_logger
 
@@ -50,6 +50,28 @@ def _is_valid_ip(ip_str: str) -> bool:
     if not ip_str:
         return False
     return bool(IPV4_PATTERN.match(ip_str) or IPV6_PATTERN.match(ip_str))
+
+
+def resolve_client_identity(*, trust_proxy_headers: bool = False) -> str:
+    """Определяет валидированную сетевую идентичность текущего клиента."""
+    if not trust_proxy_headers:
+        return request.remote_addr or "unknown"
+
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        ip_candidate = str(forwarded).split(",")[0].strip()
+        if _is_valid_ip(ip_candidate):
+            return ip_candidate
+        logger.warning(f"Invalid IP in X-Forwarded-For: {ip_candidate[:50]}")
+
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        ip_candidate = str(real_ip).strip()
+        if _is_valid_ip(ip_candidate):
+            return ip_candidate
+        logger.warning(f"Invalid IP in X-Real-IP: {ip_candidate[:50]}")
+
+    return request.remote_addr or "unknown"
 
 
 @dataclass
@@ -105,37 +127,14 @@ class InMemoryRateLimiter:
         """
         self.config = config or RateLimitConfig()
         self._clients: dict[str, ClientState] = defaultdict(ClientState)
-        self._lock = Lock()
+        self._lock = RLock()
         self._last_cleanup = time.monotonic()
 
     def _get_client_ip(self) -> str:
         """Получение IP-адреса клиента с валидацией."""
-        # Без доверенного reverse-proxy заголовки клиента не заслуживают
-        # доверия — любой клиент может подставить в них чужой IP и обойти
-        # per-IP лимиты (см. issue #74).
-        if not self.config.trust_proxy_headers:
-            return request.remote_addr or "unknown"
-
-        # Проверка заголовков прокси с валидацией
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            # Берём первый IP из списка
-            ip_candidate = str(forwarded).split(",")[0].strip()
-            if _is_valid_ip(ip_candidate):
-                return ip_candidate
-            logger.warning(
-                f"Invalid IP in X-Forwarded-For: {ip_candidate[:50]}"
-            )
-
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            ip_candidate = str(real_ip).strip()
-            if _is_valid_ip(ip_candidate):
-                return ip_candidate
-            logger.warning(f"Invalid IP in X-Real-IP: {ip_candidate[:50]}")
-
-        # Fallback к remote_addr
-        return request.remote_addr or "unknown"
+        return resolve_client_identity(
+            trust_proxy_headers=self.config.trust_proxy_headers
+        )
 
     def _is_whitelisted(self, client_ip: str) -> bool:
         """Проверка, находится ли IP в белом списке."""
@@ -352,6 +351,15 @@ def get_rate_limiter() -> InMemoryRateLimiter:
     return _rate_limiter
 
 
+def _get_active_rate_limiter() -> InMemoryRateLimiter:
+    """Получение ограничителя текущего Flask-приложения или fallback."""
+    if has_app_context():
+        configured_limiter = current_app.config.get("RATE_LIMITER")
+        if isinstance(configured_limiter, InMemoryRateLimiter):
+            return configured_limiter
+    return get_rate_limiter()
+
+
 def init_rate_limiter(
     app: Flask, config: RateLimitConfig | None = None
 ) -> None:
@@ -391,7 +399,7 @@ def rate_limit(f: Callable) -> Callable:
 
     @wraps(f)
     def decorated(*args: Any, **kwargs: Any) -> Any:
-        limiter = get_rate_limiter()
+        limiter = _get_active_rate_limiter()
         allowed, info = limiter.check_rate_limit()
 
         if not allowed:
@@ -420,7 +428,7 @@ def rate_limit(f: Callable) -> Callable:
 
         # Выполняем функцию и добавляем заголовки с информацией о лимитах
         response = f(*args, **kwargs)
-        headers = get_rate_limit_headers()
+        headers = get_rate_limit_headers(limiter)
         if isinstance(response, tuple):
             normalized_response = current_app.make_response(response)
             normalized_response.headers.update(headers)
@@ -432,14 +440,18 @@ def rate_limit(f: Callable) -> Callable:
     return decorated
 
 
-def get_rate_limit_headers() -> dict[str, str]:
+def get_rate_limit_headers(
+    limiter: InMemoryRateLimiter | None = None,
+) -> dict[str, str]:
     """Получение заголовков с информацией о лимитах для текущего клиента."""
-    limiter = get_rate_limiter()
-    stats = limiter.get_client_stats()
+    active_limiter = limiter or _get_active_rate_limiter()
+    stats = active_limiter.get_client_stats()
 
     return {
-        "X-RateLimit-Limit-Minute": str(limiter.config.requests_per_minute),
-        "X-RateLimit-Limit-Hour": str(limiter.config.requests_per_hour),
+        "X-RateLimit-Limit-Minute": str(
+            active_limiter.config.requests_per_minute
+        ),
+        "X-RateLimit-Limit-Hour": str(active_limiter.config.requests_per_hour),
         "X-RateLimit-Remaining-Minute": str(stats.get("minute_remaining", 0)),
         "X-RateLimit-Remaining-Hour": str(stats.get("hour_remaining", 0)),
     }

@@ -17,6 +17,7 @@ from flask import Flask, current_app, g, jsonify, request
 from logger_config import get_module_logger
 
 from .auth_rate_limiter import get_auth_rate_limiter
+from .rate_limiter import RateLimitConfig, resolve_client_identity
 
 logger = get_module_logger(__name__)
 
@@ -270,11 +271,14 @@ def require_api_key(f: Callable) -> Callable:
 
     @wraps(f)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
-        # Получаем IP-адрес клиента (поддержка X-Forwarded-For для прокси)
-        client_ip = (
-            request.headers.get("X-Forwarded-For")
-            or request.remote_addr
-            or "unknown"
+        rate_limit_config = current_app.config.get("RATE_LIMIT_CONFIG")
+        trust_proxy_headers = (
+            rate_limit_config.trust_proxy_headers
+            if isinstance(rate_limit_config, RateLimitConfig)
+            else False
+        )
+        client_ip = resolve_client_identity(
+            trust_proxy_headers=trust_proxy_headers
         )
 
         # Получаем AuthRateLimiter

@@ -9,7 +9,7 @@ import ipaddress
 import re
 import socket
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import PureWindowsPath
 from typing import Literal, Optional
 from urllib.parse import urlparse
 
@@ -57,26 +57,22 @@ class FilePathRequest(BaseModel):
     @field_validator("file_path", mode="after")
     @classmethod
     def validate_file_path(cls, v: str) -> str:
-        """Валидирует путь к файлу против path traversal атак (#106)."""
-        # Отклоняем абсолютные пути (Unix: /, UNC: \\)
-        if v.startswith("/") or v.startswith("\\"):
-            raise ValueError(
-                f"Path traversal detected: {v}. Allowed only inside recordings/"
-            )
-        # Windows drive letter (C:\)
-        if len(v) >= 2 and v[1] == ":":
-            raise ValueError(
-                f"Path traversal detected: {v}. Allowed only inside recordings/"
-            )
+        """Проверяет безопасный синтаксис относительного Windows-пути."""
+        path = PureWindowsPath(v)
+        invalid_chars = '<>:"|?*'
+        has_dot_component = "." in re.split(r"[\\/]", v)
+        unsafe_part = any(
+            part == ".."
+            or part.endswith((" ", "."))
+            or any(char in invalid_chars or ord(char) < 32 for char in part)
+            or PureWindowsPath(part).is_reserved()
+            for part in path.parts
+        )
 
-        # Нормализуем разделители для кросс-платформенной проверки
-        normalized = v.replace("\\", "/")
-        base_dir = (Path.cwd() / "recordings").resolve()
-        resolved = (base_dir / normalized).resolve()
-
-        if not resolved.is_relative_to(base_dir):
+        if path.drive or path.root or has_dot_component or unsafe_part:
             raise ValueError(
-                f"Path traversal detected: {v}. Allowed only inside recordings/"
+                f"Path traversal detected: {v}. "
+                "Use a relative path inside the configured output directory"
             )
 
         return v

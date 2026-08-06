@@ -1072,11 +1072,32 @@ def api_rate_limiter_persistence(
 
 
 @pytest.fixture(autouse=True)
-def clear_rate_limiter_state():
-    from api.rate_limiter import _rate_limiter
+def isolate_rate_limiter_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> Generator[None, None, None]:
+    """Изолирует глобальные rate limiter и их persistence для каждого теста."""
+    import api.auth_rate_limiter as auth_rate_limiter_module
+    import api.rate_limiter as rate_limiter_module
+    import api.rate_limiter_persistence as persistence_module
 
-    if _rate_limiter is not None:
-        _rate_limiter.clear_all()
+    state_file = tmp_path / "rate_limiter_state.json"
+    monkeypatch.setattr(
+        persistence_module,
+        "RATE_LIMITER_STATE_FILE",
+        state_file,
+    )
+    monkeypatch.setattr(persistence_module, "STATE_FILE", state_file)
+
+    rate_limiter_module._rate_limiter = None
+    auth_rate_limiter_module._auth_limiter = None
+    persistence_module._persistence = None
+
+    yield
+
+    rate_limiter_module._rate_limiter = None
+    auth_rate_limiter_module._auth_limiter = None
+    persistence_module._persistence = None
 
 
 @pytest.fixture

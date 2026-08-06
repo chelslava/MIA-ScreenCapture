@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from logging import Logger
 from typing import Any
 
+from flask import current_app, has_app_context
+
 from core.event_bus import EventBus, RecordingEvent, RecordingEventType
 from logger_config import get_module_logger
 
@@ -277,8 +279,12 @@ _auth_limiter: AuthRateLimiter | None = None
 
 
 def get_auth_rate_limiter() -> AuthRateLimiter:
-    """Получение глобального экземпляра ограничителя."""
+    """Получение app-scoped ограничителя с глобальным fallback вне Flask."""
     global _auth_limiter
+    if has_app_context():
+        configured_limiter = current_app.config.get("AUTH_RATE_LIMITER")
+        if isinstance(configured_limiter, AuthRateLimiter):
+            return configured_limiter
     if _auth_limiter is None:
         _auth_limiter = AuthRateLimiter()
     return _auth_limiter
@@ -289,14 +295,7 @@ def init_auth_rate_limiter(
     config: AuthRateLimitConfig | None = None,
     event_bus: EventBus | None = None,
 ) -> None:
-    """
-    Инициализация ограничителя для Flask приложения.
-
-    Args:
-        app: Flask приложение
-        config: Конфигурация ограничений
-        event_bus: Event bus для публикации событий
-    """
+    """Инициализирует app-scoped ограничитель для Flask-приложения."""
     global _auth_limiter
 
     actual_config = config or AuthRateLimitConfig()

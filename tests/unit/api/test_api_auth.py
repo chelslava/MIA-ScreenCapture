@@ -25,6 +25,8 @@ from api.auth import (
     require_api_key,
     set_stored_api_key,
 )
+from api.auth_rate_limiter import AuthRateLimitConfig, init_auth_rate_limiter
+from api.rate_limiter import RateLimitConfig, init_rate_limiter
 
 
 @pytest.fixture(autouse=True)
@@ -240,6 +242,138 @@ class TestRequireApiKey:
         assert response.status_code == 200
         data = response.get_json()
         assert data["success"] is True
+
+    def test_multiple_apps_isolate_auth_rate_limits(self) -> None:
+        """Неудачи аутентификации не переходят между Flask-приложениями."""
+        first_app = Flask("first_auth_app")
+        second_app = Flask("second_auth_app")
+        for application in (first_app, second_app):
+            application.config["TESTING"] = True
+            init_api_auth(application, api_key="correct-key")
+            init_auth_rate_limiter(
+                application,
+                AuthRateLimitConfig(max_attempts=1),
+            )
+
+            @application.get("/protected")
+            @require_api_key
+            def protected():
+                return {"success": True}
+
+        first_response = first_app.test_client().get(
+            "/protected",
+            headers={API_KEY_HEADER: "wrong-key"},
+        )
+        second_response = second_app.test_client().get(
+            "/protected",
+            headers={API_KEY_HEADER: "wrong-key"},
+        )
+
+        assert first_response.status_code == 401
+        assert second_response.status_code == 401
+        assert (
+            first_app.config["AUTH_RATE_LIMITER"]
+            is not second_app.config["AUTH_RATE_LIMITER"]
+        )
+
+    def test_untrusted_forwarded_ip_cannot_change_auth_identity(
+        self, app, client
+    ) -> None:
+        """Без trusted proxy auth limiter использует REMOTE_ADDR."""
+        init_api_auth(app, api_key="correct-key")
+        init_rate_limiter(app, RateLimitConfig(trust_proxy_headers=False))
+        init_auth_rate_limiter(app, AuthRateLimitConfig(max_attempts=1))
+
+        @app.get("/protected")
+        @require_api_key
+        def protected():
+            return {"success": True}
+
+        first_response = client.get(
+            "/protected",
+            headers={
+                API_KEY_HEADER: "wrong-key",
+                "X-Forwarded-For": "203.0.113.10",
+            },
+            environ_base={"REMOTE_ADDR": "192.0.2.10"},
+        )
+        second_response = client.get(
+            "/protected",
+            headers={
+                API_KEY_HEADER: "wrong-key",
+                "X-Forwarded-For": "203.0.113.11",
+            },
+            environ_base={"REMOTE_ADDR": "192.0.2.10"},
+        )
+
+        assert first_response.status_code == 401
+        assert second_response.status_code == 429
+
+    def test_trusted_proxy_rejects_invalid_forwarded_auth_identity(
+        self, app, client
+    ) -> None:
+        """Невалидный trusted XFF откатывается к REMOTE_ADDR."""
+        init_api_auth(app, api_key="correct-key")
+        init_rate_limiter(app, RateLimitConfig(trust_proxy_headers=True))
+        init_auth_rate_limiter(app, AuthRateLimitConfig(max_attempts=1))
+
+        @app.get("/protected")
+        @require_api_key
+        def protected():
+            return {"success": True}
+
+        first_response = client.get(
+            "/protected",
+            headers={
+                API_KEY_HEADER: "wrong-key",
+                "X-Forwarded-For": "invalid-first",
+            },
+            environ_base={"REMOTE_ADDR": "192.0.2.20"},
+        )
+        second_response = client.get(
+            "/protected",
+            headers={
+                API_KEY_HEADER: "wrong-key",
+                "X-Forwarded-For": "invalid-second",
+            },
+            environ_base={"REMOTE_ADDR": "192.0.2.20"},
+        )
+
+        assert first_response.status_code == 401
+        assert second_response.status_code == 429
+
+    def test_trusted_proxy_uses_first_valid_forwarded_auth_identity(
+        self, app, client
+    ) -> None:
+        """Trusted XFF идентифицирует клиента по первому валидному IP."""
+        init_api_auth(app, api_key="correct-key")
+        init_rate_limiter(app, RateLimitConfig(trust_proxy_headers=True))
+        init_auth_rate_limiter(app, AuthRateLimitConfig(max_attempts=1))
+
+        @app.get("/protected")
+        @require_api_key
+        def protected():
+            return {"success": True}
+
+        first_response = client.get(
+            "/protected",
+            headers={
+                API_KEY_HEADER: "wrong-key",
+                "X-Forwarded-For": "203.0.113.30, 70.41.3.18",
+            },
+            environ_base={"REMOTE_ADDR": "192.0.2.30"},
+        )
+        second_response = client.get(
+            "/protected",
+            headers={
+                API_KEY_HEADER: "wrong-key",
+                "X-Forwarded-For": "203.0.113.30, 70.41.3.19",
+            },
+            environ_base={"REMOTE_ADDR": "192.0.2.30"},
+        )
+
+        assert first_response.status_code == 401
+        assert second_response.status_code == 429
 
     def test_no_auth_in_testing_mode_requires_explicit_disable(
         self, app, client

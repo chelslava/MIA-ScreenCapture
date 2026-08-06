@@ -165,6 +165,12 @@ class TestWebSocketTransport:
 
         assert transport.authenticate(None) is False
 
+    def test_authenticate_without_auth_callback_fails_closed(self) -> None:
+        """Непустой токен не разрешает доступ без настроенной проверки."""
+        transport = WebSocketTransport(MagicMock())
+
+        assert transport.authenticate("unverified-token") is False
+
     def test_register_client(self) -> None:
         """Регистрация клиента."""
         mock_manager = MagicMock()

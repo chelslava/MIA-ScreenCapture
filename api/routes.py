@@ -346,7 +346,10 @@ def _serialize_operation(
     operation: APIOperation,
 ) -> dict[str, Any]:
     """Преобразует внутреннее представление операции в API payload."""
-    return APIOperationPayload.from_operation(operation).to_dict()
+    result: dict[str, Any] = APIOperationPayload.from_operation(
+        operation
+    ).to_dict()
+    return result
 
 
 def _background_operation_status_response(
@@ -553,7 +556,7 @@ def _register_recording_routes(
     server: Any,
 ) -> tuple[Any, Any, Any]:
     """Регистрирует маршруты управления записью."""
-    return register_recording_routes(
+    routes: tuple[Any, Any, Any] = register_recording_routes(
         api_v1,
         server,
         logger=logger,
@@ -565,6 +568,7 @@ def _register_recording_routes(
         exception_response=_exception_response,
         error_response=_error_response,
     )
+    return routes
 
 
 def _register_multi_recording_routes(api_v1: Any, server: Any) -> None:
