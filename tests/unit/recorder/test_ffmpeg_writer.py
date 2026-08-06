@@ -237,6 +237,35 @@ class TestFFmpegVideoWriterDiagnostics:
         assert "beta" in caplog.text
         assert "delta" in caplog.text
 
+    def test_close_returns_true_when_terminate_succeeds_after_timeout(
+        self,
+        monkeypatch,
+    ) -> None:
+        """При успешном terminate close() должен вернуть True."""
+        process = _setup_open_mocks(
+            monkeypatch,
+            "alpha\nbeta\ngamma\ndelta\n",
+            returncode=0,
+        )
+        process.wait.side_effect = [
+            subprocess.TimeoutExpired(cmd="ffmpeg", timeout=180),
+            None,
+        ]
+
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=1920,
+            height=1080,
+            fps=30,
+        )
+
+        assert writer.open() is True
+
+        assert writer.close() is True
+
+        process.terminate.assert_called_once()
+        process.kill.assert_not_called()
+
     def test_write_returns_false_and_marks_corrupted_when_process_died(
         self,
         monkeypatch,
@@ -412,10 +441,13 @@ class TestFFmpegVideoWriterDiagnostics:
         writer._segment_paths = [Path("test.mp4")]
         writer._current_segment_path = Path("test_part2.mp4")
         writer._recovery_count = 1
+        merge_mock = MagicMock(return_value=True)
+        monkeypatch.setattr(writer, "_merge_segments", merge_mock)
 
         with caplog.at_level(logging.INFO):
             assert writer.close() is True
 
+        merge_mock.assert_called_once_with()
         assert "восстановлена после 1 сбоев" in caplog.text
         assert "test_part2.mp4" in caplog.text
 
@@ -472,6 +504,190 @@ class TestFFmpegVideoWriterDiagnostics:
         assert writer._stderr_stream is None
         for process in processes:
             process.stderr.close.assert_called_once()
+
+
+class TestFFmpegVideoWriterSegmentMerge:
+    """Проверки транзакционного слияния сегментов записи."""
+
+    @staticmethod
+    def _make_segmented_writer(
+        tmp_path: Path,
+    ) -> tuple[FFmpegVideoWriter, Path, Path]:
+        output_path = tmp_path / "recording.mp4"
+        part_path = tmp_path / "recording_part2.mp4"
+        output_path.write_bytes(b"canonical-segment")
+        part_path.write_bytes(b"second-segment")
+
+        writer = FFmpegVideoWriter(
+            output_path=output_path,
+            width=640,
+            height=480,
+            fps=30,
+        )
+        writer._ffmpeg_path = r"C:\ffmpeg.exe"
+        writer._segment_paths = [output_path]
+        writer._current_segment_path = part_path
+        return writer, output_path, part_path
+
+    def test_merge_replaces_output_and_removes_only_obsolete_parts(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        writer, output_path, part_path = self._make_segmented_writer(tmp_path)
+        processes: list[MagicMock] = []
+        commands: list[list[str]] = []
+
+        def run_merge(command: list[str], **_kwargs) -> MagicMock:
+            commands.append(command)
+            Path(command[-1]).write_bytes(b"merged-video")
+            process = MagicMock(returncode=0)
+            process.communicate.return_value = (b"", b"")
+            processes.append(process)
+            return process
+
+        integrity_check = MagicMock(
+            return_value=MagicMock(valid=True, error=None)
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            run_merge,
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "verify_video_integrity",
+            integrity_check,
+            raising=False,
+        )
+
+        assert writer._merge_segments() is True
+
+        merge_output = Path(commands[0][-1])
+        assert merge_output.parent == output_path.parent
+        assert merge_output != output_path
+        assert merge_output.suffix == output_path.suffix
+        assert "-nostdin" in commands[0]
+        processes[0].communicate.assert_called_once_with(
+            timeout=ffmpeg_writer_module._FFMPEG_CLOSE_TIMEOUT_SECONDS
+        )
+        integrity_check.assert_called_once_with(merge_output)
+        assert output_path.read_bytes() == b"merged-video"
+        assert not part_path.exists()
+        assert not merge_output.exists()
+
+    def test_merge_failure_preserves_canonical_output_and_all_parts(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        writer, output_path, part_path = self._make_segmented_writer(tmp_path)
+        process = MagicMock(returncode=1)
+        process.communicate.return_value = (b"", b"concat failed")
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            MagicMock(return_value=process),
+        )
+
+        assert writer._merge_segments() is False
+
+        assert output_path.read_bytes() == b"canonical-segment"
+        assert part_path.read_bytes() == b"second-segment"
+
+    def test_invalid_merged_file_preserves_every_source(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        writer, output_path, part_path = self._make_segmented_writer(tmp_path)
+
+        def run_merge(command: list[str], **_kwargs) -> MagicMock:
+            Path(command[-1]).write_bytes(b"invalid-video")
+            process = MagicMock(returncode=0)
+            process.communicate.return_value = (b"", b"")
+            return process
+
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            run_merge,
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "verify_video_integrity",
+            MagicMock(return_value=MagicMock(valid=False, error="invalid")),
+            raising=False,
+        )
+
+        assert writer._merge_segments() is False
+
+        assert output_path.read_bytes() == b"canonical-segment"
+        assert part_path.read_bytes() == b"second-segment"
+
+    def test_atomic_replace_failure_preserves_every_source(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        writer, output_path, part_path = self._make_segmented_writer(tmp_path)
+
+        def run_merge(command: list[str], **_kwargs) -> MagicMock:
+            Path(command[-1]).write_bytes(b"merged-video")
+            process = MagicMock(returncode=0)
+            process.communicate.return_value = (b"", b"")
+            return process
+
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            run_merge,
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "verify_video_integrity",
+            MagicMock(return_value=MagicMock(valid=True, error=None)),
+        )
+        monkeypatch.setattr(
+            Path,
+            "replace",
+            MagicMock(side_effect=OSError("replace failed")),
+        )
+
+        assert writer._merge_segments() is False
+
+        assert output_path.read_bytes() == b"canonical-segment"
+        assert part_path.read_bytes() == b"second-segment"
+
+    def test_close_failure_does_not_merge_finalized_segments(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        writer, _, _ = self._make_segmented_writer(tmp_path)
+        writer._process = _make_process("close failed", 1)
+        merge_mock = MagicMock(return_value=True)
+        monkeypatch.setattr(writer, "_merge_segments", merge_mock)
+
+        assert writer.close() is False
+
+        merge_mock.assert_not_called()
+
+    def test_intermediate_rotation_never_starts_final_merge(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        writer, _, _ = self._make_segmented_writer(tmp_path)
+        close_mock = MagicMock(return_value=True)
+        monkeypatch.setattr(writer, "close", close_mock)
+        monkeypatch.setattr(
+            writer, "_open_process", MagicMock(return_value=True)
+        )
+
+        assert writer._rotate_segment() is True
+
+        close_mock.assert_called_once_with(finalize_segments=False)
 
 
 class TestRetryPolicy:

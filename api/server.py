@@ -9,6 +9,7 @@ REST API сервер на базе Flask для удалённого управ
 
 import logging
 import os
+import secrets
 import shutil
 import socket
 import threading
@@ -23,7 +24,10 @@ from flask_cors import CORS
 from waitress.server import create_server
 from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
-from api.auth import API_KEY_CONFIG_KEY
+from api.auth import (
+    API_KEY_CONFIG_KEY,
+    AUTH_DISABLED_CONFIG_KEY,
+)
 from api.error_mapping import map_exception_to_api_error
 from api.idempotency_store import APIIdempotencyStore
 from api.observability import APIServerObservability
@@ -121,6 +125,7 @@ class APIServer:
         server_threads: int = 4,
         api_key: str | None = None,
         trust_proxy_headers: bool = False,
+        state_persistence: Any | None = None,
     ):
         """
         Инициализация API сервера.
@@ -133,6 +138,9 @@ class APIServer:
             trust_proxy_headers: Доверять X-Forwarded-For/X-Real-IP при
                 определении IP клиента для rate limiting (включать только
                 за доверенным reverse-proxy, см. #74)
+            state_persistence: Опциональный кастомный StatePersistence для rate limiter.
+                Если не указан, используется RateLimiterStatePersistence() по умолчанию.
+                Тесты передают уникальный state_file через temp_dir fixture.
 
         Raises:
             Не выбрасывает собственных исключений — создание Flask
@@ -145,6 +153,7 @@ class APIServer:
         self.server_threads = max(1, int(server_threads))
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.trust_proxy_headers = trust_proxy_headers
+        self.state_persistence = state_persistence
         _patch_waitress_shutdown_for_windows()
 
         # Flask приложение
@@ -181,9 +190,13 @@ class APIServer:
             RateLimiterStatePersistence,
         )
 
-        state_persistence = RateLimiterStatePersistence()
+        state_persistence = (
+            self.state_persistence or RateLimiterStatePersistence()
+        )
         self._rate_limiter = PersistentRateLimiter(
-            config=RateLimitConfig(trust_proxy_headers=self.trust_proxy_headers),
+            config=RateLimitConfig(
+                trust_proxy_headers=self.trust_proxy_headers
+            ),
             persistence=state_persistence,
         )
 
@@ -193,7 +206,16 @@ class APIServer:
 
         self._rate_limiter.load_state_on_init()
 
+        # Инициализация Flask приложения
         self.app = Flask(__name__)
+
+        # Декораторы маршрутов получают этот persistent-экземпляр из конфига.
+        self.app.config["RATE_LIMITER"] = self._rate_limiter
+        self.app.config["RATE_LIMIT_CONFIG"] = self._rate_limiter.config
+        self.app.config["AUTH_RATE_LIMITER"] = self._auth_rate_limiter
+        self.app.config["AUTH_RATE_LIMIT_CONFIG"] = (
+            self._auth_rate_limiter.config
+        )
         CORS(
             self.app,
             origins=[_CORS_ALLOWED_ORIGIN_REGEX],
@@ -354,11 +376,17 @@ class APIServer:
             self._ws_transport = None
 
     def _check_ws_auth(self, token: str) -> bool:
-        """Проверка токена для WebSocket подключения."""
-        api_key = self.get_api_key()
+        """Проверка токена для WebSocket подключения (constant-time comparison)."""
+        api_key = self.get_runtime_api_key()
         if not api_key:
-            return True
-        return token == api_key
+            return bool(
+                self.app is not None
+                and self.app.config.get("TESTING")
+                and self.app.config.get(AUTH_DISABLED_CONFIG_KEY)
+            )
+        if not token:
+            return False
+        return secrets.compare_digest(token, api_key)
 
     @staticmethod
     def _resolve_access_log_level(path: str, status_code: int) -> int:
@@ -853,11 +881,11 @@ class APIServer:
             `APIIdempotencyStore.get_size()` и
             `APIOperationStore.get_metrics_snapshot()`.
         """
-        payload = self._observability.get_metrics_snapshot()
-        payload["idempotency_store_size"] = self._idempotency.get_size()
-        payload["background_operations"] = (
-            self._operations.get_metrics_snapshot()
-        )
+        payload: dict[str, Any] = {
+            **self._observability.get_metrics_snapshot(),
+            "idempotency_store_size": self._idempotency.get_size(),
+            "background_operations": (self._operations.get_metrics_snapshot()),
+        }
         return payload
 
     def get_observability_baseline(self) -> dict[str, Any]:
@@ -868,4 +896,5 @@ class APIServer:
             Не выбрасывает собственных исключений напрямую — делегирует в
             `APIServerObservability.get_baseline()`.
         """
-        return self._observability.get_baseline()
+        baseline: dict[str, Any] = self._observability.get_baseline()
+        return baseline

@@ -11,6 +11,7 @@ import platform
 import re
 import shutil
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,11 @@ if TYPE_CHECKING:
 logger = get_module_logger(__name__)
 
 _MIN_FFMPEG_VERSION = (4, 0, 0)
+
+# Единый центральный каталог кэша миниатюр (#103): все миниатюры хранятся
+# в одном месте, а не разбросаны по .cache рядом с каталогами вывода.
+_THUMBNAIL_CACHE_ROOT = Path.home() / ".cache" / "mia-screencapture"
+_THUMBNAIL_SIZE = "120x68"
 
 
 @dataclass
@@ -41,6 +47,30 @@ def get_subprocess_creationflags() -> int:
     if os.name != "nt":
         return 0
     return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _compute_thumbnail_cache_path(
+    video_path: Path, thumbnails_dir: Path
+) -> Path:
+    """
+    Вычислить путь к кэшированному миниатюрному изображению.
+
+    Ключ кэша строится по canonical (resolve) пути видеофайла (#103):
+    файлы с одинаковыми именами в разных каталогах не конфликтуют.
+
+    Args:
+        video_path: Путь к видеофайлу.
+        thumbnails_dir: Каталог миниатюр.
+
+    Returns:
+        Путь к thumbnails/{md5(canonical_path)}.jpg
+    """
+    import hashlib
+
+    # MD5 хеш от canonical пути файла (полный путь, не только имя)
+    canonical_path = str(video_path.resolve())
+    video_hash = hashlib.md5(canonical_path.encode("utf-8")).hexdigest()
+    return thumbnails_dir / f"{video_hash}.jpg"
 
 
 def get_platform() -> str:
@@ -156,6 +186,166 @@ def check_ffmpeg() -> FFmpegStatus:
         msg = f"FFmpeg check error: {e}"
         logger.error(msg)
         return FFmpegStatus(available=False, path=ffmpeg_path, error=msg)
+
+
+def generate_thumbnail(
+    video_path: str | Path, cache_dir: str | Path | None = None
+) -> Path | None:
+    """
+    Генерирует миниатюрное изображение (thumbnail) из видеофайла с помощью FFmpeg.
+
+    Миниатюра кэшируется в {cache_dir}/thumbnails/{md5(canonical_path)}.jpg
+    и используется повторно, если файл еще не изменился. Ключ кэша строится
+    по canonical пути видеофайла, поэтому файлы с одинаковыми именами в
+    разных каталогах не конфликтуют (#103).
+
+    Args:
+        video_path: Путь к видеофайлу.
+        cache_dir: Каталог для кэширования миниатюр.
+            По умолчанию — единый центральный каталог
+            ~/.cache/mia-screencapture (#103).
+
+    Returns:
+        Путь к сгенерированной миниатюре (str | Path),
+        или None если генерация не удалась (FFmpeg недоступен или ошибка).
+    """
+    video_path = Path(video_path)
+    if not video_path.exists():
+        logger.warning("Файл видео не найден: %s", video_path)
+        return None
+
+    # Определение cache_dir: единый центральный каталог (#103)
+    cache_dir = _THUMBNAIL_CACHE_ROOT if cache_dir is None else Path(cache_dir)
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    thumbnails_dir = cache_dir / "thumbnails"
+    thumbnails_dir.mkdir(parents=True, exist_ok=True)
+
+    # Вычислить путь к кэшированной миниатюре
+    cache_path = _compute_thumbnail_cache_path(video_path, thumbnails_dir)
+
+    # Проверить, существует ли кэшированная миниатюра
+    if cache_path.exists():
+        logger.debug("Миниатюра найдена в кэше: %s", cache_path)
+        return cache_path
+
+    # Проверить доступность FFmpeg
+    ffmpeg_status = check_ffmpeg()
+    if not ffmpeg_status.available:
+        logger.warning(
+            "FFmpeg недоступен, не могу сгенерировать миниатюру: %s",
+            ffmpeg_status.error,
+        )
+        return None
+
+    ffmpeg_path = ffmpeg_status.path
+    if ffmpeg_path is None:
+        logger.warning("FFmpeg путь не определен")
+        return None
+
+    # Генерировать миниатюру
+    try:
+        # Создать команду: ffmpeg -i video -vframes 1 -s 120x68 -f image2 thumb.jpg -y
+        cmd = [
+            ffmpeg_path,
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-s",
+            _THUMBNAIL_SIZE,
+            "-f",
+            "image2",
+            str(cache_path),
+            "-y",
+        ]
+
+        creationflags = get_subprocess_creationflags()
+        run_kwargs: dict[str, Any] = {
+            "capture_output": True,
+            "text": True,
+            "timeout": 10,
+        }
+        if creationflags:
+            run_kwargs["creationflags"] = creationflags
+
+        result = subprocess.run(cmd, **run_kwargs)
+
+        if result.returncode != 0:
+            err_msg = (result.stderr or "").strip() or "FFmpeg error"
+            logger.warning(
+                "Не удалось сгенерировать миниатюру для %s: %s",
+                video_path,
+                err_msg,
+            )
+            # Удалить частично созданный файл если есть
+            if cache_path.exists():
+                try:
+                    cache_path.unlink()
+                except Exception:
+                    pass
+            return None
+
+        if not cache_path.exists():
+            logger.warning(
+                "Minиатюра не создана для %s (файл отсутствует после FFmpeg)"
+            )
+            return None
+
+        logger.info(
+            "Миниатюра сгенерирована для %s: %s", video_path, cache_path
+        )
+        return cache_path
+
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "Timeout при генерации миниатюры для %s",
+            video_path,
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            "Ошибка при генерации миниатюры для %s: %s",
+            video_path,
+            e,
+        )
+        return None
+
+
+def cleanup_orphaned_thumbnails(
+    cache_dir: str | Path, existing_videos: Iterable[str | Path]
+) -> int:
+    """Удаляет миниатюры, для которых больше не существует исходного видео.
+
+    Используется после удаления видеофайлов, чтобы кэш миниатюр не рос
+    бесконечно (#103). Миниатюры, чей ключ соответствует файлу из
+    ``existing_videos``, остаются нетронутыми.
+
+    Args:
+        cache_dir: Каталог кэша, внутри которого лежит подкаталог ``thumbnails``.
+        existing_videos: Пути к видеофайлам, которые сейчас существуют.
+
+    Returns:
+        Количество удалённых миниатюр.
+    """
+    thumbnails_dir = Path(cache_dir) / "thumbnails"
+    if not thumbnails_dir.exists():
+        return 0
+
+    keep_paths = {
+        _compute_thumbnail_cache_path(Path(video), thumbnails_dir)
+        for video in existing_videos
+    }
+
+    removed = 0
+    for thumb in thumbnails_dir.glob("*.jpg"):
+        if thumb not in keep_paths:
+            try:
+                thumb.unlink()
+                removed += 1
+            except OSError as e:
+                logger.warning("Не удалось удалить миниатюру %s: %s", thumb, e)
+    return removed
 
 
 def get_executable_path(executable_name: str) -> str | None:

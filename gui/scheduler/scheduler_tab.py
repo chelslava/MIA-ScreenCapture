@@ -379,8 +379,9 @@ class SchedulerTab(QWidget):
     def _format_schedule(self, task: ScheduleTask) -> str:
         """Форматирование расписания для отображения."""
         if task.schedule_type == ScheduleType.ONCE:
-            if task.start_time:
-                return task.start_time.strftime("%Y-%m-%d %H:%M")
+            if task.start_time is not None:
+                return str(task.start_time.strftime("%Y-%m-%d %H:%M"))
+            return ""
         elif task.schedule_type == ScheduleType.DAILY:
             return f"Ежедневно в {task.time_of_day}"
         elif task.schedule_type == ScheduleType.WEEKLY:

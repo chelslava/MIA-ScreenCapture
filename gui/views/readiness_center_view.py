@@ -172,7 +172,7 @@ class ReadinessCenterView(QWidget):
         self._summary_label.setStyleSheet(Theme.status_style("danger"))
         self._summary_hint_label.setText(message)
         self._summary_hint_label.setStyleSheet(
-            f"color: {Theme.COLORS['danger']};"
+            f"color: {Theme.color('danger')};"
         )
 
     def apply_checks(self, checks: tuple[ReadinessCheck, ...]) -> None:

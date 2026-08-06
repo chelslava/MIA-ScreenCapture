@@ -62,9 +62,12 @@ def _build_window():
     window = MainWindow.__new__(MainWindow)
     window._state = RecordingState()
     window._settings_controller = MagicMock()
-    window._recording_controller = MagicMock()
+    window._recording_controller = MagicMock(
+        get_recoveries_count=MagicMock(return_value=0),
+    )
     window._readiness_service = MagicMock(
-        evaluate=MagicMock(return_value=ReadinessSnapshot())
+        evaluate=MagicMock(return_value=ReadinessSnapshot()),
+        get_recoveries_count=MagicMock(return_value=0),
     )
     window._capture_view = MagicMock()
     window._audio_view = MagicMock()
@@ -863,6 +866,9 @@ class TestMainWindowMethods:
             def setData(self, _role, payload: str) -> None:
                 self.payload = payload
 
+            def setIcon(self, _icon) -> None:
+                pass
+
         added_items: list[FakeListWidgetItem] = []
         window.recordings_list.addItem.side_effect = added_items.append
 
@@ -1112,6 +1118,7 @@ class TestMainWindowMethods:
             capture=capture,
             audio=audio,
             snapshot=None,
+            recovery_count=0,
         )
 
     def test_run_diagnostics_reuses_cached_readiness_snapshot(self) -> None:
@@ -1146,6 +1153,7 @@ class TestMainWindowMethods:
             capture=capture,
             audio=audio,
             snapshot=snapshot,
+            recovery_count=0,
         )
 
     def test_diagnostics_fix_refreshes_audio_and_windows(self) -> None:
@@ -1603,7 +1611,7 @@ class TestMainWindowMethods:
         window._on_ws_event_received("recording.resumed", {})
         window._on_ws_event_received("recording.error", {"error": "boom"})
 
-        window._ws_status_label.setText.assert_called_with("WS: ●")
+        window._ws_status_label.setText.assert_called_with("● Connected")
         window.recording_started.emit.assert_called_once_with("D:/capture.mp4")
         window.recording_paused.emit.assert_called_once()
         window.recording_resumed.emit.assert_called_once()

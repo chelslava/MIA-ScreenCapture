@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from api.schemas import (
     ConfigureWebhookRequest,
     CreateScheduleRequest,
+    FilePathRequest,
     StartRecordingRequest,
     ToggleScheduleRequest,
     UpdateConfigRequest,
@@ -567,3 +568,55 @@ class TestModelDump:
         assert data["area"] == "full"
         assert data["fps"] == 30
         assert data["codec"] == "libx264"
+
+
+class TestFilePathRequest:
+    """Тесты для схемы FilePathRequest (защита от path traversal, #106)."""
+
+    @pytest.mark.parametrize(
+        "file_path",
+        ["video.mp4", "archive/2026/video.mp4", r"archive\2026\video.mp4"],
+    )
+    def test_safe_relative_path_accepted(self, file_path: str) -> None:
+        """Безопасные вложенные относительные пути принимаются как есть."""
+        request = FilePathRequest(file_path=file_path)
+
+        assert request.file_path == file_path
+
+    @pytest.mark.parametrize(
+        "file_path",
+        [
+            ".",
+            "./",
+            ".\\",
+            "./video.mp4",
+            r".\video.mp4",
+            "archive/./video.mp4",
+            r"archive\.\video.mp4",
+            "../video.mp4",
+            r"..\video.mp4",
+            "/x",
+            r"\x",
+            r"C:\x",
+            "C:x",
+            r"\\server\share\x",
+            r"\\?\C:\x",
+            "video.mp4:stream",
+        ],
+    )
+    def test_unsafe_path_rejected(self, file_path: str) -> None:
+        """Root, drive, namespace и parent traversal формы отклоняются."""
+        with pytest.raises(ValidationError) as exc_info:
+            FilePathRequest(file_path=file_path)
+
+        assert "Path traversal detected" in str(exc_info.value)
+        assert file_path in str(exc_info.value)
+
+    def test_empty_path_rejected(self) -> None:
+        """Пустой путь отклоняется."""
+        with pytest.raises(ValidationError) as exc_info:
+            FilePathRequest(file_path="")
+
+        assert "field required" in str(exc_info.value) or "file_path" in str(
+            exc_info.value
+        )

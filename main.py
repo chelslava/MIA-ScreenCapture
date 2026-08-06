@@ -1170,7 +1170,8 @@ class VideoRecorderApp:
 
     def _verify_recording_file(self, file_path: str) -> dict[str, Any]:
         """Проверка целостности произвольного видеофайла по пути."""
-        check = verify_video_integrity(Path(file_path))
+        resolved_path = self._resolve_recording_file_path(file_path)
+        check = verify_video_integrity(resolved_path)
         return {
             "valid": check.valid,
             "duration_s": check.duration_s,
@@ -1182,13 +1183,28 @@ class VideoRecorderApp:
 
     def _repair_recording_file(self, file_path: str) -> dict[str, Any]:
         """Попытка восстановления произвольного видеофайла по пути."""
-        repair = attempt_repair_video(Path(file_path))
+        resolved_path = self._resolve_recording_file_path(file_path)
+        repair = attempt_repair_video(resolved_path)
         return {
             "repaired": repair.repaired,
             "original_size_bytes": repair.original_size_bytes,
             "repaired_size_bytes": repair.repaired_size_bytes,
             "error": repair.error,
         }
+
+    def _resolve_recording_file_path(self, file_path: str) -> Path:
+        """Разрешает относительный путь внутри каталога вывода записей."""
+        output_root = get_config().get_output_path().parent.resolve()
+        resolved_path = (output_root / file_path).resolve()
+        if (
+            resolved_path == output_root
+            or not resolved_path.is_relative_to(output_root)
+            or resolved_path.is_dir()
+        ):
+            raise ValueError(
+                "Путь к записи должен быть файлом внутри каталога вывода"
+            )
+        return resolved_path
 
     def _get_config(self) -> dict[str, Any]:
         """Получение текущей конфигурации."""
@@ -1366,6 +1382,12 @@ class VideoRecorderApp:
         # Регистрация обработчиков в обратном порядке (LIFO)
         # Последний зарегистрированный выполнится первым
 
+        # 0. Отключение подписчиков от EventBus — регистрируем ПЕРВЫМ,
+        #    чтобы при LIFO-выполнении отключение прошло ПОСЛЕДНИМ,
+        #    после остановки API сервера и записи (#100). Предотвращает
+        #    доставку событий освобождённым объектам после завершения работы.
+        self._shutdown_manager.register_handler(self._detach_event_subscribers)
+
         # 1. Очистка трея
         self._shutdown_manager.register_handler(self._cleanup_tray)
 
@@ -1475,6 +1497,23 @@ class VideoRecorderApp:
         if self._app:
             self._app.quit()
 
+    def _detach_event_subscribers(self) -> None:
+        """Отключает WebSocket и webhook подписчиков от EventBus (#100).
+
+        Идемпотентно: повторные вызовы безопасны, отсутствующие
+        подписчики (частичная инициализация) не приводят к ошибке.
+        """
+        if hasattr(self, "_webhook_notifier"):
+            try:
+                self._webhook_notifier.detach_event_bus()
+            except AttributeError:
+                pass
+        if hasattr(self, "_websocket_manager"):
+            try:
+                self._websocket_manager.detach_event_bus()
+            except AttributeError:
+                pass
+
     def _cleanup(self) -> None:
         """
         Очистка ресурсов.
@@ -1489,6 +1528,8 @@ class VideoRecorderApp:
         else:
             # Fallback: базовая очистка если shutdown manager не инициализирован
             logger.info("Очистка (fallback)...")
+            # Отключение от EventBus — единый идемпотентный путь (#100)
+            self._detach_event_subscribers()
             # Остановка активной записи (критически важно!)
             self._stop_active_recording()
             # Сохранение конфигурации

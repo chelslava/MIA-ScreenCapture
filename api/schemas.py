@@ -9,6 +9,7 @@ import ipaddress
 import re
 import socket
 from datetime import UTC, datetime
+from pathlib import PureWindowsPath
 from typing import Literal, Optional
 from urllib.parse import urlparse
 
@@ -49,9 +50,32 @@ def _is_private_or_reserved_host(hostname: str) -> bool:
 
 
 class FilePathRequest(BaseModel):
-    """Схема запроса с путём к видеофайлу (#46: verify/repair)."""
+    """Схема запроса с путём к видеофайлу (#46: verify/repair, #106: path traversal)."""
 
     file_path: str = Field(..., min_length=1, description="Путь к видеофайлу")
+
+    @field_validator("file_path", mode="after")
+    @classmethod
+    def validate_file_path(cls, v: str) -> str:
+        """Проверяет безопасный синтаксис относительного Windows-пути."""
+        path = PureWindowsPath(v)
+        invalid_chars = '<>:"|?*'
+        has_dot_component = "." in re.split(r"[\\/]", v)
+        unsafe_part = any(
+            part == ".."
+            or part.endswith((" ", "."))
+            or any(char in invalid_chars or ord(char) < 32 for char in part)
+            or PureWindowsPath(part).is_reserved()
+            for part in path.parts
+        )
+
+        if path.drive or path.root or has_dot_component or unsafe_part:
+            raise ValueError(
+                f"Path traversal detected: {v}. "
+                "Use a relative path inside the configured output directory"
+            )
+
+        return v
 
 
 class SwitchCaptureSourceRequest(BaseModel):

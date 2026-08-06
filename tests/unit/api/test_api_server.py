@@ -12,7 +12,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import api.server as api_server_module
-from api.auth import init_api_auth
+from api.auth import (
+    API_KEY_CONFIG_KEY,
+    AUTH_DISABLED_CONFIG_KEY,
+    init_api_auth,
+)
 from api.routes import register_routes
 from api.server import (
     APIIdempotencyStore,
@@ -448,6 +452,55 @@ class TestAPIServerAPIKey:
                 os.environ["MIA_API_KEY"] = original_env
             else:
                 os.environ.pop("MIA_API_KEY", None)
+
+    def test_websocket_auth_compares_raw_runtime_key(self) -> None:
+        """WebSocket принимает raw key и отклоняет masked и неверные ключи."""
+        raw_key = "runtime-secret-api-key"
+        server = APIServer(api_key=raw_key)
+        masked_key = server.get_api_key()
+
+        assert masked_key is not None
+        assert masked_key != raw_key
+        assert server._check_ws_auth(raw_key) is True
+        assert server._check_ws_auth(masked_key) is False
+        assert server._check_ws_auth("wrong-key") is False
+        assert server._check_ws_auth("") is False
+
+    def test_websocket_auth_fails_closed_without_runtime_key(self) -> None:
+        """Отсутствующий runtime key не отключает WebSocket auth неявно."""
+        server = APIServer(api_key="initial-key")
+        server.set_api_key(None)
+
+        assert server.get_runtime_api_key() is None
+        assert server._check_ws_auth("any-token") is False
+
+    def test_websocket_auth_allows_explicit_testing_disable(self) -> None:
+        """WebSocket повторяет явный тестовый контракт отключения REST auth."""
+        server = APIServer(api_key="initial-key")
+        server.set_api_key(None)
+        server.app.config["TESTING"] = True
+        server.app.config[AUTH_DISABLED_CONFIG_KEY] = True
+
+        assert API_KEY_CONFIG_KEY not in server.app.config
+        assert server._check_ws_auth("test-token") is True
+
+    def test_server_stores_auth_limiter_in_flask_config(self) -> None:
+        """APIServer публикует собственный auth limiter текущему Flask app."""
+        first_server = APIServer(api_key="first-key")
+        second_server = APIServer(api_key="second-key")
+
+        assert (
+            first_server.app.config["AUTH_RATE_LIMITER"]
+            is first_server._auth_rate_limiter
+        )
+        assert (
+            second_server.app.config["AUTH_RATE_LIMITER"]
+            is second_server._auth_rate_limiter
+        )
+        assert (
+            first_server._auth_rate_limiter
+            is not second_server._auth_rate_limiter
+        )
 
 
 class TestAPIServerThreadSafety:

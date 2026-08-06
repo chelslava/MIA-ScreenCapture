@@ -6,7 +6,7 @@
 from unittest.mock import patch
 
 import pytest
-from flask import Flask, jsonify
+from flask import Flask, Response, jsonify
 
 from api.rate_limiter import (
     ClientState,
@@ -537,6 +537,40 @@ class TestInitRateLimiter:
 
         assert "RATE_LIMITER" in app.config
         assert "RATE_LIMIT_CONFIG" in app.config
+
+    def test_multiple_apps_use_their_configured_limiters(self) -> None:
+        """Каждое Flask-приложение использует собственный limiter."""
+        first_app = Flask("first_rate_limited_app")
+        second_app = Flask("second_rate_limited_app")
+        init_rate_limiter(
+            first_app,
+            RateLimitConfig(requests_per_minute=11, requests_per_hour=101),
+        )
+        init_rate_limiter(
+            second_app,
+            RateLimitConfig(requests_per_minute=22, requests_per_hour=202),
+        )
+        first_limiter = first_app.config["RATE_LIMITER"]
+        second_limiter = second_app.config["RATE_LIMITER"]
+
+        @first_app.get("/limited")
+        @rate_limit
+        def first_endpoint() -> tuple[Response, int]:
+            return jsonify({"success": True}), 200
+
+        @second_app.get("/limited")
+        @rate_limit
+        def second_endpoint() -> tuple[Response, int]:
+            return jsonify({"success": True}), 200
+
+        first_response = first_app.test_client().get("/limited")
+        second_response = second_app.test_client().get("/limited")
+
+        assert first_limiter is not second_limiter
+        assert first_response.headers["X-RateLimit-Limit-Minute"] == "11"
+        assert first_response.headers["X-RateLimit-Remaining-Minute"] == "10"
+        assert second_response.headers["X-RateLimit-Limit-Minute"] == "22"
+        assert second_response.headers["X-RateLimit-Remaining-Minute"] == "21"
 
 
 class TestGetRateLimiter:

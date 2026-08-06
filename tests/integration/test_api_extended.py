@@ -624,10 +624,10 @@ class TestAPIRecordingIntegrityExtended:
     def test_verify_recording_returns_status(
         self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
-        """Проверка целостности файла по указанному пути."""
+        """Проверка целостности файла по указанному пути (#106: путь без path traversal)."""
         response = client.post(
             "/api/v1/recordings/verify",
-            json={"file_path": "D:/Videos/recording.mp4"},
+            json={"file_path": "recording.mp4"},
             content_type="application/json",
         )
 
@@ -636,7 +636,7 @@ class TestAPIRecordingIntegrityExtended:
         assert data["success"] is True
         assert data["data"]["valid"] is True
         mock_callbacks["verify_recording"].assert_called_once_with(
-            "D:/Videos/recording.mp4"
+            "recording.mp4"
         )
 
     def test_verify_recording_requires_file_path(
@@ -671,10 +671,10 @@ class TestAPIRecordingIntegrityExtended:
     def test_repair_recording_returns_status(
         self, client: FlaskClient, mock_callbacks: dict[str, MagicMock]
     ):
-        """Попытка восстановления файла по указанному пути."""
+        """Попытка восстановления файла по указанному пути (#106: путь без path traversal)."""
         response = client.post(
             "/api/v1/recordings/repair",
-            json={"file_path": "D:/Videos/recording.mp4"},
+            json={"file_path": "recording.mp4"},
             content_type="application/json",
         )
 
@@ -683,7 +683,7 @@ class TestAPIRecordingIntegrityExtended:
         assert data["success"] is True
         assert data["data"]["repaired"] is True
         mock_callbacks["repair_recording"].assert_called_once_with(
-            "D:/Videos/recording.mp4"
+            "recording.mp4"
         )
 
     def test_repair_recording_requires_file_path(
@@ -714,6 +714,35 @@ class TestAPIRecordingIntegrityExtended:
         )
 
         assert response.status_code == 500
+
+    @pytest.mark.parametrize(
+        ("endpoint", "callback_name"),
+        [
+            ("verify", "verify_recording"),
+            ("repair", "repair_recording"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "file_path",
+        [".", "./", ".\\", "archive/./video.mp4", r"archive\.\video.mp4"],
+    )
+    def test_dot_path_rejected_before_callback(
+        self,
+        client: FlaskClient,
+        mock_callbacks: dict[str, MagicMock],
+        endpoint: str,
+        callback_name: str,
+        file_path: str,
+    ) -> None:
+        """Dot-компоненты отклоняются Pydantic до runtime callback."""
+        response = client.post(
+            f"/api/v1/recordings/{endpoint}",
+            json={"file_path": file_path},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        mock_callbacks[callback_name].assert_not_called()
 
 
 class TestAPISwitchCaptureSourceExtended:

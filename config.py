@@ -406,7 +406,7 @@ class ConfigManager:
         with self._save_lock:
             self._cancel_recent_save_timer_locked()
             try:
-                result = atomic_write_json(self.config_path, data)
+                result = atomic_write_json(self.config_path, data, mode=0o600)
                 if result:
                     logger.info(f"Конфигурация сохранена в {self.config_path}")
                 return bool(result)
@@ -443,7 +443,7 @@ class ConfigManager:
         with self._save_lock:
             self._recent_save_timer = None
             try:
-                result = atomic_write_json(self.config_path, data)
+                result = atomic_write_json(self.config_path, data, mode=0o600)
                 if result:
                     logger.debug(
                         "Конфигурация сохранена (debounce recent_recordings)"

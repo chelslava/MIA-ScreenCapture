@@ -252,7 +252,7 @@ class AudioView(QWidget):
         """Показать отсутствие микрофонов."""
         self._mic_status_label.setText(_AUDIO_EMPTY_TEXT)
         self._mic_status_label.setStyleSheet(
-            f"color: {Theme.COLORS['warning']};"
+            f"color: {Theme.color('warning')};"
         )
         self._mic_combo.setEnabled(False)
 
@@ -263,7 +263,7 @@ class AudioView(QWidget):
             f"Не удалось загрузить устройства: {message}"
         )
         self._mic_status_label.setStyleSheet(
-            f"color: {Theme.COLORS['danger']};"
+            f"color: {Theme.color('danger')};"
         )
         self._mic_combo.setEnabled(False)
 

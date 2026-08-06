@@ -29,6 +29,16 @@ def view_accessibility_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     def set_object_name(self, name: str) -> None:
         self._object_name = name
 
+    def set_property(self, name: str, value) -> None:
+        if not hasattr(self, "_properties"):
+            self._properties = {}
+        self._properties[name] = value
+
+    def property(self, name: str):
+        if not hasattr(self, "_properties"):
+            self._properties = {}
+        return self._properties.get(name)
+
     def set_alignment(self, alignment) -> None:
         self._alignment = alignment
 
@@ -65,6 +75,16 @@ def view_accessibility_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "gui.views.diagnostics_view.QPushButton.setObjectName",
         set_object_name,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gui.views.diagnostics_view.QPushButton.setProperty",
+        set_property,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "gui.views.diagnostics_view.QPushButton.property",
+        property,
         raising=False,
     )
     monkeypatch.setattr(

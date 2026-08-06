@@ -27,6 +27,7 @@ from core.readiness import (
 from core.recording_state import AudioSettings, CaptureSettings
 from gui.accessibility import apply_accessible_metadata
 from gui.styles.theme import Theme
+from gui.views.loading_overlay import LoadingOverlay
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -43,6 +44,7 @@ class DiagnosticsView(QWidget):
         super().__init__(parent)
         self._output_path = ""
         self._readiness_service = RecordingReadinessService()
+        self._loading = LoadingOverlay(self)
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -84,6 +86,12 @@ class DiagnosticsView(QWidget):
             "API сервер", "Проверка готовности API сервера"
         )
         self._checks_layout.addWidget(self._api_group)
+
+        self._recovery_group = self._create_check_group(
+            "Восстановление FFmpeg",
+            "Количество успешных восстановлений после сбоев",
+        )
+        self._checks_layout.addWidget(self._recovery_group)
 
         self._output_group = self._create_check_group(
             "Папка вывода", "Проверка прав на запись в папку вывода"
@@ -152,7 +160,7 @@ class DiagnosticsView(QWidget):
         fix_btn = QPushButton("Исправить")
         fix_btn.setVisible(False)
         fix_btn.setObjectName("fix_btn")
-        fix_btn._fallback_action = title  # type: ignore[attr-defined]
+        fix_btn.setProperty("fallback_action", title)
         fix_btn.clicked.connect(
             lambda _checked=False: self._on_fix_clicked(fix_btn)
         )
@@ -163,8 +171,8 @@ class DiagnosticsView(QWidget):
 
     def _on_fix_clicked(self, button: QPushButton) -> None:
         """Обработка нажатия кнопки исправления."""
-        action = getattr(button, "_readiness_action", None)
-        fallback_action = getattr(button, "_fallback_action", "")
+        action = button.property("readiness_action")
+        fallback_action = button.property("fallback_action") or ""
         self.fix_requested.emit(str(action or fallback_action))
 
     def run_checks(
@@ -174,6 +182,7 @@ class DiagnosticsView(QWidget):
         capture: CaptureSettings | None = None,
         audio: AudioSettings | None = None,
         snapshot: ReadinessSnapshot | None = None,
+        recovery_count: int = 0,
     ) -> dict[str, bool]:
         """
         Запуск всех проверок.
@@ -188,8 +197,7 @@ class DiagnosticsView(QWidget):
         Returns:
             Словарь с результатами проверок
         """
-        results: dict[str, bool] = {}
-
+        self._loading.show()
         try:
             capture_settings = capture or CaptureSettings()
             audio_settings = audio or AudioSettings()
@@ -200,13 +208,11 @@ class DiagnosticsView(QWidget):
                 audio=audio_settings,
                 output_path=resolved_output_path,
             )
-            results.update(
-                self._apply_readiness_snapshot(
-                    current_snapshot,
-                    api_enabled=api_enabled,
-                    capture=capture_settings,
-                    audio=audio_settings,
-                )
+            results = self._apply_readiness_snapshot(
+                current_snapshot,
+                api_enabled=api_enabled,
+                capture=capture_settings,
+                audio=audio_settings,
             )
 
             # Проверка API
@@ -216,8 +222,25 @@ class DiagnosticsView(QWidget):
                 api_enabled,
                 "Запущен" if api_enabled else "Не запущен",
             )
+
+            # Статистика восстановления FFmpeg
+            if recovery_count > 0:
+                self._update_group_status(
+                    self._recovery_group,
+                    ok=True,
+                    message=f"Восстановлено {recovery_count} раз",
+                    warning=recovery_count >= 2,
+                )
+            else:
+                self._update_group_status(
+                    self._recovery_group,
+                    ok=True,
+                    message="Нет восстановлений",
+                )
         except Exception as e:
             logger.error(f"Ошибка при выполнении проверок: {e}")
+        finally:
+            self._loading.hide()
 
         return results
 
@@ -292,7 +315,7 @@ class DiagnosticsView(QWidget):
         status_label = group.findChild(QLabel, "")
         for child in group.findChildren(QLabel):
             if child.text() not in ("", group.title()):
-                if Theme.COLORS["muted"] not in child.styleSheet():
+                if Theme.color("muted") not in child.styleSheet():
                     status_label = child
                     break
 
@@ -308,5 +331,5 @@ class DiagnosticsView(QWidget):
                 fix_btn.setText(action_label)
             else:
                 fix_btn.setText("Исправить")
-            fix_btn._readiness_action = action_key  # type: ignore[attr-defined]
+            fix_btn.setProperty("readiness_action", action_key)
             fix_btn.setVisible((not ok) or warning)

@@ -27,6 +27,7 @@ from gui.views.area_selector import (
     describe_rect,
     format_rect_coords,
 )
+from gui.views.loading_overlay import LoadingOverlay
 from recorder.utils import get_available_windows, get_screen_size
 
 _WINDOWS_LOADING_TEXT = "Загрузка списка окон..."
@@ -61,6 +62,7 @@ class CaptureView(QWidget):
         self._window_request_id = 0
         self._pending_window_title = ""
         self._window_provider = get_available_windows
+        self._loading = LoadingOverlay(self)
         self.windows_load_completed.connect(self._on_windows_load_completed)
         self._setup_ui()
 
@@ -195,6 +197,7 @@ class CaptureView(QWidget):
         self._window_request_id += 1
         request_id = self._window_request_id
         self._set_windows_loading_state()
+        self._loading.show()
         threading.Thread(
             target=self._load_windows_worker,
             args=(request_id,),
@@ -218,6 +221,8 @@ class CaptureView(QWidget):
         """Применить результат фоновой загрузки списка окон."""
         if request_id != self._window_request_id:
             return
+
+        self._loading.hide()
 
         if error is not None:
             self._set_windows_error_state(str(error))
@@ -273,7 +278,7 @@ class CaptureView(QWidget):
         self._window_status_label.setText(_WINDOWS_EMPTY_TEXT)
         Theme.apply_style(
             self._window_status_label,
-            f"color: {Theme.COLORS['warning']};",
+            f"color: {Theme.color('warning')};",
         )
         self._window_combo.setEnabled(False)
 
@@ -284,7 +289,7 @@ class CaptureView(QWidget):
         )
         Theme.apply_style(
             self._window_status_label,
-            f"color: {Theme.COLORS['danger']};",
+            f"color: {Theme.color('danger')};",
         )
         self._window_combo.setEnabled(False)
 

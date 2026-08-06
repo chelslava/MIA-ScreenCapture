@@ -60,7 +60,11 @@ class GuiRuntimeCoordinator:
         """Создаёт главное окно приложения."""
         from gui.main_window import MainWindow
 
-        self._app._main_window = MainWindow()
+        assert self._app._main_window is None
+        self._app._main_window = MainWindow(
+            headless=self._app._mode == "headless",
+            event_bus=self._app._recording_service.event_bus,
+        )
         assert self._app._main_window is not None
 
     def _setup_tray_icon(self) -> None:

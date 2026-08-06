@@ -525,6 +525,27 @@ class TestAudioRecorderCleanup:
 
         assert recorder.state == AudioState.IDLE
 
+    def test_cleanup_logs_each_backend_failure(
+        self, recorder: AudioRecorder, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Каждый сбой освобождения backend-ресурса логируется отдельно."""
+        mock_stream = MagicMock()
+        mock_stream.stop_stream.side_effect = OSError("stop failed")
+        mock_stream.close.side_effect = RuntimeError("close failed")
+        mock_interface = MagicMock()
+        mock_interface.terminate.side_effect = OSError("terminate failed")
+        recorder._audio_stream = mock_stream
+        recorder._audio_interface = mock_interface
+
+        recorder._cleanup()
+
+        assert "Ошибка остановки потока PyAudio: stop failed" in caplog.text
+        assert "Ошибка закрытия потока PyAudio: close failed" in caplog.text
+        assert (
+            "Ошибка завершения аудиоинтерфейса: terminate failed"
+            in caplog.text
+        )
+
 
 class TestAudioRecorderGetDevices:
     """Тесты получения списка устройств."""
@@ -742,6 +763,154 @@ class TestAudioRecorderPyaudioLoop:
         recorder._state = AudioState.RECORDING
 
         recorder._record_loop_pyaudio()  # не должно упасть
+
+    def test_pyaudio_failure_reopens_fresh_stream(
+        self, recorder: AudioRecorder
+    ) -> None:
+        """После ошибки чтения запись продолжается через новый поток."""
+        failed_stream = MagicMock()
+        recovered_stream = MagicMock()
+        audio_interface = MagicMock()
+        failed_stream.read.side_effect = OSError("device disconnected")
+
+        def read_and_stop(*args, **kwargs):
+            recorder._shutdown_event.set()
+            return b"recovered"
+
+        recovered_stream.read.side_effect = read_and_stop
+        audio_interface.open.return_value = recovered_stream
+        recorder._audio_interface = audio_interface
+        recorder._audio_stream = failed_stream
+        recorder._state = AudioState.RECORDING
+        recorder._duration = None
+
+        mock_pyaudio = MagicMock(paInt16=8)
+        with (
+            patch.dict("sys.modules", {"pyaudio": mock_pyaudio}),
+            patch.object(recorder._shutdown_event, "wait", return_value=False),
+        ):
+            recorder._record_loop_pyaudio()
+
+        failed_stream.stop_stream.assert_called_once()
+        failed_stream.close.assert_called_once()
+        audio_interface.open.assert_called_once()
+        recovered_stream.read.assert_called_once()
+        assert recorder._audio_queue.get_nowait() == (b"recovered", 1024)
+
+    def test_pyaudio_terminal_failure_reports_once(
+        self, recorder: AudioRecorder
+    ) -> None:
+        """Исчерпание попыток публикует событие и callback ровно один раз."""
+        from core.event_bus import InMemoryEventBus, RecordingEventType
+
+        bus = InMemoryEventBus()
+        received: list = []
+        bus.subscribe(RecordingEventType.ERROR, received.append)
+        recorder._event_bus = bus
+        error_callback = MagicMock()
+        recorder.set_callbacks(on_error=error_callback)
+
+        failed_stream = MagicMock()
+        failed_stream.read.side_effect = OSError("device disconnected")
+        audio_interface = MagicMock()
+        audio_interface.open.side_effect = OSError("device unavailable")
+        recorder._audio_interface = audio_interface
+        recorder._audio_stream = failed_stream
+        recorder._state = AudioState.RECORDING
+        recorder._duration = None
+
+        mock_pyaudio = MagicMock(paInt16=8)
+        with (
+            patch.dict("sys.modules", {"pyaudio": mock_pyaudio}),
+            patch.object(recorder._shutdown_event, "wait", return_value=False),
+        ):
+            recorder._record_loop_pyaudio()
+
+        failed_stream.stop_stream.assert_called_once()
+        failed_stream.close.assert_called_once()
+        assert audio_interface.open.call_count == 3
+        error_callback.assert_called_once_with("device unavailable")
+        assert len(received) == 1
+        assert received[0].payload["type"] == "audio_failure"
+
+
+class TestAudioRecorderSounddeviceRecovery:
+    """Тесты восстановления основного sounddevice backend."""
+
+    def test_sounddevice_failure_reopens_fresh_stream(self) -> None:
+        """Ошибка активного потока приводит к открытию нового потока."""
+        recorder = AudioRecorder()
+        recorder._state = AudioState.RECORDING
+        recorder._duration = None
+        failed_stream = MagicMock()
+        recovered_stream = MagicMock()
+        mock_sd = MagicMock()
+        mock_sd.InputStream.side_effect = [failed_stream, recovered_stream]
+        sleep_calls = 0
+
+        def fail_then_stop(_delay: float) -> None:
+            nonlocal sleep_calls
+            sleep_calls += 1
+            if sleep_calls == 1:
+                raise OSError("device disconnected")
+            recorder._shutdown_event.set()
+
+        with (
+            patch.dict("sys.modules", {"sounddevice": mock_sd}),
+            patch(
+                "recorder.audio_recorder.time.sleep",
+                side_effect=fail_then_stop,
+            ),
+            patch.object(recorder._shutdown_event, "wait", return_value=False),
+        ):
+            recorder._record_loop()
+
+        assert mock_sd.InputStream.call_count == 2
+        failed_stream.__exit__.assert_called_once()
+        recovered_stream.__enter__.assert_called_once()
+
+    def test_sounddevice_terminal_failure_reports_once(self) -> None:
+        """Исчерпание попыток сообщает о конечном сбое только один раз."""
+        from core.event_bus import InMemoryEventBus, RecordingEventType
+
+        bus = InMemoryEventBus()
+        received: list = []
+        recorder = AudioRecorder(event_bus=bus)
+        publication_lock_states: list[bool] = []
+
+        def receive_failure(event) -> None:
+            lock_acquired = recorder._lock.acquire(blocking=False)
+            publication_lock_states.append(lock_acquired)
+            if lock_acquired:
+                recorder._lock.release()
+            received.append(event)
+
+        bus.subscribe(RecordingEventType.ERROR, receive_failure)
+        recorder._state = AudioState.RECORDING
+        recorder._duration = None
+        error_callback = MagicMock()
+        recorder.set_callbacks(on_error=error_callback)
+
+        streams = [MagicMock() for _ in range(4)]
+        mock_sd = MagicMock()
+        mock_sd.InputStream.side_effect = streams
+
+        with (
+            patch.dict("sys.modules", {"sounddevice": mock_sd}),
+            patch(
+                "recorder.audio_recorder.time.sleep",
+                side_effect=OSError("device disconnected"),
+            ),
+            patch.object(recorder._shutdown_event, "wait", return_value=False),
+        ):
+            recorder._record_loop()
+
+        assert mock_sd.InputStream.call_count == 4
+        assert all(stream.__exit__.call_count == 1 for stream in streams)
+        error_callback.assert_called_once_with("device disconnected")
+        assert len(received) == 1
+        assert received[0].payload["type"] == "audio_failure"
+        assert publication_lock_states == [True]
 
 
 class TestAudioRecorderEventBus:
