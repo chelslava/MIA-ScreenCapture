@@ -6,6 +6,7 @@
 """
 
 import subprocess
+import tempfile
 import threading
 import time
 from collections import deque
@@ -23,6 +24,7 @@ from recorder.utils import (
     get_available_disk_space,
     get_ffmpeg_path,
     get_subprocess_creationflags,
+    verify_video_integrity,
 )
 
 logger = get_module_logger(__name__)
@@ -648,7 +650,7 @@ class FFmpegVideoWriter:
             True, если новый сегмент успешно открыт.
         """
         previous_segment_path = self._current_segment_path
-        finalized_ok = self.close()
+        finalized_ok = self.close(finalize_segments=False)
         if not finalized_ok:
             logger.warning(
                 "Сегмент %s завершён с ошибкой при плановой ротации",
@@ -769,20 +771,16 @@ class FFmpegVideoWriter:
 
     def _merge_segments(self) -> bool:
         """
-        Мerging all segment files into a single output file via FFmpeg concat filter.
+        Объединяет сегменты через временный файл рядом с итоговым.
 
-        Uses -c copy to avoid re-encoding. On success, removes temp concat file
-        and all segment files. On failure, leaves segments for manual recovery.
+        Канонический файл заменяется атомарно только после успешного FFmpeg и
+        проверки целостности. При любой ошибке исходные сегменты сохраняются.
 
         Returns:
-            True if merge succeeded (segments cleaned up), False otherwise.
+            True при успешном слиянии, иначе False.
         """
         segments = self.segment_paths
         if len(segments) <= 1:
-            return True
-
-        if not segments:
-            logger.warning("Нет сегментов для слияния")
             return True
 
         logger.info(
@@ -796,20 +794,36 @@ class FFmpegVideoWriter:
             logger.error("FFmpeg не найден для слияния сегментов")
             return False
 
-        # Create temporary concat file
-        concat_file = self._output_path.with_suffix(".concat")
-        try:
-            with open(concat_file, "w", encoding="utf-8") as f:
-                for segment_path in segments:
-                    # Escape single quotes in path for FFmpeg concat format
-                    # File format: file '/path/to/segment.mp4'
-                    escaped_path = str(segment_path).replace("'", "'\"'\"'")
-                    f.write(f"file '{escaped_path}'\n")
+        self._output_path.parent.mkdir(parents=True, exist_ok=True)
+        concat_file: Path | None = None
+        merge_output_path: Path | None = None
 
-            output_path_str = str(self._output_path)
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                prefix=f".{self._output_path.stem}.segments-",
+                suffix=".concat",
+                dir=self._output_path.parent,
+                delete=False,
+            ) as concat_stream:
+                concat_file = Path(concat_stream.name)
+                for segment_path in segments:
+                    escaped_path = str(segment_path).replace("'", "'\"'\"'")
+                    concat_stream.write(f"file '{escaped_path}'\n")
+
+            with tempfile.NamedTemporaryFile(
+                prefix=f".{self._output_path.stem}.merge-",
+                suffix=self._output_path.suffix,
+                dir=self._output_path.parent,
+                delete=False,
+            ) as merge_output:
+                merge_output_path = Path(merge_output.name)
 
             cmd = [
                 ffmpeg_bin,
+                "-nostdin",
+                "-y",
                 "-f",
                 "concat",
                 "-safe",
@@ -820,7 +834,7 @@ class FFmpegVideoWriter:
                 "copy",
                 "-movflags",
                 "+faststart",
-                output_path_str,
+                str(merge_output_path),
             ]
 
             logger.info(
@@ -838,7 +852,18 @@ class FFmpegVideoWriter:
                 popen_kwargs["creationflags"] = creationflags
 
             process = subprocess.Popen(cmd, **popen_kwargs)
-            _, stderr = process.communicate()
+            try:
+                _, stderr = process.communicate(
+                    timeout=_FFMPEG_CLOSE_TIMEOUT_SECONDS
+                )
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+                logger.error(
+                    "Таймаут слияния сегментов FFmpeg после %s секунд",
+                    _FFMPEG_CLOSE_TIMEOUT_SECONDS,
+                )
+                return False
 
             if process.returncode != 0:
                 stderr_text = stderr.decode("utf-8", errors="replace").strip()
@@ -849,44 +874,61 @@ class FFmpegVideoWriter:
                 )
                 return False
 
+            if merge_output_path.stat().st_size == 0:
+                logger.error("FFmpeg создал пустой файл при слиянии сегментов")
+                return False
+
+            integrity_result = verify_video_integrity(merge_output_path)
+            if not integrity_result.valid:
+                logger.error(
+                    "Объединённый файл не прошёл проверку целостности: %s",
+                    integrity_result.error,
+                )
+                return False
+
+            merge_output_path.replace(self._output_path)
+
             logger.info(
                 "Сегменты успешно объединены: %s → %s",
                 len(segments),
                 self._output_path,
             )
 
-            # Cleanup: remove concat file and all segment files
-            try:
-                concat_file.unlink()
-                for segment_path in segments:
-                    if segment_path.exists():
-                        segment_path.unlink()
-                logger.info(
-                    "Временные файлы очищены: concat + %s сегментов",
-                    len(segments),
-                )
-            except OSError as e:
-                logger.warning(
-                    "Не удалось удалить временные файлы: %s",
-                    e,
-                )
+            for segment_path in segments:
+                if segment_path != self._output_path:
+                    try:
+                        segment_path.unlink(missing_ok=True)
+                    except OSError as e:
+                        logger.warning(
+                            "Не удалось удалить устаревший сегмент %s: %s",
+                            segment_path,
+                            e,
+                        )
 
             return True
 
-        except Exception as e:
+        except OSError as e:
             logger.error("Ошибка слияния сегментов: %s", e)
             return False
         finally:
-            # Always try to remove concat file on failure
-            if concat_file.exists():
+            for temporary_path in (concat_file, merge_output_path):
+                if temporary_path is None:
+                    continue
                 try:
-                    concat_file.unlink()
-                except Exception:
-                    pass
+                    temporary_path.unlink(missing_ok=True)
+                except OSError as e:
+                    logger.warning(
+                        "Не удалось удалить временный файл %s: %s",
+                        temporary_path,
+                        e,
+                    )
 
-    def close(self) -> bool:
+    def close(self, *, finalize_segments: bool = True) -> bool:
         """
         Закрытие FFmpeg процесса и завершение записи.
+
+        Args:
+            finalize_segments: Выполнять итоговое слияние накопленных сегментов.
 
         Returns:
             True если успешно закрыто
@@ -895,6 +937,7 @@ class FFmpegVideoWriter:
             return True
 
         process = self._process
+        merge_result = False
 
         try:
             with self._lock:
@@ -921,6 +964,7 @@ class FFmpegVideoWriter:
                     f"Запись завершена: {self._output_path} "
                     f"({self._frame_count} кадров, {self.elapsed_time:.1f}s)"
                 )
+                merge_result = True
 
         except subprocess.TimeoutExpired:
             logger.warning(
@@ -956,19 +1000,25 @@ class FFmpegVideoWriter:
                     "FFmpeg завершился после terminate: "
                     f"{self._output_path} ({self._frame_count} кадров)"
                 )
+                merge_result = True
         except Exception as e:
             logger.error(f"Ошибка закрытия FFmpeg: {e}")
             merge_result = False
-        else:
-            merge_result = True
 
         finally:
             self._process = None
             self._stop_stderr_reader()
 
             segments = self.segment_paths
-            if not segments:
+            if not finalize_segments or not segments:
                 pass
+
+            elif not merge_result:
+                logger.warning(
+                    "Слияние не запущено после ошибки завершения FFmpeg; "
+                    "исходные сегменты сохранены: %s",
+                    [str(p) for p in segments],
+                )
 
             elif len(segments) <= 1:
                 if self._segment_paths:

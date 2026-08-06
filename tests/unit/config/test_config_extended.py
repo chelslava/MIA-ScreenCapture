@@ -488,3 +488,36 @@ class TestConfigDebounceSave:
         assert manager.save() is True
         assert fake_timer.cancelled is True
         assert manager._recent_save_timer is None
+
+    def test_save_calls_atomic_write_json_with_restricted_mode(
+        self, mocker
+    ) -> None:
+        """save() пишет конфиг через atomic_write_json с mode=0o600."""
+        from config import ConfigManager
+
+        mock_write = mocker.patch(
+            "config.atomic_write_json", return_value=True
+        )
+        manager = ConfigManager(Path("config/nonexistent_mode_test.json"))
+
+        assert manager.save() is True
+
+        mock_write.assert_called_once()
+        _call = mock_write.call_args
+        assert _call.kwargs["mode"] == 0o600
+
+    def test_save_passes_config_path(self, mocker) -> None:
+        """save() передаёт в atomic_write_json путь к файлу конфига."""
+        from config import ConfigManager
+
+        mock_write = mocker.patch(
+            "config.atomic_write_json", return_value=True
+        )
+        config_path = Path("config/nonexistent_path_test.json")
+        manager = ConfigManager(config_path)
+
+        manager.save()
+
+        mock_write.assert_called_once()
+        _call = mock_write.call_args
+        assert _call.args[0] == config_path

@@ -160,7 +160,7 @@ class DiagnosticsView(QWidget):
         fix_btn = QPushButton("Исправить")
         fix_btn.setVisible(False)
         fix_btn.setObjectName("fix_btn")
-        fix_btn._fallback_action = title  # type: ignore[attr-defined]
+        fix_btn.setProperty("fallback_action", title)
         fix_btn.clicked.connect(
             lambda _checked=False: self._on_fix_clicked(fix_btn)
         )
@@ -171,8 +171,8 @@ class DiagnosticsView(QWidget):
 
     def _on_fix_clicked(self, button: QPushButton) -> None:
         """Обработка нажатия кнопки исправления."""
-        action = getattr(button, "_readiness_action", None)
-        fallback_action = getattr(button, "_fallback_action", "")
+        action = button.property("readiness_action")
+        fallback_action = button.property("fallback_action") or ""
         self.fix_requested.emit(str(action or fallback_action))
 
     def run_checks(
@@ -315,7 +315,7 @@ class DiagnosticsView(QWidget):
         status_label = group.findChild(QLabel, "")
         for child in group.findChildren(QLabel):
             if child.text() not in ("", group.title()):
-                if Theme.COLORS["muted"] not in child.styleSheet():
+                if Theme.color("muted") not in child.styleSheet():
                     status_label = child
                     break
 
@@ -331,5 +331,5 @@ class DiagnosticsView(QWidget):
                 fix_btn.setText(action_label)
             else:
                 fix_btn.setText("Исправить")
-            fix_btn._readiness_action = action_key  # type: ignore[attr-defined]
+            fix_btn.setProperty("readiness_action", action_key)
             fix_btn.setVisible((not ok) or warning)

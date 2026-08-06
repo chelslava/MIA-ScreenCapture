@@ -150,6 +150,7 @@ class AudioRecorder:
         self._max_recovery_attempts = 3
         self._last_recovery_time = 0.0
         self._recovery_backoff_delays = [1.0, 2.0, 4.0]
+        self._terminal_failure_reported = False
 
     @property
     def state(self) -> AudioState:
@@ -267,6 +268,9 @@ class AudioRecorder:
                 self._total_paused = 0
                 self._frames_recorded = 0
                 self._dropped_chunks = 0
+                self._recovery_attempts = 0
+                self._last_recovery_time = 0.0
+                self._terminal_failure_reported = False
                 self._reset_audio_queue()
                 self._writer_stop_event.clear()
                 self._shutdown_event.clear()
@@ -304,6 +308,9 @@ class AudioRecorder:
         Returns:
             True, если восстановление успешно, False если превышен лимит попыток
         """
+        if self._shutdown_event.is_set():
+            return False
+
         self._recovery_attempts += 1
 
         if self._recovery_attempts > self._max_recovery_attempts:
@@ -319,27 +326,35 @@ class AudioRecorder:
                 len(self._recovery_backoff_delays) - 1,
             )
         ]
-        elapsed_since_last = time.time() - self._last_recovery_time
-        if elapsed_since_last < current_delay:
-            wait_time = current_delay - elapsed_since_last
-            logger.warning(
-                f"AudioRecorder recovery attempt {self._recovery_attempts}/{self._max_recovery_attempts}: "
-                f"ожидание {wait_time:.1f}с перед повтором"
-            )
-            time.sleep(wait_time)
+        logger.warning(
+            "AudioRecorder recovery attempt %s/%s: ожидание %.1fс перед повтором",
+            self._recovery_attempts,
+            self._max_recovery_attempts,
+            current_delay,
+        )
+        if self._shutdown_event.wait(current_delay):
+            return False
 
         self._last_recovery_time = time.time()
         logger.warning(
             f"AudioRecorder recovery attempt {self._recovery_attempts}/{self._max_recovery_attempts}: {exception}"
         )
 
-        if self._state == AudioState.RECORDING:
-            logger.info(
-                "AudioRecorder: продолжение записи после восстановления"
-            )
-            return True
+        return self._state == AudioState.RECORDING
 
-        return False
+    def _report_terminal_failure(self, exception: Exception) -> None:
+        """Завершает recovery и отправляет одно уведомление о сбое."""
+        with self._lock:
+            if self._terminal_failure_reported:
+                return
+            self._terminal_failure_reported = True
+            self._state = AudioState.STOPPING
+            self._shutdown_event.set()
+            self._writer_stop_event.set()
+
+        self._publish_audio_failure_event(exception)
+        if self._on_error:
+            self._on_error(str(exception))
 
     def _publish_audio_failure_event(self, exception: Exception) -> None:
         if self._event_bus is None:
@@ -357,7 +372,7 @@ class AudioRecorder:
                     },
                 )
             )
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.warning(f"Ошибка публикации события AUDIO_FAILURE: {e}")
 
     def _init_audio(self) -> None:
@@ -388,19 +403,38 @@ class AudioRecorder:
             import pyaudio
 
             self._audio_interface = pyaudio.PyAudio()
-
-            # Открытие потока
-            self._audio_stream = self._audio_interface.open(
-                format=pyaudio.paInt16,
-                channels=self.config.channels,
-                rate=self.config.sample_rate,
-                input=True,
-                input_device_index=self.config.device_index,
-                frames_per_buffer=self.config.chunk_size,
-            )
+            self._audio_stream = self._open_pyaudio_stream()
 
         except ImportError:
             raise RuntimeError("Ни sounddevice, ни pyaudio недоступны")
+
+    def _open_pyaudio_stream(self) -> _PyAudioStreamProtocol:
+        """Открывает новый поток через созданный интерфейс PyAudio."""
+        import pyaudio
+
+        if self._audio_interface is None:
+            self._audio_interface = pyaudio.PyAudio()
+        return self._audio_interface.open(
+            format=pyaudio.paInt16,
+            channels=self.config.channels,
+            rate=self.config.sample_rate,
+            input=True,
+            input_device_index=self.config.device_index,
+            frames_per_buffer=self.config.chunk_size,
+        )
+
+    def _close_pyaudio_stream(self, stream: _PyAudioStreamProtocol) -> None:
+        """Останавливает и закрывает один поток PyAudio с точным логированием."""
+        if self._audio_stream is stream:
+            self._audio_stream = None
+        try:
+            stream.stop_stream()
+        except (OSError, RuntimeError) as e:
+            logger.warning("Ошибка остановки потока PyAudio: %s", e)
+        try:
+            stream.close()
+        except (OSError, RuntimeError) as e:
+            logger.warning("Ошибка закрытия потока PyAudio: %s", e)
 
     def pause(self) -> bool:
         """
@@ -471,101 +505,116 @@ class AudioRecorder:
         try:
             import sounddevice as sd
 
-            def audio_callback(indata, frames, time_info, status):
-                _ = time_info
-                if status:
-                    logger.warning(f"Проблема аудиозахвата: {status}")
-                if self._state == AudioState.RECORDING:
-                    # Callback не должен блокироваться дисковым I/O.
-                    audio_data = indata.tobytes()
-                    self._enqueue_audio_chunk(audio_data, int(frames))
-
-            # Запуск потоковой передачи
-            with sd.InputStream(
-                samplerate=self.config.sample_rate,
-                channels=self.config.channels,
-                dtype="int16",
-                device=self.config.device_index,
-                blocksize=self.config.chunk_size,
-                callback=audio_callback,
-            ):
-                while (
-                    not self._shutdown_event.is_set()
-                    and self._state
-                    not in (
-                        AudioState.IDLE,
-                        AudioState.STOPPING,
-                    )
-                ):
-                    if self._state == AudioState.PAUSED:
-                        time.sleep(0.1)
-                        continue
-
-                    # Проверка лимита длительности
-                    if self._duration and self.elapsed_time >= self._duration:
-                        logger.info("Достигнут лимит длительности аудио")
-                        break
-
-                    time.sleep(0.01)
-
         except ImportError:
             # Возврат к циклу pyaudio
             self._record_loop_pyaudio()
+            return
+
+        def audio_callback(indata, frames, time_info, status):
+            _ = time_info
+            if status:
+                logger.warning(f"Проблема аудиозахвата: {status}")
+            if self._state == AudioState.RECORDING:
+                # Callback не должен блокироваться дисковым I/O.
+                audio_data = indata.tobytes()
+                self._enqueue_audio_chunk(audio_data, int(frames))
+
+        while not self._shutdown_event.is_set():
+            try:
+                with sd.InputStream(
+                    samplerate=self.config.sample_rate,
+                    channels=self.config.channels,
+                    dtype="int16",
+                    device=self.config.device_index,
+                    blocksize=self.config.chunk_size,
+                    callback=audio_callback,
+                ):
+                    while (
+                        not self._shutdown_event.is_set()
+                        and self._state
+                        not in (
+                            AudioState.IDLE,
+                            AudioState.STOPPING,
+                        )
+                    ):
+                        if self._state == AudioState.PAUSED:
+                            time.sleep(0.1)
+                            continue
+
+                        if (
+                            self._duration
+                            and self.elapsed_time >= self._duration
+                        ):
+                            logger.info("Достигнут лимит длительности аудио")
+                            return
+
+                        time.sleep(0.01)
+                    return
+            except (AudioCaptureError, OSError, RuntimeError) as e:
+                logger.warning(
+                    "Ошибка потока sounddevice: %s. Попытка восстановления...",
+                    e,
+                )
+                if not self._attempt_recovery(e):
+                    if not self._shutdown_event.is_set():
+                        self._report_terminal_failure(e)
+                    return
+                logger.info("Поток sounddevice успешно восстановлен")
 
     def _record_loop_pyaudio(self) -> None:
         """Цикл записи с использованием PyAudio."""
         if not self._audio_stream:
             return
 
-        stream = self._audio_stream
-        try:
-            while not self._shutdown_event.is_set() and self._state not in (
-                AudioState.IDLE,
-                AudioState.STOPPING,
-            ):
-                if self._state == AudioState.PAUSED:
-                    time.sleep(0.1)
-                    continue
+        stream: _PyAudioStreamProtocol | None = self._audio_stream
+        while not self._shutdown_event.is_set() and self._state not in (
+            AudioState.IDLE,
+            AudioState.STOPPING,
+        ):
+            if self._state == AudioState.PAUSED:
+                time.sleep(0.1)
+                continue
 
-                try:
-                    data = stream.read(
-                        self.config.chunk_size, exception_on_overflow=False
-                    )
-                    self._enqueue_audio_chunk(data, self.config.chunk_size)
+            if stream is None:
+                return
 
-                except (OSError, RuntimeError) as e:
-                    logger.warning(
-                        f"Ошибка чтения аудио PyAudio: {e}. Попытка восстановления..."
-                    )
-                    if not self._attempt_recovery(e):
-                        self._publish_audio_failure_event(e)
-                        if self._on_error:
-                            self._on_error(str(e))
+            try:
+                data = stream.read(
+                    self.config.chunk_size, exception_on_overflow=False
+                )
+                self._enqueue_audio_chunk(data, self.config.chunk_size)
+            except (AudioCaptureError, OSError, RuntimeError) as e:
+                logger.warning(
+                    "Ошибка чтения аудио PyAudio: %s. Попытка восстановления...",
+                    e,
+                )
+                self._close_pyaudio_stream(stream)
+                stream = None
+                recovery_error: Exception = e
+
+                while self._attempt_recovery(recovery_error):
+                    try:
+                        stream = self._open_pyaudio_stream()
+                        self._audio_stream = stream
+                        logger.info("Поток PyAudio успешно восстановлен")
                         break
-                    logger.info(
-                        "Попытка восстановления PyAudio записи прошла успешно"
-                    )
+                    except (OSError, RuntimeError) as open_error:
+                        recovery_error = open_error
+                        logger.warning(
+                            "Не удалось открыть новый поток PyAudio: %s",
+                            open_error,
+                        )
 
-                # Проверка лимита длительности
-                if self._duration and self.elapsed_time >= self._duration:
-                    break
+                if stream is None:
+                    if not self._shutdown_event.is_set():
+                        self._report_terminal_failure(recovery_error)
+                    return
 
-        except (AudioCaptureError, OSError, RuntimeError) as e:
-            logger.error(f"Ошибка цикла записи PyAudio: {e}")
-            self._publish_audio_failure_event(e)
-            if self._on_error:
-                self._on_error(str(e))
-        finally:
-            if stream is not None:
-                try:
-                    stream.stop_stream()
-                except Exception as e:
-                    logger.warning(f"Ошибка остановки потока PyAudio: {e}")
-                try:
-                    stream.close()
-                except Exception as e:
-                    logger.warning(f"Ошибка закрытия потока PyAudio: {e}")
-            self._audio_stream = None
+            if self._duration and self.elapsed_time >= self._duration:
+                break
+
+        if stream is not None:
+            self._close_pyaudio_stream(stream)
 
     def _enqueue_audio_chunk(self, audio_data: bytes, frames: int) -> None:
         """
@@ -649,35 +698,25 @@ class AudioRecorder:
 
     def _cleanup(self) -> None:
         """Очистка ресурсов."""
-        try:
-            self._writer_stop_event.set()
+        self._writer_stop_event.set()
 
-            # Закрытие WAV файла
-            if self._wave_file:
+        if self._wave_file:
+            try:
                 self._wave_file.close()
-                self._wave_file = None
+            except (OSError, RuntimeError) as e:
+                logger.warning("Ошибка закрытия WAV-файла: %s", e)
+            self._wave_file = None
 
-            # Закрытие ресурсов PyAudio если использовались
-            if self._audio_stream:
-                try:
-                    self._audio_stream.stop_stream()
-                except Exception as e:
-                    logger.warning(f"Ошибка остановки потока аудио: {e}")
-                try:
-                    self._audio_stream.close()
-                except Exception as e:
-                    logger.warning(f"Ошибка закрытия потока аудио: {e}")
-                self._audio_stream = None
+        stream = self._audio_stream
+        if stream is not None:
+            self._close_pyaudio_stream(stream)
 
-            if self._audio_interface:
-                try:
-                    self._audio_interface.terminate()
-                except Exception as e:
-                    logger.warning(f"ОшибкаTerminates аудиоинтерфейса: {e}")
-                self._audio_interface = None
-
-        except (OSError, RuntimeError) as e:
-            logger.error(f"Ошибка при очистке аудио: {e}")
+        if self._audio_interface:
+            try:
+                self._audio_interface.terminate()
+            except (OSError, RuntimeError) as e:
+                logger.warning("Ошибка завершения аудиоинтерфейса: %s", e)
+            self._audio_interface = None
 
         self._writer_thread = None
         self._state = AudioState.IDLE

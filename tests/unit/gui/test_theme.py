@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from gui.styles.theme import (
     BLUE_PALETTE,
     DARK_CONTRAST_PALETTE,
@@ -9,13 +11,94 @@ from gui.styles.theme import (
     LIGHT_PALETTE,
     THEME_LABELS,
     THEME_REGISTRY,
+    ColorPalette,
     Theme,
+    _contrast_ratio,
     apply_theme,
     build_stylesheet,
     detect_system_theme,
     get_palette,
     resolve_theme,
 )
+
+# Порог WCAG AA для обычного текста.
+_WCAG_AA_TEXT = 4.5
+
+# Соответствие палитра → фоны, на которых рисуется статусный текст.
+# text_secondary рисуется на surface, остальной текст — на background.
+_PALETTE_BACKGROUNDS: dict[ColorPalette, tuple[str, str]] = {
+    LIGHT_PALETTE: (LIGHT_PALETTE.background, LIGHT_PALETTE.surface),
+    BLUE_PALETTE: (BLUE_PALETTE.background, BLUE_PALETTE.surface),
+    DARK_PALETTE: (DARK_PALETTE.background, DARK_PALETTE.surface),
+    DARK_CONTRAST_PALETTE: (
+        DARK_CONTRAST_PALETTE.background,
+        DARK_CONTRAST_PALETTE.surface,
+    ),
+}
+
+_SEMANTIC_TONES = ("danger", "warning", "success", "info", "muted")
+
+
+class TestSemanticColorContrast:
+    """Проверки WCAG-контраста семантических цветов на фонах темы (#104)."""
+
+    @pytest.mark.parametrize(
+        "palette",
+        [LIGHT_PALETTE, BLUE_PALETTE, DARK_PALETTE, DARK_CONTRAST_PALETTE],
+        ids=lambda p: p.background,
+    )
+    def test_semantic_colors_meet_wcag_aa_on_palette_backgrounds(
+        self,
+        palette: ColorPalette,
+    ) -> None:
+        """Каждый семантический цвет ≥4.5:1 на background и surface палитры."""
+        backgrounds = _PALETTE_BACKGROUNDS[palette]
+        for tone in _SEMANTIC_TONES:
+            color = getattr(palette, tone)
+            for bg in backgrounds:
+                assert _contrast_ratio(color, bg) >= _WCAG_AA_TEXT, (
+                    f"{tone} {color} на {bg} даёт "
+                    f"{_contrast_ratio(color, bg):.2f}:1 (< 4.5:1)"
+                )
+
+    def test_light_and_dark_palettes_use_different_semantic_colors(
+        self,
+    ) -> None:
+        """Светлые и тёмные темы используют разные семантические цвета."""
+        assert LIGHT_PALETTE.warning != DARK_PALETTE.warning
+        assert LIGHT_PALETTE.success != DARK_PALETTE.success
+        assert LIGHT_PALETTE.danger != DARK_PALETTE.danger
+
+    def test_dark_contrast_semantic_colors_meet_aa(self) -> None:
+        """dark_contrast даёт запас ≥7:1 на своём фоне для всех тонов."""
+        bg = DARK_CONTRAST_PALETTE.background
+        for tone in _SEMANTIC_TONES:
+            color = getattr(DARK_CONTRAST_PALETTE, tone)
+            assert _contrast_ratio(color, bg) >= 7.0, (
+                f"{tone} {color} на {bg}: {_contrast_ratio(color, bg):.2f}:1"
+            )
+
+
+class TestThemeStatusStyleThemed:
+    """Статусные стили выбирают цвет активной темы."""
+
+    def test_status_style_uses_light_colors_by_default(self) -> None:
+        assert LIGHT_PALETTE.danger in Theme.status_style("danger")
+        assert LIGHT_PALETTE.muted in Theme.secondary_text_style()
+
+    def test_active_palette_switch_changes_status_style(
+        self,
+    ) -> None:
+        try:
+            apply_theme(MagicMock(), "dark")
+            assert DARK_PALETTE.danger in Theme.status_style("danger")
+            assert DARK_PALETTE.muted in Theme.secondary_text_style()
+        finally:
+            apply_theme(MagicMock(), "light")
+
+    def test_unknown_tone_falls_back_to_muted(self) -> None:
+        style = Theme.status_style("not-a-tone")
+        assert LIGHT_PALETTE.muted in style
 
 
 class TestThemeHelpers:

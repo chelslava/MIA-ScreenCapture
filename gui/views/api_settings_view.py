@@ -407,7 +407,7 @@ class ApiSettingsView(QWidget):
         self._server_state_label.setStyleSheet(
             Theme.secondary_text_style()
             if not running
-            else f"color: {Theme.COLORS['success']};"
+            else f"color: {Theme.color('success')};"
         )
 
     def set_log_text(self, text: str) -> None:
@@ -671,7 +671,7 @@ class ApiSettingsView(QWidget):
         self._log_status_label.setStyleSheet(
             Theme.secondary_text_style()
             if tone == "muted"
-            else f"color: {Theme.COLORS[tone]};"
+            else f"color: {Theme.color(tone)};"
         )
 
     def _scroll_logs_to_end(self) -> None:

@@ -35,14 +35,158 @@ def get_app_icon_path() -> Path:
     return base_path / "docs" / "assets" / "MIA-ScreenCapture.ico"
 
 
+def _windows_acl_modules() -> tuple[Any, Any, Any, Any] | None:
+    """
+    Ленивый импорт win32-модулей для работы с Windows ACL.
+
+    Импорт выполняется на лету, т.к. pywin32 — тяжёлая зависимость,
+    недоступная на не-Windows платформах.
+
+    Returns:
+        Кортеж (win32security, win32api, win32con, ntsecuritycon)
+        или None, если модули недоступны.
+    """
+    try:
+        import ntsecuritycon
+        import win32api
+        import win32con
+        import win32security
+    except ImportError:
+        return None
+    return win32security, win32api, win32con, ntsecuritycon
+
+
+def _apply_windows_acl(path: Path) -> bool:
+    """
+    Ограничивает доступ к файлу через настоящий Windows ACL (DACL).
+
+    В отличие от `os.chmod`, который на Windows не ограничивает доступ
+    (влияет только на read-only флаг), здесь через `SetNamedSecurityInfo`
+    задаётся DACL с доступом только для текущего пользователя, SYSTEM
+    и группы Administrators. Наследование от родительской директории
+    отключается (`PROTECTED_DACL_SECURITY_INFORMATION`), чтобы в ACL не
+    попадали группы Everyone/Users.
+
+    Args:
+        path: Путь к файлу
+
+    Returns:
+        True если ACL успешно применён, False в противном случае.
+    """
+    modules = _windows_acl_modules()
+    if modules is None:
+        return False
+    win32security, win32api, win32con, ntsecuritycon = modules
+
+    try:
+        # SID текущего пользователя из токена процесса
+        token = win32security.OpenProcessToken(
+            win32api.GetCurrentProcess(), win32con.TOKEN_QUERY
+        )
+        user_sid = win32security.GetTokenInformation(
+            token, win32security.TokenUser
+        )[0]
+        system_sid = win32security.ConvertStringSidToSid("S-1-5-18")
+        admins_sid = win32security.ConvertStringSidToSid("S-1-5-32-544")
+
+        dacl = win32security.ACL()
+        for sid in (user_sid, system_sid, admins_sid):
+            dacl.AddAccessAllowedAce(
+                win32security.ACL_REVISION,
+                ntsecuritycon.FILE_ALL_ACCESS,
+                sid,
+            )
+
+        win32security.SetNamedSecurityInfo(
+            str(path),
+            win32security.SE_FILE_OBJECT,
+            win32security.DACL_SECURITY_INFORMATION
+            | win32security.PROTECTED_DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            dacl,
+            None,
+        )
+        logger.debug("Установлен Windows ACL на %s", path)
+        return True
+    except Exception as e:
+        logger.warning("Не удалось установить Windows ACL на %s: %s", path, e)
+        return False
+
+
+# SID-ы групп, наличие доступа у которых считается слишком широким
+_WIDE_ACCESS_SIDS: dict[str, str] = {
+    "S-1-1-0": "Everyone",  # SID Everyone
+    "S-1-5-32-545": "Users",  # SID BUILTIN\\Users
+}
+
+
+def _check_windows_acl(path: Path) -> bool:
+    """
+    Проверяет Windows ACL файла на наличие широкого доступа.
+
+    Считывает текущий DACL файла и предупреждает, если доступ разрешён
+    группам Everyone/Users.
+
+    Args:
+        path: Путь к файлу
+
+    Returns:
+        True если проверка выполнена (или модули недоступны — тогда
+        проверка не требуется), False при ошибке чтения ACL.
+    """
+    modules = _windows_acl_modules()
+    if modules is None:
+        return True
+    win32security = modules[0]
+
+    try:
+        security_info = win32security.GetNamedSecurityInfo(
+            str(path),
+            win32security.SE_FILE_OBJECT,
+            win32security.DACL_SECURITY_INFORMATION,
+        )
+        dacl = security_info.GetSecurityDescriptorDacl()
+        if dacl is None:
+            logger.warning("Файл %s не имеет DACL — права не ограничены", path)
+            return True
+
+        for i in range(dacl.GetAceCount()):
+            ace = dacl.GetAce(i)
+            # ACE имеет вид ((ace_type, ace_flags), access_mask, sid)
+            ace_type = ace[0][0]
+            if ace_type != win32security.ACCESS_ALLOWED_ACE_TYPE:
+                continue
+            sid = win32security.ConvertSidToStringSid(ace[2])
+            group_name = _WIDE_ACCESS_SIDS.get(sid)
+            if group_name is not None:
+                logger.warning(
+                    "Файл %s доступен группе %s (%s)", path, group_name, sid
+                )
+        return True
+    except Exception as e:
+        logger.debug("Не удалось проверить Windows ACL на %s: %s", path, e)
+        return False
+
+
 def _restrict_file_permissions(path: Path, mode: int) -> None:
     """
     Устанавливает restricted permissions на файл.
+
+    На Windows применяется настоящий Windows ACL (DACL) через
+    win32security, поскольку `os.chmod` на Windows не ограничивает
+    доступ к файлу — он лишь устанавливает read-only флаг. Если применить
+    ACL не удалось (нет pywin32 или ошибка), выполняется fallback
+    на `os.chmod`.
 
     Args:
         path: Путь к файлу
         mode: Запрашиваемые права (например, 0o600)
     """
+    if sys.platform == "win32" and _apply_windows_acl(path):
+        logger.debug("Права на %s установлены через Windows ACL", path)
+        return
+
     try:
         os.chmod(path, mode)
         logger.debug("Установлены права %s на %s", oct(mode), path)
@@ -61,10 +205,16 @@ def _check_permissions(path: Path, expected_mode: int) -> None:
     """
     Проверяет, что права файла не шире запрошенных.
 
+    На Windows проверяется Windows ACL (отсутствие доступа у групп
+    Everyone/Users), на остальных платформах — POSIX-биты через `os.stat`.
+
     Args:
         path: Путь к файлу
         expected_mode: Ожидаемые права
     """
+    if sys.platform == "win32" and _check_windows_acl(path):
+        return
+
     try:
         file_stat = os.stat(path)
         actual_mode = stat.S_IMODE(file_stat.st_mode)

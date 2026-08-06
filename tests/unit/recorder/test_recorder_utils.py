@@ -17,11 +17,14 @@ import pytest
 from recorder.utils import (
     Singleton,
     VideoIntegrityResult,
+    _compute_thumbnail_cache_path,
     attempt_repair_video,
     check_ffmpeg,
+    cleanup_orphaned_thumbnails,
     ensure_directory,
     format_filesize,
     format_time,
+    generate_thumbnail,
     get_all_monitors,
     get_audio_devices,
     get_available_windows,
@@ -972,3 +975,202 @@ class TestAttemptRepairVideo:
 
         assert result.repaired is False
         assert video.read_bytes() == original_content
+
+
+class TestComputeThumbnailCachePath:
+    """Тесты _compute_thumbnail_cache_path (#103): ключ по canonical path."""
+
+    def test_same_stem_different_dirs_give_different_keys(
+        self, tmp_path: Path
+    ) -> None:
+        """Файлы с одинаковым именем в разных каталогах не конфликтуют."""
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+        video_a = dir_a / "recording.mp4"
+        video_b = dir_b / "recording.mp4"
+        video_a.write_bytes(b"a")
+        video_b.write_bytes(b"b")
+        thumbnails_dir = tmp_path / "thumbnails"
+
+        path_a = _compute_thumbnail_cache_path(video_a, thumbnails_dir)
+        path_b = _compute_thumbnail_cache_path(video_b, thumbnails_dir)
+
+        assert path_a != path_b
+
+    def test_same_file_is_deterministic(self, tmp_path: Path) -> None:
+        """Один и тот же файл всегда даёт один и тот же ключ кэша."""
+        video = tmp_path / "recording.mp4"
+        video.write_bytes(b"x")
+        thumbnails_dir = tmp_path / "thumbnails"
+
+        first = _compute_thumbnail_cache_path(video, thumbnails_dir)
+        second = _compute_thumbnail_cache_path(video, thumbnails_dir)
+
+        assert first == second
+
+    def test_returns_jpg_inside_thumbnails_dir(self, tmp_path: Path) -> None:
+        """Путь кэша лежит непосредственно в каталоге thumbnails и имеет .jpg."""
+        video = tmp_path / "recording.mp4"
+        video.write_bytes(b"x")
+        thumbnails_dir = tmp_path / "thumbnails"
+
+        result = _compute_thumbnail_cache_path(video, thumbnails_dir)
+
+        assert result.parent == thumbnails_dir
+        assert result.suffix == ".jpg"
+
+
+class TestGenerateThumbnail:
+    """Тесты generate_thumbnail (#103)."""
+
+    def test_returns_none_for_missing_video(self, tmp_path: Path) -> None:
+        """Несуществующий видеофайл -> None без вызова FFmpeg."""
+        result = generate_thumbnail(tmp_path / "missing.mp4")
+
+        assert result is None
+
+    @patch("recorder.utils.check_ffmpeg")
+    def test_cached_thumbnail_returned_without_ffmpeg(
+        self, mock_check, tmp_path: Path
+    ) -> None:
+        """Существующая миниатюра возвращается без вызова FFmpeg."""
+        video = tmp_path / "recording.mp4"
+        video.write_bytes(b"x")
+        cache_dir = tmp_path / "cache"
+        thumbnails_dir = cache_dir / "thumbnails"
+        thumbnails_dir.mkdir(parents=True)
+        cached = _compute_thumbnail_cache_path(video, thumbnails_dir)
+        cached.write_bytes(b"cached-image")
+
+        result = generate_thumbnail(video, cache_dir)
+
+        assert result == cached
+        mock_check.assert_not_called()
+
+    @patch("recorder.utils.get_ffmpeg_path")
+    def test_ffmpeg_unavailable_returns_none(
+        self, mock_get_path, tmp_path: Path
+    ) -> None:
+        """FFmpeg недоступен -> None."""
+        video = tmp_path / "recording.mp4"
+        video.write_bytes(b"x")
+        mock_get_path.return_value = None
+
+        result = generate_thumbnail(video, tmp_path / "cache")
+
+        assert result is None
+
+    @patch("recorder.utils.get_ffmpeg_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_success_generates_120x68(
+        self, mock_run, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Успешная генерация: FFmpeg вызывается с размером 120x68."""
+        video = tmp_path / "recording.mp4"
+        video.write_bytes(b"x")
+        cache_dir = tmp_path / "cache"
+        mock_get_path.return_value = r"C:\ffmpeg.exe"
+
+        def fake_run(cmd, **kwargs):
+            # Первый вызов — проверка версии ffmpeg (2 аргумента), второй — генерация
+            if len(cmd) == 2:
+                return MagicMock(
+                    returncode=0, stdout="ffmpeg version 6.0", stderr=""
+                )
+            Path(cmd[-2]).write_bytes(b"image")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        mock_run.side_effect = fake_run
+
+        result = generate_thumbnail(video, cache_dir)
+
+        assert result is not None
+        assert result.exists()
+        cmd = mock_run.call_args.args[0]
+        size_index = cmd.index("-s")
+        assert cmd[size_index + 1] == "120x68"
+        assert "320x240" not in cmd
+
+    @patch("recorder.utils.get_ffmpeg_path")
+    @patch("recorder.utils.subprocess.run")
+    def test_ffmpeg_failure_removes_partial_file(
+        self, mock_run, mock_get_path, tmp_path: Path
+    ) -> None:
+        """Ошибка FFmpeg -> None и частичный файл миниатюры удаляется."""
+        video = tmp_path / "recording.mp4"
+        video.write_bytes(b"x")
+        cache_dir = tmp_path / "cache"
+        thumbnails_dir = cache_dir / "thumbnails"
+        thumbnails_dir.mkdir(parents=True)
+        partial = _compute_thumbnail_cache_path(video, thumbnails_dir)
+        mock_get_path.return_value = r"C:\ffmpeg.exe"
+
+        def fake_run(cmd, **kwargs):
+            if len(cmd) == 2:
+                return MagicMock(
+                    returncode=0, stdout="ffmpeg version 6.0", stderr=""
+                )
+            # FFmpeg начал запись, оставил частичный файл и упал
+            Path(cmd[-2]).write_bytes(b"partial")
+            return MagicMock(returncode=1, stdout="", stderr="decode error")
+
+        mock_run.side_effect = fake_run
+
+        result = generate_thumbnail(video, cache_dir)
+
+        assert result is None
+        assert not partial.exists()
+
+
+class TestCleanupOrphanedThumbnails:
+    """Тесты cleanup_orphaned_thumbnails (#103)."""
+
+    def test_removes_thumbnails_without_existing_source(
+        self, tmp_path: Path
+    ) -> None:
+        """Миниатюры без живого исходника удаляются, живые сохраняются."""
+        cache_dir = tmp_path / "cache"
+        thumbnails_dir = cache_dir / "thumbnails"
+        thumbnails_dir.mkdir(parents=True)
+        existing = tmp_path / "keep.mp4"
+        existing.write_bytes(b"x")
+        keep_path = _compute_thumbnail_cache_path(existing, thumbnails_dir)
+        keep_path.write_bytes(b"keep")
+        orphan_path = thumbnails_dir / "deadbeef.jpg"
+        orphan_path.write_bytes(b"orphan")
+
+        removed = cleanup_orphaned_thumbnails(cache_dir, [existing])
+
+        assert removed == 1
+        assert keep_path.exists()
+        assert not orphan_path.exists()
+
+    def test_keeps_all_when_all_videos_exist(self, tmp_path: Path) -> None:
+        """Все миниатюры соответствуют существующим файлам -> ничего не удалено."""
+        cache_dir = tmp_path / "cache"
+        thumbnails_dir = cache_dir / "thumbnails"
+        thumbnails_dir.mkdir(parents=True)
+        video1 = tmp_path / "one.mp4"
+        video1.write_bytes(b"1")
+        video2 = tmp_path / "two.mp4"
+        video2.write_bytes(b"2")
+        p1 = _compute_thumbnail_cache_path(video1, thumbnails_dir)
+        p2 = _compute_thumbnail_cache_path(video2, thumbnails_dir)
+        p1.write_bytes(b"1")
+        p2.write_bytes(b"2")
+
+        removed = cleanup_orphaned_thumbnails(cache_dir, [video1, video2])
+
+        assert removed == 0
+        assert p1.exists()
+        assert p2.exists()
+
+    def test_missing_cache_dir_returns_zero(self, tmp_path: Path) -> None:
+        """Отсутствующий каталог кэша не является ошибкой."""
+        removed = cleanup_orphaned_thumbnails(
+            tmp_path / "missing", [tmp_path / "video.mp4"]
+        )
+
+        assert removed == 0

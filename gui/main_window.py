@@ -1079,20 +1079,8 @@ class MainWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, str(rec.path))
 
             # Попытаться загрузить существующую миниатюру
-            cache_dir = None
-            try:
-                from config import get_config
-
-                cfg = get_config()
-                if cfg.settings.output.default_path:
-                    cache_dir = (
-                        Path(cfg.settings.output.default_path).parent
-                        / ".cache"
-                    )
-            except Exception:
-                cache_dir = None
-
-            thumbnail_path = generate_thumbnail(rec.path, cache_dir)
+            # (единый центральный кэш, #103)
+            thumbnail_path = generate_thumbnail(rec.path)
             if thumbnail_path:
                 item.setIcon(QIcon(str(thumbnail_path)))
             else:
@@ -1305,7 +1293,7 @@ class MainWindow(QMainWindow):
 
         toast_label = QLabel(message)
         toast_label.setStyleSheet(
-            f"background-color: {Theme.COLORS['muted']};"
+            f"background-color: {Theme.color('muted')};"
             f"color: white;"
             f"padding: 8px 16px;"
             f"border-radius: 4px;"
@@ -1696,19 +1684,8 @@ class MainWindow(QMainWindow):
         Args:
             output_path: Путь к записи.
         """
-        cache_dir = None
-        try:
-            from config import get_config
-
-            cfg = get_config()
-            if cfg.settings.output.default_path:
-                cache_dir = (
-                    Path(cfg.settings.output.default_path).parent / ".cache"
-                )
-        except Exception:
-            cache_dir = None
-
-        thumbnail_path = generate_thumbnail(output_path, cache_dir)
+        # Единый центральный кэш миниатюр, #103
+        thumbnail_path = generate_thumbnail(output_path)
 
         # Обновить UI в главном потоке через сигнал
         if thumbnail_path:
@@ -2007,28 +1984,28 @@ class MainWindow(QMainWindow):
         status_map = {
             "connected": (
                 "● Connected",
-                Theme.COLORS["success"],
+                Theme.color("success"),
                 "Подключено",
             ),
             "connecting": (
                 "● Connecting...",
-                Theme.COLORS["warning"],
+                Theme.color("warning"),
                 "Подключение...",
             ),
             "disconnected": (
                 "● Disconnected",
-                Theme.COLORS["danger"],
+                Theme.color("danger"),
                 "Отключено",
             ),
             "reconnecting": (
                 "◌ Reconnecting...",
-                Theme.COLORS["warning"],
+                Theme.color("warning"),
                 "Переподключение...",
             ),
-            "error": ("● Error", Theme.COLORS["danger"], "Ошибка"),
+            "error": ("● Error", Theme.color("danger"), "Ошибка"),
         }
         text, color, tooltip = status_map.get(
-            status, ("● Unknown", Theme.COLORS["muted"], "Неизвестно")
+            status, ("● Unknown", Theme.color("muted"), "Неизвестно")
         )
         self._ws_status_label.setText(text)
         self._ws_status_label.setStyleSheet(

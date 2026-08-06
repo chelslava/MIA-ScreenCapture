@@ -3,6 +3,7 @@ Unit тесты runtime-управления API из main.py.
 """
 
 import os
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -24,9 +25,17 @@ class FakeWebSocketManager:
 
     def __init__(self) -> None:
         self.attached_event_bus: object | None = None
+        self.detach_calls = 0
 
     def attach_event_bus(self, event_bus: object) -> None:
         self.attached_event_bus = event_bus
+
+    def detach_event_bus(self) -> None:
+        """Идемпотентное отключение от event bus (как в реальном классе)."""
+        if self.attached_event_bus is None:
+            return
+        self.detach_calls += 1
+        self.attached_event_bus = None
 
 
 class FakeWebhookNotifier:
@@ -34,9 +43,17 @@ class FakeWebhookNotifier:
 
     def __init__(self) -> None:
         self.attached_event_bus: object | None = None
+        self.detach_calls = 0
 
     def attach_event_bus(self, event_bus: object) -> None:
         self.attached_event_bus = event_bus
+
+    def detach_event_bus(self) -> None:
+        """Идемпотентное отключение от event bus (как в реальном классе)."""
+        if self.attached_event_bus is None:
+            return
+        self.detach_calls += 1
+        self.attached_event_bus = None
 
 
 class FakeApiServer:
@@ -889,3 +906,295 @@ class TestMainApiRuntime:
 
         assert captured_kwargs["max_concurrent_tasks"] == 4
         assert str(captured_kwargs["persist_path"]).endswith("tasks.json")
+
+
+class TestRecordingFilePaths:
+    """Тесты разрешения API-путей verify/repair под каталогом вывода."""
+
+    @staticmethod
+    def _app() -> main.VideoRecorderApp:
+        """Создаёт экземпляр без инициализации несвязанных runtime-сервисов."""
+        return object.__new__(main.VideoRecorderApp)
+
+    @staticmethod
+    def _configure_output_root(
+        monkeypatch: pytest.MonkeyPatch,
+        output_root: Path,
+    ) -> None:
+        """Настраивает generated output path с заданной эффективной базой."""
+        fake_config = SimpleNamespace(
+            get_output_path=lambda: output_root / "generated.mp4"
+        )
+        monkeypatch.setattr(main, "get_config", lambda: fake_config)
+
+    def test_verify_uses_canonical_path_under_configured_output_root(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Verify использует configured root вне CWD и каноническую цель."""
+        output_root = tmp_path / "external" / "recordings"
+        target = output_root / "archive" / "video.mp4"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"video")
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        self._configure_output_root(monkeypatch, output_root)
+        check = SimpleNamespace(
+            valid=True,
+            duration_s=1.0,
+            codec_name="h264",
+            width=1920,
+            height=1080,
+            error=None,
+        )
+        verify_mock = MagicMock(return_value=check)
+        monkeypatch.setattr(main, "verify_video_integrity", verify_mock)
+
+        result = self._app()._verify_recording_file("archive/video.mp4")
+
+        verify_mock.assert_called_once_with(target.resolve())
+        assert result["valid"] is True
+
+    def test_repair_uses_canonical_path_under_configured_output_root(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Repair использует ту же configured base независимо от CWD."""
+        output_root = tmp_path / "external" / "recordings"
+        target = output_root / "archive" / "video.mp4"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"video")
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        self._configure_output_root(monkeypatch, output_root)
+        repair = SimpleNamespace(
+            repaired=True,
+            original_size_bytes=5,
+            repaired_size_bytes=4,
+            error=None,
+        )
+        repair_mock = MagicMock(return_value=repair)
+        monkeypatch.setattr(main, "attempt_repair_video", repair_mock)
+
+        result = self._app()._repair_recording_file("archive/video.mp4")
+
+        repair_mock.assert_called_once_with(target.resolve())
+        assert result["repaired"] is True
+
+    def test_repair_rejects_parent_escape_before_utility_call(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Побег через parent segment отклоняется до изменения файла."""
+        output_root = tmp_path / "recordings"
+        output_root.mkdir()
+        self._configure_output_root(monkeypatch, output_root)
+        repair_mock = MagicMock()
+        monkeypatch.setattr(main, "attempt_repair_video", repair_mock)
+
+        with pytest.raises(ValueError, match="каталога вывода"):
+            self._app()._repair_recording_file("../outside/video.mp4")
+
+        repair_mock.assert_not_called()
+
+    def test_repair_rejects_existing_link_outside_output_root(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Ссылка наружу отклоняется до запуска изменяющей файл операции."""
+        output_root = tmp_path / "recordings"
+        outside_root = tmp_path / "outside"
+        output_root.mkdir()
+        outside_root.mkdir()
+        link = output_root / "escape"
+        try:
+            link.symlink_to(outside_root, target_is_directory=True)
+        except OSError as error:
+            pytest.skip(f"Создание symlink недоступно: {error}")
+
+        self._configure_output_root(monkeypatch, output_root)
+        repair_mock = MagicMock()
+        monkeypatch.setattr(main, "attempt_repair_video", repair_mock)
+
+        with pytest.raises(ValueError, match="каталога вывода"):
+            self._app()._repair_recording_file("escape/video.mp4")
+
+        repair_mock.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("operation_name", "utility_name"),
+        [
+            ("_verify_recording_file", "verify_video_integrity"),
+            ("_repair_recording_file", "attempt_repair_video"),
+        ],
+    )
+    def test_output_root_rejected_before_utility_call(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        operation_name: str,
+        utility_name: str,
+    ) -> None:
+        """Сам output root отклоняется без изменения соседнего файла."""
+        output_root = tmp_path / "recordings"
+        output_root.mkdir()
+        outside_sentinel = tmp_path / "recordings.repair"
+        outside_sentinel.write_bytes(b"keep")
+        self._configure_output_root(monkeypatch, output_root)
+        utility_mock = MagicMock(side_effect=outside_sentinel.unlink)
+        monkeypatch.setattr(main, utility_name, utility_mock)
+
+        with pytest.raises(ValueError, match="файлом внутри каталога вывода"):
+            getattr(self._app(), operation_name)(".")
+
+        utility_mock.assert_not_called()
+        assert outside_sentinel.read_bytes() == b"keep"
+
+    @pytest.mark.parametrize(
+        ("operation_name", "utility_name"),
+        [
+            ("_verify_recording_file", "verify_video_integrity"),
+            ("_repair_recording_file", "attempt_repair_video"),
+        ],
+    )
+    def test_existing_directory_rejected_before_utility_call(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        operation_name: str,
+        utility_name: str,
+    ) -> None:
+        """Вложенный существующий каталог не передаётся file utility."""
+        output_root = tmp_path / "recordings"
+        nested_directory = output_root / "archive"
+        nested_directory.mkdir(parents=True)
+        self._configure_output_root(monkeypatch, output_root)
+        utility_mock = MagicMock()
+        monkeypatch.setattr(main, utility_name, utility_mock)
+
+        with pytest.raises(ValueError, match="файлом внутри каталога вывода"):
+            getattr(self._app(), operation_name)("archive")
+
+        utility_mock.assert_not_called()
+
+    def test_missing_nested_file_reaches_repair_utility(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Отсутствующий вложенный файл сохраняет штатный repair flow."""
+        output_root = tmp_path / "external" / "recordings"
+        output_root.mkdir(parents=True)
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        self._configure_output_root(monkeypatch, output_root)
+        repair = SimpleNamespace(
+            repaired=False,
+            original_size_bytes=0,
+            repaired_size_bytes=0,
+            error="Файл не найден",
+        )
+        repair_mock = MagicMock(return_value=repair)
+        monkeypatch.setattr(main, "attempt_repair_video", repair_mock)
+
+        result = self._app()._repair_recording_file("archive/missing.mp4")
+
+        repair_mock.assert_called_once_with(
+            (output_root / "archive" / "missing.mp4").resolve()
+        )
+        assert result["error"] == "Файл не найден"
+
+
+class TestShutdownDetachEventBus:
+    """Тесты отключения подписчиков от EventBus при завершении (#100)."""
+
+    @staticmethod
+    def _fresh_shutdown_manager(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> main.GracefulShutdown:
+        """Изолированный shutdown manager без глобального синглтона."""
+        manager = main.GracefulShutdown()
+        monkeypatch.setattr(main, "get_shutdown_manager", lambda: manager)
+        # Не трогаем реальные обработчики сигналов в unit-тестах
+        monkeypatch.setattr(manager, "setup_signal_handlers", lambda: None)
+        return manager
+
+    def test_normal_shutdown_detaches_websocket_and_webhook(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Обычный путь shutdown отключает подписчиков от EventBus."""
+        app, _ = _build_app(monkeypatch)
+        self._fresh_shutdown_manager(monkeypatch)
+
+        app._setup_graceful_shutdown()
+        assert app._shutdown_manager is not None
+        app._shutdown_manager.shutdown()
+
+        assert app._webhook_notifier.detach_calls == 1
+        assert app._websocket_manager.detach_calls == 1
+        assert app._webhook_notifier.attached_event_bus is None
+        assert app._websocket_manager.attached_event_bus is None
+
+    def test_fallback_cleanup_detaches_websocket_and_webhook(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Fallback-очистка без shutdown manager тоже отключает подписчиков."""
+        app, _ = _build_app(monkeypatch)
+        app._shutdown_manager = None
+
+        # Fallback-путь выполняет и другие очистки; заглушаем их
+        app._cleanup_api_server = MagicMock()
+        app._cleanup_scheduler = MagicMock()
+        app._cleanup_tray = MagicMock()
+        app._stop_active_recording = MagicMock()
+        app._save_config = MagicMock()
+
+        app._cleanup()
+
+        assert app._webhook_notifier.detach_calls == 1
+        assert app._websocket_manager.detach_calls == 1
+
+    def test_cleanup_after_normal_shutdown_is_idempotent(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Повторная очистка после shutdown не падает и не дублирует detach."""
+        app, _ = _build_app(monkeypatch)
+        self._fresh_shutdown_manager(monkeypatch)
+
+        app._setup_graceful_shutdown()
+        assert app._shutdown_manager is not None
+        app._shutdown_manager.shutdown()
+
+        # Повторный вызов _cleanup() — вторая попытка shutdown() вернёт False
+        app._cleanup()
+
+        assert app._webhook_notifier.detach_calls == 1
+        assert app._websocket_manager.detach_calls == 1
+
+    def test_detach_does_not_fail_when_subscribers_missing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Отсутствие подписчиков не ломает очистку."""
+        app, _ = _build_app(monkeypatch)
+        app._shutdown_manager = None
+        # Имитация частичной инициализации: подписчики не созданы
+        del app._webhook_notifier
+        del app._websocket_manager
+        app._cleanup_api_server = MagicMock()
+        app._cleanup_scheduler = MagicMock()
+        app._cleanup_tray = MagicMock()
+        app._stop_active_recording = MagicMock()
+        app._save_config = MagicMock()
+
+        app._cleanup()  # Не должно бросать исключений

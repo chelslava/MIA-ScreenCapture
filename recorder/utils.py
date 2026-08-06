@@ -11,6 +11,7 @@ import platform
 import re
 import shutil
 import subprocess
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,11 @@ if TYPE_CHECKING:
 logger = get_module_logger(__name__)
 
 _MIN_FFMPEG_VERSION = (4, 0, 0)
+
+# Единый центральный каталог кэша миниатюр (#103): все миниатюры хранятся
+# в одном месте, а не разбросаны по .cache рядом с каталогами вывода.
+_THUMBNAIL_CACHE_ROOT = Path.home() / ".cache" / "mia-screencapture"
+_THUMBNAIL_SIZE = "120x68"
 
 
 @dataclass
@@ -43,23 +49,28 @@ def get_subprocess_creationflags() -> int:
     return getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def _compute_thumbnail_cache_path(video_path: Path, cache_dir: Path) -> Path:
+def _compute_thumbnail_cache_path(
+    video_path: Path, thumbnails_dir: Path
+) -> Path:
     """
     Вычислить путь к кэшированному миниатюрному изображению.
 
+    Ключ кэша строится по canonical (resolve) пути видеофайла (#103):
+    файлы с одинаковыми именами в разных каталогах не конфликтуют.
+
     Args:
         video_path: Путь к видеофайлу.
-        cache_dir: Каталог кэша.
+        thumbnails_dir: Каталог миниатюр.
 
     Returns:
-        Путь к кэшированному thumbnails/{md5(stem)}.jpg
+        Путь к thumbnails/{md5(canonical_path)}.jpg
     """
     import hashlib
 
-    # MD5 хеш от имени файла (без расширения)
-    video_stem = video_path.stem
-    video_hash = hashlib.md5(video_stem.encode("utf-8")).hexdigest()
-    return cache_dir / "thumbnails" / f"{video_hash}.jpg"
+    # MD5 хеш от canonical пути файла (полный путь, не только имя)
+    canonical_path = str(video_path.resolve())
+    video_hash = hashlib.md5(canonical_path.encode("utf-8")).hexdigest()
+    return thumbnails_dir / f"{video_hash}.jpg"
 
 
 def get_platform() -> str:
@@ -183,13 +194,16 @@ def generate_thumbnail(
     """
     Генерирует миниатюрное изображение (thumbnail) из видеофайла с помощью FFmpeg.
 
-    Миниатюра кэшируется в {cache_dir}/thumbnails/{md5(stem)}.jpg
-    и используется повторно, если файл еще не изменился.
+    Миниатюра кэшируется в {cache_dir}/thumbnails/{md5(canonical_path)}.jpg
+    и используется повторно, если файл еще не изменился. Ключ кэша строится
+    по canonical пути видеофайла, поэтому файлы с одинаковыми именами в
+    разных каталогах не конфликтуют (#103).
 
     Args:
         video_path: Путь к видеофайлу.
         cache_dir: Каталог для кэширования миниатюр.
-            По умолчанию использует {app_cache}/thumbnails/ или ~/.cache/mia-screencapture/thumbnails/
+            По умолчанию — единый центральный каталог
+            ~/.cache/mia-screencapture (#103).
 
     Returns:
         Путь к сгенерированной миниатюре (str | Path),
@@ -197,27 +211,11 @@ def generate_thumbnail(
     """
     video_path = Path(video_path)
     if not video_path.exists():
-        logger.warning("Файлvideo не найден: %s", video_path)
+        logger.warning("Файл видео не найден: %s", video_path)
         return None
 
-    # Определение cache_dir
-    if cache_dir is None:
-        # Использовать папку приложения если доступна, иначе ~/.cache/...
-        try:
-            from config import get_config
-
-            cfg = get_config()
-            # Используем настройки вывода как основу для кэша
-            if cfg.settings.output.default_path:
-                cache_dir = (
-                    Path(cfg.settings.output.default_path).parent / ".cache"
-                )
-            else:
-                cache_dir = Path.home() / ".cache" / "mia-screencapture"
-        except Exception:
-            cache_dir = Path.home() / ".cache" / "mia-screencapture"
-    else:
-        cache_dir = Path(cache_dir)
+    # Определение cache_dir: единый центральный каталог (#103)
+    cache_dir = _THUMBNAIL_CACHE_ROOT if cache_dir is None else Path(cache_dir)
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     thumbnails_dir = cache_dir / "thumbnails"
@@ -247,7 +245,7 @@ def generate_thumbnail(
 
     # Генерировать миниатюру
     try:
-        # Создать команду: ffmpeg -i video -vframes 1 -s 320x240 -f image2 thumb.jpg -y
+        # Создать команду: ffmpeg -i video -vframes 1 -s 120x68 -f image2 thumb.jpg -y
         cmd = [
             ffmpeg_path,
             "-i",
@@ -255,7 +253,7 @@ def generate_thumbnail(
             "-vframes",
             "1",
             "-s",
-            "320x240",
+            _THUMBNAIL_SIZE,
             "-f",
             "image2",
             str(cache_path),
@@ -312,6 +310,42 @@ def generate_thumbnail(
             e,
         )
         return None
+
+
+def cleanup_orphaned_thumbnails(
+    cache_dir: str | Path, existing_videos: Iterable[str | Path]
+) -> int:
+    """Удаляет миниатюры, для которых больше не существует исходного видео.
+
+    Используется после удаления видеофайлов, чтобы кэш миниатюр не рос
+    бесконечно (#103). Миниатюры, чей ключ соответствует файлу из
+    ``existing_videos``, остаются нетронутыми.
+
+    Args:
+        cache_dir: Каталог кэша, внутри которого лежит подкаталог ``thumbnails``.
+        existing_videos: Пути к видеофайлам, которые сейчас существуют.
+
+    Returns:
+        Количество удалённых миниатюр.
+    """
+    thumbnails_dir = Path(cache_dir) / "thumbnails"
+    if not thumbnails_dir.exists():
+        return 0
+
+    keep_paths = {
+        _compute_thumbnail_cache_path(Path(video), thumbnails_dir)
+        for video in existing_videos
+    }
+
+    removed = 0
+    for thumb in thumbnails_dir.glob("*.jpg"):
+        if thumb not in keep_paths:
+            try:
+                thumb.unlink()
+                removed += 1
+            except OSError as e:
+                logger.warning("Не удалось удалить миниатюру %s: %s", thumb, e)
+    return removed
 
 
 def get_executable_path(executable_name: str) -> str | None:
@@ -866,20 +900,6 @@ _FFPROBE_TIMEOUT_SECONDS = 30.0
 _FFMPEG_REPAIR_TIMEOUT_SECONDS = 600.0
 
 
-def _validate_path_safe(path: Path, base_dir: Path) -> None:
-    """
-    Проверяет, что путь находится внутри base_dir (защита от path traversal #106).
-
-    Raises:
-        ValueError: Если путь выходит за пределы base_dir.
-    """
-    resolved = path.resolve()
-    if not resolved.is_relative_to(base_dir):
-        raise ValueError(
-            f"Path traversal detected: {path}. Allowed only inside {base_dir}/"
-        )
-
-
 @dataclass
 class VideoIntegrityResult:
     """Результат проверки целостности видеофайла через ffprobe (#46)."""
@@ -949,9 +969,6 @@ def verify_video_integrity(
     Returns:
         Результат проверки: валидность, длительность, кодек, разрешение.
     """
-    # Проверка path traversal (#106)
-    _validate_path_safe(file_path, Path.cwd() / "recordings")
-
     if not file_path.exists():
         return VideoIntegrityResult(valid=False, error="Файл не найден")
 
@@ -1031,9 +1048,6 @@ def attempt_repair_video(
     Returns:
         Результат восстановления.
     """
-    # Проверка path traversal (#106)
-    _validate_path_safe(file_path, Path.cwd() / "recordings")
-
     if not file_path.exists():
         return RepairResult(repaired=False, error="Файл не найден")
 

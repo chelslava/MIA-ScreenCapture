@@ -278,7 +278,7 @@ class CaptureView(QWidget):
         self._window_status_label.setText(_WINDOWS_EMPTY_TEXT)
         Theme.apply_style(
             self._window_status_label,
-            f"color: {Theme.COLORS['warning']};",
+            f"color: {Theme.color('warning')};",
         )
         self._window_combo.setEnabled(False)
 
@@ -289,7 +289,7 @@ class CaptureView(QWidget):
         )
         Theme.apply_style(
             self._window_status_label,
-            f"color: {Theme.COLORS['danger']};",
+            f"color: {Theme.color('danger')};",
         )
         self._window_combo.setEnabled(False)
 

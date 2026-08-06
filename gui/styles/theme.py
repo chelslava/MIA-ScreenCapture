@@ -21,7 +21,7 @@ def _srgb_to_linear(c: float) -> float:
     c = max(0.0, min(1.0, c))
     if c <= 0.04045:
         return c / 12.92
-    return ((c + 0.055) / 1.055) ** 2.4
+    return float(((c + 0.055) / 1.055) ** 2.4)
 
 
 def _relative_luminance(r: int, g: int, b: int) -> float:
@@ -89,6 +89,14 @@ class ColorPalette:
     accent: str
     accent_hover: str
     selection: str
+    # Семантические статусные цвета, специфичные для темы (#104).
+    # Каждый цвет проходит WCAG AA ≥4.5:1 на background И surface этой
+    # палитры (светлые темы — тёмные тона, тёмные — светлые).
+    danger: str
+    warning: str
+    success: str
+    info: str
+    muted: str
 
 
 LIGHT_PALETTE = ColorPalette(
@@ -100,6 +108,11 @@ LIGHT_PALETTE = ColorPalette(
     accent="#0078D4",
     accent_hover="#106EBE",
     selection="#A3D4F0",  # WCAG AA: 3.1:1 ✓ (was 1.8:1 ✗)
+    danger="#B91C1C",  # 6.5:1 на белом ✓
+    warning="#8A5A00",  # 5.9:1 на белом ✓
+    success="#166534",  # 7.1:1 на белом ✓
+    info="#1D4ED8",  # 6.7:1 на белом ✓
+    muted="#52525B",  # 7.7:1 на белом ✓
 )
 
 BLUE_PALETTE = ColorPalette(
@@ -111,6 +124,11 @@ BLUE_PALETTE = ColorPalette(
     accent="#005AC1",
     accent_hover="#0846A3",
     selection="#A0B8D6",  # WCAG AA: 3.2:1 ✓ (was 2.5:1 ✗)
+    danger="#B91C1C",  # 5.6:1 на фоне blue ✓
+    warning="#8A5A00",  # 5.1:1 на фоне blue ✓
+    success="#166534",  # 6.1:1 на фоне blue ✓
+    info="#1D4ED8",  # 5.8:1 на фоне blue ✓
+    muted="#52525B",  # 6.7:1 на фоне blue ✓
 )
 
 DARK_PALETTE = ColorPalette(
@@ -122,6 +140,11 @@ DARK_PALETTE = ColorPalette(
     accent="#007ACC",
     accent_hover="#1C97EA",
     selection="#3D6B99",  # WCAG AA: 3.1:1 ✓ (was 2.3:1 ✗)
+    danger="#F98080",  # 6.7:1 на #1E1E1E ✓
+    warning="#FBBF24",  # 10.0:1 на #1E1E1E ✓
+    success="#4ADE80",  # 9.6:1 на #1E1E1E ✓
+    info="#60A5FA",  # 6.6:1 на #1E1E1E ✓
+    muted="#A0A0A0",  # 6.4:1 на #1E1E1E ✓
 )
 
 DARK_CONTRAST_PALETTE = ColorPalette(
@@ -133,6 +156,11 @@ DARK_CONTRAST_PALETTE = ColorPalette(
     accent="#3FB6FF",
     accent_hover="#6FCBFF",
     selection="#1F6FB2",
+    danger="#FF8A8A",  # 9.3:1 на #000000 ✓
+    warning="#FFC233",  # 13.0:1 на #000000 ✓
+    success="#5CD68A",  # 11.4:1 на #000000 ✓
+    info="#73B6F7",  # 9.4:1 на #000000 ✓
+    muted="#B0B0B0",  # 9.7:1 на #000000 ✓
 )
 
 THEME_REGISTRY: dict[str, ColorPalette] = {
@@ -322,6 +350,11 @@ def build_stylesheet(palette: ColorPalette) -> str:
     """
 
 
+# Текущая активная палитра (обновляется в apply_theme).
+# Используется Theme.COLORS/status_style для выбора семантических цветов.
+_active_palette: ColorPalette = LIGHT_PALETTE
+
+
 def apply_theme(app: object, mode: str) -> str:
     """
     Применить тему к приложению.
@@ -333,28 +366,51 @@ def apply_theme(app: object, mode: str) -> str:
     Returns:
         Фактически применённый ключ темы из `THEME_REGISTRY`.
     """
+    global _active_palette
     resolved = resolve_theme(mode)
     palette = get_palette(resolved)
+    _active_palette = palette
     set_stylesheet = getattr(app, "setStyleSheet", None)
     if callable(set_stylesheet):
         set_stylesheet(build_stylesheet(palette))
     return resolved
 
 
+def get_active_palette() -> ColorPalette:
+    """Вернуть палитру текущей активной темы (для тестов и семантики)."""
+    return _active_palette
+
+
 class Theme:
     """Единый источник базовых style helpers для GUI."""
 
-    COLORS = {
-        "danger": "#dc2626",  # WCAG AA: 6.3:1 (light), 4.6:1 (dark) ✓
-        "warning": "#ca8a04",  # WCAG AA: 4.8:1 (light), 4.9:1 (dark) ✓ (was 3.2:1 ✗)
-        "success": "#16a34a",  # WCAG AA: 4.6:1 (light), 6.1:1 (dark) ✓
-        "info": "#2563eb",  # WCAG AA: 5.6:1 (light), 7.1:1 (dark) ✓
-        "muted": "#6b7280",  # WCAG AA: 6.4:1 (light), 5.0:1 (dark) ✓
+    # Значения по умолчанию для светлой темы (используются до первого
+    # apply_theme). Реальные значения зависят от активной палитры (#104).
+    COLORS: dict[str, str] = {
+        "danger": LIGHT_PALETTE.danger,
+        "warning": LIGHT_PALETTE.warning,
+        "success": LIGHT_PALETTE.success,
+        "info": LIGHT_PALETTE.info,
+        "muted": LIGHT_PALETTE.muted,
     }
 
     # Единая шкала отступов для layout.setContentsMargins()/setSpacing().
     MARGIN = 4
     SPACING = 6
+
+    @classmethod
+    def color(cls, tone: str) -> str:
+        """
+        Вернуть семантический цвет для текущей активной темы.
+
+        Args:
+            tone: Один из ключей семантических цветов
+                (danger/warning/success/info/muted).
+
+        Returns:
+            HEX-цвет из активной палитры (или светлый fallback).
+        """
+        return getattr(_active_palette, tone, cls.COLORS.get(tone, ""))
 
     @classmethod
     def title_style(cls) -> str:
@@ -364,12 +420,12 @@ class Theme:
     @classmethod
     def secondary_text_style(cls) -> str:
         """Стиль вторичного текста и подписи."""
-        return f"color: {cls.COLORS['muted']};"
+        return f"color: {cls.color('muted')};"
 
     @classmethod
     def secondary_hint_style(cls) -> str:
         """Стиль вторичного служебного текста меньшего размера."""
-        return f"color: {cls.COLORS['muted']}; font-size: 11px;"
+        return f"color: {cls.color('muted')}; font-size: 11px;"
 
     @classmethod
     def status_style(cls, tone: str) -> str:
@@ -379,7 +435,7 @@ class Theme:
         Args:
             tone: Один из ключей `COLORS`.
         """
-        color = cls.COLORS.get(tone, cls.COLORS["muted"])
+        color = cls.color(tone) or cls.COLORS.get(tone, cls.COLORS["muted"])
         return f"font-weight: bold; color: {color};"
 
     @classmethod

@@ -7,6 +7,7 @@
 """
 
 import threading
+import time
 from unittest.mock import patch
 
 from recorder.audio_recorder import AudioRecorder, AudioState
@@ -100,3 +101,40 @@ class TestAudioRecorderWriterStopEvent:
             recorder.stop()
 
         assert recorder._writer_stop_event.is_set()
+
+
+class TestAudioRecorderRecoveryShutdown:
+    """Тесты прерывания ожидания восстановления при shutdown."""
+
+    def test_shutdown_interrupts_recovery_backoff(self) -> None:
+        """Shutdown немедленно прерывает длительный recovery backoff."""
+        recorder = AudioRecorder()
+        recorder._state = AudioState.RECORDING
+        recorder._last_recovery_time = time.time()
+        recorder._recovery_backoff_delays = [60.0]
+        wait_started = threading.Event()
+        result: list[bool] = []
+        original_wait = recorder._shutdown_event.wait
+
+        def observed_wait(timeout: float | None = None) -> bool:
+            wait_started.set()
+            return original_wait(timeout)
+
+        with patch.object(
+            recorder._shutdown_event,
+            "wait",
+            side_effect=observed_wait,
+        ):
+            recovery_thread = threading.Thread(
+                target=lambda: result.append(
+                    recorder._attempt_recovery(OSError("device error"))
+                )
+            )
+            recovery_thread.start()
+            assert wait_started.wait(timeout=1.0)
+
+            recorder._shutdown_event.set()
+            recovery_thread.join(timeout=1.0)
+
+        assert not recovery_thread.is_alive()
+        assert result == [False]
