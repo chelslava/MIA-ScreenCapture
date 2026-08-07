@@ -15,13 +15,12 @@ jobs:
   unit-tests:
     name: Unit Tests (Windows, Python ${{ matrix.python-version }})
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       UV_LINK_MODE: copy
       UV_CACHE_DIR: ${{ github.workspace }}\\.uv-cache
       TEMP: ${{ github.workspace }}\\tests\\.local_tmp\\system
@@ -50,18 +49,17 @@ jobs:
           New-Item -ItemType Directory -Force -Path "tests\.local_tmp\pytest\unit" | Out-Null
 
       - name: Run unit tests
-        run: uv run pytest tests/unit/ -v --tb=short --basetemp=tests/.local_tmp/pytest/unit
+        run: uv run pytest tests/unit/ -v --tb=short --timeout=120 --basetemp=tests/.local_tmp/pytest/unit
 
   integration-tests:
     name: Integration Tests (Windows, Python ${{ matrix.python-version }})
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       UV_LINK_MODE: copy
       UV_CACHE_DIR: ${{ github.workspace }}\\.uv-cache
       TEMP: ${{ github.workspace }}\\tests\\.local_tmp\\system
@@ -90,14 +88,13 @@ jobs:
           New-Item -ItemType Directory -Force -Path "tests\.local_tmp\pytest\integration" | Out-Null
 
       - name: Run integration tests
-        run: uv run pytest tests/integration/ -v --tb=short --basetemp=tests/.local_tmp/pytest/integration
+        run: uv run pytest tests/integration/ -v --tb=short --timeout=180 --basetemp=tests/.local_tmp/pytest/integration
 
   quality:
     name: Lint & Type Check (Windows, Python 3.11)
     runs-on: windows-latest
     timeout-minutes: 15
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       UV_LINK_MODE: copy
       UV_CACHE_DIR: ${{ github.workspace }}\\.uv-cache
 
@@ -133,7 +130,6 @@ jobs:
     needs: [unit-tests, integration-tests]
     timeout-minutes: 15
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       UV_LINK_MODE: copy
       UV_CACHE_DIR: ${{ github.workspace }}\\.uv-cache
       TEMP: ${{ github.workspace }}\\tests\\.local_tmp\\system
@@ -162,7 +158,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "tests\.local_tmp\pytest\coverage" | Out-Null
 
       - name: Run tests with coverage
-        run: uv run pytest tests/unit/ --basetemp=tests/.local_tmp/pytest/coverage --cov=. --cov-report=xml --cov-report=json --cov-report=term-missing --cov-fail-under=60
+        run: uv run pytest tests/unit/ --basetemp=tests/.local_tmp/pytest/coverage --timeout=120 --cov=. --cov-report=xml --cov-report=json --cov-report=term-missing --cov-fail-under=60
 
       - name: Gate diff coverage for changed Python files
         run: |
@@ -185,7 +181,6 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 10
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       UV_LINK_MODE: copy
       UV_CACHE_DIR: ${{ github.workspace }}\\.uv-cache
 

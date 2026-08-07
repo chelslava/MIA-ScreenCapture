@@ -226,7 +226,7 @@ class RateLimiterStatePersistence:
 
         with self._save_lock:
             try:
-                result = atomic_write_json(self.state_file, data)
+                result = atomic_write_json(self.state_file, data, fsync=False)
 
                 if result:
                     backup_path = self._get_backup_path()
@@ -295,7 +295,7 @@ class RateLimiterStatePersistence:
                 data = schema.model_dump()
                 RateLimiterStateSchema.model_validate(data)
 
-                result = atomic_write_json(self.state_file, data)
+                result = atomic_write_json(self.state_file, data, fsync=False)
 
                 if result:
                     backup_path = self._get_backup_path()

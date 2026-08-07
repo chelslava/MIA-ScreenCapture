@@ -231,7 +231,9 @@ def _check_permissions(path: Path, expected_mode: int) -> None:
         pass  # stat-ошибка не критична
 
 
-def atomic_write_json(path: Path, data: Any, *, mode: int = 0o600) -> bool:
+def atomic_write_json(
+    path: Path, data: Any, *, mode: int = 0o600, fsync: bool = True
+) -> bool:
     """
     Атомарная запись JSON в файл через временный файл в той же директории.
 
@@ -239,6 +241,11 @@ def atomic_write_json(path: Path, data: Any, *, mode: int = 0o600) -> bool:
         path: Путь к целевому файлу
         data: Данные для записи (будут сериализованы в JSON)
         mode: Права на файл после записи (по умолчанию 0o600)
+        fsync: Сбрасывать ли данные на диск (os.fsync) перед заменой файла.
+            Для транзиентного состояния (например, rate limiter) можно
+            отключить — на Windows CI os.fsync иногда блокируется
+            надолго из-за антивирусного сканирования, а os.replace
+            и так гарантирует атомарность замены.
 
     Returns:
         True если запись успешна, False в противном случае
@@ -258,7 +265,8 @@ def atomic_write_json(path: Path, data: Any, *, mode: int = 0o600) -> bool:
             temp_path = Path(tmp_file.name)
             json.dump(data, tmp_file, indent=2, ensure_ascii=False)
             tmp_file.flush()
-            os.fsync(tmp_file.fileno())
+            if fsync:
+                os.fsync(tmp_file.fileno())
 
         os.replace(temp_path, path)
         temp_path = None  # os.replace удалил temp, больше не нужно
