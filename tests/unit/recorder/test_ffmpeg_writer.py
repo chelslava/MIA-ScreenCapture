@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import recorder.ffmpeg_writer as ffmpeg_writer_module
+from core.event_bus import RecordingEventType
 from recorder.ffmpeg_writer import FFmpegVideoWriter
 
 
@@ -1156,6 +1157,74 @@ class TestRetryWithBackoff:
         assert writer.is_corrupted is True
         assert process.stdin.write.call_count == 2
         recovery_mock.assert_called_once()
+
+
+class TestFFmpegVideoWriterRecoveryEvents:
+    """Публикация событий восстановления FFmpeg в event_bus (#75)."""
+
+    def _make_writer(
+        self, event_bus: MagicMock, **kwargs: object
+    ) -> FFmpegVideoWriter:
+        return FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+            event_bus=event_bus,
+            **kwargs,
+        )
+
+    def test_attempt_recovery_publishes_error_when_limit_exceeded(
+        self,
+    ) -> None:
+        """Исчерпание попыток восстановления публикует ERROR в event_bus."""
+        from recorder.ffmpeg_writer import RecordingEvent
+
+        event_bus = MagicMock()
+        writer = self._make_writer(
+            event_bus,
+            max_recovery_attempts=3,
+        )
+        writer._recovery_count = 3  # лимит уже исчерпан
+
+        result = writer._attempt_recovery()
+
+        assert result is False
+        event_bus.publish.assert_called_once()
+        published = event_bus.publish.call_args.args[0]
+        assert isinstance(published, RecordingEvent)
+        assert published.event_type is RecordingEventType.ERROR
+        assert published.payload == {
+            "type": "ffmpeg_crash",
+            "message": "FFmpeg crash, all recovery attempts failed",
+        }
+
+    def test_attempt_recovery_publishes_warning_during_attempt(
+        self, monkeypatch
+    ) -> None:
+        """Попытка восстановления публикует WARNING, а не ERROR."""
+        event_bus = MagicMock()
+        writer = self._make_writer(
+            event_bus,
+            max_recovery_attempts=3,
+        )
+        writer._recovery_count = 0
+
+        # Первая попытка должна завершиться неудачей открытия нового
+        # сегмента — так код пройдёт по ветке WARNING до ERROR.
+        monkeypatch.setattr(
+            writer, "_open_process", MagicMock(return_value=False)
+        )
+
+        result = writer._attempt_recovery()
+
+        assert result is False
+        published_types = [
+            call.args[0].event_type
+            for call in event_bus.publish.call_args_list
+        ]
+        assert RecordingEventType.WARNING in published_types
+        assert RecordingEventType.ERROR in published_types
 
 
 class TestFFmpegVideoWriterDiskSpace:
