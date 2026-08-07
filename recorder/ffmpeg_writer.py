@@ -60,7 +60,11 @@ def retry_with_backoff(
     policy: RetryPolicy,
 ) -> _T:
     """
-    Повторяет вызов func при возникновении OSError.
+    Повторяет вызов func при возникновении OSError или RuntimeError.
+
+    RuntimeError считается временной ошибкой записи в pipe FFmpeg
+    (например, отсоединение буфера или сбой подсистемы ввода-вывода),
+    поэтому такие ошибки тоже обрабатываются повторными попытками.
 
     Args:
         func: Функция без аргументов, возвращающая результат.
@@ -70,7 +74,8 @@ def retry_with_backoff(
         Результат успешного вызова func.
 
     Raises:
-        OSError: Исключение, которое не удалось обработать.
+        OSError: Исключение ввода-вывода, которое не удалось обработать.
+        RuntimeError: Ошибка выполнения, которую не удалось обработать.
     """
     attempt = 0
     delay = policy.initial_delay_s
@@ -78,7 +83,7 @@ def retry_with_backoff(
     while True:
         try:
             return func()
-        except OSError as e:
+        except (OSError, RuntimeError) as e:
             attempt += 1
             if attempt >= policy.max_attempts:
                 raise
@@ -763,7 +768,18 @@ class FFmpegVideoWriter:
                 continue
             except Exception as e:
                 logger.error("Ошибка записи кадра: %s", e)
-                return False
+                if self.is_opened:
+                    # Процесс жив, но запись стабильно не проходит по
+                    # не-I/O причине (например, повреждён буфер кадра).
+                    # Восстановление FFmpeg не устранит причину —
+                    # помечаем файл повреждённым, чтобы не потерять
+                    # запись молча.
+                    self._is_corrupted = True
+                    self._terminate_process_safely()
+                    return False
+                # Процесс мёртв — следующая итерация цикла попробует
+                # восстановить запись в новый сегмент.
+                continue
 
         self._is_corrupted = True
         self._terminate_process_safely()

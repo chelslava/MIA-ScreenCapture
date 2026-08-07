@@ -812,6 +812,53 @@ class TestRetryWithBackoff:
         assert call_count == 1
         assert sleep_calls == []
 
+    def test_retries_on_runtimeerror_and_succeeds(self, monkeypatch) -> None:
+        """RuntimeError из pipe FFmpeg обрабатывается повторной попыткой (#84)."""
+        from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
+
+        sleep_calls: list[float] = []
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep",
+            lambda s: sleep_calls.append(s),
+        )
+
+        call_count = 0
+
+        def fn() -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("pipe detached")
+            return "ok"
+
+        result = retry_with_backoff(
+            fn, RetryPolicy(max_attempts=3, initial_delay_s=0.1)
+        )
+        assert result == "ok"
+        assert call_count == 2
+        assert len(sleep_calls) == 1
+
+    def test_raises_runtimeerror_after_all_attempts_exhausted(
+        self, monkeypatch
+    ) -> None:
+        """RuntimeError пробрасывается после исчерпания всех попыток (#84)."""
+        from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
+
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep", lambda s: None
+        )
+
+        call_count = 0
+
+        def fn() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise RuntimeError("pipe broken")
+
+        with pytest.raises(RuntimeError, match="pipe broken"):
+            retry_with_backoff(fn, RetryPolicy(max_attempts=3))
+        assert call_count == 3
+
     def test_delay_capped_at_max_delay(self, monkeypatch) -> None:
         from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
 
@@ -990,6 +1037,125 @@ class TestRetryWithBackoff:
         assert result is False
         assert writer.is_corrupted is True
         assert process.stdin.write.call_count == 2
+
+    def test_write_marks_corrupted_on_runtime_error_with_alive_process(
+        self, monkeypatch
+    ) -> None:
+        """write() помечает corrupted при RuntimeError, если процесс жив (#84)."""
+        import numpy as np
+
+        from recorder.ffmpeg_writer import FFmpegVideoWriter, RetryPolicy
+
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep", lambda s: None
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.threading, "Thread", _ImmediateThread
+        )
+
+        process = MagicMock()
+        process.stdin = MagicMock()
+        process.stdin.write.side_effect = RuntimeError("pipe detached")
+        process.stderr = io.StringIO("")
+        process.poll.return_value = None
+        process.wait.return_value = None
+        process.returncode = 0
+
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_ffmpeg_path",
+            MagicMock(return_value=r"C:\ffmpeg.exe"),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            MagicMock(return_value=process),
+        )
+
+        policy = RetryPolicy(max_attempts=2, initial_delay_s=0.0)
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+            retry_policy=policy,
+        )
+        assert writer.open() is True
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is False
+        assert writer.is_corrupted is True
+        assert process.stdin.write.call_count == 2
+
+    def test_write_attempts_recovery_on_runtime_error_when_process_died(
+        self, monkeypatch
+    ) -> None:
+        """write() пробует восстановление при RuntimeError, если процесс умер (#84)."""
+        import numpy as np
+
+        from recorder.ffmpeg_writer import FFmpegVideoWriter, RetryPolicy
+
+        monkeypatch.setattr(
+            "recorder.ffmpeg_writer.time.sleep", lambda s: None
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.threading, "Thread", _ImmediateThread
+        )
+
+        process = MagicMock()
+        process.stdin = MagicMock()
+        process.stdin.write.side_effect = RuntimeError("pipe broken")
+        process.stderr = io.StringIO("")
+        process.poll.return_value = None
+        process.wait.return_value = None
+        process.returncode = 0
+
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "get_ffmpeg_path",
+            MagicMock(return_value=r"C:\ffmpeg.exe"),
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess,
+            "Popen",
+            MagicMock(return_value=process),
+        )
+
+        policy = RetryPolicy(max_attempts=2, initial_delay_s=0.0)
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+            retry_policy=policy,
+        )
+        assert writer.open() is True
+
+        # Переопределяем poll() ПОСЛЕ open(), чтобы не сбить
+        # последовательность вызовов во время записи. Процесс жив на
+        # попытках записи, но умирает к моменту проверки в except-ветке —
+        # следующая итерация цикла должна попробовать восстановление.
+        poll_results = iter([None, None, None, 1, 1])
+        process.poll.side_effect = lambda: next(poll_results)
+
+        recovery_mock = MagicMock(return_value=False)
+        monkeypatch.setattr(writer, "_attempt_recovery", recovery_mock)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is False
+        assert writer.is_corrupted is True
+        assert process.stdin.write.call_count == 2
+        recovery_mock.assert_called_once()
 
 
 class TestFFmpegVideoWriterDiskSpace:
