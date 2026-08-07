@@ -75,7 +75,7 @@ dev = [
     "pytest-timeout>=2.2.0",
 
     # Code Quality
-    "ruff>=0.1.0",
+    "ruff>=0.15.0,<0.16",
     "mypy>=1.5.0",
     "pre-commit>=3.5.0",
 ]
@@ -252,7 +252,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.11.0",
     "pytest-timeout>=2.2.0",
-    "ruff>=0.1.0",
+    "ruff>=0.15.0,<0.16",
     "mypy>=1.5.0",
     "pre-commit>=3.5.0",
 ]
