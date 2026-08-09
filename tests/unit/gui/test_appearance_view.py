@@ -111,3 +111,38 @@ class TestAppearanceView:
             view._hotkeys_btn._accessible_name
             == "Открыть список горячих клавиш"
         )
+
+    def test_minimize_to_tray_checkbox_present(
+        self, qapp: QApplication
+    ) -> None:
+        """Чекбокс «Сворачивать в трей» должен присутствовать."""
+        view = AppearanceView()
+
+        assert view._minimize_to_tray_checkbox is not None
+
+    def test_minimize_to_tray_changed_emitted_on_toggle(
+        self, qapp: QApplication
+    ) -> None:
+        """Переключение чекбокса должно эмитить minimize_to_tray_changed."""
+        view = AppearanceView()
+        received: list[bool] = []
+        view.minimize_to_tray_changed.connect(received.append)
+
+        # Вызов handler напрямую (т.к. setChecked в моках не эмитит сигнал)
+        view._on_minimize_to_tray_toggled(True)
+        view._on_minimize_to_tray_toggled(False)
+
+        assert received == [True, False]
+
+    def test_set_minimize_to_tray_no_signal(self, qapp: QApplication) -> None:
+        """set_minimize_to_tray не должна эмитить сигнал (защита от циклов)."""
+        view = AppearanceView()
+        received: list[bool] = []
+        view.minimize_to_tray_changed.connect(received.append)
+
+        view.set_minimize_to_tray(True)
+        view.set_minimize_to_tray(False)
+
+        # Состояние виджета обновлено, но сигнал не отправлен
+        assert received == []
+        assert not view._minimize_to_tray_checkbox.isChecked()

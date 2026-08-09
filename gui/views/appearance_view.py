@@ -2,11 +2,13 @@
 Представление настроек внешнего вида
 =====================================
 
-Компонент UI для выбора темы оформления приложения.
+Компонент UI для выбора темы оформления приложения и прочих
+UI-preference (поведение закрытия окна, горячие клавиши).
 """
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QPushButton,
@@ -32,10 +34,13 @@ class AppearanceView(QWidget):
 
     Содержит:
     - Выбор темы оформления (системная или одна из тем `THEME_LABELS`).
+    - Чекбокс «Сворачивать в трей при закрытии» (`minimize_to_tray`).
+    - Кнопку вызова экрана горячих клавиш.
     """
 
     theme_changed = pyqtSignal(str)
     hotkeys_requested = pyqtSignal()
+    minimize_to_tray_changed = pyqtSignal(bool)
 
     def __init__(self, parent: QWidget | None = None):
         """
@@ -62,6 +67,19 @@ class AppearanceView(QWidget):
         )
         group_layout.addWidget(self._theme_combo)
 
+        self._minimize_to_tray_checkbox = QCheckBox(
+            "Сворачивать в трей при закрытии"
+        )
+        self._minimize_to_tray_checkbox.setToolTip(
+            "Если включено, крестик закрытия главного окна сворачивает "
+            "приложение в системный трей (запись продолжается). "
+            "Выход доступен через меню иконки трея."
+        )
+        self._minimize_to_tray_checkbox.toggled.connect(
+            self._on_minimize_to_tray_toggled
+        )
+        group_layout.addWidget(self._minimize_to_tray_checkbox)
+
         self._hotkeys_btn = QPushButton("Горячие клавиши")
         self._hotkeys_btn.clicked.connect(self._on_hotkeys_clicked)
         group_layout.addWidget(self._hotkeys_btn)
@@ -85,10 +103,46 @@ class AppearanceView(QWidget):
             "Показывает экран со всеми горячими клавишами приложения.",
             "Открывает список горячих клавиш.",
         )
+        apply_accessible_metadata(
+            self._minimize_to_tray_checkbox,
+            "Сворачивать в трей при закрытии",
+            "Если включено, закрытие окна сворачивает приложение в "
+            "системный трей вместо завершения процесса.",
+            "Переключите для изменения поведения крестика окна.",
+        )
 
     def _on_hotkeys_clicked(self) -> None:
         """Обработка клика по кнопке открытия списка горячих клавиш."""
         self.hotkeys_requested.emit()
+
+    def _on_minimize_to_tray_toggled(self, checked: bool) -> None:
+        """Обработка переключения чекбокса «сворачивать в трей»."""
+        logger.info(f"minimize_to_tray изменено: {checked}")
+        self.minimize_to_tray_changed.emit(bool(checked))
+
+    def set_minimize_to_tray(self, enabled: bool) -> None:
+        """Установить состояние чекбокса без отправки сигнала.
+
+        Использует прямое присваивание атрибута вместо ``setChecked``, чтобы
+        избежать эмита ``toggled``. Это безопасно, так как bool-значение
+        идемпотентно (повторная установка того же значения — это no-op).
+
+        Args:
+            enabled: Текущее значение настройки ``minimize_to_tray``.
+        """
+        # Используем blockSignals только если он есть (в тестах моки
+        # не всегда предоставляют этот метод на всех классах).
+        checkbox = self._minimize_to_tray_checkbox
+        block_signals = getattr(checkbox, "blockSignals", None)
+        if callable(block_signals):
+            block_signals(True)
+            try:
+                checkbox.setChecked(bool(enabled))
+            finally:
+                block_signals(False)
+        else:
+            # В тест-среде setChecked в моках не эмитит сигнал
+            checkbox.setChecked(bool(enabled))
 
     def _on_theme_index_changed(self, index: int) -> None:
         """Обработка выбора пункта темы."""

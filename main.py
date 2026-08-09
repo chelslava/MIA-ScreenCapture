@@ -1356,10 +1356,35 @@ class VideoRecorderApp:
             self._main_window.activateWindow()
 
     def _handle_close_requested(self, event) -> None:
-        """Обработка запроса закрытия окна через сигнал."""
+        """Обработка запроса закрытия окна через сигнал.
+
+        Параметр ``event`` может быть как самим QCloseEvent, так и
+        словарём ``{"event": QCloseEvent, "force_minimize_to_tray": bool}``
+        (см. MainWindow.closeEvent — явный выбор «свернуть» при активной
+        записи, #94/#90).
+        """
         config = get_config()
 
-        if config.settings.minimize_to_tray and self._tray_icon:
+        # Приводим сигнал к единому виду.
+        force_minimize_to_tray = False
+        if isinstance(event, dict):
+            force_minimize_to_tray = bool(
+                event.get("force_minimize_to_tray", False)
+            )
+            event = event.get("event")
+
+        if event is None:
+            return
+
+        # Решаем, сворачивать ли в трей:
+        # 1) Явный запрос пользователя из диалога главного окна
+        #    (force_minimize_to_tray=True).
+        # 2) Глобальная настройка ``minimize_to_tray``.
+        should_minimize = bool(config.settings.minimize_to_tray)
+        if force_minimize_to_tray:
+            should_minimize = True
+
+        if should_minimize and self._tray_icon:
             event.ignore()
             if self._main_window:
                 self._main_window.hide()
@@ -1367,7 +1392,7 @@ class VideoRecorderApp:
                 "MIA-ScreenCapture", "Свернуто в трей"
             )
         else:
-            # Если minimize_to_tray=False, завершаем приложение
+            # minimize_to_tray=False И нет явного «свернуть» — полный выход.
             self._quit_app()
 
     def _setup_graceful_shutdown(self) -> None:

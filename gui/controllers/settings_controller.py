@@ -256,6 +256,29 @@ class SettingsController:
         self._config.settings.theme = mode
         self._config.save()
 
+    def get_minimize_to_tray(self) -> bool:
+        """Получить настройку «сворачивать в трей при закрытии».
+
+        Returns:
+            True, если приложение должно сворачиваться в трей при закрытии
+            окна, False — если закрытие окна приводит к полному выходу.
+        """
+        return bool(self._config.settings.minimize_to_tray)
+
+    def set_minimize_to_tray(self, enabled: bool) -> None:
+        """Установить и немедленно сохранить настройку minimize_to_tray.
+
+        Как тема и ширина сайдбара — UI-preference, сохраняется сразу
+        (#94: пользователь должен мочь управлять поведением закрытия окна
+        без правки config.json/API).
+
+        Args:
+            enabled: Сворачивать в трей (True) или завершать приложение
+                (False) при закрытии главного окна.
+        """
+        self._config.settings.minimize_to_tray = bool(enabled)
+        self._config.save()
+
     def get_sidebar_width(self) -> int:
         """
         Получить сохранённую ширину боковой панели из конфигурации.

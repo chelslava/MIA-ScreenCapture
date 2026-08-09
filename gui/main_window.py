@@ -685,6 +685,9 @@ class MainWindow(QMainWindow):
         self._appearance_view.hotkeys_requested.connect(
             self._show_hotkeys_view
         )
+        self._appearance_view.minimize_to_tray_changed.connect(
+            self._on_minimize_to_tray_changed
+        )
         self.stop_operation_finished.connect(self._on_stop_operation_finished)
         self.dependency_check_completed.connect(
             self._on_dependency_check_completed
@@ -1053,6 +1056,11 @@ class MainWindow(QMainWindow):
             self._settings_controller.get_theme_mode()
         )
 
+        # Поведение закрытия окна (сворачивание в трей)
+        self._appearance_view.set_minimize_to_tray(
+            self._settings_controller.get_minimize_to_tray()
+        )
+
         # Ширина боковой панели
         self._apply_sidebar_width(
             self._settings_controller.get_sidebar_width()
@@ -1165,6 +1173,10 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             apply_theme(app, mode)
+
+    def _on_minimize_to_tray_changed(self, enabled: bool) -> None:
+        """Обработка переключения «сворачивать в трей при закрытии»."""
+        self._settings_controller.set_minimize_to_tray(enabled)
 
     def _show_hotkeys_view(self) -> None:
         """Показать немодальный экран со списком горячих клавиш."""
@@ -2250,7 +2262,33 @@ class MainWindow(QMainWindow):
             return
 
     def closeEvent(self, event) -> None:
-        """Обработка события закрытия окна."""
+        """Обработка события закрытия окна.
+
+        Логика свёртывания в трей и выхода делегирована
+        ``VideoRecorderApp._handle_close_requested`` (main.py):
+        поведение определяется настройкой ``minimize_to_tray``.
+        Во время активной записи здесь показывается расширенный
+        диалог выбора действия (#94/#90).
+        """
+        # Если запись активна, предлагаем явный выбор действия,
+        # чтобы пользователь мог предпочесть сворачивание выходу.
+        if self._state.is_recording():
+            choice = self._ask_close_action_while_recording()
+            if choice == "cancel":
+                event.ignore()
+                return
+            if choice == "tray":
+                # force_minimize_to_tray=True заставляет main.py
+                # скрыть окно независимо от minimize_to_tray.
+                self.close_requested.emit(
+                    {"event": event, "force_minimize_to_tray": True}
+                )
+                return
+            if choice == "stop_and_exit":
+                self._stop_recording()
+                # Дальнейшая обработка через штатный путь,
+                # чтобы graceful shutdown корректно завершил работу.
+
         # Сначала эмитируем сигнал для внешней обработки
         self.close_requested.emit(event)
 
@@ -2258,28 +2296,48 @@ class MainWindow(QMainWindow):
         if not event.isAccepted():
             return
 
-        # Стандартная обработка закрытия
-        if self._state.is_recording():
-            reply = QMessageBox.question(
-                self,
-                "Запись в процессе",
-                "Запись в процессе. Остановить и сохранить?",
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No
-                | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
-            )
-
-            if reply == QMessageBox.StandardButton.Yes:
-                self._stop_recording()
-            elif reply == QMessageBox.StandardButton.Cancel:
-                event.ignore()
-                return
-
         self._settings_controller.save_settings()
         self._update_timer.stop()
         self._thread_tracker.join_all()
         event.accept()
+
+    def _ask_close_action_while_recording(self) -> str:
+        """Диалог выбора действия при закрытии во время записи.
+
+        Returns:
+            Одно из: ``"tray"``, ``"stop_and_exit"``, ``"cancel"``.
+        """
+        box = QMessageBox(self)
+        box.setWindowTitle("Запись в процессе")
+        box.setText("Запись активна. Что сделать?")
+        box.setInformativeText(
+            "Сворачивание в трей продолжит запись в фоне. "
+            "Для выхода будет остановлена и сохранена текущая запись."
+        )
+        box.setIcon(QMessageBox.Icon.Question)
+
+        tray_button = box.addButton(
+            "Свернуть в трей", QMessageBox.ButtonRole.AcceptRole
+        )
+        exit_button = box.addButton(
+            "Остановить запись и выйти",
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        cancel_button = box.addButton(
+            "Отмена", QMessageBox.ButtonRole.RejectRole
+        )
+
+        box.setDefaultButton(tray_button)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked is tray_button:
+            return "tray"
+        if clicked is exit_button:
+            return "stop_and_exit"
+        if clicked is cancel_button:
+            return "cancel"
+        return "cancel"
 
     # === Публичные методы для API ===
 

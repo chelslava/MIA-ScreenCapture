@@ -327,3 +327,61 @@ class TestGetOutputPath:
         controller.state.output.default_path = ""
         result = controller.get_output_path()
         assert result.name.endswith(".mp4")
+
+
+class TestMinimizeToTray:
+    """Тесты настройки «сворачивать в трей при закрытии» (#94)."""
+
+    @pytest.fixture
+    def config(self) -> MagicMock:
+        """Мок ConfigManager с minimize_to_tray по умолчанию."""
+        cfg = MagicMock(spec=ConfigManager)
+        cfg.settings.minimize_to_tray = True
+        cfg.save = MagicMock(return_value=True)
+        return cfg
+
+    @pytest.fixture
+    def controller(self, config: MagicMock) -> SettingsController:
+        """Контроллер поверх мока конфигурации."""
+        return SettingsController(config=config)
+
+    def test_get_minimize_to_tray_default_true(
+        self, controller: SettingsController
+    ) -> None:
+        """При конфиге minimize_to_tray=True контроллер возвращает True."""
+        assert controller.get_minimize_to_tray() is True
+
+    def test_get_minimize_to_tray_when_disabled(
+        self, config: MagicMock
+    ) -> None:
+        """При выключенной настройке контроллер возвращает False."""
+        config.settings.minimize_to_tray = False
+        controller = SettingsController(config=config)
+
+        assert controller.get_minimize_to_tray() is False
+
+    def test_set_minimize_to_tray_persists(
+        self, controller: SettingsController, config: MagicMock
+    ) -> None:
+        """set_minimize_to_tray сохраняет значение и вызывает save()."""
+        controller.set_minimize_to_tray(False)
+
+        assert config.settings.minimize_to_tray is False
+        config.save.assert_called()
+
+    def test_set_minimize_to_tray_true(
+        self, controller: SettingsController, config: MagicMock
+    ) -> None:
+        """set_minimize_to_tray(True) записывает True в конфиг."""
+        controller.set_minimize_to_tray(True)
+
+        assert config.settings.minimize_to_tray is True
+        config.save.assert_called()
+
+    def test_set_minimize_to_tray_coerces_to_bool(
+        self, controller: SettingsController, config: MagicMock
+    ) -> None:
+        """set_minimize_to_tray принудительно приводит к bool."""
+        controller.set_minimize_to_tray(1)  # type: ignore[arg-type]
+
+        assert config.settings.minimize_to_tray is True
