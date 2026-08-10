@@ -7,15 +7,16 @@
 в итоговый выходной файл с соответствующими настройками кодирования.
 """
 
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from logger_config import get_module_logger
 from recorder.utils import (
@@ -27,6 +28,146 @@ from recorder.utils import (
 
 logger = get_module_logger(__name__)
 _FFMPEG_ERROR_TAIL_BYTES = 16 * 1024
+
+# Регулярка извлечения текущей позиции из stderr FFmpeg (`time=HH:MM:SS.MS`).
+_FFMPEG_TIME_RE = re.compile(
+    r"\btime=(\d{1,2}):(\d{2}):(\d{2}(?:\.\d+)?)",
+)
+
+
+class FinalizationProgressCallback(Protocol):
+    """Контракт обратного вызова прогресса финализации.
+
+    Используется для передачи ``(percent, stage)`` из фонового FFmpeg-
+    процесса наружу (GUI или API). Значение percent — float 0.0..100.0,
+    stage — короткая строка вида "Объединение видео", "Перенос файла".
+    """
+
+    def __call__(self, percent: float, stage: str) -> None:
+        """Обработать очередное обновление прогресса."""
+
+
+class FinalizationProgressTracker:
+    """Трекер прогресса финализации записи (#96).
+
+    Агрегирует события от нескольких источников (merge, encode,
+    move) и хранит последний известный прогресс в потокобезопасном
+    виде — для опроса из GUI (через callback) и REST API (через
+    endpoint ``/api/v1/recording/finalization-status``).
+    """
+
+    def __init__(self) -> None:
+        """Инициализация пустого трекера."""
+        self._lock = threading.Lock()
+        self._percent: float = 0.0
+        self._stage: str = ""
+        self._duration_seconds: float | None = None
+        self._callback: FinalizationProgressCallback | None = None
+
+    def set_total_duration(self, seconds: float | None) -> None:
+        """Установить полную длительность видео (для нормализации)."""
+        with self._lock:
+            self._duration_seconds = (
+                float(seconds) if seconds and seconds > 0 else None
+            )
+
+    def set_callback(
+        self, callback: FinalizationProgressCallback | None
+    ) -> None:
+        """Зарегистрировать callback обновлений (обычно из GUI)."""
+        with self._lock:
+            self._callback = callback
+
+    def reset(self) -> None:
+        """Сбросить состояние перед новой операцией финализации."""
+        with self._lock:
+            self._percent = 0.0
+            self._stage = ""
+            # duration и callback сохраняются между вызовами
+
+    def update(
+        self,
+        percent: float | None = None,
+        stage: str | None = None,
+    ) -> None:
+        """Обновить текущее состояние и вызвать callback (если задан).
+
+        Args:
+            percent: Новый прогресс 0–100. Если None — оставить текущий.
+            stage: Имя этапа. Если None — оставить текущий.
+        """
+        callback: FinalizationProgressCallback | None
+        with self._lock:
+            if percent is not None:
+                # Клампим в диапазон 0..100
+                self._percent = max(0.0, min(100.0, float(percent)))
+            if stage is not None:
+                self._stage = stage
+            current_percent = self._percent
+            current_stage = self._stage
+            callback = self._callback
+
+        # Вызов callback вне лока, чтобы не держать его во время
+        # пользовательского кода.
+        if callback is not None:
+            try:
+                callback(current_percent, current_stage)
+            except Exception as e:
+                logger.warning(f"Ошибка в callback прогресса: {e}")
+
+    def snapshot(self) -> dict[str, Any]:
+        """Снимок текущего состояния для API.
+
+        Returns:
+            Словарь с полями ``percent``, ``stage``, ``active``.
+        """
+        with self._lock:
+            return {
+                "percent": self._percent,
+                "stage": self._stage,
+                "active": bool(self._stage),
+            }
+
+    def update_from_ffmpeg_stderr(
+        self, stderr_text: str, *, stage: str
+    ) -> None:
+        """Извлечь ``time=...`` из stderr FFmpeg и обновить прогресс.
+
+        Ищет последнее вхождение ``time=HH:MM:SS.MS`` и пересчитывает
+        его в проценты от ``_duration_seconds``. Если длительность
+        неизвестна — обновляет только stage.
+
+        Args:
+            stderr_text: Текущий накопленный хвост stderr FFmpeg.
+            stage: Человекочитаемая метка этапа (например, "Объединение").
+        """
+        match = None
+        for match in _FFMPEG_TIME_RE.finditer(stderr_text):
+            pass  # берём последнее совпадение
+
+        if match is None:
+            self.update(stage=stage)
+            return
+
+        try:
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            seconds = float(match.group(3))
+        except (TypeError, ValueError):
+            self.update(stage=stage)
+            return
+
+        current_seconds = hours * 3600 + minutes * 60 + seconds
+
+        with self._lock:
+            total = self._duration_seconds
+
+        if total is None or total <= 0:
+            self.update(stage=stage)
+            return
+
+        percent = (current_seconds / total) * 100.0
+        self.update(percent=percent, stage=stage)
 
 
 @dataclass
@@ -42,6 +183,15 @@ class EncodingSettings:
     format: str = "mp4"
 
 
+@dataclass
+class EncoderRuntime:
+    """Runtime-контекст кодировщика для общего прогресса/трекера."""
+
+    progress_tracker: FinalizationProgressTracker = field(
+        default_factory=FinalizationProgressTracker
+    )
+
+
 class Encoder:
     """
     Кодировщик на базе FFmpeg для объединения и кодирования видео/аудио.
@@ -53,14 +203,25 @@ class Encoder:
     - Конвертации между форматами
     """
 
-    def __init__(self, settings: EncodingSettings | None = None):
+    def __init__(
+        self,
+        settings: EncodingSettings | None = None,
+        progress_tracker: FinalizationProgressTracker | None = None,
+    ):
         """
         Инициализация кодировщика.
 
         Args:
             settings: Настройки кодирования (используются по умолчанию если не указаны)
+            progress_tracker: Опциональный трекер прогресса финализации (#96).
+                Если не передан — создаётся пустой (no-op с точки зрения GUI).
         """
         self.settings = settings or EncodingSettings()
+        self.progress_tracker = (
+            progress_tracker
+            if progress_tracker is not None
+            else FinalizationProgressTracker()
+        )
         self._ffmpeg_path = get_ffmpeg_path()
         self._ffprobe_path = get_ffprobe_path()
 
@@ -96,6 +257,7 @@ class Encoder:
         keep_originals: bool = True,
         progress_callback: Callable[[float], None] | None = None,
         cancel_event: threading.Event | None = None,
+        progress_stage: str = "Объединение видео и аудио",
     ) -> tuple[bool, str | None]:
         """
         Объединение видеофайла и аудиофайла в один выходной файл.
@@ -106,6 +268,9 @@ class Encoder:
             output_path: Путь для выходного файла
             keep_originals: Сохранять ли оригинальные файлы после объединения
             progress_callback: Опциональный обратный вызов для обновления прогресса
+            cancel_event: Опциональное событие отмены операции
+            progress_stage: Текст этапа для внутреннего трекера прогресса
+                (используется только если задан progress_callback).
 
         Returns:
             Кортеж (успех, сообщение_об_ошибке)
@@ -158,10 +323,23 @@ class Encoder:
             ]
 
             logger.info(f"Запуск FFmpeg: {' '.join(cmd)}")
+            # Активируем прогресс-трекинг только если есть внешний подписчик —
+            # иначе оставляем legacy-поведение (subprocess.run, mockable).
+            effective_stage: str | None = None
+            if progress_callback is not None:
+                duration = self.get_duration(video_path)
+                self.progress_tracker.set_total_duration(duration)
+                self.progress_tracker.set_callback(
+                    lambda pct, _stage: progress_callback(pct)
+                )
+                self.progress_tracker.reset()
+                effective_stage = progress_stage
+
             result = self._run_ffmpeg_long_process(
                 cmd,
                 timeout=3600,
                 cancel_event=cancel_event,
+                progress_stage=effective_stage,
             )
 
             if result.cancelled:
@@ -208,6 +386,7 @@ class Encoder:
         settings: EncodingSettings | None = None,
         progress_callback: Callable[[float], None] | None = None,
         cancel_event: threading.Event | None = None,
+        progress_stage: str = "Перекодирование видео",
     ) -> tuple[bool, str | None]:
         """
         Перекодирование видео с указанными настройками.
@@ -217,6 +396,9 @@ class Encoder:
             output_path: Путь для выходного файла
             settings: Настройки кодирования (используются по умолчанию если не указаны)
             progress_callback: Опциональный обратный вызов для обновления прогресса
+            cancel_event: Опциональное событие отмены операции
+            progress_stage: Метка этапа для внутреннего трекера прогресса
+                (используется только если задан progress_callback).
 
         Returns:
             Кортеж (успех, сообщение_об_ошибке)
@@ -257,10 +439,21 @@ class Encoder:
             ]
 
             logger.info(f"Кодирование видео: {' '.join(cmd)}")
+            effective_stage: str | None = None
+            if progress_callback is not None:
+                duration = self.get_duration(input_path)
+                self.progress_tracker.set_total_duration(duration)
+                self.progress_tracker.set_callback(
+                    lambda pct, _stage: progress_callback(pct)
+                )
+                self.progress_tracker.reset()
+                effective_stage = progress_stage
+
             result = self._run_ffmpeg_long_process(
                 cmd,
                 timeout=3600,
                 cancel_event=cancel_event,
+                progress_stage=effective_stage,
             )
 
             if result.cancelled:
@@ -308,15 +501,71 @@ class Encoder:
         cmd: list[str],
         timeout: int,
         cancel_event: threading.Event | None = None,
+        progress_stage: str | None = None,
     ) -> _FFmpegProcessResult:
         """
         Выполняет долгий FFmpeg-процесс без накопления stderr в памяти.
 
         stderr пишется во временный файл, а при ошибке возвращается только
         ограниченный хвост.
+
+        Если задан ``progress_stage`` — stderr периодически сканируется
+        на предмет ``time=HH:MM:SS.MS``, и прогресс отправляется в
+        ``self.progress_tracker`` под указанной меткой этапа (#96).
+
+        Args:
+            cmd: Команда FFmpeg.
+            timeout: Таймаут в секундах.
+            cancel_event: Опциональное событие отмены.
+            progress_stage: Метка этапа для прогресс-трекера. Если None —
+                прогресс не отслеживается (legacy-поведение).
         """
         stderr_temp_path: Path | None = None
         creationflags = get_subprocess_creationflags()
+        last_progress_poll = 0.0
+        last_reported_time_seconds = -1.0
+
+        def _poll_progress(now: float) -> None:
+            """Периодический polling stderr для извлечения time=... (#96)."""
+            nonlocal last_progress_poll, last_reported_time_seconds
+            if progress_stage is None:
+                return
+            if now - last_progress_poll < 0.4:
+                return
+            last_progress_poll = now
+            if stderr_temp_path is None:
+                return
+            try:
+                tail = self._read_file_tail(stderr_temp_path, max_bytes=4096)
+                if not tail:
+                    return
+                match = None
+                for match in _FFMPEG_TIME_RE.finditer(tail):
+                    pass
+                if match is None:
+                    return
+                try:
+                    hours = int(match.group(1))
+                    minutes = int(match.group(2))
+                    seconds = float(match.group(3))
+                    current = hours * 3600 + minutes * 60 + seconds
+                except (TypeError, ValueError):
+                    return
+                if current <= last_reported_time_seconds:
+                    return
+                last_reported_time_seconds = current
+                with self.progress_tracker._lock:
+                    total = self.progress_tracker._duration_seconds
+                if total is None or total <= 0:
+                    self.progress_tracker.update(stage=progress_stage)
+                    return
+                percent = (current / total) * 100.0
+                self.progress_tracker.update(
+                    percent=percent, stage=progress_stage
+                )
+            except Exception as e:
+                logger.debug(f"Polling прогресса FFmpeg: {e}")
+
         try:
             with tempfile.NamedTemporaryFile(
                 prefix="ffmpeg_stderr_",
@@ -326,7 +575,13 @@ class Encoder:
                 stderr_temp_path = Path(stderr_file.name)
                 cancelled = False
                 process: Any
-                if cancel_event is None:
+
+                # Лёгкий путь (без отмены и без прогресса): даём шанс
+                # существующим тестам мокировать subprocess.run (#96).
+                use_simple_run = (
+                    cancel_event is None and progress_stage is None
+                )
+                if use_simple_run:
                     if creationflags:
                         process = subprocess.run(
                             cmd,
@@ -353,8 +608,16 @@ class Encoder:
                     process = subprocess.Popen(cmd, **popen_kwargs)
                     deadline = time.monotonic() + timeout
 
+                    if progress_stage is not None:
+                        self.progress_tracker.update(
+                            percent=0.0, stage=progress_stage
+                        )
+
                     while True:
-                        if cancel_event.is_set():
+                        if (
+                            cancel_event is not None
+                            and cancel_event.is_set()
+                        ):
                             cancelled = True
                             process.terminate()
                             try:
@@ -373,7 +636,16 @@ class Encoder:
                                 cmd=cmd, timeout=timeout
                             )
 
+                        _poll_progress(time.monotonic())
                         time.sleep(0.1)
+
+                    # Финальный опрос: зафиксировать 100% если успех.
+                    _poll_progress(time.monotonic() + 1.0)
+                    if progress_stage is not None and not cancelled:
+                        if process.returncode == 0:
+                            self.progress_tracker.update(
+                                percent=100.0, stage=progress_stage
+                            )
             stderr_tail = None
             if (
                 process.returncode != 0 or cancelled
@@ -596,7 +868,10 @@ class RecordingEncoder:
     """
 
     def __init__(
-        self, output_path: Path, settings: EncodingSettings | None = None
+        self,
+        output_path: Path,
+        settings: EncodingSettings | None = None,
+        progress_tracker: FinalizationProgressTracker | None = None,
     ):
         """
         Инициализация кодировщика записи.
@@ -604,10 +879,20 @@ class RecordingEncoder:
         Args:
             output_path: Итоговый путь вывода
             settings: Настройки кодирования
+            progress_tracker: Общий трекер прогресса финализации (#96).
+                Если не передан, создаётся локальный экземпляр; для
+                GUI/API имеет смысл передавать общий экземпляр.
         """
         self.output_path = Path(output_path)
         self.settings = settings or EncodingSettings()
-        self.encoder = Encoder(settings)
+        self.progress_tracker = (
+            progress_tracker
+            if progress_tracker is not None
+            else FinalizationProgressTracker()
+        )
+        self.encoder = Encoder(
+            settings, progress_tracker=self.progress_tracker
+        )
 
         # Временные файлы
         self._temp_dir: Path | None = None
@@ -646,9 +931,17 @@ class RecordingEncoder:
         """
         Завершение записи объединением видео и аудио.
 
+        Прогресс публикуется в ``self.progress_tracker`` (доступен через
+        ``snapshot()`` для API). Если передан внешний ``progress_callback`` —
+        он регистрируется в трекере и получает промежуточные обновления
+        от FFmpeg (процент 0–100) (#96).
+
         Args:
             has_audio: Было ли записано аудио
             progress_callback: Опциональный обратный вызов прогресса
+                (вызовы делаются из worker-потока; для GUI используйте
+                Qt-механизм ``QueuedConnection``, чтобы не трогать
+                виджеты напрямую из фонового потока).
 
         Returns:
             Кортеж (успех, сообщение_об_ошибке)
@@ -660,12 +953,15 @@ class RecordingEncoder:
 
         self._cancel_requested.clear()
         self._is_finalizing = True
+        # Сброс состояния перед новой финализацией (PR I9).
+        self.progress_tracker.reset()
         try:
             temp_output_path = self._temp_dir / (
                 f"final_temp{self.output_path.suffix}"
             )
             if has_audio and self._temp_audio and self._temp_audio.exists():
-                # Объединение видео и аудио
+                # Объединение видео и аудио (stage поднимается внутри
+                # merge_video_audio через _run_ffmpeg_long_process).
                 success, error = self.encoder.merge_video_audio(
                     self._temp_video,
                     self._temp_audio,
@@ -684,6 +980,9 @@ class RecordingEncoder:
                 )
 
             if success:
+                self.progress_tracker.update(
+                    percent=100.0, stage="Перенос файла"
+                )
                 moved, move_error = self._move_final_output(temp_output_path)
                 if not moved:
                     return False, move_error

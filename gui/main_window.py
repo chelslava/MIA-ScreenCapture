@@ -64,6 +64,9 @@ from gui.styles.theme import Theme, apply_theme
 from gui.views.appearance_view import AppearanceView
 from gui.views.audio_view import AudioView
 from gui.views.capture_view import CaptureView
+from gui.views.finalization_progress_dialog import (
+    FinalizationProgressDialog,
+)
 from gui.views.output_view import OutputView
 from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_indicator import RecordingIndicatorOverlay
@@ -172,6 +175,9 @@ class MainWindow(QMainWindow):
         self._tab_navigation_order: list[QWidget] = []
         self._ws_controller: WebSocketClientController | None = None
         self._recording_indicator = RecordingIndicatorOverlay()
+        # Диалог прогресса финализации создаётся лениво,
+        # чтобы не требовать QApplication слишком рано
+        self._finalization_dialog: FinalizationProgressDialog | None = None
         self._readiness_request_id = 0
         self._latest_readiness_snapshot: ReadinessSnapshot | None = None
         self._latest_readiness_inputs: dict[str, object] | None = None
@@ -1580,12 +1586,43 @@ class MainWindow(QMainWindow):
         self._toggle_pause()
         return self.get_status()
 
+    def _get_finalization_dialog(self) -> FinalizationProgressDialog:
+        """Получить диалог прогресса финализации (создать при необходимости)."""
+        if self._finalization_dialog is None:
+            dialog = FinalizationProgressDialog(
+                tracker=self._recording_controller.progress_tracker,
+                parent=self,
+            )
+            dialog.cancel_requested.connect(self._cancel_stop_operation)
+            self._finalization_dialog = dialog
+        return self._finalization_dialog
+
+    def _show_finalization_progress_dialog(self) -> None:
+        """Показать диалог прогресса финализации записи."""
+        try:
+            dialog = self._get_finalization_dialog()
+        except Exception as e:
+            # Без GUI (например, в тестах) пропускаем диалог
+            logger.debug(f"Не удалось создать диалог финализации: {e}")
+            return
+        dialog.start()
+
+    def _hide_finalization_progress_dialog(self) -> None:
+        """Скрыть диалог прогресса финализации записи."""
+        dialog = self._finalization_dialog
+        if dialog is None:
+            return
+        try:
+            dialog.stop()
+        except Exception as e:
+            logger.debug(f"Не удалось остановить диалог финализации: {e}")
+
     def _begin_stop_operation(self) -> None:
         """Запустить остановку записи в фоне."""
         self._stop_operation_in_progress = True
         self._update_ui_state(RecordingStatus.STOPPING)
         self.status_bar.showMessage("Финализация записи...", 0)
-
+        self._show_finalization_progress_dialog()
         self._stop_operation_thread = threading.Thread(
             target=self._stop_recording_worker,
             daemon=True,
@@ -1629,6 +1666,7 @@ class MainWindow(QMainWindow):
         self._stop_operation_in_progress = False
         self._stop_operation_thread = None
         self.stop_btn.setText("Стоп")
+        self._hide_finalization_progress_dialog()
 
         if output_path is not None:
             self._on_recording_stopped(output_path)

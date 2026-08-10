@@ -118,6 +118,7 @@ def _build_window():
     window._latest_readiness_inputs = None
     window._stop_operation_in_progress = False
     window._stop_operation_thread = None
+    window._finalization_dialog = None
     window.stop_operation_finished = MagicMock()
     from gui.main_window import _ThreadTracker
 

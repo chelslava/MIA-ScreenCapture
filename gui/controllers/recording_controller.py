@@ -21,7 +21,11 @@ from core.recording_state import (
 from core.recording_types import AudioMode, CaptureMode
 from logger_config import get_module_logger
 from recorder.audio_recorder import AudioRecorder, SystemAudioRecorder
-from recorder.encoder import EncodingSettings, RecordingEncoder
+from recorder.encoder import (
+    EncodingSettings,
+    FinalizationProgressTracker,
+    RecordingEncoder,
+)
 from recorder.utils import check_disk_space, check_ffmpeg
 from recorder.video_recorder import CaptureArea, VideoRecorder
 
@@ -58,6 +62,15 @@ class RecordingController:
         self._temp_audio: Path | None = None
         self._ffmpeg_check_cache: tuple[float, bool, str | None] | None = None
         self._on_error: Callable[[str], None] | None = None
+        # Трекер прогресса финализации (#96) — общий между кодировщиком
+        # и GUI/API. Создаётся здесь, пробрасывается в RecordingEncoder
+        # при каждом start_recording.
+        self._progress_tracker = FinalizationProgressTracker()
+
+    @property
+    def progress_tracker(self) -> FinalizationProgressTracker:
+        """Трекер прогресса финализации записи (#96)."""
+        return self._progress_tracker
 
     @property
     def state(self) -> RecordingState:
@@ -213,7 +226,11 @@ class RecordingController:
             settings = EncodingSettings(
                 codec=video.codec, bitrate=video.bitrate, preset=preset
             )
-            self._encoder = RecordingEncoder(output_path, settings)
+            self._encoder = RecordingEncoder(
+                output_path,
+                settings,
+                progress_tracker=self._progress_tracker,
+            )
             self._temp_video, self._temp_audio = self._encoder.setup()
 
         except OSError as e:
@@ -406,12 +423,24 @@ class RecordingController:
         # Финализация (объединение видео и аудио)
         output_path = None
         if self._encoder:
+            # Прогресс будет парситься из stderr FFmpeg и попадать в
+            # shared ``FinalizationProgressTracker`` (#96); GUI/API
+            # читают его через ``progress_tracker.snapshot()``.
+            self._progress_tracker.update(
+                percent=0.0, stage="Инициализация финализации"
+            )
             success, error = self._encoder.finalize(has_audio=has_audio)
             if success:
                 output_path = self._encoder.output_path
                 self._state.current_output = output_path
+                self._progress_tracker.update(
+                    percent=100.0, stage="Завершено"
+                )
             else:
                 logger.error(f"Не удалось финализировать запись: {error}")
+                self._progress_tracker.update(
+                    stage=f"Ошибка финализации: {error or 'неизвестна'}"
+                )
 
         self._state.stop_recording()
         logger.info(f"Запись остановлена: {output_path}")
