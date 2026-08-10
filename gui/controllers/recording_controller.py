@@ -433,9 +433,7 @@ class RecordingController:
             if success:
                 output_path = self._encoder.output_path
                 self._state.current_output = output_path
-                self._progress_tracker.update(
-                    percent=100.0, stage="Завершено"
-                )
+                self._progress_tracker.update(percent=100.0, stage="Завершено")
             else:
                 logger.error(f"Не удалось финализировать запись: {error}")
                 self._progress_tracker.update(

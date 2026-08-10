@@ -614,10 +614,7 @@ class Encoder:
                         )
 
                     while True:
-                        if (
-                            cancel_event is not None
-                            and cancel_event.is_set()
-                        ):
+                        if cancel_event is not None and cancel_event.is_set():
                             cancelled = True
                             process.terminate()
                             try:

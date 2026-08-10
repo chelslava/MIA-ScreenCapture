@@ -1,6 +1,7 @@
 """
 Тесты для FinalizationProgressTracker.
 """
+
 import threading
 from unittest.mock import MagicMock
 
@@ -38,7 +39,9 @@ class TestFinalizationProgressTrackerBasics:
         assert snapshot["percent"] == 0.0
         assert snapshot["active"] is False
         # duration остаётся
-        tracker.update_from_ffmpeg_stderr("frame=1 time=00:01:00.00", stage="X")
+        tracker.update_from_ffmpeg_stderr(
+            "frame=1 time=00:01:00.00", stage="X"
+        )
         assert tracker.snapshot()["percent"] == 50.0
 
     def test_set_total_duration(self) -> None:
