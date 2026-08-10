@@ -7,6 +7,7 @@
 """
 
 import shutil
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -66,6 +67,11 @@ class RecordingController:
         # и GUI/API. Создаётся здесь, пробрасывается в RecordingEncoder
         # при каждом start_recording.
         self._progress_tracker = FinalizationProgressTracker()
+        # Защита от одновременных вызовов stop_recording (#88):
+        # GUI и API могут конкурентно триггерить stop — без блокировки
+        # возможен двойной finalize и порча файла.
+        self._stop_lock = threading.Lock()
+        self._stop_in_progress = False
 
     @property
     def progress_tracker(self) -> FinalizationProgressTracker:
@@ -376,9 +382,28 @@ class RecordingController:
         """
         Остановка записи и финализация.
 
+        Reentrancy guard (#88): повторный вызов из другого потока (GUI + API)
+        во время активной остановки возвращает None без двойной финализации.
+
         Returns:
-            Путь к выходному файлу или None при ошибке
+            Путь к выходному файлу или None при ошибке / повторном вызове.
         """
+        with self._stop_lock:
+            if self._stop_in_progress:
+                logger.warning(
+                    "stop_recording вызван повторно во время активной "
+                    "остановки — возврат None без двойной финализации"
+                )
+                return None
+            self._stop_in_progress = True
+        try:
+            return self._do_stop_recording()
+        finally:
+            with self._stop_lock:
+                self._stop_in_progress = False
+
+    def _do_stop_recording(self) -> Path | None:
+        """Внутренняя реализация stop_recording с guard-ом в stop_recording."""
         if not self._state.is_recording() and not self._state.is_paused():
             return None
 

@@ -593,3 +593,87 @@ class TestRecordingControllerErrorCallback:
         )
 
         video_recorder.set_callbacks.assert_called_once_with(on_error=callback)
+
+
+class TestStopRecordingReentrancy:
+    """Reentrancy guard для stop_recording (#88)."""
+
+    def test_concurrent_stop_returns_none_for_second_caller(self) -> None:
+        """Двойной вызов stop_recording — второй возвращает None сразу."""
+        import threading
+        import time as time_module
+
+        ctrl = RecordingController()
+        ctrl.state.status = RecordingStatus.RECORDING
+        video_recorder = MagicMock()
+
+        def slow_stop() -> bool:
+            time_module.sleep(0.05)
+            return True
+
+        video_recorder.stop = slow_stop
+        ctrl._video_recorder = video_recorder
+        ctrl._audio_recorder = None
+        encoder = MagicMock()
+        encoder.finalize.return_value = (True, None)
+        encoder.output_path = Path("/out/test.mp4")
+        ctrl._encoder = encoder
+
+        results: list[Path | None] = []
+        done = threading.Event()
+
+        def first_caller() -> None:
+            results.append(ctrl.stop_recording())
+            done.set()
+
+        t1 = threading.Thread(target=first_caller)
+        t1.start()
+        # Убедимся, что первый caller зашёл в stop_video (sleep)
+        time_module.sleep(0.01)
+        # Второй caller должен получить None по guard
+        result2 = ctrl.stop_recording()
+        t1.join(timeout=2.0)
+
+        assert result2 is None
+
+    def test_stop_lock_released_after_normal_stop(self) -> None:
+        """После успешного stop_lock освобождён, следующий вызов не блокируется."""
+        ctrl = RecordingController()
+        ctrl.state.status = RecordingStatus.RECORDING
+        video_recorder = MagicMock()
+        video_recorder.stop.return_value = True
+        video_recorder.additional_segment_paths = []
+        ctrl._video_recorder = video_recorder
+        ctrl._audio_recorder = None
+        encoder = MagicMock()
+        encoder.finalize.return_value = (True, None)
+        encoder.output_path = Path("/out/test.mp4")
+        ctrl._encoder = encoder
+
+        first = ctrl.stop_recording()
+        assert first is not None
+
+        # Переводим в IDLE и ещё раз — должен пройти без guard-ошибки
+        ctrl.state.status = RecordingStatus.RECORDING
+        video_recorder.stop.return_value = True
+        second = ctrl.stop_recording()
+        assert second is not None
+        assert not ctrl._stop_in_progress
+
+    def test_stop_lock_released_on_exception(self) -> None:
+        """При exception в stop_recording лок всё равно освобождается."""
+        ctrl = RecordingController()
+        ctrl.state.status = RecordingStatus.RECORDING
+        video_recorder = MagicMock()
+        video_recorder.stop.side_effect = RuntimeError("Boom")
+        ctrl._video_recorder = video_recorder
+        ctrl._audio_recorder = None
+        ctrl._encoder = None
+
+        # Исключение должно прокинуться
+        import pytest
+
+        with pytest.raises(RuntimeError, match="Boom"):
+            ctrl.stop_recording()
+
+        assert not ctrl._stop_in_progress, "Guard флаг должен сбрасываться"
