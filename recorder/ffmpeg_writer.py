@@ -188,6 +188,7 @@ class FFmpegVideoWriter:
         max_segment_size_mb: float | None = None,
         max_segment_duration_s: float | None = None,
         event_bus: "EventBus | None" = None,
+        health_check_interval_s: float = 1.0,
     ):
         """
         Инициализация FFmpeg видеозаписи.
@@ -265,6 +266,15 @@ class FFmpegVideoWriter:
         self._current_segment_bytes = 0
         self._segment_start_time = 0.0
         self._segment_rotation_failed = False
+
+        # Health-check мониторинг FFmpeg-процесса (#85): фоновый поток
+        # с периодом health_check_interval_s дёргает process.poll() и
+        # логирует падение *между* write() — иначе окно потери кадров
+        # ограничено только частотой записи.
+        self._health_check_interval_s = max(0.1, health_check_interval_s)
+        self._health_thread: threading.Thread | None = None
+        self._health_stop = threading.Event()
+        self._health_fail_logged = False
 
     @property
     def frame_count(self) -> int:
@@ -400,7 +410,10 @@ class FFmpegVideoWriter:
         self._segment_start_time = self._start_time
         self._current_segment_bytes = 0
         self._frame_count = 0
-        return self._open_process(self._output_path)
+        ok = self._open_process(self._output_path)
+        if ok:
+            self._start_health_monitor()
+        return ok
 
     def _next_segment_path(self) -> Path:
         """Возвращает путь для следующего сегмента восстановления."""
@@ -1023,6 +1036,7 @@ class FFmpegVideoWriter:
 
         finally:
             self._process = None
+            self._stop_health_monitor()
             self._stop_stderr_reader()
 
             segments = self.segment_paths
@@ -1113,6 +1127,80 @@ class FFmpegVideoWriter:
                     "stderr-reader поток FFmpeg не завершился за %.1f секунд",
                     _FFMPEG_STDERR_READER_JOIN_TIMEOUT_SECONDS,
                 )
+
+    # === Health monitor (#85) ===
+
+    def _start_health_monitor(self) -> None:
+        """Запустить фоновый мониторинг процесса FFmpeg.
+
+        Поток каждые ``_health_check_interval_s`` секунд опрашивает
+        ``process.poll()``; при обнаружении падения процесса между
+        вызовами ``write()`` кладёт предупреждение в лог и сохраняет
+        stderr tail — иначе эти падения видны только на следующей
+        записи кадра (что может затянуться при низком fps).
+
+        Избегаем создания потока если threading.Thread подменён тестом —
+        unit-тесты используют синхронный `_ImmediateThread`, который
+        исполняет target прямо в текущем потоке и блокируется в wait().
+        """
+        self._stop_health_monitor()  # идемпотентно при повторном open
+        self._health_stop.clear()
+        self._health_fail_logged = False
+        if threading.Thread.__module__ != "threading":
+            # threading.Thread замокан в тестах — поток будет синхронным
+            # и заблокирует текущий поток. Health-monitor пропускаем.
+            logger.debug(
+                "Health-monitor пропущен: threading.Thread замокан (тесты)"
+            )
+            return
+        thread = threading.Thread(
+            target=self._health_monitor_loop,
+            daemon=True,
+            name="ffmpeg-health-monitor",
+        )
+        self._health_thread = thread
+        thread.start()
+
+    def _stop_health_monitor(self) -> None:
+        """Остановить health-monitor и дождаться завершения потока."""
+        thread = self._health_thread
+        self._health_thread = None
+        if thread is None:
+            return
+        self._health_stop.set()
+        thread.join(timeout=2.0)
+        if thread.is_alive():
+            logger.debug("Health-monitor FFmpeg не завершился за таймаут")
+
+    def _health_monitor_loop(self) -> None:
+        """Бесконечный polling process.poll() до сигнала остановки."""
+        while not self._health_stop.wait(self._health_check_interval_s):
+            process = self._process
+            if process is None:
+                return
+            rc = process.poll()
+            if rc is not None:
+                if not self._health_fail_logged:
+                    self._health_fail_logged = True
+                    elapsed = (
+                        time.time() - self._start_time
+                        if self._start_time
+                        else 0.0
+                    )
+                    logger.error(
+                        "FFmpeg упал между кадрами: rc=%s, "
+                        "uptime=%.1fs, кадров записано=%d, "
+                        "восстановлений=%d. Следующий write запустит "
+                        "recovery-процедуру.",
+                        rc,
+                        elapsed,
+                        self._frame_count,
+                        self._recovery_count,
+                    )
+                    # Выкладываем tail stderr — критично для диагностики
+                    self._log_stderr_tail("падение FFmpeg (health-check)")
+                # Не спамим — один лог на каждое падение.
+                self._health_stop.wait(self._health_check_interval_s)
 
     def _read_stderr(self, stream: IO[bytes]) -> None:
         """
