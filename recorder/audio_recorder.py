@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 logger = get_module_logger(__name__)
 
-_AUDIO_QUEUE_MAX_CHUNKS = 256
+_AUDIO_QUEUE_MAX_CHUNKS = 2048  # ~23с буфера при 44100Hz/2ch/1024 frames (#86)
 _AUDIO_QUEUE_GET_TIMEOUT_SECONDS = 0.1
 
 
@@ -98,6 +98,7 @@ class AudioRecorder:
         channels: int = 2,
         chunk_size: int = 1024,
         event_bus: "EventBus | None" = None,
+        audio_queue_max_chunks: int = _AUDIO_QUEUE_MAX_CHUNKS,
     ):
         """
         Инициализация аудиозаписи.
@@ -107,17 +108,24 @@ class AudioRecorder:
             channels: Количество аудиоканалов (1=моно, 2=стерео)
             chunk_size: Размер чанка аудио для буферизации
             event_bus: Опциональный event bus для публикации событий потери чанков
+            audio_queue_max_chunks: Максимальный размер очереди аудио-чанков.
+                Большие значения сглаживают пиковые задержки writer-потока
+                (#86). При 44100 Hz/2ch/1024 frames чанк ≈ 11,6 мс, так что
+                2048 чанков ≈ 23 сек буфера при полной остановке записи.
         """
         self.config = AudioConfig(
             sample_rate=sample_rate, channels=channels, chunk_size=chunk_size
         )
         self._event_bus: EventBus | None = event_bus
+        # Минимум 8 — чтобы writer мог делать первый enqueue до полного
+        # вычитания очереди; меньше — это уже broken state.
+        self._audio_queue_max_chunks = max(8, audio_queue_max_chunks)
 
         # Состояние
         self._state = AudioState.IDLE
         self._lock = threading.Lock()
         self._audio_queue: queue.Queue[tuple[bytes, int] | None] = queue.Queue(
-            maxsize=_AUDIO_QUEUE_MAX_CHUNKS
+            maxsize=self._audio_queue_max_chunks
         )
         self._record_thread: threading.Thread | None = None
         self._writer_thread: threading.Thread | None = None
