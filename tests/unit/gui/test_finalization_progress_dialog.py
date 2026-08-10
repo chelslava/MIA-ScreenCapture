@@ -19,7 +19,9 @@ def tracker() -> FinalizationProgressTracker:
     return FinalizationProgressTracker()
 
 
-def _make_dialog(tracker: FinalizationProgressTracker) -> FinalizationProgressDialog:
+def _make_dialog(
+    tracker: FinalizationProgressTracker,
+) -> FinalizationProgressDialog:
     """Создать диалог с предустановленными mock-виджетами.
 
     MockQDialog из conftest не даёт setWindowFlag/setModal — инициализируем
@@ -101,4 +103,3 @@ class TestFinalizationProgressTrackerUIContract:
         assert snapshot["percent"] == 100.0
         # Завершение финализации интерпретируется диалогом как завершение,
         # даже если active=True — покрытие через _poll_percent_100
-
