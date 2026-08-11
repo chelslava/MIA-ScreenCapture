@@ -189,6 +189,7 @@ class FFmpegVideoWriter:
         max_segment_duration_s: float | None = None,
         event_bus: "EventBus | None" = None,
         health_check_interval_s: float = 1.0,
+        enable_frame_skip: bool = False,
     ):
         """
         Инициализация FFmpeg видеозаписи.
@@ -275,6 +276,22 @@ class FFmpegVideoWriter:
         self._health_thread: threading.Thread | None = None
         self._health_stop = threading.Event()
         self._health_fail_logged = False
+
+        # Frame-skip при перегрузке (#87): при превышении целевого
+        # интервала кадра на 2× подряд — раз в max_consecutive_late_frames
+        # кадр скипнуть, чтобы не буферизировать. Пользовательский
+        # opt-in — по умолчанию совместимость (все кадры пишутся).
+        self._enable_frame_skip = enable_frame_skip
+        self._expected_frame_interval_s = 1.0 / max(fps, 1)
+        self._last_frame_write_end = 0.0
+        self._consecutive_late_frames = 0
+        self._max_consecutive_late_frames = 5
+        self._skipped_frames = 0
+
+    @property
+    def skipped_frames(self) -> int:
+        """Кадров скипнуто из-за перегрузки (#87)."""
+        return self._skipped_frames
 
     @property
     def frame_count(self) -> int:
@@ -410,6 +427,10 @@ class FFmpegVideoWriter:
         self._segment_start_time = self._start_time
         self._current_segment_bytes = 0
         self._frame_count = 0
+        # Сброс frame-skip счётчиков (#87)
+        self._last_frame_write_end = 0.0
+        self._consecutive_late_frames = 0
+        self._skipped_frames = 0
         ok = self._open_process(self._output_path)
         if ok:
             self._start_health_monitor()
@@ -724,6 +745,22 @@ class FFmpegVideoWriter:
         if self._segment_rotation_failed:
             return False
 
+        # Frame skip при перегрузке (#87): если запись стабильно отстаёт —
+        # скипаем каждый N-й кадр, чтобы не буферизировать.
+        if self._enable_frame_skip and self._consecutive_late_frames >= (
+            self._max_consecutive_late_frames
+        ):
+            self._skipped_frames += 1
+            self._consecutive_late_frames = 0
+            logger.debug(
+                "Пропуск кадра #%d из-за перегрузки "
+                "(consecutive_late=%d, threshold=%.3fс)",
+                self._frame_count,
+                self._consecutive_late_frames,
+                self._expected_frame_interval_s,
+            )
+            return True  # кадр "записан" — это скип, не ошибка
+
         if not self._disk_space_critical:
             disk_level = self._check_disk_space()
             if disk_level is DiskSpaceLevel.CRITICAL:
@@ -755,7 +792,18 @@ class FFmpegVideoWriter:
                 continue
 
             try:
+                write_start = time.time()
                 retry_with_backoff(_do_write, self._retry_policy)
+                write_end = time.time()
+                if self._enable_frame_skip:
+                    # Измеряем время записи кадра — основа для skip-решения
+                    # на следующих вызовах (#87). Late когда > 2× target.
+                    write_dt = write_end - write_start
+                    if write_dt > 2.0 * self._expected_frame_interval_s:
+                        self._consecutive_late_frames += 1
+                    else:
+                        self._consecutive_late_frames = 0
+                    self._last_frame_write_end = write_end
                 with self._lock:
                     self._frame_count += 1
                 self._current_segment_bytes += frame.nbytes
