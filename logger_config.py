@@ -7,11 +7,12 @@
 """
 
 import atexit
+import json
 import logging
 import os
 import sys
 from collections.abc import MutableMapping
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -123,12 +124,55 @@ class _DailyLogFileHandler(logging.FileHandler):
         super().emit(record)
 
 
+class JSONFormatter(logging.Formatter):
+    """Структурированный JSON-форматтер для API-логов."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        log_data: dict[str, Any] = {
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=UTC
+            ).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        for attr in (
+            "trace_id",
+            "request_id",
+            "client_ip",
+            "method",
+            "path",
+            "status_code",
+            "latency_ms",
+        ):
+            val = getattr(record, attr, None)
+            if val is not None:
+                log_data[attr] = val
+
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+
+        return json.dumps(log_data, ensure_ascii=False)
+
+
 class _ApiModuleFilter(logging.Filter):
     """Фильтр логов только для модулей API."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         normalized_path = record.pathname.replace("\\", "/").lower()
         return "/api/" in normalized_path
+
+
+def set_structured_api_logging(enabled: bool = True) -> None:
+    """Включает или выключает структурированное JSON-логирование API."""
+    global _api_file_handler
+    if _api_file_handler is not None:
+        if enabled:
+            _api_file_handler.setFormatter(JSONFormatter())
+        else:
+            _api_file_handler.setFormatter(
+                logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+            )
 
 
 def setup_logger(

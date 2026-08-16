@@ -40,6 +40,16 @@ SWAGGER_SPEC: dict[str, Any] = {
                 "description": "API ключ для аутентификации",
             }
         },
+        "headers": {
+            "X-Trace-ID": {
+                "description": "Идентификатор сквозной трассировки запроса",
+                "schema": {"type": "string"},
+            },
+            "X-Request-ID": {
+                "description": "Уникальный идентификатор HTTP-запроса",
+                "schema": {"type": "string"},
+            },
+        },
         "schemas": {
             "Error": {
                 "type": "object",

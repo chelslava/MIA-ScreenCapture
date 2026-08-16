@@ -126,6 +126,8 @@ class APISettingsSchema(BaseModel):
     webhook_enabled: bool = Field(default=False)
     # Доверять X-Forwarded-For/X-Real-IP только за доверенным reverse-proxy
     trust_proxy_headers: bool = Field(default=False)
+    # Использовать структурированные JSON-логи для API
+    structured_logs: bool = Field(default=False)
 
     @field_validator("api_key", mode="before")
     @classmethod
@@ -259,6 +261,7 @@ class APISettings:
     webhook_secret: str | None = None
     webhook_enabled: bool = False
     trust_proxy_headers: bool = False
+    structured_logs: bool = False
 
 
 @dataclass
