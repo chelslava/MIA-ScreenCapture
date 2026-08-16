@@ -13,6 +13,8 @@ from exceptions import (
     APIRateLimitError,
     APIValidationError,
     CaptureAreaError,
+    CommandQueueFullError,
+    CommandTimeoutError,
     ConfigurationError,
     ConfigValidationError,
     RecordingNotActiveError,
@@ -47,6 +49,7 @@ _API_CODE_BY_STATUS: dict[int, str] = {
     409: "conflict",
     413: "payload_too_large",
     429: "rate_limited",
+    503: "service_unavailable",
     504: "timeout",
     500: "internal_error",
 }
@@ -101,6 +104,24 @@ def map_exception_to_api_error(error: Exception) -> ErrorMappingResult:
             status_code=400,
             code="validation_error",
             message=_safe_message(error, "Некорректная область захвата"),
+        )
+
+    if isinstance(error, CommandQueueFullError):
+        return ErrorMappingResult(
+            status_code=503,
+            code="service_unavailable",
+            message=_safe_message(
+                error, "Очередь команд переполнена, повторите попытку позже"
+            ),
+            details=getattr(error, "details", None),
+        )
+
+    if isinstance(error, CommandTimeoutError):
+        return ErrorMappingResult(
+            status_code=504,
+            code="timeout",
+            message=_safe_message(error, "Таймаут выполнения команды"),
+            details=getattr(error, "details", None),
         )
 
     if isinstance(error, ConfigValidationError):
