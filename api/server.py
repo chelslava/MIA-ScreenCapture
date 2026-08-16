@@ -34,7 +34,7 @@ from api.observability import APIServerObservability
 from api.operation_store import APIOperationStore
 from api.request_lifecycle import register_request_lifecycle
 from api.runtime_models import APIOperation, IdempotencyBeginResult
-from logger_config import get_module_logger
+from logger_config import get_module_logger, set_structured_api_logging
 from version import get_version
 
 logger = get_module_logger(__name__)
@@ -125,6 +125,7 @@ class APIServer:
         server_threads: int = 4,
         api_key: str | None = None,
         trust_proxy_headers: bool = False,
+        structured_logs: bool = False,
         state_persistence: Any | None = None,
     ):
         """
@@ -138,6 +139,7 @@ class APIServer:
             trust_proxy_headers: Доверять X-Forwarded-For/X-Real-IP при
                 определении IP клиента для rate limiting (включать только
                 за доверенным reverse-proxy, см. #74)
+            structured_logs: Включить структурированные JSON-логи для API
             state_persistence: Опциональный кастомный StatePersistence для rate limiter.
                 Если не указан, используется RateLimiterStatePersistence() по умолчанию.
                 Тесты передают уникальный state_file через temp_dir fixture.
@@ -153,6 +155,7 @@ class APIServer:
         self.server_threads = max(1, int(server_threads))
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.trust_proxy_headers = trust_proxy_headers
+        self.structured_logs = structured_logs
         self.state_persistence = state_persistence
         _patch_waitress_shutdown_for_windows()
 
@@ -206,6 +209,8 @@ class APIServer:
 
         self._rate_limiter.load_state_on_init()
 
+        set_structured_api_logging(self.structured_logs)
+
         # Инициализация Flask приложения
         self.app = Flask(__name__)
 
@@ -221,7 +226,7 @@ class APIServer:
             origins=[_CORS_ALLOWED_ORIGIN_REGEX],
             methods=_CORS_ALLOWED_METHODS,
             allow_headers=_CORS_ALLOWED_HEADERS,
-            expose_headers=[_REQUEST_ID_HEADER],
+            expose_headers=[_REQUEST_ID_HEADER, "X-Trace-ID"],
             supports_credentials=False,
             vary_header=True,
         )

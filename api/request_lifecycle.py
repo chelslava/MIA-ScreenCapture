@@ -55,6 +55,7 @@ def register_request_lifecycle(
     def add_request_id_header(response: Any) -> Any:
         request_context = ensure_request_context()
         response.headers[request_id_header] = request_context.request_id
+        response.headers["X-Trace-ID"] = request_context.trace_id
 
         started_at = getattr(g, "request_started_at", None)
         latency_ms = 0.0
@@ -80,5 +81,14 @@ def register_request_lifecycle(
             latency_ms,
             request_context.request_id,
             request_context.client_ip,
+            extra={
+                "trace_id": request_context.trace_id,
+                "request_id": request_context.request_id,
+                "client_ip": request_context.client_ip,
+                "method": request.method,
+                "path": request.path,
+                "status_code": response.status_code,
+                "latency_ms": round(latency_ms, 2),
+            },
         )
         return response
