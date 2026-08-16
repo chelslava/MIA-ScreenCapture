@@ -192,8 +192,7 @@ class TestGuiLogBufferThreadSafety:
                 errors.append(e)
 
         threads = [
-            threading.Thread(target=writer, args=(f"t{j}",))
-            for j in range(10)
+            threading.Thread(target=writer, args=(f"t{j}",)) for j in range(10)
         ]
         for t in threads:
             t.start()
