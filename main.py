@@ -52,6 +52,7 @@ from config import get_config, init_config
 from core.api_runtime_manager import ApiRuntimeManager
 from core.application_facade import ApplicationFacade
 from core.application_service import ApplicationService
+from core.command_queue import CommandQueue
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
 from core.multi_recording_service import MultiRecordingService
 from core.recording_service import RecordingService
@@ -227,6 +228,7 @@ class VideoRecorderApp:
         self._multi_recording_service = MultiRecordingService(
             event_bus=self._recording_service.event_bus
         )
+        self._command_queue = CommandQueue(maxsize=50)
         self._gui_executor: MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
         self._gui_runtime_coordinator: _GuiRuntimeCoordinatorProtocol = (
@@ -943,6 +945,12 @@ class VideoRecorderApp:
             return fn()
         if self._gui_executor is None:
             raise RuntimeError("GUI executor не инициализирован")
+        if self._command_queue is not None:
+            return self._command_queue.submit_sync(
+                self._gui_executor.run_sync,
+                fn,
+                timeout=timeout,
+            )
         return self._gui_executor.run_sync(fn, timeout=timeout)
 
     def _get_status(self) -> dict[str, Any]:

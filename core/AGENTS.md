@@ -22,6 +22,7 @@
 | `recording_backend.py` | `RecordingBackend` Protocol — абстракция над физическим рекордером |
 | `api_lifecycle_manager.py` | Управление жизненным циклом API сервера |
 | `api_runtime_manager.py` | Runtime-операции API: запуск/остановка/перезапуск/настройки |
+| `command_queue.py` | `CommandQueue` — потокобезопасная очередь команд с поддержкой backpressure для передачи вызовов из API в GUI-поток |
 | `geometry.py` | Геометрические утилиты: прямоугольники, координаты, нормализация областей |
 
 ## Subdirectories
