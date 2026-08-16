@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-29 | Updated: 2026-06-23 -->
+<!-- Generated: 2026-04-29 | Updated: 2026-08-16 -->
 
 # gui/
 
@@ -16,6 +16,7 @@ PyQt6 GUI-слой приложения. Реализует MVC-паттерн: 
 | `desktop_actions.py` | `DesktopActions` — действия рабочего стола (уведомления, открытие файлов) |
 | `accessibility.py` | Accessibility атрибуты и ARIA-роли для виджетов |
 | `notifications.py` | `NotificationManager` — системные уведомления через plyer |
+| `log_buffer.py` | `GuiLogBuffer` — потокобезопасный bounded ring-buffer строк лога для GUI-вкладки API. Предотвращает утечку памяти при burst-логировании. Реализует dirty-флаг для дебаунса обновлений виджета. |
 
 ## Subdirectories
 
