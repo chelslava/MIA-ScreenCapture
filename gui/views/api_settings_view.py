@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 )
 
 from gui.accessibility import apply_accessible_metadata
+from gui.log_buffer import GuiLogBuffer
 from gui.styles.theme import Theme
 from logger_config import (
     get_api_log_dir,
@@ -36,7 +37,10 @@ from logger_config import (
 logger = get_module_logger(__name__)
 
 _LOG_REFRESH_INTERVAL_MS = 1000
-_MAX_LOG_BLOCKS = 5000
+# Максимум строк в QPlainTextEdit (жёсткое ограничение Qt-виджета).
+_MAX_LOG_BLOCKS = 2000
+# Максимум строк в in-memory ring-buffer (должен совпадать с виджетом).
+_RING_BUFFER_MAX_LINES = _MAX_LOG_BLOCKS
 _AUTO_REFRESH_PAUSED_TEXT = "Автообновление включится при открытии вкладки"
 _LOG_LOADING_TEXT = "Загрузка журнала API..."
 _LOG_EMPTY_TEXT = (
@@ -82,6 +86,9 @@ class ApiSettingsView(QWidget):
         self._server_running = False
         self._auto_refresh_enabled = False
         self._log_loaded_once = False
+        # Ring-buffer для хранения строк лога в памяти.
+        # Предотвращает неограниченный рост при burst-логировании.
+        self._log_buffer = GuiLogBuffer(max_lines=_RING_BUFFER_MAX_LINES)
 
         self.logs_load_completed.connect(self._on_logs_load_completed)
         self._setup_ui()
@@ -299,6 +306,19 @@ class ApiSettingsView(QWidget):
         """Периодическое обновление логов API."""
         self.refresh_logs()
 
+    def _flush_log_buffer_to_widget(self) -> None:
+        """Сбрасывает содержимое ring-buffer в QPlainTextEdit.
+
+        Вызывается только когда буфер помечен как dirty.  После
+        отрисовки dirty-флаг сбрасывается, чтобы избежать лишних
+        обновлений виджета.
+        """
+        if not self._log_buffer.is_dirty():
+            return
+        self._log_view.setPlainText(self._log_buffer.get_text())
+        self._log_buffer.clear_dirty()
+        self._scroll_logs_to_end()
+
     def _on_apply_clicked(self) -> None:
         """Обработка сохранения настроек."""
         self.apply_requested.emit(
@@ -414,27 +434,30 @@ class ApiSettingsView(QWidget):
         """
         Полная замена содержимого окна логов.
 
+        Данные помещаются в ring-buffer, который затем отрисовывается
+        виджетом при следующем тике таймера.
+
         Args:
             text: Текст логов.
         """
-        self._log_view.setPlainText(text)
-        self._scroll_logs_to_end()
+        self._log_buffer.clear()
+        self._log_buffer.append(text)
+        self._flush_log_buffer_to_widget()
 
     def append_log_text(self, text: str) -> None:
         """
-        Добавление текста в окно логов.
+        Добавление текста в ring-buffer логов.
+
+        Данные записываются в буфер немедленно, но виджет обновляется
+        только при наличии изменений (dirty-флаг) через таймер.
 
         Args:
             text: Текст для добавления.
         """
         if not text:
             return
-        cleaned_text = text.rstrip("\n")
-        if self._log_view.toPlainText():
-            self._log_view.appendPlainText(cleaned_text)
-        else:
-            self._log_view.setPlainText(cleaned_text)
-        self._scroll_logs_to_end()
+        self._log_buffer.append(text.rstrip("\n"))
+        self._flush_log_buffer_to_widget()
 
     def refresh_logs(self, show_loading_state: bool = False) -> None:
         """Обновление логов API из файла."""
@@ -626,7 +649,13 @@ class ApiSettingsView(QWidget):
         elif result.mode == "append":
             self.append_log_text(result.text)
 
-        self._set_log_status(result.status_message)
+        # Если накопились вытесненные строки — показать предупреждение
+        # в статусе, чтобы пользователь знал что буфер был переполнен.
+        evicted = self._log_buffer.evicted_count
+        status = result.status_message
+        if evicted:
+            status = f"{status} (вытеснено строк из буфера: {evicted})"
+        self._set_log_status(status)
 
     def _update_server_controls(self, running: bool) -> None:
         """Обновление состояния кнопок управления сервером."""
@@ -643,19 +672,25 @@ class ApiSettingsView(QWidget):
     def _show_loading_state(self) -> None:
         """Показать пользователю состояние загрузки журнала."""
         self._set_log_status(_LOG_LOADING_TEXT)
-        if not self._log_view.toPlainText():
-            self._log_view.setPlainText(_LOG_LOADING_TEXT)
+        if not self._log_buffer.get_text():
+            self._log_buffer.clear()
+            self._log_buffer.append(_LOG_LOADING_TEXT)
+            self._flush_log_buffer_to_widget()
 
     def _set_empty_state(self, message: str) -> None:
         """Показать состояние отсутствия данных."""
         self._log_loaded_once = True
-        self._log_view.setPlainText(message)
+        self._log_buffer.clear()
+        self._log_buffer.append(message)
+        self._flush_log_buffer_to_widget()
         self._set_log_status("Журнал API пуст или ещё не создан")
 
     def _set_error_state(self, message: str) -> None:
         """Показать состояние ошибки загрузки журнала."""
-        if not self._log_view.toPlainText():
-            self._log_view.setPlainText(message)
+        if not self._log_buffer.get_text():
+            self._log_buffer.clear()
+            self._log_buffer.append(message)
+            self._flush_log_buffer_to_widget()
         self._set_log_status(message, color="red")
 
     def _set_log_status(self, message: str, color: str = "gray") -> None:
