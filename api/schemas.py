@@ -156,6 +156,9 @@ class StartRecordingRequest(BaseModel):
     mic_device: int | None = Field(
         default=None, description="Индекс устройства микрофона"
     )
+    profile_id: str | None = Field(
+        default=None, description="ID профиля для применения настроек"
+    )
 
     @field_validator("rect")
     @classmethod
@@ -756,3 +759,110 @@ class WindowInfo(BaseModel):
     y: int = Field(description="Координата Y")
     width: int = Field(description="Ширина окна")
     height: int = Field(description="Высота окна")
+
+
+# Схемы профилей записи (Issue #117)
+
+
+class ProfileVideoSettingsSchema(BaseModel):
+    """Схема настроек видео в профиле."""
+
+    fps: int = Field(default=30, ge=1, le=120)
+    codec: str = Field(default="libx264")
+    bitrate: str = Field(default="2M")
+    format: str = Field(default="mp4")
+    preset: str = Field(default="medium")
+    compression: bool = Field(default=True)
+    verify_on_complete: bool = Field(default=True)
+    auto_repair_corrupted: bool = Field(default=False)
+
+
+class ProfileAudioSettingsSchema(BaseModel):
+    """Схема настроек аудио в профиле."""
+
+    record_mic: bool = Field(default=True)
+    record_system: bool = Field(default=False)
+    mic_device: str | None = Field(default=None)
+    system_device: str | None = Field(default=None)
+    sample_rate: int = Field(default=44100, ge=8000, le=192000)
+    channels: int = Field(default=2, ge=1, le=8)
+
+
+class ProfileCaptureSettingsSchema(BaseModel):
+    """Схема настроек захвата в профиле."""
+
+    area_type: Literal["full", "window", "rect"] = Field(default="full")
+    window_title: str | None = Field(default=None)
+    rect_coords: list[int] | None = Field(default=None)
+
+
+class CreateProfileRequest(BaseModel):
+    """Схема запроса создания профиля записи."""
+
+    name: str = Field(
+        ..., min_length=1, max_length=100, description="Название профиля"
+    )
+    description: str = Field(
+        default="", max_length=500, description="Описание профиля"
+    )
+    icon: str = Field(
+        default="⚙️", max_length=10, description="Иконка или эмодзи"
+    )
+    video: ProfileVideoSettingsSchema | None = Field(
+        default=None, description="Настройки видео"
+    )
+    audio: ProfileAudioSettingsSchema | None = Field(
+        default=None, description="Настройки аудио"
+    )
+    capture: ProfileCaptureSettingsSchema | None = Field(
+        default=None, description="Настройки захвата"
+    )
+    is_default: bool = Field(
+        default=False, description="Установить профилем по умолчанию"
+    )
+
+
+class UpdateProfileRequest(BaseModel):
+    """Схема запроса обновления профиля записи."""
+
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Новое название профиля",
+    )
+    description: str | None = Field(
+        default=None, max_length=500, description="Новое описание"
+    )
+    icon: str | None = Field(
+        default=None, max_length=10, description="Новая иконка"
+    )
+    video: ProfileVideoSettingsSchema | None = Field(
+        default=None, description="Новые настройки видео"
+    )
+    audio: ProfileAudioSettingsSchema | None = Field(
+        default=None, description="Новые настройки аудио"
+    )
+    capture: ProfileCaptureSettingsSchema | None = Field(
+        default=None, description="Новые настройки захвата"
+    )
+    is_default: bool | None = Field(
+        default=None, description="Сделать профилем по умолчанию"
+    )
+
+
+class ImportProfileRequest(BaseModel):
+    """Схема импорта профиля из JSON."""
+
+    schema_version: str | None = Field(
+        default=None, alias="schema", description="Версия схемы"
+    )
+    profile: dict | None = Field(default=None, description="Данные профиля")
+    name: str | None = Field(
+        default=None, description="Название профиля (при прямом импорте)"
+    )
+    description: str | None = Field(default=None)
+    icon: str | None = Field(default=None)
+    video: dict | None = Field(default=None)
+    audio: dict | None = Field(default=None)
+    capture: dict | None = Field(default=None)

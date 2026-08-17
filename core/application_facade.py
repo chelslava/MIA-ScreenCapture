@@ -149,3 +149,37 @@ class ApplicationFacade(Protocol):
     def open_api_logs_folder(self) -> None:
         """Открывает каталог логов API."""
         ...
+
+    def get_profiles(self) -> list[dict[str, Any]]:
+        """Возвращает список всех профилей записи."""
+        ...
+
+    def get_profile(self, profile_id: str) -> dict[str, Any] | None:
+        """Возвращает профиль записи по идентификатору."""
+        ...
+
+    def create_profile(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Создает новый профиль записи."""
+        ...
+
+    def update_profile(
+        self, profile_id: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Обновляет существующий профиль записи."""
+        ...
+
+    def delete_profile(self, profile_id: str) -> dict[str, Any]:
+        """Удаляет профиль записи."""
+        ...
+
+    def apply_profile(self, profile_id: str) -> dict[str, Any]:
+        """Применяет профиль записи к активной конфигурации."""
+        ...
+
+    def export_profile(self, profile_id: str) -> dict[str, Any] | None:
+        """Экспортирует профиль записи."""
+        ...
+
+    def import_profile(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Импортирует профиль записи."""
+        ...

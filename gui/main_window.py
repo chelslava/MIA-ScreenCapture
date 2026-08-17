@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, cast
 from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -68,6 +69,7 @@ from gui.views.finalization_progress_dialog import (
     FinalizationProgressDialog,
 )
 from gui.views.output_view import OutputView
+from gui.views.profile_dialog import ProfileDialog
 from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_indicator import RecordingIndicatorOverlay
 from gui.views.video_view import VideoView
@@ -207,6 +209,9 @@ class MainWindow(QMainWindow):
         # Проверка зависимостей
         self._check_dependencies()
         self._refresh_readiness_summary()
+
+        # Инициализация профилей
+        self._init_profiles()
 
         logger.info("Главное окно инициализировано")
 
@@ -474,6 +479,22 @@ class MainWindow(QMainWindow):
         # Только область захвата
         self._capture_view = CaptureView()
         layout.addWidget(self._capture_view)
+
+        # Селектор профилей записи
+        profile_layout = QHBoxLayout()
+        profile_layout.setSpacing(4)
+        profile_label = QLabel("Профиль:")
+        profile_label.setStyleSheet("font-weight: bold;")
+        self._profile_combo = QComboBox()
+        self._profile_combo.currentIndexChanged.connect(
+            self._on_profile_combo_changed
+        )
+        self._profile_manage_btn = QPushButton("⚙️ Профили...")
+        self._profile_manage_btn.clicked.connect(self._open_profile_dialog)
+        profile_layout.addWidget(profile_label)
+        profile_layout.addWidget(self._profile_combo, stretch=1)
+        profile_layout.addWidget(self._profile_manage_btn)
+        layout.addLayout(profile_layout)
 
         # Статус готовности (компактно)
         self._readiness_center_view = ReadinessCenterView()
@@ -1403,6 +1424,123 @@ class MainWindow(QMainWindow):
         resolved_action = fallback_action_map.get(action_key)
         if resolved_action is not None:
             self._handle_readiness_action(resolved_action)
+
+    # === Управление профилями записи ===
+
+    def _init_profiles(self) -> None:
+        """Инициализация списка профилей в выпадающем списке."""
+        if not hasattr(self, "_profile_combo"):
+            return
+
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        profiles = storage.list_profiles()
+
+        self._profile_combo.blockSignals(True)
+        self._profile_combo.clear()
+
+        default_index = 0
+        for i, profile in enumerate(profiles):
+            display_text = f"{profile.icon} {profile.name}"
+            self._profile_combo.addItem(display_text, profile.id)
+            if profile.is_default:
+                default_index = i
+
+        if profiles:
+            self._profile_combo.setCurrentIndex(default_index)
+
+        self._profile_combo.blockSignals(False)
+
+    def _on_profile_combo_changed(self, index: int) -> None:
+        """Обработка выбора профиля в выпадающем списке."""
+        if index < 0 or not hasattr(self, "_profile_combo"):
+            return
+
+        profile_id = self._profile_combo.itemData(index)
+        if not profile_id:
+            return
+
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        profile = storage.get_profile(profile_id)
+        if profile:
+            self.apply_profile_settings(profile)
+
+    def _open_profile_dialog(self) -> None:
+        """Открытие диалога управления профилями."""
+        dialog = ProfileDialog(parent=self)
+        dialog.profiles_changed.connect(self._init_profiles)
+        dialog.profile_applied.connect(self._on_profile_applied_from_dialog)
+        dialog.exec()
+
+    def _on_profile_applied_from_dialog(self, profile_id: str) -> None:
+        """Обработка применения профиля из диалога."""
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        profile = storage.get_profile(profile_id)
+        if profile:
+            self.apply_profile_settings(profile)
+            self._init_profiles()
+
+    def apply_profile_settings(self, profile: Any) -> None:
+        """Применяет параметры профиля к активным представлениям и состоянию."""
+        if hasattr(profile, "video") and hasattr(self, "_video_view"):
+            v = profile.video
+            self._video_view.set_fps(v.fps)
+            self._video_view.set_codec(v.codec)
+            self._video_view.set_bitrate(v.bitrate)
+            self._video_view.set_format(v.format)
+            self._video_view.set_preset(v.preset)
+
+        if hasattr(profile, "audio"):
+            a = profile.audio
+            rec_mic = getattr(a, "record_mic", True)
+            rec_sys = getattr(a, "record_system", False)
+            if rec_mic and rec_sys:
+                audio_mode = AudioMode.BOTH
+            elif rec_mic:
+                audio_mode = AudioMode.MIC
+            elif rec_sys:
+                audio_mode = AudioMode.SYSTEM
+            else:
+                audio_mode = AudioMode.NONE
+
+            self._state.set_audio_type(audio_mode)
+            if hasattr(self, "_audio_view"):
+                self._audio_view.set_audio_type(audio_mode)
+
+        if hasattr(profile, "capture") and hasattr(self, "_capture_view"):
+            c = profile.capture
+            area_type_str = getattr(c, "area_type", "full")
+            if area_type_str == "window":
+                mode = CaptureMode.WINDOW
+            elif area_type_str == "rect":
+                mode = CaptureMode.RECT
+            else:
+                mode = CaptureMode.FULL
+
+            self._capture_view.set_capture_type(mode)
+            if getattr(c, "window_title", None):
+                self._capture_view.set_window_title(c.window_title)
+            if getattr(c, "rect_coords", None):
+                self._capture_view.set_rect_coords(tuple(c.rect_coords))
+
+        if hasattr(self, "_profile_combo"):
+            self._profile_combo.blockSignals(True)
+            for i in range(self._profile_combo.count()):
+                if self._profile_combo.itemData(i) == getattr(
+                    profile, "id", None
+                ):
+                    self._profile_combo.setCurrentIndex(i)
+                    break
+            self._profile_combo.blockSignals(False)
+
+        if hasattr(self, "status_bar"):
+            name = getattr(profile, "name", "Профиль")
+            self.status_bar.showMessage(f"Применен профиль: {name}", 4000)
 
     # === Управление записью ===
 

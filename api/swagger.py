@@ -1444,6 +1444,157 @@ SWAGGER_SPEC: dict[str, Any] = {
                 },
             },
         },
+        "/api/profiles": {
+            "get": {
+                "summary": "Список профилей записи",
+                "description": "Возвращает список всех доступных профилей настроек записи",
+                "operationId": "getProfiles",
+                "responses": {
+                    "200": {
+                        "description": "Список профилей",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": True,
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            "post": {
+                "summary": "Создать профиль записи",
+                "description": "Создает новый профиль с заданными параметрами",
+                "operationId": "createProfile",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["name"],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Высокое качество",
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "60 FPS 1080p",
+                                    },
+                                    "icon": {
+                                        "type": "string",
+                                        "example": "🚀",
+                                    },
+                                    "video": {"type": "object"},
+                                    "audio": {"type": "object"},
+                                    "capture": {"type": "object"},
+                                    "is_default": {
+                                        "type": "boolean",
+                                        "example": False,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                "responses": {
+                    "201": {
+                        "description": "Профиль создан",
+                    },
+                    "400": {
+                        "description": "Ошибка валидации",
+                    },
+                },
+            },
+        },
+        "/api/profiles/{profile_id}": {
+            "get": {
+                "summary": "Получить профиль записи",
+                "description": "Возвращает информацию о конкретном профиле",
+                "operationId": "getProfile",
+                "parameters": [
+                    {
+                        "name": "profile_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "responses": {
+                    "200": {"description": "Данные профиля"},
+                    "404": {"description": "Профиль не найден"},
+                },
+            },
+            "put": {
+                "summary": "Обновить профиль записи",
+                "description": "Обновляет параметры профиля",
+                "operationId": "updateProfile",
+                "parameters": [
+                    {
+                        "name": "profile_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "responses": {
+                    "200": {"description": "Профиль обновлен"},
+                    "400": {"description": "Ошибка валидации"},
+                    "404": {"description": "Профиль не найден"},
+                },
+            },
+            "delete": {
+                "summary": "Удалить профиль записи",
+                "description": "Удаляет пользовательский профиль (встроенные удалять нельзя)",
+                "operationId": "deleteProfile",
+                "parameters": [
+                    {
+                        "name": "profile_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "responses": {
+                    "200": {"description": "Профиль удален"},
+                    "400": {
+                        "description": "Нельзя удалить встроенный профиль"
+                    },
+                    "404": {"description": "Профиль не найден"},
+                },
+            },
+        },
+        "/api/profiles/{profile_id}/apply": {
+            "post": {
+                "summary": "Применить профиль",
+                "description": "Применяет настройки профиля к текущей конфигурации приложения",
+                "operationId": "applyProfile",
+                "parameters": [
+                    {
+                        "name": "profile_id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "responses": {
+                    "200": {"description": "Профиль успешно применен"},
+                    "404": {"description": "Профиль не найден"},
+                },
+            },
+        },
     },
 }
 

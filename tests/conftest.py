@@ -229,6 +229,22 @@ class MockQWidgetBase:
         """Для QLabel, QPushButton, QLineEdit."""
         return getattr(self, "_text", "")
 
+    def setMaxLength(self, length: int):
+        """Для QLineEdit."""
+        self._max_length = length
+
+    def maxLength(self) -> int:
+        """Для QLineEdit."""
+        return getattr(self, "_max_length", 32767)
+
+    def setPlaceholderText(self, text: str):
+        """Для QLineEdit, QTextEdit."""
+        self._placeholder_text = text
+
+    def placeholderText(self) -> str:
+        """Для QLineEdit, QTextEdit."""
+        return getattr(self, "_placeholder_text", "")
+
     def setRange(self, min_val: int, max_val: int):
         """Для QSpinBox."""
         self._min = min_val
@@ -242,8 +258,33 @@ class MockQWidgetBase:
         """Для QSpinBox."""
         return getattr(self, "_value", 0)
 
+    def setSingleStep(self, step: int):
+        """Для QSpinBox."""
+        self._single_step = step
+
+    def singleStep(self) -> int:
+        """Для QSpinBox."""
+        return getattr(self, "_single_step", 1)
+
+    def setWidgetResizable(self, resizable: bool):
+        """Для QScrollArea."""
+        self._widget_resizable = resizable
+
+    def widgetResizable(self) -> bool:
+        """Для QScrollArea."""
+        return getattr(self, "_widget_resizable", False)
+
+    def setWidget(self, widget):
+        """Для QScrollArea."""
+        self._widget = widget
+
+    def widget(self):
+        """Для QScrollArea."""
+        return getattr(self, "_widget", None)
+
     def addItem(self, item: str):
         """Для QComboBox."""
+
         if not hasattr(self, "_items"):
             self._items = []
         self._items.append(item)
@@ -269,6 +310,18 @@ class MockQWidgetBase:
     def setCurrentIndex(self, index: int):
         """Для QComboBox."""
         self._current_index = index
+        items = getattr(self, "_items", [])
+        if 0 <= index < len(items):
+            item = items[index]
+            self._current_text = (
+                item
+                if isinstance(item, str)
+                else (getattr(item, "text", lambda: str(item))())
+            )
+        if hasattr(self, "currentIndexChanged") and hasattr(
+            self.currentIndexChanged, "emit"
+        ):
+            self.currentIndexChanged.emit(index)
 
     def count(self) -> int:
         """Для QComboBox."""
@@ -287,6 +340,23 @@ class MockQWidgetBase:
         self._current_index = -1
         self._current_text = ""
 
+    def findText(self, text: str) -> int:
+        """Для QComboBox."""
+        items = getattr(self, "_items", [])
+        for i, item in enumerate(items):
+            if isinstance(item, str) and item == text:
+                return i
+            if hasattr(item, "text") and item.text() == text:
+                return i
+        return -1
+
+    def itemData(self, index: int, role: int = 0) -> Any:
+        """Для QComboBox."""
+        data_list = getattr(self, "_item_data", [])
+        if 0 <= index < len(data_list):
+            return data_list[index]
+        return None
+
     def setEditable(self, editable: bool):
         """Для QComboBox."""
         self._editable = editable
@@ -294,6 +364,25 @@ class MockQWidgetBase:
     def isEditable(self) -> bool:
         """Для QComboBox."""
         return getattr(self, "_editable", False)
+
+    def setCurrentRow(self, row: int):
+        """Для QListWidget."""
+        self._current_row = row
+        if hasattr(self, "currentRowChanged") and hasattr(
+            self.currentRowChanged, "emit"
+        ):
+            self.currentRowChanged.emit(row)
+
+    def currentRow(self) -> int:
+        """Для QListWidget."""
+        return getattr(self, "_current_row", -1)
+
+    def item(self, row: int):
+        """Для QListWidget."""
+        items = getattr(self, "_items", [])
+        if 0 <= row < len(items):
+            return items[row]
+        return None
 
     def setMinimumWidth(self, width: int):
         """Для QWidget."""
@@ -345,12 +434,9 @@ class MockQWidgetBase:
         """Для QWidget."""
         return getattr(self, "_tooltip", "")
 
-    def setPlaceholderText(self, text: str):
-        """Для QLineEdit."""
-        self._placeholder = text
-
     def setReadOnly(self, read_only: bool):
         """Для QLineEdit, QTextEdit."""
+
         self._read_only = read_only
 
     def toPlainText(self) -> str:
@@ -427,6 +513,11 @@ def _create_widget_mock_class(name: str):
     elif name == "QPushButton":
         MockWidget.clicked = MockSignal()
         MockWidget.toggled = MockSignal()
+    elif name == "QListWidget":
+        MockWidget.currentRowChanged = MockSignal()
+        MockWidget.itemSelectionChanged = MockSignal()
+        MockWidget.itemDoubleClicked = MockSignal()
+        MockWidget.itemClicked = MockSignal()
     return MockWidget
 
 
@@ -442,7 +533,31 @@ MockQComboBox = _create_widget_mock_class("QComboBox")
 MockQSpinBox = _create_widget_mock_class("QSpinBox")
 MockQLineEdit = _create_widget_mock_class("QLineEdit")
 MockQTextEdit = _create_widget_mock_class("QTextEdit")
-MockQListWidget = _create_mock_class("QListWidget", (MockQWidgetBase,))
+MockQListWidget = _create_widget_mock_class("QListWidget")
+
+
+class MockQListWidgetItem:
+    """Mock для QListWidgetItem."""
+
+    def __init__(self, text: str = "", parent: Any = None):
+        self._text = text
+        self._data: dict[int, Any] = {}
+        if parent is not None and hasattr(parent, "addItem"):
+            parent.addItem(self)
+
+    def text(self) -> str:
+        return self._text
+
+    def setText(self, text: str):
+        self._text = text
+
+    def setData(self, role: int, value: Any):
+        self._data[role] = value
+
+    def data(self, role: int) -> Any:
+        return self._data.get(role)
+
+
 MockQTreeWidget = _create_mock_class("QTreeWidget", (MockQWidgetBase,))
 MockQTabWidget = _create_mock_class("QTabWidget", (MockQWidgetBase,))
 MockQScrollArea = _create_mock_class("QScrollArea", (MockQWidgetBase,))
@@ -643,7 +758,9 @@ qt_widgets_mock.QSpinBox = MockQSpinBox
 qt_widgets_mock.QLineEdit = MockQLineEdit
 qt_widgets_mock.QTextEdit = MockQTextEdit
 qt_widgets_mock.QListWidget = MockQListWidget
+qt_widgets_mock.QListWidgetItem = MockQListWidgetItem
 qt_widgets_mock.QTreeWidget = MockQTreeWidget
+
 qt_widgets_mock.QTabWidget = MockQTabWidget
 qt_widgets_mock.QScrollArea = MockQScrollArea
 qt_widgets_mock.QSplitter = MockQSplitter

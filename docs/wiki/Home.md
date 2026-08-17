@@ -7,6 +7,7 @@
 
 - [Установка](Installation)
 - [Быстрый старт](Quick-Start)
+- [Стратегическая дорожная карта (Roadmap)](Roadmap)
 - [Конфигурация и переменные окружения](Configuration-and-Environment)
 - [Работа с GUI](GUI)
 - [REST API](API)
