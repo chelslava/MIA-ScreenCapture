@@ -37,7 +37,11 @@ def _normalize_path(path: str) -> str:
 def _is_production_python_file(path: str) -> bool:
     """Возвращает True, если путь относится к production Python-коду."""
     normalized = _normalize_path(path)
-    if not normalized.endswith(".py"):
+    if (
+        not normalized.endswith(".py")
+        or normalized.endswith("/__init__.py")
+        or normalized == "__init__.py"
+    ):
         return False
     if normalized in PRODUCTION_SINGLE_FILES:
         return True
@@ -134,15 +138,14 @@ def _load_coverage_map(coverage_json_path: Path) -> dict[str, float]:
 
 def main() -> int:
     """Точка входа проверки diff coverage."""
-    import io
 
-    stdout_utf8 = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-    stderr_utf8 = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
-
-    def safe_print(message: str, file: io.TextIOWrapper | None = None) -> None:
-        target = file or stdout_utf8
-        target.write(message + "\n")
-        target.flush()
+    def safe_print(message: str, file: object | None = None) -> None:
+        target = file or sys.stdout
+        try:
+            target.write(message + "\n")  # type: ignore[union-attr]
+            target.flush()  # type: ignore[union-attr]
+        except (AttributeError, UnicodeEncodeError):
+            print(message)
 
     parser = argparse.ArgumentParser(
         description="Проверка покрытия изменённых Python-файлов",
@@ -157,7 +160,7 @@ def main() -> int:
     parser.add_argument(
         "--min-file-coverage",
         type=float,
-        default=35.0,
+        default=60.0,
         help="Минимальное покрытие для изменённого файла (%)",
     )
     args = parser.parse_args()
@@ -166,7 +169,7 @@ def main() -> int:
     if not coverage_json_path.exists():
         safe_print(
             f"[diff-coverage] Файл не найден: {coverage_json_path}",
-            file=stderr_utf8,
+            file=sys.stderr,
         )
         return 2
 
@@ -174,7 +177,7 @@ def main() -> int:
         base_sha = _resolve_base_sha(args.base_sha, args.head_sha)
         changed_files = _get_changed_python_files(base_sha, args.head_sha)
     except RuntimeError as exc:
-        safe_print(f"[diff-coverage] {exc}", file=stderr_utf8)
+        safe_print(f"[diff-coverage] {exc}", file=sys.stderr)
         return 2
 
     if not changed_files:
