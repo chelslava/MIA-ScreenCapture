@@ -207,3 +207,27 @@ class ApplicationFacade(Protocol):
     ) -> dict[str, Any]:
         """Запускает постобработку для указанного файла."""
         ...
+
+    def check_for_updates(self, force: bool = False) -> dict[str, Any]:
+        """Проверяет наличие новой версии приложения."""
+        ...
+
+    def download_update(self, version: str | None = None) -> dict[str, Any]:
+        """Скачивает доступное обновление."""
+        ...
+
+    def apply_update(self) -> dict[str, Any]:
+        """Применяет скачанное обновление."""
+        ...
+
+    def get_update_status(self) -> dict[str, Any]:
+        """Возвращает текущий статус подсистемы обновлений."""
+        ...
+
+    def get_update_config(self) -> dict[str, Any]:
+        """Возвращает настройки авто-обновлений."""
+        ...
+
+    def update_update_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Обновляет настройки авто-обновлений."""
+        ...

@@ -712,6 +712,10 @@ def register_routes(app: Any, server: Any) -> None:
     # Регистрация Blueprint
     app.register_blueprint(api_v1)
 
+    from api.routes_updates import create_updates_blueprint
+
+    app.register_blueprint(create_updates_blueprint(server))
+
     _register_legacy_routes(
         app,
         get_status=get_status,

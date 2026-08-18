@@ -968,3 +968,75 @@ class RunPostProcessingRequest(BaseModel):
         default=None,
         description="Параметры переопределения шагов постобработки",
     )
+
+
+# === Схемы авто-обновления приложения (#128) ===
+
+
+class UpdateAppConfigRequest(BaseModel):
+    """Схема запроса обновления конфигурации авто-обновлений."""
+
+    check_on_startup: bool | None = None
+    auto_download: bool | None = None
+    channel: str | None = None
+    check_interval_hours: int | None = Field(default=None, ge=1, le=720)
+    ignored_version: str | None = None
+
+
+class UpdateAppConfigData(BaseModel):
+    """Данные конфигурации авто-обновлений."""
+
+    check_on_startup: bool = True
+    auto_download: bool = False
+    channel: str = "stable"
+    check_interval_hours: int = 24
+    last_checked_at: str | None = None
+    ignored_version: str | None = None
+
+
+class UpdateAppConfigResponse(BaseModel):
+    """Схема ответа с настройками авто-обновлений."""
+
+    success: bool = True
+    data: UpdateAppConfigData
+
+
+class CheckUpdateApiRequest(BaseModel):
+    """Схема запроса проверки обновлений."""
+
+    force: bool = False
+    channel: str = "stable"
+
+
+class CheckUpdateApiResponse(BaseModel):
+    """Схема ответа проверки обновлений."""
+
+    success: bool = True
+    data: dict[str, Any]
+
+
+class DownloadUpdateApiRequest(BaseModel):
+    """Схема запроса скачивания обновления."""
+
+    version: str | None = None
+
+
+class DownloadUpdateApiResponse(BaseModel):
+    """Схема ответа скачивания обновления."""
+
+    success: bool = True
+    data: dict[str, Any]
+
+
+class ApplyUpdateApiResponse(BaseModel):
+    """Схема ответа применения обновления."""
+
+    success: bool = True
+    data: dict[str, Any]
+
+
+class UpdateStatusApiResponse(BaseModel):
+    """Схема ответа со статусом подсистемы обновлений."""
+
+    success: bool = True
+    data: dict[str, Any]

@@ -237,6 +237,11 @@ class VideoRecorderApp:
         self._post_processing_manager = PostProcessingManager(
             event_bus=self._recording_service.event_bus
         )
+        from core.updater.updater import AppUpdater
+
+        self._updater = AppUpdater(
+            event_bus=self._recording_service.event_bus,
+        )
         self._command_queue = CommandQueue(maxsize=50)
         self._gui_executor: MainThreadExecutor | None = None
         self._gui_thread_id: int | None = None
@@ -1578,6 +1583,64 @@ class VideoRecorderApp:
             "message": "Постобработка запущена в фоновом режиме",
             "file_path": str(path),
         }
+
+    # === Авто-обновление приложения (#128) ===
+
+    def check_for_updates(self, force: bool = False) -> dict[str, Any]:
+        """Проверяет наличие новой версии приложения."""
+        res = self._updater.check_for_updates(force=force)
+        return res.to_dict()
+
+    def download_update(self, version: str | None = None) -> dict[str, Any]:
+        """Скачивает доступное обновление."""
+        release = None
+        if version and self._updater.latest_release:
+            if self._updater.latest_release.version == version:
+                release = self._updater.latest_release
+        self._updater.download_update_async(release=release)
+        return {
+            "success": True,
+            "message": "Загрузка обновления запущена в фоновом режиме",
+            "status": self._updater.get_status(),
+        }
+
+    def apply_update(self) -> dict[str, Any]:
+        """Применяет скачанное обновление."""
+        success = self._updater.apply_update()
+        return {
+            "success": success,
+            "message": (
+                "Процесс обновления запущен. Приложение будет обновлено."
+                if success
+                else "Не удалось запустить процесс обновления"
+            ),
+        }
+
+    def get_update_status(self) -> dict[str, Any]:
+        """Возвращает текущий статус подсистемы обновлений."""
+        return self._updater.get_status()
+
+    def get_update_config(self) -> dict[str, Any]:
+        """Возвращает настройки авто-обновлений."""
+        config = get_config()
+        return asdict(config.settings.updates)
+
+    def update_update_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Обновляет настройки авто-обновлений."""
+        from config import UpdateSettingsSchema
+
+        try:
+            validated = UpdateSettingsSchema.model_validate(data)
+            config = get_config()
+            for k, v in validated.model_dump().items():
+                setattr(config.settings.updates, k, v)
+            saved = config.save()
+            return {
+                "success": saved,
+                "config": asdict(config.settings.updates),
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     # Вспомогательные методы GUI
 

@@ -157,6 +157,18 @@ class MockQWidgetBase:
         self._enabled = True
         self._visible = True
         self._layout = None
+        self._text = ""
+        self._value = 0
+        if args and isinstance(args[0], str):
+            self._text = args[0]
+
+    def setValue(self, value: int):
+        """Для QProgressBar, QSpinBox, QSlider."""
+        self._value = value
+
+    def value(self) -> int:
+        """Для QProgressBar, QSpinBox, QSlider."""
+        return getattr(self, "_value", 0)
 
     def setChecked(self, checked: bool):
         """Для QRadioButton, QCheckBox, QGroupBox."""
@@ -249,14 +261,6 @@ class MockQWidgetBase:
         """Для QSpinBox."""
         self._min = min_val
         self._max = max_val
-
-    def setValue(self, value: int):
-        """Для QSpinBox."""
-        self._value = value
-
-    def value(self) -> int:
-        """Для QSpinBox."""
-        return getattr(self, "_value", 0)
 
     def setSingleStep(self, step: int):
         """Для QSpinBox."""
@@ -416,6 +420,11 @@ class MockQWidgetBase:
         """Для QWidget."""
         return getattr(self, "_maximum_width", 16777215)
 
+    def setMinimumSize(self, width: int, height: int):
+        """Для QWidget."""
+        self._minimum_width = width
+        self._minimum_height = height
+
     def setMinimumHeight(self, height: int):
         """Для QWidget."""
         self._minimum_height = height
@@ -459,8 +468,33 @@ class MockQWidgetBase:
         """Для QTextEdit."""
         return getattr(self, "_plain_text", "")
 
+    def setTextFormat(self, fmt: Any) -> None:
+        """Для QLabel."""
+        self._text_format = fmt
+
+    def setMarkdown(self, text: str) -> None:
+        """Для QTextBrowser / QTextEdit."""
+        self._markdown = text
+        self._plain_text = text
+
+    def setOpenExternalLinks(self, open_links: bool) -> None:
+        """Для QLabel / QTextBrowser."""
+        self._open_external_links = open_links
+
     def setPlainText(self, text: str):
         self._plain_text = text
+
+    def accept(self) -> None:
+        """Для QDialog."""
+        self._accepted = True
+
+    def reject(self) -> None:
+        """Для QDialog."""
+        self._rejected = True
+
+    def exec(self) -> int:
+        """Для QDialog."""
+        return 1
 
     def __iter__(self):
         return iter([])
@@ -780,6 +814,12 @@ qt_widgets_mock.QComboBox = MockQComboBox
 qt_widgets_mock.QSpinBox = MockQSpinBox
 qt_widgets_mock.QLineEdit = MockQLineEdit
 qt_widgets_mock.QTextEdit = MockQTextEdit
+qt_widgets_mock.QTextBrowser = _create_mock_class(
+    "QTextBrowser", (MockQWidgetBase,)
+)
+qt_widgets_mock.QProgressBar = _create_mock_class(
+    "QProgressBar", (MockQWidgetBase,)
+)
 qt_widgets_mock.QListWidget = MockQListWidget
 qt_widgets_mock.QListWidgetItem = MockQListWidgetItem
 qt_widgets_mock.QTreeWidget = MockQTreeWidget

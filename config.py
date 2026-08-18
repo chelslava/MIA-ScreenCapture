@@ -188,6 +188,17 @@ class PostProcessingSettingsSchema(BaseModel):
         return normalized or None
 
 
+class UpdateSettingsSchema(BaseModel):
+    """Схема валидации настроек автоматического обновления."""
+
+    check_on_startup: bool = Field(default=True)
+    auto_download: bool = Field(default=False)
+    channel: str = Field(default="stable")
+    check_interval_hours: int = Field(default=24, ge=1, le=720)
+    last_checked_at: str | None = Field(default=None)
+    ignored_version: str | None = Field(default=None)
+
+
 # Держать в синхроне с gui.styles.theme.VALID_THEME_MODES (core/config не
 # импортирует gui-слой с PyQt6, поэтому список продублирован буквально).
 _VALID_THEME_MODES = ("system", "light", "blue", "dark", "dark_contrast")
@@ -209,6 +220,7 @@ class AppSettingsSchema(BaseModel):
     post_processing: PostProcessingSettingsSchema = Field(
         default_factory=PostProcessingSettingsSchema
     )
+    updates: UpdateSettingsSchema = Field(default_factory=UpdateSettingsSchema)
     minimize_to_tray: bool = Field(default=True)
     show_notifications: bool = Field(default=True)
     language: str = Field(default="en")
@@ -330,6 +342,18 @@ class PostProcessingSettings:
 
 
 @dataclass
+class UpdateSettings:
+    """Настройки автоматического обновления приложения."""
+
+    check_on_startup: bool = True
+    auto_download: bool = False
+    channel: str = "stable"
+    check_interval_hours: int = 24
+    last_checked_at: str | None = None
+    ignored_version: str | None = None
+
+
+@dataclass
 class AppSettings:
     """Основные настройки приложения."""
 
@@ -342,6 +366,7 @@ class AppSettings:
     post_processing: PostProcessingSettings = field(
         default_factory=PostProcessingSettings
     )
+    updates: UpdateSettings = field(default_factory=UpdateSettings)
     minimize_to_tray: bool = True
     show_notifications: bool = True
     language: str = "en"
@@ -431,6 +456,7 @@ class ConfigManager:
             post_processing = PostProcessingSettings(
                 **data.get("post_processing", {})
             )
+            updates = UpdateSettings(**data.get("updates", {}))
 
             return AppSettings(
                 video=video,
@@ -440,6 +466,7 @@ class ConfigManager:
                 api=api,
                 scheduler=scheduler,
                 post_processing=post_processing,
+                updates=updates,
                 minimize_to_tray=data.get("minimize_to_tray", True),
                 show_notifications=data.get("show_notifications", True),
                 language=data.get("language", "en"),
