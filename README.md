@@ -12,6 +12,7 @@
 [🇬🇧 English](README.md) · [🇷🇺 Русский](README.ru.md)
 
 [![CI](https://github.com/chelslava/MIA-ScreenCapture/actions/workflows/ci.yml/badge.svg)](https://github.com/chelslava/MIA-ScreenCapture/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/chelslava/MIA-ScreenCapture/branch/main/graph/badge.svg)](https://codecov.io/gh/chelslava/MIA-ScreenCapture)
 [![Version](https://img.shields.io/github/v/tag/chelslava/MIA-ScreenCapture?label=version&sort=semver)](https://github.com/chelslava/MIA-ScreenCapture/tags)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6)](https://learn.microsoft.com/en-us/windows/win32/winrt/windows-graphics-capture)

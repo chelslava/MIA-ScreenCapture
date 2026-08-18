@@ -158,7 +158,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "tests\.local_tmp\pytest\coverage" | Out-Null
 
       - name: Run tests with coverage
-        run: uv run pytest tests/unit/ --basetemp=tests/.local_tmp/pytest/coverage --timeout=120 --cov=. --cov-report=xml --cov-report=json --cov-report=term-missing --cov-fail-under=60
+        run: uv run pytest tests/unit/ --basetemp=tests/.local_tmp/pytest/coverage --timeout=120 --cov=. --cov-report=xml --cov-report=json --cov-report=term-missing --cov-fail-under=70
 
       - name: Gate diff coverage for changed Python files
         run: |
@@ -166,7 +166,7 @@ jobs:
           if ("${{ github.event_name }}" -eq "pull_request") {
             $baseSha = "${{ github.event.pull_request.base.sha }}"
           }
-          uv run python scripts/check_diff_coverage.py --coverage-json coverage.json --base-sha $baseSha --head-sha "${{ github.sha }}" --min-file-coverage 35
+          uv run python scripts/check_diff_coverage.py --coverage-json coverage.json --base-sha $baseSha --head-sha "${{ github.sha }}" --min-file-coverage 60
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
