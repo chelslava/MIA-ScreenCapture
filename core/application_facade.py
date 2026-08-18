@@ -187,3 +187,23 @@ class ApplicationFacade(Protocol):
     def import_profile(self, data: dict[str, Any]) -> dict[str, Any]:
         """Импортирует профиль записи."""
         ...
+
+    def get_post_processing_config(self) -> dict[str, Any]:
+        """Возвращает настройки постобработки записей."""
+        ...
+
+    def update_post_processing_config(
+        self, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Обновляет настройки постобработки записей."""
+        ...
+
+    def get_post_processing_status(self) -> dict[str, Any]:
+        """Возвращает статус конвейера постобработки."""
+        ...
+
+    def run_post_processing(
+        self, file_path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Запускает постобработку для указанного файла."""
+        ...

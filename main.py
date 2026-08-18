@@ -17,6 +17,7 @@ MIA-ScreenCapture - Главная точка входа
 
 import sys
 import threading
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
@@ -229,6 +230,11 @@ class VideoRecorderApp:
         # GUI/single-recording стека. Делит event_bus с _recording_service,
         # чтобы события доходили до тех же WebSocket/webhook подписчиков.
         self._multi_recording_service = MultiRecordingService(
+            event_bus=self._recording_service.event_bus
+        )
+        from core.post_processing.manager import PostProcessingManager
+
+        self._post_processing_manager = PostProcessingManager(
             event_bus=self._recording_service.event_bus
         )
         self._command_queue = CommandQueue(maxsize=50)
@@ -1499,6 +1505,79 @@ class VideoRecorderApp:
         storage = get_profile_storage()
         profile = storage.import_profile(data)
         return {"success": True, "profile": profile.to_dict()}
+
+    # === Постобработка записей ===
+
+    def get_post_processing_config(self) -> dict[str, Any]:
+        """Возвращает текущие настройки постобработки."""
+        config = get_config()
+        return asdict(config.settings.post_processing)
+
+    def update_post_processing_config(
+        self, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Обновляет настройки постобработки."""
+        from config import PostProcessingSettingsSchema
+
+        try:
+            validated = PostProcessingSettingsSchema.model_validate(data)
+            config = get_config()
+            for k, v in validated.model_dump().items():
+                setattr(config.settings.post_processing, k, v)
+            saved = config.save()
+            return {
+                "success": saved,
+                "config": asdict(config.settings.post_processing),
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_post_processing_status(self) -> dict[str, Any]:
+        """Возвращает статус конвейера постобработки."""
+        last_res = self._post_processing_manager.last_result
+        return {
+            "is_running": self._post_processing_manager.is_running,
+            "last_result": last_res.to_dict() if last_res else None,
+        }
+
+    def run_post_processing(
+        self, file_path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Запускает постобработку для указанного файла."""
+        path = Path(file_path)
+        if not path.exists():
+            return {
+                "success": False,
+                "error": f"Файл не найден: {file_path}",
+            }
+        config = get_config()
+        settings = config.settings.post_processing
+        if params:
+            from config import PostProcessingSettings
+
+            settings_dict = asdict(settings)
+            settings_dict.update(params)
+            settings = PostProcessingSettings(**settings_dict)
+
+        steps = self._post_processing_manager.build_steps_from_settings(
+            settings
+        )
+        if not steps:
+            return {
+                "success": False,
+                "error": "Нет активных шагов постобработки",
+            }
+        from core.post_processing.pipeline import PostRecordingPipeline
+
+        pipeline = PostRecordingPipeline(
+            steps=steps, event_bus=self._recording_service.event_bus
+        )
+        pipeline.run_in_background(path)
+        return {
+            "success": True,
+            "message": "Постобработка запущена в фоновом режиме",
+            "file_path": str(path),
+        }
 
     # Вспомогательные методы GUI
 

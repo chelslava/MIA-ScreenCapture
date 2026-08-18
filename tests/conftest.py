@@ -159,7 +159,7 @@ class MockQWidgetBase:
         self._layout = None
 
     def setChecked(self, checked: bool):
-        """Для QRadioButton, QCheckBox."""
+        """Для QRadioButton, QCheckBox, QGroupBox."""
         self._checked = checked
 
     def isChecked(self) -> bool:
@@ -265,6 +265,14 @@ class MockQWidgetBase:
     def singleStep(self) -> int:
         """Для QSpinBox."""
         return getattr(self, "_single_step", 1)
+
+    def setSuffix(self, suffix: str):
+        """Для QSpinBox."""
+        self._suffix = suffix
+
+    def suffix(self) -> str:
+        """Для QSpinBox."""
+        return getattr(self, "_suffix", "")
 
     def setWidgetResizable(self, resizable: bool):
         """Для QScrollArea."""
@@ -518,7 +526,7 @@ def _create_widget_mock_class(name: str):
         MockWidget.returnPressed = MockSignal()
     elif name == "QTextEdit":
         MockWidget.textChanged = MockSignal()
-    elif name == "QPushButton":
+    elif name in ("QPushButton", "QGroupBox"):
         MockWidget.clicked = MockSignal()
         MockWidget.toggled = MockSignal()
     elif name == "QListWidget":
@@ -532,7 +540,7 @@ def _create_widget_mock_class(name: str):
 MockQWidget = _create_mock_class("QWidget", (MockQWidgetBase,))
 MockQMainWindow = _create_mock_class("QMainWindow", (MockQWidgetBase,))
 MockQDialog = _create_mock_class("QDialog", (MockQWidgetBase,))
-MockQGroupBox = _create_mock_class("QGroupBox", (MockQWidgetBase,))
+MockQGroupBox = _create_widget_mock_class("QGroupBox")
 MockQLabel = _create_mock_class("QLabel", (MockQWidgetBase,))
 MockQPushButton = _create_widget_mock_class("QPushButton")
 MockQRadioButton = _create_widget_mock_class("QRadioButton")

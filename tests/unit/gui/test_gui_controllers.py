@@ -236,10 +236,15 @@ class TestRecordingController:
         with patch(
             "gui.controllers.recording_controller.time.monotonic"
         ) as mock_time:
-            mock_time.side_effect = [
-                100.0,
-                100.5,
-            ]
+            current_time = 100.0
+
+            def fake_time_within_ttl() -> float:
+                nonlocal current_time
+                t = current_time
+                current_time += 0.1
+                return t
+
+            mock_time.side_effect = fake_time_within_ttl
             success1, error_msg1 = controller.start_recording(
                 output_path, capture, audio, video
             )
@@ -286,19 +291,18 @@ class TestRecordingController:
         audio = AudioSettings()
         video = VideoSettings()
 
+        current_time = 100.0
         with patch(
             "gui.controllers.recording_controller.time.monotonic"
         ) as mock_time:
-            mock_time.side_effect = [
-                100.0,
-                131.0,
-            ]
+            mock_time.side_effect = lambda: current_time
             success1, error_msg1 = controller.start_recording(
                 output_path, capture, audio, video
             )
             controller._state.stop_recording()
             controller._video_recorder = None
             controller._encoder = None
+            current_time = 150.0
             success2, error_msg2 = controller.start_recording(
                 output_path, capture, audio, video
             )

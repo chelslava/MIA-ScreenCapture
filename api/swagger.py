@@ -1653,6 +1653,108 @@ SWAGGER_SPEC: dict[str, Any] = {
                 },
             },
         },
+        "/api/post-processing/config": {
+            "get": {
+                "summary": "Получить настройки постобработки",
+                "description": "Возвращает текущую конфигурацию конвейера постобработки",
+                "operationId": "getPostProcessingConfig",
+                "responses": {
+                    "200": {"description": "Конфигурация постобработки"},
+                },
+            },
+            "put": {
+                "summary": "Обновить настройки постобработки",
+                "description": "Обновляет параметры конвейера постобработки",
+                "operationId": "updatePostProcessingConfig",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "enabled": {"type": "boolean"},
+                                    "transcode_enabled": {"type": "boolean"},
+                                    "transcode_format": {"type": "string"},
+                                    "compress_enabled": {"type": "boolean"},
+                                    "compress_crf": {"type": "integer"},
+                                    "generate_gif_enabled": {
+                                        "type": "boolean"
+                                    },
+                                    "copy_enabled": {"type": "boolean"},
+                                    "copy_target_folder": {"type": "string"},
+                                    "open_explorer_on_finish": {
+                                        "type": "boolean"
+                                    },
+                                    "webhook_enabled": {"type": "boolean"},
+                                    "webhook_url": {"type": "string"},
+                                },
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {"description": "Настройки успешно обновлены"},
+                    "400": {"description": "Невалидные параметры"},
+                },
+            },
+        },
+        "/api/post-processing/status": {
+            "get": {
+                "summary": "Статус постобработки",
+                "description": "Возвращает текущий статус активности или результат последнего конвейера",
+                "operationId": "getPostProcessingStatus",
+                "responses": {
+                    "200": {"description": "Текущий статус постобработки"},
+                },
+            },
+        },
+        "/api/post-processing/run": {
+            "post": {
+                "summary": "Запустить постобработку",
+                "description": "Запускает конвейер постобработки для указанного файла",
+                "operationId": "runPostProcessing",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["file_path"],
+                                "properties": {
+                                    "file_path": {"type": "string"},
+                                    "params": {"type": "object"},
+                                },
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {"description": "Постобработка успешно запущена"},
+                    "400": {
+                        "description": "Ошибка запуска или файл не найден"
+                    },
+                },
+            },
+        },
+        "/api/recording/{id}/post-processing": {
+            "get": {
+                "summary": "Статус постобработки записи",
+                "description": "Возвращает статус постобработки для указанной записи",
+                "operationId": "getRecordingPostProcessingStatus",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "responses": {
+                    "200": {"description": "Статус постобработки записи"},
+                },
+            },
+        },
     },
 }
 

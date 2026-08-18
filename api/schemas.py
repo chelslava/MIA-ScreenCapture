@@ -10,7 +10,7 @@ import re
 import socket
 from datetime import UTC, datetime
 from pathlib import PureWindowsPath
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 from urllib.parse import urlparse
 
 import tzlocal
@@ -893,3 +893,78 @@ class RecordingMetricsResponse(BaseModel):
 
     success: bool = True
     data: RecordingMetricsData
+
+
+class PostProcessingConfigData(BaseModel):
+    """Данные настроек конвейера постобработки (#118)."""
+
+    enabled: bool = False
+    transcode_enabled: bool = False
+    transcode_format: str = "webm"
+    transcode_codec: str = "libvpx-vp9"
+    compress_enabled: bool = False
+    compress_crf: int = 28
+    trim_silence_enabled: bool = False
+    trim_silence_threshold_db: int = -50
+    generate_gif_enabled: bool = False
+    gif_duration_seconds: int = 5
+    gif_fps: int = 10
+    copy_enabled: bool = False
+    copy_target_folder: str = ""
+    open_explorer_on_finish: bool = False
+    webhook_enabled: bool = False
+    webhook_url: str | None = None
+    step_timeout_seconds: int = 300
+
+
+class PostProcessingConfigResponse(BaseModel):
+    """Схема ответа с настройками постобработки."""
+
+    success: bool = True
+    data: PostProcessingConfigData
+
+
+class UpdatePostProcessingConfigRequest(BaseModel):
+    """Схема запроса на обновление настроек постобработки."""
+
+    enabled: bool | None = None
+    transcode_enabled: bool | None = None
+    transcode_format: str | None = None
+    transcode_codec: str | None = None
+    compress_enabled: bool | None = None
+    compress_crf: int | None = Field(default=None, ge=0, le=51)
+    trim_silence_enabled: bool | None = None
+    trim_silence_threshold_db: int | None = Field(default=None, le=0)
+    generate_gif_enabled: bool | None = None
+    gif_duration_seconds: int | None = Field(default=None, ge=1, le=60)
+    gif_fps: int | None = Field(default=None, ge=1, le=30)
+    copy_enabled: bool | None = None
+    copy_target_folder: str | None = None
+    open_explorer_on_finish: bool | None = None
+    webhook_enabled: bool | None = None
+    webhook_url: str | None = None
+    step_timeout_seconds: int | None = Field(default=None, ge=10, le=3600)
+
+
+class PostProcessingStatusData(BaseModel):
+    """Данные текущего статуса постобработки."""
+
+    is_running: bool = False
+    last_result: dict[str, Any] | None = None
+
+
+class PostProcessingStatusResponse(BaseModel):
+    """Схема ответа со статусом постобработки."""
+
+    success: bool = True
+    data: PostProcessingStatusData
+
+
+class RunPostProcessingRequest(BaseModel):
+    """Схема запроса запуска постобработки для файла."""
+
+    file_path: str = Field(description="Путь к видеофайлу для постобработки")
+    params: dict[str, Any] | None = Field(
+        default=None,
+        description="Параметры переопределения шагов постобработки",
+    )

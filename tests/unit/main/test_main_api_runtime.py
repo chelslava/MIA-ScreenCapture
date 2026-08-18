@@ -517,6 +517,10 @@ class TestMainApiRuntime:
             "apply_profile",
             "export_profile",
             "import_profile",
+            "get_post_processing_config",
+            "update_post_processing_config",
+            "get_post_processing_status",
+            "run_post_processing",
         }
 
     def test_start_api_server_registers_public_facade_callbacks(

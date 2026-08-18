@@ -72,6 +72,7 @@ from gui.views.finalization_progress_dialog import (
     FinalizationProgressDialog,
 )
 from gui.views.output_view import OutputView
+from gui.views.post_processing_view import PostProcessingView
 from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_indicator import RecordingIndicatorOverlay
 from gui.views.video_view import VideoView
@@ -550,6 +551,13 @@ class MainWindow(QMainWindow):
         # Внешний вид (тема)
         self._appearance_view = AppearanceView()
         layout.addWidget(self._appearance_view)
+
+        # Постобработка (#118)
+        self._post_processing_view = PostProcessingView()
+        self._post_processing_view.settings_changed.connect(
+            self._on_post_processing_changed
+        )
+        layout.addWidget(self._post_processing_view)
 
         layout.addStretch()
         return widget
@@ -1063,8 +1071,23 @@ class MainWindow(QMainWindow):
             self._settings_controller.get_sidebar_width()
         )
 
+        # Настройки постобработки (#118)
+        if hasattr(self, "_post_processing_view"):
+            self._post_processing_view.set_settings(
+                get_config().settings.post_processing
+            )
+
         # Недавние записи
         self._refresh_recent_recordings()
+
+    def _on_post_processing_changed(self) -> None:
+        """Сохранение настроек постобработки при изменении в UI (#118)."""
+        if not hasattr(self, "_post_processing_view"):
+            return
+        new_settings = self._post_processing_view.get_settings()
+        config = get_config()
+        config.settings.post_processing = new_settings
+        config.save()
 
     def _refresh_recent_recordings(self) -> None:
         """Обновление списка недавних записей."""

@@ -485,10 +485,11 @@ class TestRecordingControllerFfmpegCache:
         mock_video_recorder_cls.return_value = video_recorder
 
         ctrl = RecordingController()
+        current_time = 100.0
         with patch(
             "gui.controllers.recording_controller.time.monotonic"
         ) as mock_time:
-            mock_time.side_effect = [100.0, 100.5]
+            mock_time.side_effect = lambda: current_time
             ctrl.start_recording(
                 Path("/out/test.mp4"),
                 CaptureSettings(),
@@ -526,10 +527,11 @@ class TestRecordingControllerFfmpegCache:
         mock_video_recorder_cls.return_value = video_recorder
 
         ctrl = RecordingController()
+        current_time = 100.0
         with patch(
             "gui.controllers.recording_controller.time.monotonic"
         ) as mock_time:
-            mock_time.side_effect = [100.0, 131.0]
+            mock_time.side_effect = lambda: current_time
             ctrl.start_recording(
                 Path("/out/test.mp4"),
                 CaptureSettings(),
@@ -539,6 +541,7 @@ class TestRecordingControllerFfmpegCache:
             ctrl._state.stop_recording()
             ctrl._video_recorder = None
             ctrl._encoder = None
+            current_time = 150.0
             ctrl.start_recording(
                 Path("/out/test.mp4"),
                 CaptureSettings(),
