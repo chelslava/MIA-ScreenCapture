@@ -10,7 +10,6 @@ import os
 import platform
 import subprocess
 import threading
-import webbrowser
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -44,7 +43,11 @@ from core.readiness import (
     build_readiness_checks,
 )
 from core.recording_types import AudioMode, CaptureMode
+from gui.controllers.desktop_actions_controller import DesktopActionsController
+from gui.controllers.profile_gui_controller import ProfileGUIController
+from gui.controllers.readiness_controller import ReadinessController
 from gui.controllers.recording_controller import RecordingController
+from gui.controllers.recordings_controller import RecordingsController
 from gui.controllers.settings_controller import SettingsController
 from gui.controllers.status_bar_controller import StatusBarController
 from gui.controllers.websocket_controller import WebSocketClientController
@@ -69,14 +72,12 @@ from gui.views.finalization_progress_dialog import (
     FinalizationProgressDialog,
 )
 from gui.views.output_view import OutputView
-from gui.views.profile_dialog import ProfileDialog
 from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_indicator import RecordingIndicatorOverlay
 from gui.views.video_view import VideoView
 from logger_config import get_module_logger, open_logs_folder
 from recorder.utils import (
     FFmpegStatus,
-    check_ffmpeg,
     format_filesize,
     format_time,
     generate_thumbnail,
@@ -172,9 +173,21 @@ class MainWindow(QMainWindow):
             self._state, get_config()
         )
         self._readiness_service = RecordingReadinessService()
+        self._readiness_controller = ReadinessController(
+            self._readiness_service,
+            track_thread=self._thread_tracker.track,
+        )
         self._desktop_actions = DesktopActionRegistry()
-        self._registered_shortcuts: dict[str, str] = {}
-        self._tab_navigation_order: list[QWidget] = []
+        self._desktop_actions_controller = DesktopActionsController(
+            self._desktop_actions
+        )
+        self._registered_shortcuts = (
+            self._desktop_actions_controller.registered_shortcuts
+        )
+        self._tab_navigation_order = (
+            self._desktop_actions_controller.tab_navigation_order
+        )
+        self._profile_gui_controller = ProfileGUIController()
         self._ws_controller: WebSocketClientController | None = None
         self._recording_indicator = RecordingIndicatorOverlay()
         # Диалог прогресса финализации создаётся лениво,
@@ -191,6 +204,14 @@ class MainWindow(QMainWindow):
         # Настройка окна
         self._setup_window()
         self._setup_ui()
+        self._recordings_controller = RecordingsController(
+            state=self._state,
+            settings_controller=self._settings_controller,
+            recordings_list=self.recordings_list,
+            filter_input=self._recordings_filter_input,
+            status_bar=self.status_bar,
+            track_thread=self._thread_tracker.track,
+        )
         self._status_bar_controller = StatusBarController(
             start_btn=self.start_btn,
             stop_btn=self.stop_btn,
@@ -759,139 +780,114 @@ class MainWindow(QMainWindow):
 
     def _setup_desktop_actions(self) -> None:
         """Создать action registry, shortcuts и accessibility metadata."""
-        start_spec = get_desktop_action_spec(DesktopActionId.START_RECORDING)
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.START_RECORDING,
-                title=start_spec.title,
-                description=start_spec.description,
-                callback=self._start_recording,
-                shortcut=start_spec.shortcut,
-                enabled_when=lambda: not self._state.is_recording(),
+        callbacks = {
+            DesktopActionId.START_RECORDING: self._start_recording,
+            DesktopActionId.TOGGLE_PAUSE: self._toggle_pause,
+            DesktopActionId.STOP_RECORDING: self._stop_recording,
+            DesktopActionId.OPEN_LATEST_RECORDING: self._open_latest_recording,
+            DesktopActionId.OPEN_RECORDING_FOLDER: self._open_recording_folder,
+            DesktopActionId.SHOW_RECORDING_TAB: lambda: (
+                self._sidebar.setCurrentRow(0)
+                if hasattr(self, "_sidebar")
+                else None
+            ),
+            DesktopActionId.SHOW_SCHEDULER_TAB: lambda: (
+                self._sidebar.setCurrentRow(2)
+                if hasattr(self, "_sidebar")
+                else None
+            ),
+            DesktopActionId.SHOW_DIAGNOSTICS_TAB: lambda: (
+                self._sidebar.setCurrentRow(3)
+                if hasattr(self, "_sidebar")
+                else None
+            ),
+            DesktopActionId.SHOW_API_TAB: lambda: (
+                self._sidebar.setCurrentRow(4)
+                if hasattr(self, "_sidebar")
+                else None
+            ),
+            DesktopActionId.OPEN_APP_LOGS: self._open_application_logs,
+        }
+        enabled_conditions = {
+            DesktopActionId.START_RECORDING: lambda: (
+                not self._state.is_recording()
+            ),
+            DesktopActionId.TOGGLE_PAUSE: lambda: (
+                self._state.is_recording() or self._state.is_paused()
+            ),
+            DesktopActionId.STOP_RECORDING: lambda: (
+                self._state.is_recording() or self._state.is_paused()
+            ),
+        }
+        if hasattr(self, "_desktop_actions_controller"):
+            self._desktop_actions_controller.registry = self._desktop_actions
+            self._desktop_actions_controller.register_default_actions(
+                callbacks=callbacks,
+                enabled_conditions=enabled_conditions,
             )
-        )
-        pause_spec = get_desktop_action_spec(DesktopActionId.TOGGLE_PAUSE)
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.TOGGLE_PAUSE,
-                title=pause_spec.title,
-                description=pause_spec.description,
-                callback=self._toggle_pause,
-                shortcut=pause_spec.shortcut,
-                enabled_when=lambda: (
-                    self._state.is_recording() or self._state.is_paused()
+        else:
+            for action_id, spec in [
+                (
+                    DesktopActionId.START_RECORDING,
+                    get_desktop_action_spec(DesktopActionId.START_RECORDING),
                 ),
-            )
-        )
-        stop_spec = get_desktop_action_spec(DesktopActionId.STOP_RECORDING)
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.STOP_RECORDING,
-                title=stop_spec.title,
-                description=stop_spec.description,
-                callback=self._stop_recording,
-                shortcut=stop_spec.shortcut,
-                enabled_when=lambda: (
-                    self._state.is_recording() or self._state.is_paused()
+                (
+                    DesktopActionId.TOGGLE_PAUSE,
+                    get_desktop_action_spec(DesktopActionId.TOGGLE_PAUSE),
                 ),
-            )
-        )
-        latest_spec = get_desktop_action_spec(
-            DesktopActionId.OPEN_LATEST_RECORDING
-        )
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.OPEN_LATEST_RECORDING,
-                title=latest_spec.title,
-                description=latest_spec.description,
-                callback=self._open_latest_recording,
-                shortcut=latest_spec.shortcut,
-            )
-        )
-        folder_spec = get_desktop_action_spec(
-            DesktopActionId.OPEN_RECORDING_FOLDER
-        )
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.OPEN_RECORDING_FOLDER,
-                title=folder_spec.title,
-                description=folder_spec.description,
-                callback=self._open_recording_folder,
-                shortcut=folder_spec.shortcut,
-            )
-        )
-        recording_tab_spec = get_desktop_action_spec(
-            DesktopActionId.SHOW_RECORDING_TAB
-        )
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.SHOW_RECORDING_TAB,
-                title=recording_tab_spec.title,
-                description=recording_tab_spec.description,
-                callback=lambda: (
-                    self._sidebar.setCurrentRow(0)
-                    if hasattr(self, "_sidebar")
-                    else None
+                (
+                    DesktopActionId.STOP_RECORDING,
+                    get_desktop_action_spec(DesktopActionId.STOP_RECORDING),
                 ),
-                shortcut=recording_tab_spec.shortcut,
-            )
-        )
-        scheduler_tab_spec = get_desktop_action_spec(
-            DesktopActionId.SHOW_SCHEDULER_TAB
-        )
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.SHOW_SCHEDULER_TAB,
-                title=scheduler_tab_spec.title,
-                description=scheduler_tab_spec.description,
-                callback=lambda: (
-                    self._sidebar.setCurrentRow(2)
-                    if hasattr(self, "_sidebar")
-                    else None
+                (
+                    DesktopActionId.OPEN_LATEST_RECORDING,
+                    get_desktop_action_spec(
+                        DesktopActionId.OPEN_LATEST_RECORDING
+                    ),
                 ),
-                shortcut=scheduler_tab_spec.shortcut,
-            )
-        )
-        diagnostics_tab_spec = get_desktop_action_spec(
-            DesktopActionId.SHOW_DIAGNOSTICS_TAB
-        )
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.SHOW_DIAGNOSTICS_TAB,
-                title=diagnostics_tab_spec.title,
-                description=diagnostics_tab_spec.description,
-                callback=lambda: (
-                    self._sidebar.setCurrentRow(3)
-                    if hasattr(self, "_sidebar")
-                    else None
+                (
+                    DesktopActionId.OPEN_RECORDING_FOLDER,
+                    get_desktop_action_spec(
+                        DesktopActionId.OPEN_RECORDING_FOLDER
+                    ),
                 ),
-                shortcut=diagnostics_tab_spec.shortcut,
-            )
-        )
-        api_tab_spec = get_desktop_action_spec(DesktopActionId.SHOW_API_TAB)
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.SHOW_API_TAB,
-                title=api_tab_spec.title,
-                description=api_tab_spec.description,
-                callback=lambda: (
-                    self._sidebar.setCurrentRow(4)
-                    if hasattr(self, "_sidebar")
-                    else None
+                (
+                    DesktopActionId.SHOW_RECORDING_TAB,
+                    get_desktop_action_spec(
+                        DesktopActionId.SHOW_RECORDING_TAB
+                    ),
                 ),
-                shortcut=api_tab_spec.shortcut,
-            )
-        )
-        app_logs_spec = get_desktop_action_spec(DesktopActionId.OPEN_APP_LOGS)
-        self._desktop_actions.register(
-            DesktopAction(
-                action_id=DesktopActionId.OPEN_APP_LOGS,
-                title=app_logs_spec.title,
-                description=app_logs_spec.description,
-                callback=self._open_application_logs,
-                shortcut=app_logs_spec.shortcut,
-            )
-        )
+                (
+                    DesktopActionId.SHOW_SCHEDULER_TAB,
+                    get_desktop_action_spec(
+                        DesktopActionId.SHOW_SCHEDULER_TAB
+                    ),
+                ),
+                (
+                    DesktopActionId.SHOW_DIAGNOSTICS_TAB,
+                    get_desktop_action_spec(
+                        DesktopActionId.SHOW_DIAGNOSTICS_TAB
+                    ),
+                ),
+                (
+                    DesktopActionId.SHOW_API_TAB,
+                    get_desktop_action_spec(DesktopActionId.SHOW_API_TAB),
+                ),
+                (
+                    DesktopActionId.OPEN_APP_LOGS,
+                    get_desktop_action_spec(DesktopActionId.OPEN_APP_LOGS),
+                ),
+            ]:
+                self._desktop_actions.register(
+                    DesktopAction(
+                        action_id=action_id,
+                        title=spec.title,
+                        description=spec.description,
+                        callback=callbacks[action_id],
+                        shortcut=spec.shortcut,
+                        enabled_when=enabled_conditions.get(action_id),
+                    )
+                )
 
         self._apply_action_metadata(
             self.start_btn,
@@ -985,16 +981,9 @@ class MainWindow(QMainWindow):
         accessible_description: str,
     ) -> None:
         """Назначить accessible metadata с fallback для unit-test моков."""
-        widget_any = cast(Any, widget)
-        widget_any._accessible_name = accessible_name
-        widget_any._accessible_description = accessible_description
-        set_name = getattr(widget, "setAccessibleName", None)
-        if callable(set_name):
-            set_name(accessible_name)
-
-        set_description = getattr(widget, "setAccessibleDescription", None)
-        if callable(set_description):
-            set_description(accessible_description)
+        DesktopActionsController.apply_accessible_metadata(
+            widget, accessible_name, accessible_description
+        )
 
     def _configure_tab_order(self) -> None:
         """Настроить логичный tab order для сценариев без мыши."""
@@ -1008,50 +997,31 @@ class MainWindow(QMainWindow):
             self._open_folder_btn,
         ]
         self._tab_navigation_order = tab_order
-        set_tab_order = getattr(self, "setTabOrder", None)
-        if callable(set_tab_order):
-            for current_widget, next_widget in zip(
-                tab_order,
-                tab_order[1:],
-                strict=False,
-            ):
-                set_tab_order(current_widget, next_widget)
+        if hasattr(self, "_desktop_actions_controller"):
+            self._desktop_actions_controller.configure_tab_order(
+                self, tab_order
+            )
+        else:
+            set_tab_order = getattr(self, "setTabOrder", None)
+            if callable(set_tab_order):
+                for current_widget, next_widget in zip(
+                    tab_order,
+                    tab_order[1:],
+                    strict=False,
+                ):
+                    set_tab_order(current_widget, next_widget)
 
     def _register_qt_shortcuts(self) -> None:
         """Зарегистрировать оконные shortcuts для key actions."""
-        self._qt_shortcuts: list[Any] = []
-        try:
-            from PyQt6.QtGui import QKeySequence, QShortcut
-        except Exception:
-            return
-
-        for action in self._desktop_actions.all():
-            if not action.shortcut:
-                continue
-            try:
-                shortcut = QShortcut(QKeySequence(action.shortcut), self)
-                shortcut.activated.connect(
-                    lambda action_id=action.action_id: (
-                        self._desktop_actions.execute(action_id)
-                    )
-                )
-                self._qt_shortcuts.append(shortcut)
-            except Exception:
-                continue
-
-        # Дополнительные Alt-shortcuts для доступности без мыши
-        _alt_shortcuts: list[tuple[str, Any]] = [
+        alt_shortcuts: list[tuple[str, Any]] = [
             ("Alt+R", self.start_btn),
             ("Alt+S", self.stop_btn),
             ("Alt+P", self.pause_btn),
         ]
-        for key_seq, btn in _alt_shortcuts:
-            try:
-                shortcut = QShortcut(QKeySequence(key_seq), self)
-                shortcut.activated.connect(lambda b=btn: b.click())
-                self._qt_shortcuts.append(shortcut)
-            except Exception:
-                continue
+        if hasattr(self, "_desktop_actions_controller"):
+            self._desktop_actions_controller.register_qt_shortcuts(
+                self, alt_shortcuts
+            )
 
     def _apply_settings_to_views(self) -> None:
         """Применение настроек к представлениям."""
@@ -1113,13 +1083,10 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, str(rec.path))
 
-            # Попытаться загрузить существующую миниатюру
-            # (единый центральный кэш, #103)
             thumbnail_path = generate_thumbnail(rec.path)
             if thumbnail_path:
                 item.setIcon(QIcon(str(thumbnail_path)))
             else:
-                # Показать placeholder если миниатюра не создана
                 item.setIcon(self._get_recorded_video_icon())
 
             self.recordings_list.addItem(item)
@@ -1131,18 +1098,16 @@ class MainWindow(QMainWindow):
 
     def _normalized_recordings_filter(self) -> str:
         """Нормализация текста фильтра для сравнения."""
-        return str(self._recordings_filter_input.text().strip().lower())
+        return self._recordings_controller.normalized_recordings_filter()
 
     @staticmethod
     def _recording_matches_filter(
         filename: str, date_text: str, filter_text: str
     ) -> bool:
         """Проверка попадания записи под фильтр."""
-        normalized_filter = filter_text.strip().lower()
-        if not normalized_filter:
-            return True
-        haystack = f"{filename.lower()} {date_text.lower()}"
-        return normalized_filter in haystack
+        return RecordingsController.recording_matches_filter(
+            filename, date_text, filter_text
+        )
 
     # === Обработчики сигналов от представлений ===
 
@@ -1231,47 +1196,20 @@ class MainWindow(QMainWindow):
 
         audio = self._build_audio_settings_from_state()
         output_path = self._settings_controller.get_output_path()
-        self._readiness_request_id += 1
-        request_id = self._readiness_request_id
         self._readiness_center_view.set_loading_state()
 
-        t = threading.Thread(
-            target=self._refresh_readiness_worker,
-            args=(request_id, capture, audio, output_path),
-            daemon=True,
-        )
-        self._thread_tracker.track(t)
-        t.start()
-
-    def _refresh_readiness_worker(
-        self,
-        request_id: int,
-        capture: CaptureSettings,
-        audio: AudioSettings,
-        output_path: Path,
-    ) -> None:
-        """Собрать readiness snapshot в фоне для inline summary."""
-        try:
-            snapshot = self._readiness_service.evaluate(
+        self._readiness_request_id = (
+            self._readiness_controller.request_readiness_refresh(
                 capture=capture,
                 audio=audio,
                 output_path=output_path,
+                on_completed=lambda req_id, snap, err, cap, aud: (
+                    self.readiness_refresh_completed.emit(
+                        req_id, snap, err, cap, aud
+                    )
+                ),
             )
-            self.readiness_refresh_completed.emit(
-                request_id,
-                snapshot,
-                None,
-                capture,
-                audio,
-            )
-        except Exception as error:
-            self.readiness_refresh_completed.emit(
-                request_id,
-                None,
-                str(error),
-                capture,
-                audio,
-            )
+        )
 
     def _on_readiness_refresh_completed(
         self,
@@ -1282,7 +1220,7 @@ class MainWindow(QMainWindow):
         audio: object,
     ) -> None:
         """Применить readiness snapshot к compact center."""
-        if request_id != self._readiness_request_id:
+        if not self._readiness_controller.is_request_current(request_id):
             return
 
         if error is not None:
@@ -1299,12 +1237,18 @@ class MainWindow(QMainWindow):
             return
 
         checks = build_readiness_checks(snapshot, capture, audio)
-        self._latest_readiness_snapshot = snapshot
-        self._latest_readiness_inputs = {
-            "capture": capture,
-            "audio": audio,
-            "output_path": self._settings_controller.get_output_path(),
-        }
+        self._readiness_controller.store_readiness_result(
+            snapshot,
+            capture,
+            audio,
+            self._settings_controller.get_output_path(),
+        )
+        self._latest_readiness_snapshot = (
+            self._readiness_controller.latest_snapshot
+        )
+        self._latest_readiness_inputs = (
+            self._readiness_controller.latest_inputs
+        )
         self._readiness_center_view.apply_checks(checks)
 
     def _show_readiness_details(self) -> None:
@@ -1375,55 +1319,45 @@ class MainWindow(QMainWindow):
 
     def _handle_readiness_action(self, action_key: str) -> None:
         """Выполнить one-click action из readiness center или диагностики."""
-        if action_key == "open_ffmpeg_docs":
-            webbrowser.open("https://ffmpeg.org/download.html")
-            return
 
-        if action_key == "choose_output_path":
-            self._select_output_folder()
-            return
-
-        if action_key == "refresh_windows":
+        def _refresh_windows_action() -> None:
             if hasattr(self, "_sidebar"):
                 self._sidebar.setCurrentRow(0)
             self._capture_view.refresh_windows()
-            return
 
-        if action_key == "focus_capture_window":
+        def _focus_capture_window_action() -> None:
             if hasattr(self, "_sidebar"):
                 self._sidebar.setCurrentRow(0)
             self._capture_view.set_capture_type(CaptureMode.WINDOW)
             self._capture_view.focus_window_combo()
-            return
 
-        if action_key == "refresh_audio_devices":
+        def _refresh_audio_devices_action() -> None:
             if hasattr(self, "_sidebar"):
                 self._sidebar.setCurrentRow(1)
             self._audio_view._refresh_audio_devices()
-            return
 
-        if action_key == "focus_microphone_selection":
+        def _focus_microphone_selection_action() -> None:
             if hasattr(self, "_sidebar"):
                 self._sidebar.setCurrentRow(1)
             focus = getattr(self._audio_view._mic_combo, "setFocus", None)
             if callable(focus):
                 focus()
-            return
 
-        if action_key == "API сервер":
+        def _switch_to_api_tab() -> None:
             if hasattr(self, "_sidebar"):
                 self._sidebar.setCurrentRow(4)
-            return
 
-        fallback_action_map = {
-            "Папка вывода": "choose_output_path",
-            "Аудиоустройства": "refresh_audio_devices",
-            "Окно захвата": "refresh_windows",
-            "FFmpeg": "open_ffmpeg_docs",
+        handlers: dict[str, Callable[[], None]] = {
+            "choose_output_path": self._select_output_folder,
+            "refresh_windows": _refresh_windows_action,
+            "focus_capture_window": _focus_capture_window_action,
+            "refresh_audio_devices": _refresh_audio_devices_action,
+            "focus_microphone_selection": _focus_microphone_selection_action,
+            "API сервер": _switch_to_api_tab,
         }
-        resolved_action = fallback_action_map.get(action_key)
-        if resolved_action is not None:
-            self._handle_readiness_action(resolved_action)
+        self._readiness_controller.handle_readiness_action(
+            action_key, handlers
+        )
 
     # === Управление профилями записи ===
 
@@ -1431,116 +1365,34 @@ class MainWindow(QMainWindow):
         """Инициализация списка профилей в выпадающем списке."""
         if not hasattr(self, "_profile_combo"):
             return
-
-        from core.profiles import get_profile_storage
-
-        storage = get_profile_storage()
-        profiles = storage.list_profiles()
-
-        self._profile_combo.blockSignals(True)
-        self._profile_combo.clear()
-
-        default_index = 0
-        for i, profile in enumerate(profiles):
-            display_text = f"{profile.icon} {profile.name}"
-            self._profile_combo.addItem(display_text, profile.id)
-            if profile.is_default:
-                default_index = i
-
-        if profiles:
-            self._profile_combo.setCurrentIndex(default_index)
-
-        self._profile_combo.blockSignals(False)
+        self._profile_gui_controller.init_profiles(self._profile_combo)
 
     def _on_profile_combo_changed(self, index: int) -> None:
         """Обработка выбора профиля в выпадающем списке."""
         if index < 0 or not hasattr(self, "_profile_combo"):
             return
-
-        profile_id = self._profile_combo.itemData(index)
-        if not profile_id:
-            return
-
-        from core.profiles import get_profile_storage
-
-        storage = get_profile_storage()
-        profile = storage.get_profile(profile_id)
-        if profile:
-            self.apply_profile_settings(profile)
+        self._profile_gui_controller.on_profile_combo_changed(
+            index, self._profile_combo, self.apply_profile_settings
+        )
 
     def _open_profile_dialog(self) -> None:
         """Открытие диалога управления профилями."""
-        dialog = ProfileDialog(parent=self)
-        dialog.profiles_changed.connect(self._init_profiles)
-        dialog.profile_applied.connect(self._on_profile_applied_from_dialog)
-        dialog.exec()
-
-    def _on_profile_applied_from_dialog(self, profile_id: str) -> None:
-        """Обработка применения профиля из диалога."""
-        from core.profiles import get_profile_storage
-
-        storage = get_profile_storage()
-        profile = storage.get_profile(profile_id)
-        if profile:
-            self.apply_profile_settings(profile)
-            self._init_profiles()
+        if hasattr(self, "_profile_combo"):
+            self._profile_gui_controller.open_profile_dialog(
+                self, self._profile_combo, self.apply_profile_settings
+            )
 
     def apply_profile_settings(self, profile: Any) -> None:
         """Применяет параметры профиля к активным представлениям и состоянию."""
-        if hasattr(profile, "video") and hasattr(self, "_video_view"):
-            v = profile.video
-            self._video_view.set_fps(v.fps)
-            self._video_view.set_codec(v.codec)
-            self._video_view.set_bitrate(v.bitrate)
-            self._video_view.set_format(v.format)
-            self._video_view.set_preset(v.preset)
-
-        if hasattr(profile, "audio"):
-            a = profile.audio
-            rec_mic = getattr(a, "record_mic", True)
-            rec_sys = getattr(a, "record_system", False)
-            if rec_mic and rec_sys:
-                audio_mode = AudioMode.BOTH
-            elif rec_mic:
-                audio_mode = AudioMode.MIC
-            elif rec_sys:
-                audio_mode = AudioMode.SYSTEM
-            else:
-                audio_mode = AudioMode.NONE
-
-            self._state.set_audio_type(audio_mode)
-            if hasattr(self, "_audio_view"):
-                self._audio_view.set_audio_type(audio_mode)
-
-        if hasattr(profile, "capture") and hasattr(self, "_capture_view"):
-            c = profile.capture
-            area_type_str = getattr(c, "area_type", "full")
-            if area_type_str == "window":
-                mode = CaptureMode.WINDOW
-            elif area_type_str == "rect":
-                mode = CaptureMode.RECT
-            else:
-                mode = CaptureMode.FULL
-
-            self._capture_view.set_capture_type(mode)
-            if getattr(c, "window_title", None):
-                self._capture_view.set_window_title(c.window_title)
-            if getattr(c, "rect_coords", None):
-                self._capture_view.set_rect_coords(tuple(c.rect_coords))
-
-        if hasattr(self, "_profile_combo"):
-            self._profile_combo.blockSignals(True)
-            for i in range(self._profile_combo.count()):
-                if self._profile_combo.itemData(i) == getattr(
-                    profile, "id", None
-                ):
-                    self._profile_combo.setCurrentIndex(i)
-                    break
-            self._profile_combo.blockSignals(False)
-
-        if hasattr(self, "status_bar"):
-            name = getattr(profile, "name", "Профиль")
-            self.status_bar.showMessage(f"Применен профиль: {name}", 4000)
+        self._profile_gui_controller.apply_profile_settings(
+            profile,
+            video_view=getattr(self, "_video_view", None),
+            audio_view=getattr(self, "_audio_view", None),
+            capture_view=getattr(self, "_capture_view", None),
+            state=getattr(self, "_state", None),
+            combo=getattr(self, "_profile_combo", None),
+            status_bar=getattr(self, "status_bar", None),
+        )
 
     # === Управление записью ===
 
@@ -1851,85 +1703,14 @@ class MainWindow(QMainWindow):
         logger.info(f"Запись остановлена: {output_path}")
 
     def _generate_thumbnail_for_recording(self, output_path: Path) -> None:
-        """
-        Генерировать миниатюру для новой записи в фоновом потоке.
-
-        Args:
-            output_path: Путь к записи, для которой нужно сгенерировать миниатюру.
-        """
-        t = threading.Thread(
-            target=self._generate_thumbnail_worker,
-            args=(output_path,),
-            daemon=True,
+        """Генерировать миниатюру для новой записи в фоновом потоке."""
+        self._recordings_controller.generate_thumbnail_for_recording(
+            output_path
         )
-        self._thread_tracker.track(t)
-        t.start()
-
-    def _generate_thumbnail_worker(self, output_path: Path) -> None:
-        """
-        Фоновый worker для генерации миниатюры.
-
-        Args:
-            output_path: Путь к записи.
-        """
-        # Единый центральный кэш миниатюр, #103
-        thumbnail_path = generate_thumbnail(output_path)
-
-        # Обновить UI в главном потоке через сигнал
-        if thumbnail_path:
-            # Запустить второй поток для обновления UI
-            QTimer.singleShot(
-                0,
-                lambda: self._update_thumbnail_icon(
-                    output_path, thumbnail_path
-                ),
-            )
-        else:
-            # Показать placeholder если миниатюра не создана
-            QTimer.singleShot(
-                0, lambda: self._update_thumbnail_icon(output_path, None)
-            )
-
-    def _update_thumbnail_icon(
-        self, output_path: Path, thumbnail_path: Path | None
-    ) -> None:
-        """
-        Обновить иконку миниатюры для элемента списка записей.
-
-        Args:
-            output_path: Путь к записи.
-            thumbnail_path: Путь к миниатюре, или None если миниатюра не создана.
-        """
-        for i in range(self.recordings_list.count()):
-            item = self.recordings_list.item(i)
-            if item is None:
-                continue
-            item_path = item.data(Qt.ItemDataRole.UserRole)
-            if item_path is None:
-                continue
-            if Path(item_path) == output_path:
-                if thumbnail_path:
-                    item.setIcon(QIcon(str(thumbnail_path)))
-                else:
-                    # Показать placeholder если миниатюра не создана
-                    item.setIcon(self._get_recorded_video_icon())
-                break
 
     def _get_recorded_video_icon(self) -> QIcon:
-        """
-        Получить placeholder иконку для записи без миниатюры.
-
-        Returns:
-            QIcon с placeholder (видеокамера или аналогичная иконка).
-        """
-        # Создать placeholder иконку (простой квадрат с текстом "VID")
-        # Используем стандартный icon для файлов видео
-        from PyQt6.QtWidgets import QStyle
-
-        style = self.style()
-        if style is not None:
-            return style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-        return QIcon()
+        """Получить placeholder иконку для записи без миниатюры."""
+        return self._recordings_controller.get_recorded_video_icon()
 
     def _on_recording_paused(self) -> None:
         """Обработка приостановки записи."""
@@ -2233,7 +2014,7 @@ class MainWindow(QMainWindow):
         """Открытие файла записи."""
         path = item.data(Qt.ItemDataRole.UserRole)
         if path:
-            self._open_file(path)
+            self._open_file(str(path))
 
     def _open_selected_recording(self) -> None:
         """Открытие выбранного файла записи."""
@@ -2361,18 +2142,11 @@ class MainWindow(QMainWindow):
 
     def _check_dependencies(self) -> None:
         """Проверка необходимых зависимостей."""
-        threading.Thread(
-            target=self._check_dependencies_worker,
-            daemon=True,
-        ).start()
-
-    def _check_dependencies_worker(self) -> None:
-        """Выполнить проверку зависимостей в фоне."""
-        try:
-            result = check_ffmpeg()
-            self.dependency_check_completed.emit(result, None)
-        except Exception as error:
-            self.dependency_check_completed.emit(None, str(error))
+        self._readiness_controller.check_dependencies(
+            lambda result, error: self.dependency_check_completed.emit(
+                result, error
+            )
+        )
 
     def _on_dependency_check_completed(
         self,
@@ -2596,16 +2370,24 @@ class MainWindow(QMainWindow):
         output_path: Path,
     ) -> ReadinessSnapshot | None:
         """Вернуть последний readiness snapshot, если он ещё актуален."""
-        latest_inputs = self._latest_readiness_inputs
-        if latest_inputs is None or self._latest_readiness_snapshot is None:
+        if hasattr(self, "_readiness_controller"):
+            cached = self._readiness_controller.resolve_cached_snapshot(
+                capture, audio, output_path
+            )
+            if cached is not None:
+                return cached
+        latest_inputs = getattr(self, "_latest_readiness_inputs", None)
+        latest_snapshot = getattr(self, "_latest_readiness_snapshot", None)
+        if latest_inputs is None or latest_snapshot is None:
             return None
-
         if (
-            latest_inputs.get("capture") == capture
+            isinstance(latest_inputs, dict)
+            and latest_inputs.get("capture") == capture
             and latest_inputs.get("audio") == audio
             and latest_inputs.get("output_path") == output_path
+            and isinstance(latest_snapshot, ReadinessSnapshot)
         ):
-            return self._latest_readiness_snapshot
+            return latest_snapshot
         return None
 
     def _on_diagnostics_fix(self, check_name: str) -> None:

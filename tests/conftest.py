@@ -282,12 +282,20 @@ class MockQWidgetBase:
         """Для QScrollArea."""
         return getattr(self, "_widget", None)
 
-    def addItem(self, item: str):
-        """Для QComboBox."""
+    def blockSignals(self, block: bool) -> bool:
+        """Для QWidget."""
+        prev = getattr(self, "_signals_blocked", False)
+        self._signals_blocked = block
+        return prev
 
+    def addItem(self, item: str, userData: Any = None):
+        """Для QComboBox."""
         if not hasattr(self, "_items"):
             self._items = []
+        if not hasattr(self, "_item_data"):
+            self._item_data = []
         self._items.append(item)
+        self._item_data.append(userData)
 
     def addItems(self, items: list):
         """Для QComboBox."""
@@ -541,6 +549,7 @@ class MockQListWidgetItem:
 
     def __init__(self, text: str = "", parent: Any = None):
         self._text = text
+        self._icon: Any = None
         self._data: dict[int, Any] = {}
         if parent is not None and hasattr(parent, "addItem"):
             parent.addItem(self)
@@ -550,6 +559,12 @@ class MockQListWidgetItem:
 
     def setText(self, text: str):
         self._text = text
+
+    def setIcon(self, icon: Any):
+        self._icon = icon
+
+    def icon(self) -> Any:
+        return self._icon
 
     def setData(self, role: int, value: Any):
         self._data[role] = value
