@@ -158,3 +158,37 @@ class ApplicationService:
     def open_api_logs_folder(self) -> None:
         """Открывает каталог логов API."""
         self._backend.open_api_logs_folder()
+
+    def get_profiles(self) -> list[dict[str, Any]]:
+        """Возвращает список всех профилей записи."""
+        return self._backend.get_profiles()
+
+    def get_profile(self, profile_id: str) -> dict[str, Any] | None:
+        """Возвращает профиль записи по идентификатору."""
+        return self._backend.get_profile(profile_id)
+
+    def create_profile(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Создает новый профиль записи."""
+        return self._backend.create_profile(data)
+
+    def update_profile(
+        self, profile_id: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Обновляет существующий профиль записи."""
+        return self._backend.update_profile(profile_id, data)
+
+    def delete_profile(self, profile_id: str) -> dict[str, Any]:
+        """Удаляет профиль записи."""
+        return self._backend.delete_profile(profile_id)
+
+    def apply_profile(self, profile_id: str) -> dict[str, Any]:
+        """Применяет профиль записи к активной конфигурации."""
+        return self._backend.apply_profile(profile_id)
+
+    def export_profile(self, profile_id: str) -> dict[str, Any] | None:
+        """Экспортирует профиль записи."""
+        return self._backend.export_profile(profile_id)
+
+    def import_profile(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Импортирует профиль записи."""
+        return self._backend.import_profile(data)

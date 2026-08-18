@@ -51,7 +51,56 @@ def register_recording_routes(
 
                 callback_data = validated.model_dump(exclude_none=True)
 
+                if validated.profile_id:
+                    get_profile_cb = server.get_callback("get_profile")
+                    if get_profile_cb:
+                        profile = get_profile_cb(validated.profile_id)
+                        if profile is None:
+                            return (
+                                jsonify(
+                                    {
+                                        "success": False,
+                                        "error": f"Профиль '{validated.profile_id}' не найден",
+                                    }
+                                ),
+                                404,
+                            )
+                        prof_video = profile.get("video", {})
+                        prof_audio = profile.get("audio", {})
+                        prof_capture = profile.get("capture", {})
+
+                        if "fps" not in data and "fps" in prof_video:
+                            callback_data["fps"] = prof_video["fps"]
+                        if "codec" not in data and "codec" in prof_video:
+                            callback_data["codec"] = prof_video["codec"]
+                        if "bitrate" not in data and "bitrate" in prof_video:
+                            callback_data["bitrate"] = prof_video["bitrate"]
+                        if "area" not in data and "area_type" in prof_capture:
+                            callback_data["area"] = prof_capture["area_type"]
+                        if "window_title" not in data and prof_capture.get(
+                            "window_title"
+                        ):
+                            callback_data["window_title"] = prof_capture[
+                                "window_title"
+                            ]
+                        if "rect" not in data and prof_capture.get(
+                            "rect_coords"
+                        ):
+                            callback_data["rect"] = prof_capture["rect_coords"]
+                        if "audio" not in data:
+                            rec_mic = prof_audio.get("record_mic", False)
+                            rec_sys = prof_audio.get("record_system", False)
+                            if rec_mic and rec_sys:
+                                callback_data["audio"] = "both"
+                            elif rec_mic:
+                                callback_data["audio"] = "mic"
+                            elif rec_sys:
+                                callback_data["audio"] = "system"
+                            else:
+                                callback_data["audio"] = "none"
+
                 callback = server.get_callback("start")
+
                 if callback:
                     result = callback(callback_data)
                     if result.get("success"):

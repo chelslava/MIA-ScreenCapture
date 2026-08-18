@@ -501,6 +501,14 @@ class TestMainApiRuntime:
             "get_multi_recording_status",
             "get_config",
             "update_config",
+            "get_profiles",
+            "get_profile",
+            "create_profile",
+            "update_profile",
+            "delete_profile",
+            "apply_profile",
+            "export_profile",
+            "import_profile",
         }
 
     def test_start_api_server_registers_public_facade_callbacks(

@@ -1355,6 +1355,140 @@ class VideoRecorderApp:
             "restart_required": restart_required,
         }
 
+    # === Управление профилями записи ===
+
+    def get_profiles(self) -> list[dict[str, Any]]:
+        """Возвращает список всех профилей записи."""
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        return [p.to_dict() for p in storage.list_profiles()]
+
+    def get_profile(self, profile_id: str) -> dict[str, Any] | None:
+        """Возвращает профиль по идентификатору."""
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        profile = storage.get_profile(profile_id)
+        return profile.to_dict() if profile else None
+
+    def create_profile(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Создает новый профиль записи."""
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        video = None
+        if "video" in data and isinstance(data["video"], dict):
+            from config import VideoSettings
+
+            video = VideoSettings(**data["video"])
+        audio = None
+        if "audio" in data and isinstance(data["audio"], dict):
+            from config import AudioSettings
+
+            audio = AudioSettings(**data["audio"])
+        capture = None
+        if "capture" in data and isinstance(data["capture"], dict):
+            from config import CaptureSettings
+
+            capture = CaptureSettings(**data["capture"])
+
+        profile = storage.create_profile(
+            name=data.get("name", "Новый профиль"),
+            description=data.get("description", ""),
+            icon=data.get("icon", "⚙️"),
+            video=video,
+            audio=audio,
+            capture=capture,
+            is_default=bool(data.get("is_default", False)),
+        )
+        return {"success": True, "profile": profile.to_dict()}
+
+    def update_profile(
+        self, profile_id: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Обновляет существующий профиль записи."""
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        video = None
+        if "video" in data and isinstance(data["video"], dict):
+            from config import VideoSettings
+
+            video = VideoSettings(**data["video"])
+        audio = None
+        if "audio" in data and isinstance(data["audio"], dict):
+            from config import AudioSettings
+
+            audio = AudioSettings(**data["audio"])
+        capture = None
+        if "capture" in data and isinstance(data["capture"], dict):
+            from config import CaptureSettings
+
+            capture = CaptureSettings(**data["capture"])
+
+        profile = storage.update_profile(
+            profile_id=profile_id,
+            name=data.get("name"),
+            description=data.get("description"),
+            icon=data.get("icon"),
+            video=video,
+            audio=audio,
+            capture=capture,
+            is_default=data.get("is_default"),
+        )
+        if profile is None:
+            return {"success": False, "error": "Профиль не найден"}
+        return {"success": True, "profile": profile.to_dict()}
+
+    def delete_profile(self, profile_id: str) -> dict[str, Any]:
+        """Удаляет профиль записи."""
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        success, error = storage.delete_profile(profile_id)
+        if not success:
+            return {
+                "success": False,
+                "error": error or "Не удалось удалить профиль",
+            }
+        return {"success": True}
+
+    def apply_profile(self, profile_id: str) -> dict[str, Any]:
+        """Применяет профиль записи к активной конфигурации и GUI (если открыт)."""
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        profile = storage.get_profile(profile_id)
+        if profile is None:
+            return {"success": False, "error": "Профиль не найден"}
+
+        success = storage.apply_profile_to_config(profile_id)
+        if not success:
+            return {"success": False, "error": "Не удалось применить профиль"}
+
+        if self._main_window:
+            self._run_on_gui_thread(
+                lambda: self._main_window.apply_profile_settings(profile)
+            )
+
+        return {"success": True, "applied_profile": profile.to_dict()}
+
+    def export_profile(self, profile_id: str) -> dict[str, Any] | None:
+        """Экспортирует профиль записи."""
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        return storage.export_profile(profile_id)
+
+    def import_profile(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Импортирует профиль записи."""
+        from core.profiles import get_profile_storage
+
+        storage = get_profile_storage()
+        profile = storage.import_profile(data)
+        return {"success": True, "profile": profile.to_dict()}
+
     # Вспомогательные методы GUI
 
     def _show_window(self) -> None:
