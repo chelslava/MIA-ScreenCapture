@@ -166,7 +166,7 @@ def _normalize_error_payload(
     return _standard_error_payload(code, message, _extract_error_details(data))
 
 
-def _standardize_error_response(response):
+def _standardize_error_response(response: Any) -> Any:
     """Нормализует JSON-ошибки в единый контракт."""
     from flask import request as flask_request
 
@@ -662,7 +662,7 @@ def _register_profiles_routes(api_v1: Any, server: Any) -> None:
     )
 
 
-def register_routes(app, server) -> None:
+def register_routes(app: Any, server: Any) -> None:
     """
     Регистрация всех маршрутов API с Flask приложением.
 

@@ -101,5 +101,51 @@ class TestFinalizationProgressTrackerUIContract:
         tracker.update(percent=100.0, stage="Готово")
         snapshot = tracker.snapshot()
         assert snapshot["percent"] == 100.0
-        # Завершение финализации интерпретируется диалогом как завершение,
-        # даже если active=True — покрытие через _poll_percent_100
+
+
+class TestFinalizationProgressDialogLifecycle:
+    def test_start_and_stop(
+        self, tracker: FinalizationProgressTracker
+    ) -> None:
+        dlg = _make_dialog(tracker)
+        dlg.raise_ = MagicMock()  # type: ignore[method-assign]
+        dlg.start()
+        dlg._poll_timer.start.assert_called_once_with(250)
+        dlg.show.assert_called_once()
+        dlg.raise_.assert_called_once()
+        assert dlg._cancel_in_progress is False
+
+        dlg.stop()
+        dlg._poll_timer.stop.assert_called_once()
+        dlg.hide.assert_called_once()
+
+    def test_on_poll_tick_updates_ui(
+        self, tracker: FinalizationProgressTracker
+    ) -> None:
+        dlg = _make_dialog(tracker)
+        dlg.accept = MagicMock()  # type: ignore[method-assign]
+        tracker.update(percent=50.0, stage="Кодирование")
+        dlg._on_poll_tick()
+
+        dlg._progress.setValue.assert_called_with(50)
+        dlg._stage_label.setText.assert_called_with("Кодирование")
+        dlg.accept.assert_not_called()
+
+    def test_on_poll_tick_completes_when_100(
+        self, tracker: FinalizationProgressTracker
+    ) -> None:
+        dlg = _make_dialog(tracker)
+        dlg.accept = MagicMock()  # type: ignore[method-assign]
+        tracker.update(percent=100.0, stage="")
+        dlg._on_poll_tick()
+
+        dlg._progress.setValue.assert_called_with(100)
+        dlg.accept.assert_called_once()
+
+    def test_close_event_ignores(
+        self, tracker: FinalizationProgressTracker
+    ) -> None:
+        dlg = _make_dialog(tracker)
+        event = MagicMock()
+        dlg.closeEvent(event)
+        event.ignore.assert_called_once()

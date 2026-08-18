@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog,
@@ -124,6 +126,6 @@ class FinalizationProgressDialog(QDialog):
         self._stage_label.setText("Отмена финализации…")
         self.cancel_requested.emit()
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: Any) -> None:
         """Игнорируем закрытие по Alt+F4/крестику во время финализации."""
         event.ignore()

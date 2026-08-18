@@ -575,7 +575,7 @@ class TaskScheduler:
                 e,
             )
 
-    def _create_trigger(self, task: ScheduleTask):
+    def _create_trigger(self, task: ScheduleTask) -> Any | None:
         """
         Создание триггера APScheduler для задачи.
 

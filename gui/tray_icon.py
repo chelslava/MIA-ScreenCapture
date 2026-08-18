@@ -7,6 +7,7 @@
 """
 
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
@@ -35,7 +36,9 @@ class TrayIcon(QSystemTrayIcon):
     show_window_requested = pyqtSignal()
     exit_requested = pyqtSignal()
 
-    def __init__(self, parent=None, icon_path: Path | None = None):
+    def __init__(
+        self, parent: Any = None, icon_path: Path | None = None
+    ) -> None:
         """
         Инициализация иконки трея.
 
@@ -155,7 +158,9 @@ class TrayIcon(QSystemTrayIcon):
 
         self.setContextMenu(menu)
 
-    def _configure_tray_action(self, action: QAction, action_spec) -> None:
+    def _configure_tray_action(
+        self, action: QAction, action_spec: Any
+    ) -> None:
         """Назначить shortcut и подсказки для tray QAction."""
         if action_spec.shortcut:
             set_shortcut = getattr(action, "setShortcut", None)
