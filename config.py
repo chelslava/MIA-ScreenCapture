@@ -514,7 +514,7 @@ class ConfigManager:
         with self._settings_lock:
             return deepcopy(self._settings)
 
-    def update(self, **kwargs) -> None:
+    def update(self, **kwargs: Any) -> None:
         """
         Обновление настроек новыми значениями.
 

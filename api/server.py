@@ -252,7 +252,7 @@ class APIServer:
 
         # Регистрация обработчиков ошибок
         @self.app.errorhandler(404)
-        def not_found(e):
+        def not_found(e: Any) -> Any:
             return (
                 jsonify(
                     {
@@ -268,7 +268,7 @@ class APIServer:
             )
 
         @self.app.errorhandler(500)
-        def server_error(e):
+        def server_error(e: Any) -> Any:
             return (
                 jsonify(
                     {
@@ -284,7 +284,7 @@ class APIServer:
             )
 
         @self.app.errorhandler(BadRequest)
-        def bad_request(e):
+        def bad_request(e: Any) -> Any:
             return (
                 jsonify(
                     {
@@ -300,7 +300,7 @@ class APIServer:
             )
 
         @self.app.errorhandler(RequestEntityTooLarge)
-        def payload_too_large(e):
+        def payload_too_large(e: Any) -> Any:
             assert self.app is not None
             max_size = int(self.app.config.get("MAX_CONTENT_LENGTH", 0))
             return (
@@ -321,7 +321,7 @@ class APIServer:
             )
 
         @self.app.errorhandler(Exception)
-        def handle_exception(e):
+        def handle_exception(e: Exception) -> Any:
             logger.exception(f"Ошибка API: {e}")
             mapped = map_exception_to_api_error(e)
             return (

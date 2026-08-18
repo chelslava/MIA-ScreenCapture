@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QGuiApplication, QPainter, QPen
@@ -265,7 +266,7 @@ class SelectionPreviewWidget(QWidget):
         if hasattr(self, "update"):
             self.update()
 
-    def paintEvent(self, _event) -> None:  # noqa: N802
+    def paintEvent(self, _event: Any) -> None:  # noqa: N802
         """Отрисовать мини-превью прямоугольной области."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -422,7 +423,7 @@ class AreaSelectorDialog(QDialog):
             return self._selection
         return None
 
-    def _event_point(self, event) -> PointCoords:
+    def _event_point(self, event: Any) -> PointCoords:
         """
         Извлечь координаты точки из Qt-события.
 
@@ -440,7 +441,7 @@ class AreaSelectorDialog(QDialog):
         point = event.pos()
         return int(point.x()), int(point.y())
 
-    def mousePressEvent(self, event) -> None:  # noqa: N802
+    def mousePressEvent(self, event: Any) -> None:  # noqa: N802
         """Начать создание, перемещение или изменение размера области."""
         if event.button() != Qt.MouseButton.LeftButton:
             return
@@ -467,7 +468,7 @@ class AreaSelectorDialog(QDialog):
         if hasattr(self, "update"):
             self.update()
 
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+    def mouseMoveEvent(self, event: Any) -> None:  # noqa: N802
         """Обновить текущую область по движению мыши."""
         if self._drag_mode is None:
             return
@@ -499,7 +500,7 @@ class AreaSelectorDialog(QDialog):
         if hasattr(self, "update"):
             self.update()
 
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event: Any) -> None:  # noqa: N802
         """Завершить текущее действие мышью."""
         if event.button() != Qt.MouseButton.LeftButton:
             return
@@ -514,7 +515,7 @@ class AreaSelectorDialog(QDialog):
         if hasattr(self, "update"):
             self.update()
 
-    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+    def mouseDoubleClickEvent(self, event: Any) -> None:  # noqa: N802
         """Подтвердить выбор двойным кликом внутри области."""
         selection = self.get_selected_rect()
         if selection is None:
@@ -524,7 +525,7 @@ class AreaSelectorDialog(QDialog):
             self.selection_completed.emit(selection)
             self.accept()
 
-    def keyPressEvent(self, event) -> None:  # noqa: N802
+    def keyPressEvent(self, event: Any) -> None:  # noqa: N802
         """Обработать горячие клавиши overlay."""
         key = event.key()
         if key == Qt.Key.Key_Escape:
@@ -540,7 +541,7 @@ class AreaSelectorDialog(QDialog):
 
         super().keyPressEvent(event)
 
-    def paintEvent(self, _event) -> None:  # noqa: N802
+    def paintEvent(self, _event: Any) -> None:  # noqa: N802
         """Отрисовать затемнение, рамку выделения и подсказку."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)

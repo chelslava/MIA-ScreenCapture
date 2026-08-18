@@ -192,7 +192,7 @@ class _WindowsCaptureSession:
 
         @capture.event
         def on_frame_arrived(
-            frame, capture_control: InternalCaptureControl
+            frame: Any, capture_control: InternalCaptureControl
         ) -> None:
             if self._closed:
                 capture_control.stop()

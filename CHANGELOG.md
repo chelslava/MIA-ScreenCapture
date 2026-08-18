@@ -3,6 +3,10 @@
 ## [Unreleased] - 2026-07-01
 
 ### Added
+- **Closed issue #113:** Включение полного строгого режима проверки типов mypy (`disallow_untyped_defs = true`, `disallow_incomplete_defs = true`) для всех 113 модулей кодовой базы:
+  - Устранены все исключения `[[tool.mypy.overrides]]` в `pyproject.toml`.
+  - Добавлены недостающие аннотации типов в `recorder/utils.py`, `recorder/audio_recorder.py`, `recorder/ffmpeg_writer.py`, `recorder/video_recorder.py`, `scheduler/task_scheduler.py`, `api/routes.py`, `api/server.py`, `config.py`, `gui/views/area_selector.py`, `gui/views/recording_indicator.py`, `gui/views/finalization_progress_dialog.py`, `gui/scheduler/task_dialog.py`, `gui/tray_icon.py`, `gui/scheduler/scheduler_tab.py`, `gui/main_window.py`, `main.py`.
+  - Проверено прохождение `uv run mypy .` без ошибок на всех исходных файлах проекта.
 - **Closed issue #114:** Профилирование hot-path захвата кадра, вычисление фактического FPS, jitter межкадровых интервалов, задержки кодирования и учет пропущенных кадров:
   - Создан модуль `recorder/frame_metrics.py` с классом `FrameMetrics` и датаклассом `FrameMetricsSnapshot`.
   - Интегрирован сбор метрик в hot-path захвата `recorder/video_recorder.py`.

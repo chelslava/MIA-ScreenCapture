@@ -404,7 +404,7 @@ def _get_windows_windows() -> list[dict[str, Any]]:
     try:
         import win32gui
 
-        def enum_windows_callback(hwnd, _):
+        def enum_windows_callback(hwnd: int, _: Any) -> bool:
             if win32gui.IsWindowVisible(hwnd):
                 title = win32gui.GetWindowText(hwnd)
                 if title:  # Only windows with titles
@@ -601,7 +601,12 @@ def get_all_monitors() -> list[dict[str, int]]:
 
         monitor_count = 0
 
-        def _callback(h_monitor, hdc_monitor, lprc_monitor, dw_data):
+        def _callback(
+            h_monitor: Any,
+            hdc_monitor: Any,
+            lprc_monitor: Any,
+            dw_data: Any,
+        ) -> int:
             nonlocal monitor_count
             rect = lprc_monitor.contents
             monitor_count += 1
@@ -1128,7 +1133,7 @@ class Singleton(type):
 
     _instances: dict[type, Any] = {}
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
         if cls not in cls._instances:
             cls._instances[cls] = super().__call__(*args, **kwargs)
         return cls._instances[cls]

@@ -518,7 +518,12 @@ class AudioRecorder:
             self._record_loop_pyaudio()
             return
 
-        def audio_callback(indata, frames, time_info, status):
+        def audio_callback(
+            indata: Any,
+            frames: int,
+            time_info: Any,
+            status: Any,
+        ) -> None:
             _ = time_info
             if status:
                 logger.warning(f"Проблема аудиозахвата: {status}")
@@ -740,7 +745,7 @@ class SystemAudioRecorder(AudioRecorder):
     - macOS: Требует виртуальное устройство BlackHole или Soundflower
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._is_system_audio = True
 

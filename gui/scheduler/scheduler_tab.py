@@ -51,7 +51,7 @@ class SchedulerTab(QWidget):
     task_deleted = pyqtSignal(str)
     task_toggled = pyqtSignal(str, bool)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Any = None) -> None:
         """Инициализация вкладки планировщика."""
         super().__init__(parent)
 

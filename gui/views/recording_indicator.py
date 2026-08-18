@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QPainter, QPen
@@ -212,7 +213,7 @@ class RecordingIndicatorOverlay(QWidget):
             self._bounds.height + _INDICATOR_MARGIN * 2,
         )
 
-    def paintEvent(self, _event) -> None:  # noqa: N802
+    def paintEvent(self, _event: Any) -> None:  # noqa: N802
         """Отрисовать рамку активной записи."""
         if self._bounds is None:
             return

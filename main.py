@@ -886,7 +886,7 @@ class VideoRecorderApp:
                 self._toggle_schedule
             )
 
-    def _execute_scheduled_task(self, params) -> None:
+    def _execute_scheduled_task(self, params: Any) -> None:
         """Выполнение запланированной задачи записи."""
         from scheduler.task_scheduler import RecordingParams
 
@@ -1508,7 +1508,7 @@ class VideoRecorderApp:
             self._main_window.show()
             self._main_window.activateWindow()
 
-    def _handle_close_requested(self, event) -> None:
+    def _handle_close_requested(self, event: Any) -> None:
         """Обработка запроса закрытия окна через сигнал.
 
         Параметр ``event`` может быть как самим QCloseEvent, так и

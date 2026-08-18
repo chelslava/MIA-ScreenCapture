@@ -40,7 +40,9 @@ _SCHEDULE_PREVIEW_COUNT = 5
 class TaskDialog(QDialog):
     """Диалог для создания/редактирования запланированных задач."""
 
-    def __init__(self, parent=None, task: ScheduleTask | None = None):
+    def __init__(
+        self, parent: Any = None, task: ScheduleTask | None = None
+    ) -> None:
         """
         Инициализация диалога задачи.
 

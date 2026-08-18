@@ -1146,7 +1146,7 @@ class MainWindow(QMainWindow):
 
     # === Обработчики сигналов от представлений ===
 
-    def _on_capture_type_changed(self, capture_type) -> None:
+    def _on_capture_type_changed(self, capture_type: Any) -> None:
         """Обработка изменения типа области захвата."""
         self._settings_controller.update_capture_settings(
             capture_type=capture_type
@@ -1177,7 +1177,7 @@ class MainWindow(QMainWindow):
         )
         self._refresh_readiness_summary()
 
-    def _on_video_settings_changed(self, settings) -> None:
+    def _on_video_settings_changed(self, settings: Any) -> None:
         """Обработка изменения настроек видео."""
         self._settings_controller.update_video_settings(
             fps=settings.fps,
@@ -1594,7 +1594,7 @@ class MainWindow(QMainWindow):
                 error_msg or "Не удалось запустить запись"
             )
 
-    def _apply_readiness_snapshot(self, snapshot) -> bool:
+    def _apply_readiness_snapshot(self, snapshot: Any) -> bool:
         """
         Применить readiness snapshot к стартовому сценарию записи.
 
@@ -2420,7 +2420,7 @@ class MainWindow(QMainWindow):
         )
         self._refresh_readiness_summary()
 
-    def _get_default_geometry(self):
+    def _get_default_geometry(self) -> Any:
         """Возвращает геометрию по умолчанию при отсутствии экрана."""
         from PyQt6.QtCore import QRect
 
@@ -2443,7 +2443,7 @@ class MainWindow(QMainWindow):
         except AttributeError:
             return
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: Any) -> None:
         """Обработка события закрытия окна.
 
         Логика свёртывания в трей и выхода делегирована
