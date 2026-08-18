@@ -416,6 +416,7 @@ class ApiRuntimeManager:
 
         facade = self._application_facade
         server.set_callback("status", facade.get_status)
+        server.set_callback("recording_metrics", facade.get_recording_metrics)
         server.set_callback("start", facade.start_recording)
         server.set_callback("stop", facade.stop_recording)
         server.set_callback("pause", facade.toggle_pause)

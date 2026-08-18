@@ -26,6 +26,10 @@ class ApplicationFacade(Protocol):
         """Возвращает статус записи."""
         ...
 
+    def get_recording_metrics(self) -> dict[str, Any]:
+        """Возвращает текущие метрики кадров записи (#114)."""
+        ...
+
     def start_recording(
         self, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:

@@ -19,6 +19,7 @@ import numpy as np
 from core.recording_state import RecordingStatus
 from exceptions import RecordingError, ScreenCaptureError
 from logger_config import get_module_logger
+from recorder.frame_metrics import FrameMetrics
 from recorder.utils import (
     get_available_monitors,
     get_available_windows,
@@ -414,6 +415,7 @@ class VideoRecorder:
         self._total_paused: float = 0
         self._frame_count: int = 0
         self._capture_lost: bool = False
+        self._frame_metrics = FrameMetrics(target_fps=self.fps)
 
         # Обратные вызовы
         self._on_frame_captured: Callable | None = None
@@ -652,6 +654,15 @@ class VideoRecorder:
         """Получение общего количества захваченных кадров."""
         return self._frame_count
 
+    @property
+    def frame_metrics(self) -> FrameMetrics:
+        """Метрики захвата кадров и производительности (#114)."""
+        return self._frame_metrics
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Возвращает текущие метрики кадров в виде словаря (#114)."""
+        return self._frame_metrics.to_dict()
+
     def set_callbacks(
         self,
         on_frame_captured: Callable | None = None,
@@ -771,6 +782,7 @@ class VideoRecorder:
                 self._paused_time = 0
                 self._total_paused = 0
                 self._frame_count = 0
+                self._frame_metrics.reset(target_fps=self.fps)
                 self._shutdown_event.clear()
 
                 # Запуск потока захвата
@@ -1148,6 +1160,7 @@ class VideoRecorder:
                         continue
 
                     if frame is None:
+                        self._frame_metrics.record_drop()
                         continue
 
                     # Сброс флага потери при успешном захвате
@@ -1155,7 +1168,11 @@ class VideoRecorder:
 
                     # Запись кадра
                     if self._ffmpeg_writer is not None:
+                        t_write_start = time.perf_counter()
                         write_ok = self._ffmpeg_writer.write(frame)
+                        write_latency_ms = (
+                            time.perf_counter() - t_write_start
+                        ) * 1000.0
                         if not write_ok:
                             if self._ffmpeg_writer.is_disk_space_critical:
                                 disk_space_stop = True
@@ -1193,10 +1210,20 @@ class VideoRecorder:
                             break
                         self._frame_count += 1
                         self._last_captured_frame = frame
+                        self._frame_metrics.record_frame(
+                            encode_latency_ms=write_latency_ms
+                        )
                     elif self._video_writer is not None:
+                        t_write_start = time.perf_counter()
                         self._video_writer.write(frame)
+                        write_latency_ms = (
+                            time.perf_counter() - t_write_start
+                        ) * 1000.0
                         self._frame_count += 1
                         self._last_captured_frame = frame
+                        self._frame_metrics.record_frame(
+                            encode_latency_ms=write_latency_ms
+                        )
 
                     # Обратный вызов для предпросмотра
                     if self._on_frame_captured:

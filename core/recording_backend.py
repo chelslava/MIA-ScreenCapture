@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from core.recording_types import AudioRequest, CaptureRequest, VideoRequest
 
@@ -58,4 +58,8 @@ class RecordingBackend(Protocol):
         self, capture: CaptureRequest
     ) -> tuple[bool, str | None]:
         """Переключает источник захвата активной записи без остановки."""
+        ...
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Возвращает текущие метрики кадров записи (#114)."""
         ...

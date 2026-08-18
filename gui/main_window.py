@@ -1951,9 +1951,15 @@ class MainWindow(QMainWindow):
         """Обновление отображения статуса."""
         if self._state.is_recording():
             elapsed = self._recording_controller.elapsed_time
-            self._status_bar_controller.update_time_display(
-                format_time(elapsed)
-            )
+            formatted_time = format_time(elapsed)
+            metrics = self._recording_controller.frame_metrics
+            actual_fps = float(metrics.get("actual_fps", 0.0))
+            jitter_ms = float(metrics.get("jitter_ms", 0.0))
+            if actual_fps > 0:
+                display_text = f"{formatted_time} (FPS: {actual_fps:.1f} | Jitter: {jitter_ms:.1f}ms)"
+            else:
+                display_text = formatted_time
+            self._status_bar_controller.update_time_display(display_text)
 
     def _set_status_updates_enabled(self, enabled: bool) -> None:
         """
@@ -2532,6 +2538,15 @@ class MainWindow(QMainWindow):
             if self._state.current_output
             else None,
         }
+
+    def get_metrics(self) -> dict:
+        """
+        Получение текущих метрик производительности видеозаписи (#114).
+
+        Returns:
+            Словарь с метриками кадров (FPS, jitter, latency и др.)
+        """
+        return self._recording_controller.frame_metrics
 
     def _run_diagnostics(self) -> None:
         """Запуск диагностики системы."""

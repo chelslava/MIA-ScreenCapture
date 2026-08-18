@@ -120,6 +120,10 @@ class RecordingService:
         self._publish_event(RecordingEventType.STATUS, status)
         return status
 
+    def get_metrics(self) -> dict[str, Any]:
+        """Возвращает текущие метрики кадров записи (#114)."""
+        return self._backend.get_metrics()
+
     def start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         Start recording from API/scheduler parameters.

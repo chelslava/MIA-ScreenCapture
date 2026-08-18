@@ -8,6 +8,7 @@ GUI-backed реализация backend-порта записи.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from core.recording_backend import RecordingBackend, RecordingStatusSnapshot
 from core.recording_state import (
@@ -107,3 +108,7 @@ class GUIRecordingBackend(RecordingBackend):
         self, capture: CaptureRequest
     ) -> tuple[bool, str | None]:
         return self._controller.switch_capture_source(_map_capture(capture))
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Возвращает текущие метрики кадров записи (#114)."""
+        return self._controller.frame_metrics

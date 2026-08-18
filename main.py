@@ -116,6 +116,9 @@ class _RecordingRuntimeCoordinatorProtocol(Protocol):
     def get_recordings(self) -> list[Any]:
         """Возвращает недавние записи."""
 
+    def get_metrics(self) -> dict[str, Any]:
+        """Возвращает текущие метрики кадров записи (#114)."""
+
 
 class _ApiRuntimeCoordinatorProtocol(Protocol):
     """Минимальный контракт API runtime coordinator."""
@@ -301,6 +304,10 @@ class VideoRecorderApp:
     def get_status(self) -> dict[str, Any]:
         """Возвращает публичный статус записи."""
         return self._get_status()
+
+    def get_recording_metrics(self) -> dict[str, Any]:
+        """Возвращает метрики текущей записи (#114)."""
+        return self._get_recording_metrics()
 
     def start_recording(
         self,
@@ -956,6 +963,10 @@ class VideoRecorderApp:
     def _get_status(self) -> dict[str, Any]:
         """Получение статуса записи."""
         return self._recording_runtime_coordinator.get_status()
+
+    def _get_recording_metrics(self) -> dict[str, Any]:
+        """Получение метрик текущей записи (#114)."""
+        return self._recording_runtime_coordinator.get_metrics()
 
     def _start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
         """Запуск записи."""

@@ -76,6 +76,11 @@ class MockApp:
     def _get_status(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"status": "ok"}
 
+    def _get_recording_metrics(
+        self, *args: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        return {"actual_fps": 30.0, "target_fps": 30}
+
     def _start_recording(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         return {"success": True}
 
@@ -162,6 +167,9 @@ class MockApp:
 
     def get_status(self) -> dict[str, Any]:
         return self._get_status()
+
+    def get_recording_metrics(self) -> dict[str, Any]:
+        return self._get_recording_metrics()
 
     def start_recording(
         self, params: dict[str, Any] | None = None

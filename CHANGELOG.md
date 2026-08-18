@@ -2,6 +2,13 @@
 
 ## [Unreleased] - 2026-07-01
 
+### Added
+- **Closed issue #114:** Профилирование hot-path захвата кадра, вычисление фактического FPS, jitter межкадровых интервалов, задержки кодирования и учет пропущенных кадров:
+  - Создан модуль `recorder/frame_metrics.py` с классом `FrameMetrics` и датаклассом `FrameMetricsSnapshot`.
+  - Интегрирован сбор метрик в hot-path захвата `recorder/video_recorder.py`.
+  - Добавлен REST API эндпоинт `GET /api/v1/recording/metrics` (и алиас `GET /api/v1/metrics`) с Pydantic-схемами в `api/schemas.py` и документацией Swagger в `api/swagger.py`.
+  - Реализовано динамическое отображение текущего FPS и Jitter в строке состояния GUI (`gui/main_window.py`).
+
 ### Security
 - **Closed issues #92, #93 (Phase 1):** Persistent rate limiter with JSON state persistence (`api/rate_limiter_persistence.py`) + Auth rate limiter for 401 tracking (`api/auth_rate_limiter.py`)
 - **New:** `RateLimiterStatePersistence` class with atomic writes via `atomic_write_json`
