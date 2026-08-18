@@ -145,7 +145,9 @@ def main() -> int:
             target.write(message + "\n")  # type: ignore[union-attr]
             target.flush()  # type: ignore[union-attr]
         except (AttributeError, UnicodeEncodeError):
-            encoded = message.encode("ascii", "backslashreplace").decode("ascii")
+            encoded = message.encode("ascii", "backslashreplace").decode(
+                "ascii"
+            )
             try:
                 target.write(encoded + "\n")  # type: ignore[union-attr]
                 target.flush()  # type: ignore[union-attr]
