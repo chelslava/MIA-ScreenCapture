@@ -1324,15 +1324,36 @@ class TestMainWindowMethods:
         window._recording_indicator.hide_indicator.assert_called_once()
 
     def test_update_status_formats_elapsed_time(self) -> None:
-        """Таймер статуса форматирует elapsed time во время записи."""
+        """Таймер статуса форматирует elapsed time во время записи без метрик."""
         window = _build_window()
         window._state.start_recording(Path("D:/capture.mp4"))
         window._recording_controller.elapsed_time = 12.34
+        window._recording_controller.frame_metrics = {
+            "actual_fps": 0.0,
+            "jitter_ms": 0.0,
+        }
 
         with patch("gui.main_window.format_time", return_value="00:12"):
             window._update_status()
 
         window.time_label.setText.assert_called_once_with("00:12")
+
+    def test_update_status_with_fps_metrics(self) -> None:
+        """Таймер статуса форматирует FPS и Jitter при активном захвате кадров."""
+        window = _build_window()
+        window._state.start_recording(Path("D:/capture.mp4"))
+        window._recording_controller.elapsed_time = 12.34
+        window._recording_controller.frame_metrics = {
+            "actual_fps": 30.0,
+            "jitter_ms": 2.5,
+        }
+
+        with patch("gui.main_window.format_time", return_value="00:12"):
+            window._update_status()
+
+        window.time_label.setText.assert_called_once_with(
+            "00:12 (FPS: 30.0 | Jitter: 2.5ms)"
+        )
 
     def test_check_dependencies_runs_in_background(self) -> None:
         """Проверка зависимостей не должна блокировать UI-поток."""

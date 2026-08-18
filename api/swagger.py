@@ -731,6 +731,64 @@ SWAGGER_SPEC: dict[str, Any] = {
                 },
             },
         },
+        "/api/v1/recording/metrics": {
+            "get": {
+                "summary": "Получить метрики записи в реальном времени",
+                "description": "Возвращает текущий фактический FPS, jitter, количество пропущенных кадров и latency кодирования (#114)",
+                "operationId": "getRecordingMetrics",
+                "responses": {
+                    "200": {
+                        "description": "Метрики производительности видеозаписи",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": True,
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "actual_fps": {
+                                                    "type": "number",
+                                                    "example": 29.85,
+                                                },
+                                                "target_fps": {
+                                                    "type": "integer",
+                                                    "example": 30,
+                                                },
+                                                "jitter_ms": {
+                                                    "type": "number",
+                                                    "example": 2.34,
+                                                },
+                                                "frames_dropped": {
+                                                    "type": "integer",
+                                                    "example": 0,
+                                                },
+                                                "encode_latency_ms": {
+                                                    "type": "number",
+                                                    "example": 4.12,
+                                                },
+                                                "buffer_fill_percent": {
+                                                    "type": "number",
+                                                    "example": 0.0,
+                                                },
+                                                "total_frames": {
+                                                    "type": "integer",
+                                                    "example": 150,
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
         "/api/recordings": {
             "get": {
                 "summary": "Получить список записей",

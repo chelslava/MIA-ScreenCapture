@@ -261,6 +261,9 @@ class TestMainApiRuntime:
         app, _ = _build_app(monkeypatch, api_key="config-token")
         facade = app.get_application_facade()
         app.get_status = MagicMock(return_value={"status": "ok"})
+        app.get_recording_metrics = MagicMock(
+            return_value={"actual_fps": 30.0, "target_fps": 30}
+        )
         app.get_recordings = MagicMock(return_value=[{"path": "demo.mp4"}])
         app.get_schedule = MagicMock(return_value=[{"id": "task-1"}])
         app.create_schedule = MagicMock(return_value={"success": True})
@@ -280,6 +283,10 @@ class TestMainApiRuntime:
         app.restart_api_server = MagicMock(return_value={"success": True})
 
         assert facade.get_status() == {"status": "ok"}
+        assert facade.get_recording_metrics() == {
+            "actual_fps": 30.0,
+            "target_fps": 30,
+        }
         assert facade.get_recordings() == [{"path": "demo.mp4"}]
         assert facade.get_schedule() == [{"id": "task-1"}]
         assert facade.create_schedule({"name": "task"}) == {"success": True}
@@ -477,6 +484,7 @@ class TestMainApiRuntime:
         assert isinstance(app._api_server, FakeApiServer)
         assert set(app._api_server.callbacks.keys()) == {
             "status",
+            "recording_metrics",
             "start",
             "stop",
             "pause",

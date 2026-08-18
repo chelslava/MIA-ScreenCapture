@@ -211,6 +211,22 @@ def register_recording_routes(
             logger.exception(f"Ошибка получения записей: {e}")
             return exception_response(e)
 
+    @api_v1.route("recording/metrics", methods=["GET"])
+    @api_v1.route("metrics", methods=["GET"])
+    @require_api_key
+    def get_recording_metrics() -> Any:
+        """Получение текущих метрик захвата кадров и производительности (#114)."""
+        try:
+            callback = server.get_callback("recording_metrics")
+            if callback:
+                metrics = callback()
+                return jsonify({"success": True, "data": metrics})
+            return internal_error_response()
+
+        except Exception as e:
+            logger.exception(f"Ошибка получения метрик записи: {e}")
+            return exception_response(e)
+
     @api_v1.route("recordings/verify", methods=["POST"])
     @rate_limit
     @require_api_key

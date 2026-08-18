@@ -53,6 +53,7 @@ tmp_pytest_run*/
 .tmp_pytest_runs/
 .pytest_local_tmp/
 .codex_tmp/
+.omo/
 
 # Translations
 *.mo

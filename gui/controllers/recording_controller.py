@@ -11,7 +11,7 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from core.recording_state import (
     AudioSettings,
@@ -89,6 +89,21 @@ class RecordingController:
         if self._video_recorder:
             return float(self._video_recorder.elapsed_time)
         return 0.0
+
+    @property
+    def frame_metrics(self) -> dict[str, Any]:
+        """Метрики производительности видеозаписи (#114)."""
+        if self._video_recorder:
+            return self._video_recorder.get_metrics()
+        return {
+            "actual_fps": 0.0,
+            "target_fps": 0,
+            "jitter_ms": 0.0,
+            "frames_dropped": 0,
+            "encode_latency_ms": 0.0,
+            "buffer_fill_percent": 0.0,
+            "total_frames": 0,
+        }
 
     def set_error_callback(
         self, callback: Callable[[str], None] | None

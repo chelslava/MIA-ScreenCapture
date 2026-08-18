@@ -149,3 +149,14 @@ class RecordingRuntimeCoordinator:
             list[Any],
             self._app._recording_service.get_recordings(),
         )
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Возвращает текущие метрики кадров записи (#114)."""
+        if self._app._main_window:
+            return cast(
+                dict[str, Any],
+                self._app._run_on_gui_thread(
+                    lambda: self._app._main_window.get_metrics()
+                ),
+            )
+        return self._app._recording_service.get_metrics()

@@ -866,3 +866,30 @@ class ImportProfileRequest(BaseModel):
     video: dict | None = Field(default=None)
     audio: dict | None = Field(default=None)
     capture: dict | None = Field(default=None)
+
+
+class RecordingMetricsData(BaseModel):
+    """Данные метрик производительности видеозаписи (#114)."""
+
+    actual_fps: float = Field(default=0.0, description="Фактический FPS")
+    target_fps: int = Field(default=30, description="Целевой FPS")
+    jitter_ms: float = Field(
+        default=0.0, description="Дрожание межкадровых интервалов в мс"
+    )
+    frames_dropped: int = Field(
+        default=0, description="Количество пропущенных кадров"
+    )
+    encode_latency_ms: float = Field(
+        default=0.0, description="Средняя задержка записи кадра в мс"
+    )
+    buffer_fill_percent: float = Field(
+        default=0.0, description="Заполнение буфера кадров в %"
+    )
+    total_frames: int = Field(default=0, description="Всего записанных кадров")
+
+
+class RecordingMetricsResponse(BaseModel):
+    """Схема ответа на запрос метрик записи (#114)."""
+
+    success: bool = True
+    data: RecordingMetricsData

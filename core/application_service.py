@@ -34,6 +34,10 @@ class ApplicationService:
         """Возвращает статус записи."""
         return self._backend.get_status()
 
+    def get_recording_metrics(self) -> dict[str, Any]:
+        """Возвращает текущие метрики кадров записи (#114)."""
+        return self._backend.get_recording_metrics()
+
     def start_recording(
         self,
         params: dict[str, Any] | None = None,
