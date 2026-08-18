@@ -11,6 +11,10 @@ on:
       - "**"
   workflow_dispatch:
 
+env:
+  PYTHONIOENCODING: "utf-8"
+  PYTHONUTF8: "1"
+
 jobs:
   unit-tests:
     name: Unit Tests (Windows, Python ${{ matrix.python-version }})

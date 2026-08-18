@@ -145,7 +145,12 @@ def main() -> int:
             target.write(message + "\n")  # type: ignore[union-attr]
             target.flush()  # type: ignore[union-attr]
         except (AttributeError, UnicodeEncodeError):
-            print(message)
+            encoded = message.encode("ascii", "backslashreplace").decode("ascii")
+            try:
+                target.write(encoded + "\n")  # type: ignore[union-attr]
+                target.flush()  # type: ignore[union-attr]
+            except Exception:
+                print(encoded)
 
     parser = argparse.ArgumentParser(
         description="Проверка покрытия изменённых Python-файлов",
