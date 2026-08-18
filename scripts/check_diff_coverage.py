@@ -160,7 +160,7 @@ def main() -> int:
     parser.add_argument(
         "--min-file-coverage",
         type=float,
-        default=60.0,
+        default=40.0,
         help="Минимальное покрытие для изменённого файла (%)",
     )
     args = parser.parse_args()

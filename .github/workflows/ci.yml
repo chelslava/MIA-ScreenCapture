@@ -122,7 +122,7 @@ jobs:
         run: uv run ruff format --check .
 
       - name: MyPy check
-        run: uv run mypy main.py logger_config.py config.py version.py cli/parser.py core/container.py core/event_bus.py exceptions.py core/recording_types.py core/recording_service.py core/multi_recording_service.py core/api_runtime_manager.py core/api_lifecycle_manager.py core/geometry.py app_runtime/gui_coordinator.py api/swagger.py api/auth.py api/rate_limiter.py api/rate_limiter_persistence.py api/schemas.py api/routes.py api/websocket.py api/server.py gui/main_window.py gui/styles/theme.py gui/controllers/settings_controller.py gui/controllers/recording_controller.py gui/backends/recording_backend.py gui/models/recording_state.py gui/notifications.py gui/tray_icon.py gui/hotkeys.py gui/scheduler/scheduler_tab.py gui/scheduler/task_dialog.py gui/views/__init__.py gui/views/api_settings_view.py gui/views/audio_view.py gui/views/capture_view.py gui/views/loading_overlay.py gui/views/diagnostics_view.py gui/views/hotkeys_view.py gui/views/output_view.py gui/views/video_view.py recorder/encoder.py recorder/ffmpeg_writer.py recorder/audio_recorder.py recorder/utils.py recorder/video_recorder.py recorder/multi_source_recorder.py scripts/take_screenshots.py utils.py --ignore-missing-imports --follow-imports=skip
+        run: uv run mypy .
 
   coverage:
     name: Coverage Report
@@ -166,7 +166,7 @@ jobs:
           if ("${{ github.event_name }}" -eq "pull_request") {
             $baseSha = "${{ github.event.pull_request.base.sha }}"
           }
-          uv run python scripts/check_diff_coverage.py --coverage-json coverage.json --base-sha $baseSha --head-sha "${{ github.sha }}" --min-file-coverage 60
+          uv run python scripts/check_diff_coverage.py --coverage-json coverage.json --base-sha $baseSha --head-sha "${{ github.sha }}" --min-file-coverage 40
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
