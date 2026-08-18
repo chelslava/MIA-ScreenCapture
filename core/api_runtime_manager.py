@@ -457,3 +457,14 @@ class ApiRuntimeManager:
         server.set_callback("apply_profile", facade.apply_profile)
         server.set_callback("export_profile", facade.export_profile)
         server.set_callback("import_profile", facade.import_profile)
+        server.set_callback(
+            "get_post_processing_config", facade.get_post_processing_config
+        )
+        server.set_callback(
+            "update_post_processing_config",
+            facade.update_post_processing_config,
+        )
+        server.set_callback(
+            "get_post_processing_status", facade.get_post_processing_status
+        )
+        server.set_callback("run_post_processing", facade.run_post_processing)

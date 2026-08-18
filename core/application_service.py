@@ -196,3 +196,23 @@ class ApplicationService:
     def import_profile(self, data: dict[str, Any]) -> dict[str, Any]:
         """Импортирует профиль записи."""
         return self._backend.import_profile(data)
+
+    def get_post_processing_config(self) -> dict[str, Any]:
+        """Возвращает настройки постобработки записей."""
+        return self._backend.get_post_processing_config()
+
+    def update_post_processing_config(
+        self, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Обновляет настройки постобработки записей."""
+        return self._backend.update_post_processing_config(data)
+
+    def get_post_processing_status(self) -> dict[str, Any]:
+        """Возвращает статус конвейера постобработки."""
+        return self._backend.get_post_processing_status()
+
+    def run_post_processing(
+        self, file_path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Запускает постобработку для указанного файла."""
+        return self._backend.run_post_processing(file_path, params)

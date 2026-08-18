@@ -92,6 +92,16 @@ class RecordingService:
         self._backend = backend
         self._lock = threading.Lock()
         self._event_bus = event_bus or InMemoryEventBus()
+        from core.post_processing.manager import PostProcessingManager
+
+        self._post_processing_manager = PostProcessingManager(
+            event_bus=self._event_bus
+        )
+
+    @property
+    def post_processing_manager(self) -> Any:
+        """Менеджер постобработки записей."""
+        return self._post_processing_manager
 
     @property
     def event_bus(self) -> EventBus:
@@ -242,6 +252,15 @@ class RecordingService:
                 logger.warning(
                     f"Integrity verification failed unexpectedly: {e}"
                 )
+
+            try:
+                post_settings = get_config().settings.post_processing
+                if post_settings.enabled and output_path.exists():
+                    self._post_processing_manager.process_file_async(
+                        output_path, post_settings
+                    )
+            except Exception as e:
+                logger.warning("Ошибка запуска постобработки: %s", e)
 
             self._publish_event(RecordingEventType.STOPPED, result)
             return result

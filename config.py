@@ -158,6 +158,36 @@ class SchedulerSettingsSchema(BaseModel):
     max_concurrent_tasks: int = Field(default=1, ge=1, le=10)
 
 
+class PostProcessingSettingsSchema(BaseModel):
+    """Схема валидации настроек постобработки записей."""
+
+    enabled: bool = Field(default=False)
+    transcode_enabled: bool = Field(default=False)
+    transcode_format: str = Field(default="webm")
+    transcode_codec: str = Field(default="libvpx-vp9")
+    compress_enabled: bool = Field(default=False)
+    compress_crf: int = Field(default=28, ge=0, le=51)
+    trim_silence_enabled: bool = Field(default=False)
+    trim_silence_threshold_db: int = Field(default=-50, le=0)
+    generate_gif_enabled: bool = Field(default=False)
+    gif_duration_seconds: int = Field(default=5, ge=1, le=60)
+    gif_fps: int = Field(default=10, ge=1, le=30)
+    copy_enabled: bool = Field(default=False)
+    copy_target_folder: str = Field(default="")
+    open_explorer_on_finish: bool = Field(default=False)
+    webhook_enabled: bool = Field(default=False)
+    webhook_url: str | None = Field(default=None)
+    step_timeout_seconds: int = Field(default=300, ge=10, le=3600)
+
+    @field_validator("webhook_url", mode="before")
+    @classmethod
+    def validate_webhook_url(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+
 # Держать в синхроне с gui.styles.theme.VALID_THEME_MODES (core/config не
 # импортирует gui-слой с PyQt6, поэтому список продублирован буквально).
 _VALID_THEME_MODES = ("system", "light", "blue", "dark", "dark_contrast")
@@ -175,6 +205,9 @@ class AppSettingsSchema(BaseModel):
     api: APISettingsSchema = Field(default_factory=APISettingsSchema)
     scheduler: SchedulerSettingsSchema = Field(
         default_factory=SchedulerSettingsSchema
+    )
+    post_processing: PostProcessingSettingsSchema = Field(
+        default_factory=PostProcessingSettingsSchema
     )
     minimize_to_tray: bool = Field(default=True)
     show_notifications: bool = Field(default=True)
@@ -274,6 +307,29 @@ class SchedulerSettings:
 
 
 @dataclass
+class PostProcessingSettings:
+    """Настройки постобработки записей."""
+
+    enabled: bool = False
+    transcode_enabled: bool = False
+    transcode_format: str = "webm"
+    transcode_codec: str = "libvpx-vp9"
+    compress_enabled: bool = False
+    compress_crf: int = 28
+    trim_silence_enabled: bool = False
+    trim_silence_threshold_db: int = -50
+    generate_gif_enabled: bool = False
+    gif_duration_seconds: int = 5
+    gif_fps: int = 10
+    copy_enabled: bool = False
+    copy_target_folder: str = ""
+    open_explorer_on_finish: bool = False
+    webhook_enabled: bool = False
+    webhook_url: str | None = None
+    step_timeout_seconds: int = 300
+
+
+@dataclass
 class AppSettings:
     """Основные настройки приложения."""
 
@@ -283,6 +339,9 @@ class AppSettings:
     output: OutputSettings = field(default_factory=OutputSettings)
     api: APISettings = field(default_factory=APISettings)
     scheduler: SchedulerSettings = field(default_factory=SchedulerSettings)
+    post_processing: PostProcessingSettings = field(
+        default_factory=PostProcessingSettings
+    )
     minimize_to_tray: bool = True
     show_notifications: bool = True
     language: str = "en"
@@ -369,6 +428,9 @@ class ConfigManager:
             output = OutputSettings(**data.get("output", {}))
             api = APISettings(**data.get("api", {}))
             scheduler = SchedulerSettings(**data.get("scheduler", {}))
+            post_processing = PostProcessingSettings(
+                **data.get("post_processing", {})
+            )
 
             return AppSettings(
                 video=video,
@@ -377,6 +439,7 @@ class ConfigManager:
                 output=output,
                 api=api,
                 scheduler=scheduler,
+                post_processing=post_processing,
                 minimize_to_tray=data.get("minimize_to_tray", True),
                 show_notifications=data.get("show_notifications", True),
                 language=data.get("language", "en"),
