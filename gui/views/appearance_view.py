@@ -41,6 +41,8 @@ class AppearanceView(QWidget):
     theme_changed = pyqtSignal(str)
     hotkeys_requested = pyqtSignal()
     minimize_to_tray_changed = pyqtSignal(bool)
+    check_updates_requested = pyqtSignal()
+    updates_settings_changed = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None):
         """
@@ -84,8 +86,30 @@ class AppearanceView(QWidget):
         self._hotkeys_btn.clicked.connect(self._on_hotkeys_clicked)
         group_layout.addWidget(self._hotkeys_btn)
 
-        self._apply_accessibility_metadata()
         layout.addWidget(group)
+
+        # Секция авто-обновлений
+        updates_group = QGroupBox("Обновления программы")
+        updates_layout = QVBoxLayout(updates_group)
+
+        self._check_on_startup_cb = QCheckBox(
+            "Проверять обновления при запуске"
+        )
+        self._check_on_startup_cb.setChecked(True)
+        updates_layout.addWidget(self._check_on_startup_cb)
+
+        self._auto_download_cb = QCheckBox(
+            "Автоматически скачивать обновления"
+        )
+        self._auto_download_cb.setChecked(False)
+        updates_layout.addWidget(self._auto_download_cb)
+
+        self._check_updates_btn = QPushButton("Проверить обновления сейчас")
+        self._check_updates_btn.clicked.connect(self._on_check_updates_clicked)
+        updates_layout.addWidget(self._check_updates_btn)
+
+        layout.addWidget(updates_group)
+        self._apply_accessibility_metadata()
 
     def _apply_accessibility_metadata(self) -> None:
         """Назначение accessibility metadata для настроек внешнего вида."""
@@ -174,3 +198,21 @@ class AppearanceView(QWidget):
         if 0 <= index < len(_THEME_MODES):
             return _THEME_MODES[index][0]
         return "system"
+
+    def _on_check_updates_clicked(self) -> None:
+        """Обработка клика по кнопке проверки обновлений."""
+        self.check_updates_requested.emit()
+
+    def get_updates_settings(self) -> dict[str, bool]:
+        """Возвращает значения чекбоксов настроек обновлений."""
+        return {
+            "check_on_startup": self._check_on_startup_cb.isChecked(),
+            "auto_download": self._auto_download_cb.isChecked(),
+        }
+
+    def set_updates_settings(
+        self, check_on_startup: bool, auto_download: bool
+    ) -> None:
+        """Устанавливает значения чекбоксов настроек обновлений."""
+        self._check_on_startup_cb.setChecked(check_on_startup)
+        self._auto_download_cb.setChecked(auto_download)

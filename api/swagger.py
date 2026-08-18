@@ -1755,6 +1755,70 @@ SWAGGER_SPEC: dict[str, Any] = {
                 },
             },
         },
+        "/api/v1/updates/config": {
+            "get": {
+                "tags": ["Updates"],
+                "summary": "Получить настройки авто-обновлений",
+                "responses": {
+                    "200": {
+                        "description": "Текущие настройки авто-обновлений"
+                    },
+                },
+            },
+            "put": {
+                "tags": ["Updates"],
+                "summary": "Обновить настройки авто-обновлений",
+                "responses": {
+                    "200": {
+                        "description": "Настройки обновлений успешно сохранены"
+                    },
+                    "400": {"description": "Ошибка валидации"},
+                },
+            },
+        },
+        "/api/v1/updates/check": {
+            "get": {
+                "tags": ["Updates"],
+                "summary": "Проверить наличие обновлений (GET)",
+                "responses": {
+                    "200": {"description": "Результат проверки обновлений"},
+                },
+            },
+            "post": {
+                "tags": ["Updates"],
+                "summary": "Проверить наличие обновлений (POST)",
+                "responses": {
+                    "200": {"description": "Результат проверки обновлений"},
+                },
+            },
+        },
+        "/api/v1/updates/download": {
+            "post": {
+                "tags": ["Updates"],
+                "summary": "Запустить скачивание обновления",
+                "responses": {
+                    "200": {"description": "Скачивание запущено"},
+                },
+            },
+        },
+        "/api/v1/updates/apply": {
+            "post": {
+                "tags": ["Updates"],
+                "summary": "Применить скачанное обновление",
+                "responses": {
+                    "200": {"description": "Обновление запущено"},
+                },
+            },
+        },
+        "/api/v1/updates/status": {
+            "get": {
+                "tags": ["Updates"],
+                "summary": "Получить статус подсистемы авто-обновления",
+                "responses": {
+                    "200": {"description": "Текущий статус обновлений"},
+                },
+            },
+        },
     },
 }
 

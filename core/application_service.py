@@ -216,3 +216,27 @@ class ApplicationService:
     ) -> dict[str, Any]:
         """Запускает постобработку для указанного файла."""
         return self._backend.run_post_processing(file_path, params)
+
+    def check_for_updates(self, force: bool = False) -> dict[str, Any]:
+        """Проверяет наличие новой версии приложения."""
+        return self._backend.check_for_updates(force)
+
+    def download_update(self, version: str | None = None) -> dict[str, Any]:
+        """Скачивает доступное обновление."""
+        return self._backend.download_update(version)
+
+    def apply_update(self) -> dict[str, Any]:
+        """Применяет скачанное обновление."""
+        return self._backend.apply_update()
+
+    def get_update_status(self) -> dict[str, Any]:
+        """Возвращает текущий статус подсистемы обновлений."""
+        return self._backend.get_update_status()
+
+    def get_update_config(self) -> dict[str, Any]:
+        """Возвращает настройки авто-обновлений."""
+        return self._backend.get_update_config()
+
+    def update_update_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Обновляет настройки авто-обновлений."""
+        return self._backend.update_update_config(data)

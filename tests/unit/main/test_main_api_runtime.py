@@ -521,6 +521,12 @@ class TestMainApiRuntime:
             "update_post_processing_config",
             "get_post_processing_status",
             "run_post_processing",
+            "check_for_updates",
+            "download_update",
+            "apply_update",
+            "get_update_status",
+            "get_update_config",
+            "update_update_config",
         }
 
     def test_start_api_server_registers_public_facade_callbacks(

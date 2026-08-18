@@ -468,3 +468,11 @@ class ApiRuntimeManager:
             "get_post_processing_status", facade.get_post_processing_status
         )
         server.set_callback("run_post_processing", facade.run_post_processing)
+        server.set_callback("check_for_updates", facade.check_for_updates)
+        server.set_callback("download_update", facade.download_update)
+        server.set_callback("apply_update", facade.apply_update)
+        server.set_callback("get_update_status", facade.get_update_status)
+        server.set_callback("get_update_config", facade.get_update_config)
+        server.set_callback(
+            "update_update_config", facade.update_update_config
+        )
