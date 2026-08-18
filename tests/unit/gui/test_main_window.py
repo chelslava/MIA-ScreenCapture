@@ -123,7 +123,38 @@ def _build_window():
     from gui.main_window import _ThreadTracker
 
     window._thread_tracker = _ThreadTracker()
+    from gui.controllers.desktop_actions_controller import (
+        DesktopActionsController,
+    )
+    from gui.controllers.profile_gui_controller import ProfileGUIController
+    from gui.controllers.readiness_controller import ReadinessController
+    from gui.controllers.recordings_controller import RecordingsController
     from gui.controllers.status_bar_controller import StatusBarController
+    from gui.desktop_actions import DesktopActionRegistry
+
+    window._desktop_actions = DesktopActionRegistry()
+    window._desktop_actions_controller = DesktopActionsController(
+        window._desktop_actions
+    )
+    window._registered_shortcuts = (
+        window._desktop_actions_controller.registered_shortcuts
+    )
+    window._tab_navigation_order = (
+        window._desktop_actions_controller.tab_navigation_order
+    )
+    window._readiness_controller = ReadinessController(
+        window._readiness_service,
+        track_thread=lambda t: None,
+    )
+    window._profile_gui_controller = ProfileGUIController()
+    window._recordings_controller = RecordingsController(
+        state=window._state,
+        settings_controller=window._settings_controller,
+        recordings_list=window.recordings_list,
+        filter_input=window._recordings_filter_input,
+        status_bar=window.status_bar,
+        track_thread=lambda t: None,
+    )
 
     window._status_bar_controller = StatusBarController(
         start_btn=window.start_btn,
