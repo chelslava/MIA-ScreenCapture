@@ -72,7 +72,10 @@ def test_extract_video_metadata_with_ffprobe(tmp_path: Path) -> None:
     mock_run.returncode = 0
     mock_run.stdout = json.dumps(fake_ffprobe_out)
 
-    with patch("subprocess.run", return_value=mock_run):
+    with (
+        patch("core.library.scanner.get_ffprobe_path", return_value="ffprobe"),
+        patch("subprocess.run", return_value=mock_run),
+    ):
         meta = extract_video_metadata(video)
 
     assert meta.width == 2560
@@ -97,7 +100,10 @@ def test_generate_thumbnail_success(tmp_path: Path) -> None:
         res.returncode = 0
         return res
 
-    with patch("subprocess.run", side_effect=side_effect):
+    with (
+        patch("core.library.scanner.get_ffmpeg_path", return_value="ffmpeg"),
+        patch("subprocess.run", side_effect=side_effect),
+    ):
         thumb = generate_thumbnail(video, thumbs_dir)
 
     assert thumb is not None
