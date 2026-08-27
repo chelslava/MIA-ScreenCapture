@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from core.application_facade import ApplicationFacade
@@ -240,3 +241,80 @@ class ApplicationService:
     def update_update_config(self, data: dict[str, Any]) -> dict[str, Any]:
         """Обновляет настройки авто-обновлений."""
         return self._backend.update_update_config(data)
+
+    def get_plugins(self) -> list[dict[str, Any]]:
+        """Возвращает список метаданных всех зарегистрированных плагинов."""
+        return self._backend.get_plugins()
+
+    def get_plugin_info(self, name: str) -> dict[str, Any] | None:
+        """Возвращает метаданные и настройки конкретного плагина."""
+        return self._backend.get_plugin_info(name)
+
+    def enable_plugin(self, name: str) -> bool:
+        """Включает плагин."""
+        return self._backend.enable_plugin(name)
+
+    def disable_plugin(self, name: str) -> bool:
+        """Отключает плагин."""
+        return self._backend.disable_plugin(name)
+
+    def configure_plugin(self, name: str, config: dict[str, Any]) -> bool:
+        """Обновляет конфигурацию плагина."""
+        return self._backend.configure_plugin(name, config)
+
+    def get_library_items(
+        self,
+        query: str | None = None,
+        tag: str | None = None,
+        sort_by: str = "date",
+        sort_desc: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Возвращает список записей в библиотеке."""
+        return self._backend.get_library_items(query, tag, sort_by, sort_desc)
+
+    def get_library_tags(self) -> list[str]:
+        """Возвращает список всех тегов библиотеки."""
+        return self._backend.get_library_tags()
+
+    def add_library_tag(self, path: str, tag: str) -> bool:
+        """Добавляет тег к записи в библиотеке."""
+        return self._backend.add_library_tag(path, tag)
+
+    def remove_library_tag(self, path: str, tag: str) -> bool:
+        """Удаляет тег из записи в библиотеке."""
+        return self._backend.remove_library_tag(path, tag)
+
+    def delete_library_recording(
+        self, path: str, delete_file: bool = True
+    ) -> bool:
+        """Удаляет запись из библиотеки и опционально файл с диска."""
+        return self._backend.delete_library_recording(path, delete_file)
+
+    def get_cloud_status(self) -> dict[str, Any]:
+        """Возвращает статус облачной синхронизации."""
+        return self._backend.get_cloud_status()
+
+    def configure_cloud(
+        self,
+        provider: str,
+        credentials: dict[str, Any],
+        auto_sync: bool = False,
+        min_file_size_mb: float = 0.0,
+        remote_folder: str = "Recordings",
+    ) -> bool:
+        """Настраивает параметры облачной синхронизации."""
+        return self._backend.configure_cloud(
+            provider=provider,
+            credentials=credentials,
+            auto_sync=auto_sync,
+            min_file_size_mb=min_file_size_mb,
+            remote_folder=remote_folder,
+        )
+
+    def test_cloud_connection(self) -> bool:
+        """Проверяет соединение с облачным провайдером."""
+        return self._backend.test_cloud_connection()
+
+    def queue_cloud_sync(self, file_path: Path) -> bool:
+        """Добавляет файл в очередь облачной загрузки."""
+        return self._backend.queue_cloud_sync(file_path)

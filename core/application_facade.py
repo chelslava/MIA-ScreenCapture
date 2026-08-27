@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -230,4 +231,75 @@ class ApplicationFacade(Protocol):
 
     def update_update_config(self, data: dict[str, Any]) -> dict[str, Any]:
         """Обновляет настройки авто-обновлений."""
+        ...
+
+    def get_plugins(self) -> list[dict[str, Any]]:
+        """Возвращает список метаданных всех зарегистрированных плагинов."""
+        ...
+
+    def get_plugin_info(self, name: str) -> dict[str, Any] | None:
+        """Возвращает метаданные и настройки конкретного плагина."""
+        ...
+
+    def enable_plugin(self, name: str) -> bool:
+        """Включает плагин."""
+        ...
+
+    def disable_plugin(self, name: str) -> bool:
+        """Отключает плагин."""
+        ...
+
+    def configure_plugin(self, name: str, config: dict[str, Any]) -> bool:
+        """Обновляет конфигурацию плагина."""
+        ...
+
+    def get_library_items(
+        self,
+        query: str | None = None,
+        tag: str | None = None,
+        sort_by: str = "date",
+        sort_desc: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Возвращает список записей в библиотеке."""
+        ...
+
+    def get_library_tags(self) -> list[str]:
+        """Возвращает список всех тегов библиотеки."""
+        ...
+
+    def add_library_tag(self, path: str, tag: str) -> bool:
+        """Добавляет тег к записи в библиотеке."""
+        ...
+
+    def remove_library_tag(self, path: str, tag: str) -> bool:
+        """Удаляет тег из записи в библиотеке."""
+        ...
+
+    def delete_library_recording(
+        self, path: str, delete_file: bool = True
+    ) -> bool:
+        """Удаляет запись из библиотеки и опционально файл с диска."""
+        ...
+
+    def get_cloud_status(self) -> dict[str, Any]:
+        """Возвращает статус облачной синхронизации."""
+        ...
+
+    def configure_cloud(
+        self,
+        provider: str,
+        credentials: dict[str, Any],
+        auto_sync: bool = False,
+        min_file_size_mb: float = 0.0,
+        remote_folder: str = "Recordings",
+    ) -> bool:
+        """Настраивает параметры облачной синхронизации."""
+        ...
+
+    def test_cloud_connection(self) -> bool:
+        """Проверяет соединение с облачным провайдером."""
+        ...
+
+    def queue_cloud_sync(self, file_path: Path) -> bool:
+        """Добавляет файл в очередь облачной загрузки."""
         ...

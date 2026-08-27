@@ -1337,6 +1337,22 @@ class MainWindow(QMainWindow):
                 self._show_toast(message, duration_ms=5000)
                 self._show_non_modal_error(message)
 
+            elif event_type == "disk_space_critical":
+                message = payload.get(
+                    "message", "Критическая нехватка места на диске"
+                )
+                self._show_toast(message, duration_ms=5000)
+                self._show_non_modal_error(message)
+
+            elif event.event_type is RecordingEventType.ERROR:
+                message = (
+                    payload.get("message")
+                    or payload.get("error")
+                    or "Произошла ошибка записи"
+                )
+                self._show_toast(str(message), duration_ms=5000)
+                self._show_non_modal_error(str(message))
+
         event_bus.subscribe(RecordingEventType.WARNING, handler)
         event_bus.subscribe(RecordingEventType.ERROR, handler)
 

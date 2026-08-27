@@ -22,6 +22,7 @@ from apscheduler.jobstores.base import JobLookupError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from core.event_bus import EventBus
 from logger_config import get_module_logger
 from scheduler.execution_engine import SchedulerExecutionEngine
 from scheduler.task_storage import TaskStorage
@@ -167,6 +168,7 @@ class TaskScheduler:
         self,
         persist_path: Path | None = None,
         max_concurrent_tasks: int = 3,
+        event_bus: EventBus | None = None,
     ):
         """
         Инициализация планировщика задач.
@@ -174,6 +176,7 @@ class TaskScheduler:
         Args:
             persist_path: Путь для сохранения задач (опционально)
             max_concurrent_tasks: Лимит параллельных задач APScheduler.
+            event_bus: Опциональная шина событий для публикации ошибок задач.
         """
         self.persist_path = persist_path
         self._storage = (
@@ -182,6 +185,7 @@ class TaskScheduler:
         self._tasks: dict[str, ScheduleTask] = {}
         self._lock = threading.Lock()
         self._max_concurrent_tasks = max(1, int(max_concurrent_tasks))
+        self._event_bus = event_bus
 
         # Обратные вызовы для выполнения задачи
         self._on_task_execute: Callable | None = None
@@ -204,6 +208,7 @@ class TaskScheduler:
             save_tasks=self._save_tasks,
             get_on_task_execute=lambda: self._on_task_execute,
             get_on_task_error=lambda: self._on_task_error,
+            event_bus=self._event_bus,
         )
 
         # Загрузка сохранённых задач

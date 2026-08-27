@@ -476,3 +476,21 @@ class ApiRuntimeManager:
         server.set_callback(
             "update_update_config", facade.update_update_config
         )
+        server.set_callback("get_plugins", facade.get_plugins)
+        server.set_callback("get_plugin_info", facade.get_plugin_info)
+        server.set_callback("enable_plugin", facade.enable_plugin)
+        server.set_callback("disable_plugin", facade.disable_plugin)
+        server.set_callback("configure_plugin", facade.configure_plugin)
+        server.set_callback("get_library_items", facade.get_library_items)
+        server.set_callback("get_library_tags", facade.get_library_tags)
+        server.set_callback("add_library_tag", facade.add_library_tag)
+        server.set_callback("remove_library_tag", facade.remove_library_tag)
+        server.set_callback(
+            "delete_library_recording", facade.delete_library_recording
+        )
+        server.set_callback("get_cloud_status", facade.get_cloud_status)
+        server.set_callback("configure_cloud", facade.configure_cloud)
+        server.set_callback(
+            "test_cloud_connection", facade.test_cloud_connection
+        )
+        server.set_callback("queue_cloud_sync", facade.queue_cloud_sync)

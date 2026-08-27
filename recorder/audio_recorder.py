@@ -326,6 +326,7 @@ class AudioRecorder:
                 "Превышен лимит попыток восстановления аудиозаписи (%s)",
                 self._max_recovery_attempts,
             )
+            self._report_terminal_failure(exception)
             return False
 
         current_delay = self._recovery_backoff_delays[
@@ -377,6 +378,7 @@ class AudioRecorder:
                     payload={
                         "type": "audio_failure",
                         "message": str(exception),
+                        "recovery_attempts": self._recovery_attempts,
                     },
                 )
             )

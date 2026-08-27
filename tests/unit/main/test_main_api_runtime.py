@@ -527,6 +527,20 @@ class TestMainApiRuntime:
             "get_update_status",
             "get_update_config",
             "update_update_config",
+            "get_plugins",
+            "get_plugin_info",
+            "enable_plugin",
+            "disable_plugin",
+            "configure_plugin",
+            "get_library_items",
+            "get_library_tags",
+            "add_library_tag",
+            "remove_library_tag",
+            "delete_library_recording",
+            "get_cloud_status",
+            "configure_cloud",
+            "test_cloud_connection",
+            "queue_cloud_sync",
         }
 
     def test_start_api_server_registers_public_facade_callbacks(

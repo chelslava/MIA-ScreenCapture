@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 import recorder.ffmpeg_writer as ffmpeg_writer_module
@@ -396,6 +397,30 @@ class TestFFmpegVideoWriterDiagnostics:
         alive_process.stdin.write.assert_called_once()
         dead_process.stdin.write.assert_not_called()
 
+    def test_write_writes_contiguous_frame_via_memoryview(
+        self,
+        monkeypatch,
+    ) -> None:
+        """Contiguous numpy массив записывается в stdin напрямую через memoryview (zero-copy)."""
+        process = _setup_open_mocks(monkeypatch, "", returncode=0)
+        writer = FFmpegVideoWriter(
+            output_path=Path("test.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+        )
+        assert writer.open() is True
+
+        import numpy as np
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        assert frame.flags.c_contiguous is True
+
+        assert writer.write(frame) is True
+        process.stdin.write.assert_called_once()
+        written_arg = process.stdin.write.call_args[0][0]
+        assert isinstance(written_arg, memoryview)
+
     def test_segment_path_naming(self) -> None:
         """_next_segment_path() генерирует имена part2, part3, ..."""
         writer = FFmpegVideoWriter(
@@ -689,6 +714,77 @@ class TestFFmpegVideoWriterSegmentMerge:
         assert writer._rotate_segment() is True
 
         close_mock.assert_called_once_with(finalize_segments=False)
+
+    @pytest.mark.parametrize(
+        "segment_names,expected_lines",
+        [
+            (
+                [
+                    "C:\\Users\\My Name\\part1.mp4",
+                    "C:\\Users\\My Name\\part2.mp4",
+                ],
+                [
+                    "file 'C:/Users/My Name/part1.mp4'\n",
+                    "file 'C:/Users/My Name/part2.mp4'\n",
+                ],
+            ),
+            (
+                ["C:\\Видео\\запись_1.mp4", "C:\\Видео\\запись_2.mp4"],
+                [
+                    "file 'C:/Видео/запись_1.mp4'\n",
+                    "file 'C:/Видео/запись_2.mp4'\n",
+                ],
+            ),
+            (
+                ["C:\\it's\\part1.mp4", "C:\\it's\\part2.mp4"],
+                [
+                    "file 'C:/it\\'s/part1.mp4'\n",
+                    "file 'C:/it\\'s/part2.mp4'\n",
+                ],
+            ),
+        ],
+    )
+    def test_merge_escapes_special_characters_in_concat_file(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+        segment_names: list[str],
+        expected_lines: list[str],
+    ) -> None:
+        """Проверка безопасного экранирования Windows-путей в FFmpeg concat-файле."""
+        output_path = tmp_path / "recording.mp4"
+        output_path.write_bytes(b"out")
+        writer = FFmpegVideoWriter(
+            output_path=output_path, width=640, height=480, fps=30
+        )
+        writer._ffmpeg_path = r"C:\ffmpeg.exe"
+        writer._segment_paths = [Path(segment_names[0])]
+        writer._current_segment_path = Path(segment_names[1])
+
+        concat_contents: list[str] = []
+
+        def run_merge(command: list[str], **_kwargs) -> MagicMock:
+            concat_path = Path(command[command.index("-i") + 1])
+            concat_contents.append(concat_path.read_text(encoding="utf-8"))
+            Path(command[-1]).write_bytes(b"merged-video")
+            process = MagicMock(returncode=0)
+            process.communicate.return_value = (b"", b"")
+            return process
+
+        monkeypatch.setattr(
+            ffmpeg_writer_module.subprocess, "Popen", run_merge
+        )
+        monkeypatch.setattr(
+            ffmpeg_writer_module,
+            "verify_video_integrity",
+            MagicMock(return_value=MagicMock(valid=True, error=None)),
+            raising=False,
+        )
+
+        assert writer._merge_segments() is True
+        assert len(concat_contents) == 1
+        for expected_line in expected_lines:
+            assert expected_line in concat_contents[0]
 
 
 class TestRetryPolicy:
@@ -1197,6 +1293,8 @@ class TestFFmpegVideoWriterRecoveryEvents:
         assert published.payload == {
             "type": "ffmpeg_crash",
             "message": "FFmpeg crash, all recovery attempts failed",
+            "recovery_attempts": 3,
+            "segments_saved": [],
         }
 
     def test_attempt_recovery_publishes_warning_during_attempt(
@@ -1225,6 +1323,80 @@ class TestFFmpegVideoWriterRecoveryEvents:
         ]
         assert RecordingEventType.WARNING in published_types
         assert RecordingEventType.ERROR in published_types
+
+    def test_write_publishes_error_when_process_is_none(self) -> None:
+        """write() при _process is None публикует ERROR в event_bus."""
+        from recorder.ffmpeg_writer import RecordingEvent
+
+        event_bus = MagicMock()
+        writer = self._make_writer(event_bus)
+        writer._process = None
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is False
+        assert writer.is_corrupted is True
+        event_bus.publish.assert_called_once()
+        published = event_bus.publish.call_args.args[0]
+        assert isinstance(published, RecordingEvent)
+        assert published.event_type is RecordingEventType.ERROR
+        assert published.payload["type"] == "ffmpeg_crash"
+        assert "FFmpeg завершился аварийно" in published.payload["message"]
+
+    def test_write_publishes_error_on_critical_disk_space(
+        self, monkeypatch
+    ) -> None:
+        """write() при критической нехватке места публикует ERROR в event_bus."""
+        from recorder.ffmpeg_writer import RecordingEvent
+
+        event_bus = MagicMock()
+        writer = self._make_writer(event_bus)
+        monkeypatch.setattr(
+            writer,
+            "_check_disk_space",
+            MagicMock(
+                return_value=ffmpeg_writer_module.DiskSpaceLevel.CRITICAL
+            ),
+        )
+        writer._last_free_mb = 12.5
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is False
+        assert writer.is_disk_space_critical is True
+        event_bus.publish.assert_called_once()
+        published = event_bus.publish.call_args.args[0]
+        assert isinstance(published, RecordingEvent)
+        assert published.event_type is RecordingEventType.ERROR
+        assert published.payload["type"] == "disk_space_critical"
+        assert published.payload["free_mb"] == 12.5
+
+    def test_write_publishes_error_on_unrecoverable_os_error(
+        self, monkeypatch
+    ) -> None:
+        """write() при постоянном OSError при живом процессе публикует ERROR."""
+        from recorder.ffmpeg_writer import RecordingEvent
+
+        event_bus = MagicMock()
+        writer = self._make_writer(event_bus)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None  # alive
+        mock_proc.stdin.write.side_effect = OSError("Disk write failure")
+        writer._process = mock_proc
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        result = writer.write(frame)
+
+        assert result is False
+        assert writer.is_corrupted is True
+        event_bus.publish.assert_called_once()
+        published = event_bus.publish.call_args.args[0]
+        assert isinstance(published, RecordingEvent)
+        assert published.event_type is RecordingEventType.ERROR
+        assert published.payload["type"] == "ffmpeg_crash"
+        assert "Disk write failure" in published.payload["message"]
 
 
 class TestFFmpegVideoWriterDiskSpace:

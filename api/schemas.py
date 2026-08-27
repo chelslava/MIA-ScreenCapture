@@ -914,6 +914,13 @@ class PostProcessingConfigData(BaseModel):
     open_explorer_on_finish: bool = False
     webhook_enabled: bool = False
     webhook_url: str | None = None
+    transcription_enabled: bool = False
+    transcription_mode: str = "local"
+    transcription_model: str = "base"
+    transcription_output_format: str = "srt"
+    transcription_language: str | None = None
+    transcription_api_key: str | None = None
+    transcription_api_base: str | None = None
     step_timeout_seconds: int = 300
 
 
@@ -943,6 +950,13 @@ class UpdatePostProcessingConfigRequest(BaseModel):
     open_explorer_on_finish: bool | None = None
     webhook_enabled: bool | None = None
     webhook_url: str | None = None
+    transcription_enabled: bool | None = None
+    transcription_mode: str | None = None
+    transcription_model: str | None = None
+    transcription_output_format: str | None = None
+    transcription_language: str | None = None
+    transcription_api_key: str | None = None
+    transcription_api_base: str | None = None
     step_timeout_seconds: int | None = Field(default=None, ge=10, le=3600)
 
 

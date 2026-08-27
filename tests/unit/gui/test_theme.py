@@ -96,6 +96,21 @@ class TestThemeStatusStyleThemed:
         finally:
             apply_theme(MagicMock(), "light")
 
+    def test_theme_colors_dict_dynamically_reflects_active_theme(self) -> None:
+        try:
+            apply_theme(MagicMock(), "dark")
+            assert Theme.COLORS["danger"] == DARK_PALETTE.danger
+            assert Theme.COLORS.get("warning") == DARK_PALETTE.warning
+            assert Theme.COLORS["success"] == DARK_PALETTE.success
+
+            apply_theme(MagicMock(), "dark_contrast")
+            assert Theme.COLORS["danger"] == DARK_CONTRAST_PALETTE.danger
+            assert Theme.COLORS["warning"] == DARK_CONTRAST_PALETTE.warning
+            assert Theme.COLORS["success"] == DARK_CONTRAST_PALETTE.success
+        finally:
+            apply_theme(MagicMock(), "light")
+            assert Theme.COLORS["danger"] == LIGHT_PALETTE.danger
+
     def test_unknown_tone_falls_back_to_muted(self) -> None:
         style = Theme.status_style("not-a-tone")
         assert LIGHT_PALETTE.muted in style
@@ -200,26 +215,47 @@ class TestDetectSystemTheme:
             assert detect_system_theme() == "light"
 
     def test_dark_from_registry(self) -> None:
-        mock_key = MagicMock()
-        mock_key.__enter__ = MagicMock(return_value=mock_key)
-        mock_key.__exit__ = MagicMock(return_value=False)
+        def fake_open_key(_root: int, path: str) -> MagicMock:
+            if "HighContrast" in path:
+                raise FileNotFoundError()
+            mock_key = MagicMock()
+            mock_key.__enter__ = MagicMock(return_value=mock_key)
+            mock_key.__exit__ = MagicMock(return_value=False)
+            return mock_key
+
         with (
             patch("sys.platform", "win32"),
-            patch("winreg.OpenKey", return_value=mock_key),
+            patch("winreg.OpenKey", side_effect=fake_open_key),
             patch("winreg.QueryValueEx", return_value=(0, 4)),
         ):
             assert detect_system_theme() == "dark"
 
     def test_light_from_registry(self) -> None:
+        def fake_open_key(_root: int, path: str) -> MagicMock:
+            if "HighContrast" in path:
+                raise FileNotFoundError()
+            mock_key = MagicMock()
+            mock_key.__enter__ = MagicMock(return_value=mock_key)
+            mock_key.__exit__ = MagicMock(return_value=False)
+            return mock_key
+
+        with (
+            patch("sys.platform", "win32"),
+            patch("winreg.OpenKey", side_effect=fake_open_key),
+            patch("winreg.QueryValueEx", return_value=(1, 4)),
+        ):
+            assert detect_system_theme() == "light"
+
+    def test_high_contrast_from_registry(self) -> None:
         mock_key = MagicMock()
         mock_key.__enter__ = MagicMock(return_value=mock_key)
         mock_key.__exit__ = MagicMock(return_value=False)
         with (
             patch("sys.platform", "win32"),
             patch("winreg.OpenKey", return_value=mock_key),
-            patch("winreg.QueryValueEx", return_value=(1, 4)),
+            patch("winreg.QueryValueEx", return_value=("1", 1)),
         ):
-            assert detect_system_theme() == "light"
+            assert detect_system_theme() == "dark_contrast"
 
     def test_missing_key_falls_back_to_light(self) -> None:
         with (

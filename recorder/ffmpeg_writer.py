@@ -443,6 +443,30 @@ class FFmpegVideoWriter:
         suffix = self._output_path.suffix
         return self._output_path.with_name(f"{stem}_part{part_number}{suffix}")
 
+    def _publish_error_event(
+        self,
+        message: str,
+        error_type: str = "ffmpeg_crash",
+        extra_payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Публикует событие RecordingEventType.ERROR в EventBus (если настроен)."""
+        if self._event_bus is None:
+            return
+        payload: dict[str, Any] = {
+            "type": error_type,
+            "message": message,
+            "recovery_attempts": self._recovery_count,
+            "segments_saved": [str(p) for p in self.segment_paths],
+        }
+        if extra_payload:
+            payload.update(extra_payload)
+        self._event_bus.publish(
+            RecordingEvent(
+                event_type=RecordingEventType.ERROR,
+                payload=payload,
+            )
+        )
+
     def _attempt_recovery(self) -> bool:
         """
         Пытается перезапустить FFmpeg-процесс в новом файле-сегменте.
@@ -455,16 +479,10 @@ class FFmpegVideoWriter:
                 "Превышен лимит попыток восстановления FFmpeg (%s)",
                 self._max_recovery_attempts,
             )
-            if self._event_bus:
-                self._event_bus.publish(
-                    RecordingEvent(
-                        event_type=RecordingEventType.ERROR,
-                        payload={
-                            "type": "ffmpeg_crash",
-                            "message": "FFmpeg crash, all recovery attempts failed",
-                        },
-                    )
-                )
+            self._publish_error_event(
+                message="FFmpeg crash, all recovery attempts failed",
+                error_type="ffmpeg_crash",
+            )
             return False
 
         recovery_start = time.time()
@@ -494,16 +512,10 @@ class FFmpegVideoWriter:
                 "Не удалось открыть новый сегмент при восстановлении: %s",
                 new_segment_path,
             )
-            if self._event_bus:
-                self._event_bus.publish(
-                    RecordingEvent(
-                        event_type=RecordingEventType.ERROR,
-                        payload={
-                            "type": "ffmpeg_crash",
-                            "message": f"FFmpeg crash, attempt {attempt_number}/{self._max_recovery_attempts} failed",
-                        },
-                    )
-                )
+            self._publish_error_event(
+                message=f"FFmpeg crash, attempt {attempt_number}/{self._max_recovery_attempts} failed",
+                error_type="ffmpeg_crash",
+            )
             return False
 
         self._segment_paths.append(self._current_segment_path)
@@ -773,6 +785,15 @@ class FFmpegVideoWriter:
                     if self._last_free_mb is not None
                     else 0.0,
                 )
+                self._publish_error_event(
+                    message="Критическая нехватка места на диске, запись остановлена",
+                    error_type="disk_space_critical",
+                    extra_payload={
+                        "free_mb": self._last_free_mb
+                        if self._last_free_mb is not None
+                        else 0.0,
+                    },
+                )
 
         if self._disk_space_critical:
             return False
@@ -781,13 +802,23 @@ class FFmpegVideoWriter:
             if self._process is None or self._process.poll() is not None:
                 raise OSError("process died")
             if self._process.stdin:
-                self._process.stdin.write(frame.tobytes())
+                if isinstance(frame, np.ndarray) and frame.flags.c_contiguous:
+                    self._process.stdin.write(memoryview(frame))  # type: ignore[arg-type]
+                elif hasattr(frame, "tobytes"):
+                    self._process.stdin.write(frame.tobytes())
+                else:
+                    self._process.stdin.write(bytes(frame))
 
         for _ in range(self._max_recovery_attempts + 1):
             if not self.is_opened:
                 if self._process is None or not self._attempt_recovery():
                     self._is_corrupted = True
                     self._terminate_process_safely()
+                    if self._process is None:
+                        self._publish_error_event(
+                            message="FFmpeg завершился аварийно, запись остановлена",
+                            error_type="ffmpeg_crash",
+                        )
                     return False
                 continue
 
@@ -825,6 +856,11 @@ class FFmpegVideoWriter:
                     # устранит причину, восстановление здесь не поможет.
                     self._is_corrupted = True
                     self._terminate_process_safely()
+                    self._publish_error_event(
+                        message=f"FFmpeg завершился аварийно, запись остановлена: {e}",
+                        error_type="ffmpeg_crash",
+                        extra_payload={"error": str(e)},
+                    )
                     return False
                 continue
             except Exception as e:
@@ -837,6 +873,11 @@ class FFmpegVideoWriter:
                     # запись молча.
                     self._is_corrupted = True
                     self._terminate_process_safely()
+                    self._publish_error_event(
+                        message=f"FFmpeg завершился аварийно, запись остановлена: {e}",
+                        error_type="ffmpeg_crash",
+                        extra_payload={"error": str(e)},
+                    )
                     return False
                 # Процесс мёртв — следующая итерация цикла попробует
                 # восстановить запись в новый сегмент.
@@ -844,6 +885,10 @@ class FFmpegVideoWriter:
 
         self._is_corrupted = True
         self._terminate_process_safely()
+        self._publish_error_event(
+            message="FFmpeg завершился аварийно, запись остановлена",
+            error_type="ffmpeg_crash",
+        )
         return False
 
     def _merge_segments(self) -> bool:
@@ -886,7 +931,11 @@ class FFmpegVideoWriter:
             ) as concat_stream:
                 concat_file = Path(concat_stream.name)
                 for segment_path in segments:
-                    escaped_path = str(segment_path).replace("'", "'\"'\"'")
+                    escaped_path = (
+                        str(segment_path)
+                        .replace("\\", "/")
+                        .replace("'", "\\'")
+                    )
                     concat_stream.write(f"file '{escaped_path}'\n")
 
             with tempfile.NamedTemporaryFile(

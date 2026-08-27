@@ -232,10 +232,30 @@ class VideoRecorderApp:
         self._multi_recording_service = MultiRecordingService(
             event_bus=self._recording_service.event_bus
         )
+        from core.plugins.manager import PluginManager
+
+        self._plugin_manager = PluginManager(
+            event_bus=self._recording_service.event_bus,
+        )
+        self._plugin_manager.discover_and_load()
+
+        from core.library.manager import LibraryManager
+
+        self._library_manager = LibraryManager(
+            event_bus=self._recording_service.event_bus,
+        )
+
+        from core.cloud.manager import CloudSyncManager
+
+        self._cloud_sync_manager = CloudSyncManager(
+            event_bus=self._recording_service.event_bus,
+        )
+
         from core.post_processing.manager import PostProcessingManager
 
         self._post_processing_manager = PostProcessingManager(
-            event_bus=self._recording_service.event_bus
+            event_bus=self._recording_service.event_bus,
+            plugin_manager=self._plugin_manager,
         )
         from core.updater.updater import AppUpdater
 
@@ -529,6 +549,16 @@ class VideoRecorderApp:
                 return self._run_schedule_preview()
             elif self._mode == "list_presets":
                 return self._run_list_presets()
+            elif self._mode == "plugins_list":
+                return self._run_plugins_list()
+            elif self._mode == "plugins_info":
+                return self._run_plugins_info()
+            elif self._mode == "plugins_enable":
+                return self._run_plugins_enable()
+            elif self._mode == "plugins_disable":
+                return self._run_plugins_disable()
+            elif self._mode == "service":
+                return self._run_service()
             else:
                 logger.error(f"Неизвестный режим: {self._mode}")
             return 1
@@ -782,6 +812,65 @@ class VideoRecorderApp:
         print_presets_help()
         return 0
 
+    def _run_plugins_list(self) -> int:
+        """Показ списка обнаруженных плагинов через CLI."""
+        from cli.parser import print_plugins_list
+
+        plugins = [p.to_dict() for p in self._plugin_manager.get_all_plugins()]
+        print_plugins_list(plugins)
+        return 0
+
+    def _run_plugins_info(self) -> int:
+        """Показ информации о плагине через CLI."""
+        from cli.parser import print_plugin_info
+
+        name = self._config.get("plugin_name")
+        if not name:
+            logger.error("Не указано имя плагина")
+            return 1
+        meta = self._plugin_manager.get_plugin_metadata(name)
+        if not meta:
+            logger.error("Плагин '%s' не найден", name)
+            return 1
+        print_plugin_info(meta.to_dict())
+        return 0
+
+    def _run_plugins_enable(self) -> int:
+        """Включение плагина через CLI."""
+        name = self._config.get("plugin_name")
+        if not name:
+            logger.error("Не указано имя плагина")
+            return 1
+        success = self._plugin_manager.enable_plugin(name)
+        if success:
+            print(f"Плагин '{name}' успешно включён.")
+            return 0
+        else:
+            print(f"Не удалось включить плагин '{name}'.")
+            return 1
+
+    def _run_plugins_disable(self) -> int:
+        """Отключение плагина через CLI."""
+        name = self._config.get("plugin_name")
+        if not name:
+            logger.error("Не указано имя плагина")
+            return 1
+        success = self._plugin_manager.disable_plugin(name)
+        if success:
+            print(f"Плагин '{name}' успешно отключён.")
+            return 0
+        else:
+            print(f"Не удалось отключить плагин '{name}'.")
+            return 1
+
+    def _run_service(self) -> int:
+        """Управление службой Windows (#122)."""
+        from cli.windows_service import handle_service_command
+
+        action = self._config.get("service_action", "status")
+        startup = self._config.get("service_startup", "auto")
+        return handle_service_command(action, startup)
+
     def _start_api_server(self, force: bool = False) -> dict[str, Any]:
         """Запускает API сервер через менеджер runtime."""
         return self._api_runtime_coordinator.start_api_server(force=force)
@@ -867,6 +956,7 @@ class VideoRecorderApp:
         self._scheduler = TaskScheduler(
             persist_path=persist_path,
             max_concurrent_tasks=max_concurrent_tasks,
+            event_bus=self._recording_service.event_bus,
         )
         assert self._scheduler is not None
 
@@ -928,12 +1018,18 @@ class VideoRecorderApp:
                 task_id,
                 e,
             )
+            self._on_scheduled_task_error(
+                task_id, f"Таймаут запуска записи: {e}"
+            )
+            raise
         except (RecordingError, OSError, ValueError, RuntimeError) as e:
             logger.error(
                 "Ошибка запуска записи из планировщика: task_id=%s, error=%s",
                 task_id,
                 e,
             )
+            self._on_scheduled_task_error(task_id, str(e))
+            raise
 
     def _on_scheduled_task_error(self, task_id: str, error_msg: str) -> None:
         """Обработка ошибки при выполнении запланированной задачи."""
@@ -942,10 +1038,39 @@ class VideoRecorderApp:
             task_id,
             error_msg,
         )
+        task_name = task_id
+        if self._scheduler:
+            task = self._scheduler.get_task(task_id)
+            if task:
+                task_name = task.name
+
+        if self._recording_service and self._recording_service.event_bus:
+            from core.event_bus import RecordingEvent, RecordingEventType
+
+            self._recording_service.event_bus.publish(
+                RecordingEvent(
+                    event_type=RecordingEventType.ERROR,
+                    payload={
+                        "type": "scheduler_task_error",
+                        "task_id": task_id,
+                        "task_name": task_name,
+                        "error": error_msg,
+                        "message": (
+                            f"Задача '{task_name}' завершилась ошибкой: {error_msg}"
+                        ),
+                    },
+                )
+            )
+
+        if self._tray_icon:
+            self._tray_icon.on_error(
+                f"Задача '{task_name}' завершилась ошибкой: {error_msg[:100]}"
+            )
+
         if self._main_window:
             self._run_on_gui_thread(
                 lambda: self._main_window._show_non_modal_error(
-                    f"Ошибка выполнения запланированной задачи: {error_msg}"
+                    f"Ошибка выполнения запланированной задачи '{task_name}': {error_msg}"
                 )
             )
 
@@ -1641,6 +1766,93 @@ class VideoRecorderApp:
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    # === Управление плагинами (#124) ===
+
+    def get_plugins(self) -> list[dict[str, Any]]:
+        """Возвращает список метаданных всех зарегистрированных плагинов."""
+        return [p.to_dict() for p in self._plugin_manager.get_all_plugins()]
+
+    def get_plugin_info(self, name: str) -> dict[str, Any] | None:
+        """Возвращает метаданные и настройки конкретного плагина."""
+        meta = self._plugin_manager.get_plugin_metadata(name)
+        return meta.to_dict() if meta else None
+
+    def enable_plugin(self, name: str) -> bool:
+        """Включает плагин."""
+        return self._plugin_manager.enable_plugin(name)
+
+    def disable_plugin(self, name: str) -> bool:
+        """Отключает плагин."""
+        return self._plugin_manager.disable_plugin(name)
+
+    def configure_plugin(self, name: str, config: dict[str, Any]) -> bool:
+        """Обновляет конфигурацию плагина."""
+        return self._plugin_manager.configure_plugin(name, config)
+
+    # === Управление библиотекой записей (#119) ===
+
+    def get_library_items(
+        self,
+        query: str | None = None,
+        tag: str | None = None,
+        sort_by: str = "date",
+        sort_desc: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Возвращает список записей библиотеки."""
+        items = self._library_manager.get_items(
+            query=query, tag=tag, sort_by=sort_by, sort_desc=sort_desc
+        )
+        return [it.to_dict() for it in items]
+
+    def get_library_tags(self) -> list[str]:
+        """Возвращает список всех тегов библиотеки."""
+        return self._library_manager.get_all_tags()
+
+    def add_library_tag(self, path: str, tag: str) -> bool:
+        """Добавляет тег к записи."""
+        return self._library_manager.add_tag(path, tag)
+
+    def remove_library_tag(self, path: str, tag: str) -> bool:
+        """Удаляет тег из записи."""
+        return self._library_manager.remove_tag(path, tag)
+
+    def delete_library_recording(
+        self, path: str, delete_file: bool = True
+    ) -> bool:
+        """Удаляет запись из библиотеки."""
+        return self._library_manager.delete_recording(path, delete_file)
+
+    # === Управление облачной синхронизацией (#54) ===
+
+    def get_cloud_status(self) -> dict[str, Any]:
+        """Возвращает статус облачной синхронизации."""
+        return self._cloud_sync_manager.get_status()
+
+    def configure_cloud(
+        self,
+        provider: str,
+        credentials: dict[str, Any],
+        auto_sync: bool = False,
+        min_file_size_mb: float = 0.0,
+        remote_folder: str = "Recordings",
+    ) -> bool:
+        """Настраивает параметры облачной синхронизации."""
+        return self._cloud_sync_manager.configure(
+            provider_type=provider,
+            credentials=credentials,
+            auto_sync=auto_sync,
+            min_file_size_mb=min_file_size_mb,
+            remote_folder=remote_folder,
+        )
+
+    def test_cloud_connection(self) -> bool:
+        """Проверяет соединение с облачным провайдером."""
+        return self._cloud_sync_manager.test_connection()
+
+    def queue_cloud_sync(self, file_path: Path) -> bool:
+        """Добавляет файл в очередь облачной загрузки."""
+        return self._cloud_sync_manager.queue_upload(file_path)
 
     # Вспомогательные методы GUI
 

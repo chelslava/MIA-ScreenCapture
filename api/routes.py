@@ -17,8 +17,11 @@ from api.auth import require_api_key
 from api.error_mapping import map_exception_to_api_error
 from api.rate_limiter import rate_limit
 from api.request_context import ensure_request_context
+from api.routes_cloud import register_cloud_routes
 from api.routes_config import register_config_routes
+from api.routes_library import register_library_routes
 from api.routes_multi_recording import register_multi_recording_routes
+from api.routes_plugins import register_plugins_routes
 from api.routes_post_processing import register_post_processing_routes
 from api.routes_profiles import register_profiles_routes
 from api.routes_recording import register_recording_routes
@@ -677,6 +680,48 @@ def _register_post_processing_routes(api_v1: Any, server: Any) -> None:
     )
 
 
+def _register_plugins_routes(api_v1: Any, server: Any) -> None:
+    """Регистрирует маршруты управления плагинами."""
+    register_plugins_routes(
+        api_v1,
+        server,
+        logger=logger,
+        parse_request_json=_parse_request_json,
+        handle_validation_error=handle_validation_error,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+        error_response=_error_response,
+    )
+
+
+def _register_library_routes(api_v1: Any, server: Any) -> None:
+    """Регистрирует маршруты библиотеки медиазаписей."""
+    register_library_routes(
+        api_v1,
+        server,
+        logger=logger,
+        parse_request_json=_parse_request_json,
+        handle_validation_error=handle_validation_error,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+        error_response=_error_response,
+    )
+
+
+def _register_cloud_routes(api_v1: Any, server: Any) -> None:
+    """Регистрирует маршруты облачной синхронизации."""
+    register_cloud_routes(
+        api_v1,
+        server,
+        logger=logger,
+        parse_request_json=_parse_request_json,
+        handle_validation_error=handle_validation_error,
+        internal_error_response=_internal_error_response,
+        exception_response=_exception_response,
+        error_response=_error_response,
+    )
+
+
 def register_routes(app: Any, server: Any) -> None:
     """
     Регистрация всех маршрутов API с Flask приложением.
@@ -706,6 +751,9 @@ def register_routes(app: Any, server: Any) -> None:
     _register_config_routes(api_v1, server)
     _register_profiles_routes(api_v1, server)
     _register_post_processing_routes(api_v1, server)
+    _register_plugins_routes(api_v1, server)
+    _register_library_routes(api_v1, server)
+    _register_cloud_routes(api_v1, server)
     _register_observability_routes(api_v1, server)
     _register_webhook_routes(api_v1, server)
 

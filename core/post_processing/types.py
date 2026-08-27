@@ -26,6 +26,8 @@ class PostProcessingStepType(StrEnum):
     COPY_TO_DIR = "copy_to_dir"
     OPEN_EXPLORER = "open_explorer"
     WEBHOOK = "webhook"
+    PLUGIN = "plugin"
+    TRANSCRIPTION = "transcription"
 
 
 class PostProcessingStatus(StrEnum):

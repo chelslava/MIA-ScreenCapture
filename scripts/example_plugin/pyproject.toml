@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mia-plugin-example"
+version = "1.0.0"
+description = "Пример плагина постобработки для MIA-ScreenCapture"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "MIA Team" }
+]
+
+[project.entry-points."mia.plugins"]
+example_watermark = "mia_plugin_example.plugin:ExampleWatermarkPlugin"

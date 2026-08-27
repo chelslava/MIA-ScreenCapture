@@ -318,6 +318,53 @@ class TestSchedulerExecutionEngine:
         assert "Непредвиденная ошибка обратного вызова задачи" in caplog.text
         save_tasks.assert_called_once()
 
+    def test_execute_calls_error_callback_and_publishes_event_bus_on_failure(
+        self,
+    ) -> None:
+        """При ошибке callback вызывается on_task_error и публикуется ERROR в EventBus."""
+        from core.event_bus import InMemoryEventBus, RecordingEventType
+
+        task = ScheduleTask(
+            id="task-err-bus",
+            name="Error Bus Task",
+            schedule_type=ScheduleType.DAILY,
+            params=RecordingParams(),
+            time_of_day="10:00",
+        )
+        tasks = {task.id: task}
+        save_tasks = MagicMock()
+        error_callback = MagicMock()
+        event_bus = InMemoryEventBus()
+        events: list = []
+        event_bus.subscribe(RecordingEventType.ERROR, events.append)
+
+        def failing_callback(_params: RecordingParams) -> None:
+            raise RuntimeError("Capture device lost")
+
+        scheduler = SimpleNamespace(get_job=lambda task_id: None)
+        engine = SchedulerExecutionEngine(
+            lock=Lock(),
+            tasks=tasks,
+            scheduler=scheduler,
+            save_tasks=save_tasks,
+            get_on_task_execute=lambda: failing_callback,
+            get_on_task_error=lambda: error_callback,
+            event_bus=event_bus,
+        )
+
+        engine.execute(task.id)
+
+        error_callback.assert_called_once()
+        assert error_callback.call_args[0][0] == "task-err-bus"
+        assert "Capture device lost" in error_callback.call_args[0][1]
+
+        assert len(events) == 1
+        assert events[0].event_type == RecordingEventType.ERROR
+        assert events[0].payload["type"] == "scheduler_task_error"
+        assert events[0].payload["task_id"] == "task-err-bus"
+        assert events[0].payload["task_name"] == "Error Bus Task"
+        assert "Capture device lost" in events[0].payload["error"]
+
     # ------------------------------------------------------------------
     # параллельный вызов
     # ------------------------------------------------------------------

@@ -177,6 +177,13 @@ class PostProcessingSettingsSchema(BaseModel):
     open_explorer_on_finish: bool = Field(default=False)
     webhook_enabled: bool = Field(default=False)
     webhook_url: str | None = Field(default=None)
+    transcription_enabled: bool = Field(default=False)
+    transcription_mode: str = Field(default="local")
+    transcription_model: str = Field(default="base")
+    transcription_output_format: str = Field(default="srt")
+    transcription_language: str | None = Field(default=None)
+    transcription_api_key: str | None = Field(default=None)
+    transcription_api_base: str | None = Field(default=None)
     step_timeout_seconds: int = Field(default=300, ge=10, le=3600)
 
     @field_validator("webhook_url", mode="before")
@@ -338,6 +345,13 @@ class PostProcessingSettings:
     open_explorer_on_finish: bool = False
     webhook_enabled: bool = False
     webhook_url: str | None = None
+    transcription_enabled: bool = False
+    transcription_mode: str = "local"
+    transcription_model: str = "base"
+    transcription_output_format: str = "srt"
+    transcription_language: str | None = None
+    transcription_api_key: str | None = None
+    transcription_api_base: str | None = None
     step_timeout_seconds: int = 300
 
 

@@ -101,6 +101,44 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Показать список preset шаблонов",
     )
+    mode_group.add_argument(
+        "--plugins-list",
+        action="store_true",
+        help="Показать список установленных плагинов",
+    )
+    mode_group.add_argument(
+        "--plugins-info",
+        type=str,
+        metavar="PLUGIN_NAME",
+        help="Показать подробную информацию о плагине",
+    )
+    mode_group.add_argument(
+        "--plugins-enable",
+        type=str,
+        metavar="PLUGIN_NAME",
+        help="Включить плагин",
+    )
+    mode_group.add_argument(
+        "--plugins-disable",
+        type=str,
+        metavar="PLUGIN_NAME",
+        help="Отключить плагин",
+    )
+    mode_group.add_argument(
+        "--service",
+        type=str,
+        choices=["install", "start", "stop", "restart", "uninstall", "status"],
+        metavar="ACTION",
+        help="Управление службой Windows (install, start, stop, restart, uninstall, status)",
+    )
+
+    parser.add_argument(
+        "--service-startup",
+        type=str,
+        choices=["auto", "manual"],
+        default="auto",
+        help="Тип запуска службы Windows при установке (auto или manual, по умолчанию: auto)",
+    )
 
     # Параметры записи
     record_group = parser.add_argument_group("Параметры записи")
@@ -348,6 +386,21 @@ def process_args(args: argparse.Namespace) -> dict[str, Any]:
         config["mode"] = "schedule_preview"
     elif args.list_presets:
         config["mode"] = "list_presets"
+    elif args.plugins_list:
+        config["mode"] = "plugins_list"
+    elif args.plugins_info:
+        config["mode"] = "plugins_info"
+        config["plugin_name"] = args.plugins_info
+    elif args.plugins_enable:
+        config["mode"] = "plugins_enable"
+        config["plugin_name"] = args.plugins_enable
+    elif args.plugins_disable:
+        config["mode"] = "plugins_disable"
+        config["plugin_name"] = args.plugins_disable
+    elif args.service:
+        config["mode"] = "service"
+        config["service_action"] = args.service
+        config["service_startup"] = getattr(args, "service_startup", "auto")
     else:
         config["mode"] = "gui"
 
@@ -531,6 +584,53 @@ def print_schedule_list(tasks: list[dict[str, Any]]) -> None:
         if task.get("next_run"):
             print(f"  Следующий запуск: {task['next_run']}")
         print()
+
+
+def print_plugins_list(plugins: list[dict[str, Any]]) -> None:
+    """
+    Вывод списка установленных плагинов в консоль.
+
+    Args:
+        plugins: Список словарей метаданных плагинов.
+    """
+    if not plugins:
+        print("Установленные плагины не обнаружены.")
+        return
+
+    print(f"Установленные плагины ({len(plugins)}):")
+    print("-" * 60)
+    for p in plugins:
+        status = p.get("status", "unknown").upper()
+        name = p.get("name", "unknown")
+        version = p.get("version", "unknown")
+        desc = p.get("description", "")
+        print(f"* {name} (v{version}) [{status}]")
+        if desc:
+            print(f"  {desc}")
+    print()
+
+
+def print_plugin_info(info: dict[str, Any]) -> None:
+    """
+    Вывод подробной информации о плагине в консоль.
+
+    Args:
+        info: Словарь метаданных плагина.
+    """
+    print(f"Информация о плагине: {info.get('name')}")
+    print("-" * 60)
+    print(f"  Версия:      {info.get('version', 'unknown')}")
+    print(f"  Статус:      {info.get('status', 'unknown').upper()}")
+    print(f"  Автор:       {info.get('author', 'н/д')}")
+    print(f"  Сайт:        {info.get('homepage', 'н/д')}")
+    print(f"  Описание:    {info.get('description', 'н/д')}")
+    if info.get("error_message"):
+        print(f"  Ошибка:      {info.get('error_message')}")
+    if info.get("config"):
+        print(f"  Настройки:   {info.get('config')}")
+    if info.get("settings_schema"):
+        print(f"  JSON Schema: {info.get('settings_schema')}")
+    print()
 
 
 if __name__ == "__main__":

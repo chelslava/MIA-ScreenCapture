@@ -13,7 +13,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from core.event_bus import EventBus
 from core.post_processing.pipeline import PostRecordingPipeline
@@ -41,8 +41,13 @@ logger = get_module_logger(__name__)
 class PostProcessingManager:
     """Менеджер управления процессами постобработки видеофайлов."""
 
-    def __init__(self, event_bus: EventBus | None = None) -> None:
+    def __init__(
+        self,
+        event_bus: EventBus | None = None,
+        plugin_manager: Any | None = None,
+    ) -> None:
         self._event_bus = event_bus
+        self._plugin_manager = plugin_manager
         self._current_pipeline: PostRecordingPipeline | None = None
         self._last_result: PipelineResult | None = None
         self._is_running = False
@@ -145,6 +150,33 @@ class PostProcessingManager:
                     timeout_seconds=15,
                 )
             )
+
+        # 8. Транскрибация Whisper (#123)
+        if getattr(settings, "transcription_enabled", False):
+            from core.post_processing.transcription import TranscriptionStep
+
+            steps.append(
+                TranscriptionStep(
+                    mode=settings.transcription_mode,
+                    model=settings.transcription_model,
+                    output_format=settings.transcription_output_format,
+                    language=settings.transcription_language,
+                    api_key=settings.transcription_api_key,
+                    api_base=settings.transcription_api_base,
+                    is_fatal=False,
+                    timeout_seconds=timeout,
+                )
+            )
+
+        # 9. Плагины постобработки (#124)
+        if self._plugin_manager is not None:
+            try:
+                plugin_steps = (
+                    self._plugin_manager.create_post_processing_steps()
+                )
+                steps.extend(plugin_steps)
+            except Exception as e:
+                logger.error("Ошибка при создании шагов плагинов: %s", e)
 
         return steps
 

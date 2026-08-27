@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from typing import Any
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -185,7 +186,7 @@ def detect_system_theme() -> str:
     Определить тему Windows из реестра.
 
     Returns:
-        `"light"` или `"dark"`; `"light"` как безопасный fallback на
+        `"dark_contrast"`, `"dark"` или `"light"`; `"light"` как безопасный fallback на
         не-Windows платформах или если ключ реестра недоступен.
     """
     if sys.platform != "win32":
@@ -193,6 +194,19 @@ def detect_system_theme() -> str:
     try:
         import winreg
 
+        # 1. Проверяем режим высокой контрастности Windows
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Control Panel\Accessibility\HighContrast",
+            ) as hc_key:
+                flags_val, _ = winreg.QueryValueEx(hc_key, "Flags")
+                if int(flags_val) & 1:  # HCF_HIGHCONTRASTON = 0x00000001
+                    return "dark_contrast"
+        except (OSError, ValueError):
+            pass
+
+        # 2. Проверяем тему приложений (светлая/тёмная)
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize",
@@ -350,6 +364,34 @@ def build_stylesheet(palette: ColorPalette) -> str:
     """
 
 
+class _DynamicThemeColors(dict):
+    """Динамический словарь цветов, отражающий палитру активной темы."""
+
+    def __getitem__(self, key: str) -> str:
+        if hasattr(_active_palette, key):
+            return str(getattr(_active_palette, key))
+        return str(super().get(key, ""))
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if hasattr(_active_palette, key):
+            return getattr(_active_palette, key)
+        return super().get(key, default)
+
+    def __contains__(self, key: object) -> bool:
+        return hasattr(_active_palette, str(key)) or super().__contains__(key)
+
+    def values(self) -> Any:
+        return [
+            self[k] for k in ("danger", "warning", "success", "info", "muted")
+        ]
+
+    def items(self) -> Any:
+        return [
+            (k, self[k])
+            for k in ("danger", "warning", "success", "info", "muted")
+        ]
+
+
 # Текущая активная палитра (обновляется в apply_theme).
 # Используется Theme.COLORS/status_style для выбора семантических цветов.
 _active_palette: ColorPalette = LIGHT_PALETTE
@@ -370,6 +412,15 @@ def apply_theme(app: object, mode: str) -> str:
     resolved = resolve_theme(mode)
     palette = get_palette(resolved)
     _active_palette = palette
+    Theme.COLORS.update(
+        {
+            "danger": palette.danger,
+            "warning": palette.warning,
+            "success": palette.success,
+            "info": palette.info,
+            "muted": palette.muted,
+        }
+    )
     set_stylesheet = getattr(app, "setStyleSheet", None)
     if callable(set_stylesheet):
         set_stylesheet(build_stylesheet(palette))
@@ -384,15 +435,16 @@ def get_active_palette() -> ColorPalette:
 class Theme:
     """Единый источник базовых style helpers для GUI."""
 
-    # Значения по умолчанию для светлой темы (используются до первого
-    # apply_theme). Реальные значения зависят от активной палитры (#104).
-    COLORS: dict[str, str] = {
-        "danger": LIGHT_PALETTE.danger,
-        "warning": LIGHT_PALETTE.warning,
-        "success": LIGHT_PALETTE.success,
-        "info": LIGHT_PALETTE.info,
-        "muted": LIGHT_PALETTE.muted,
-    }
+    # Динамический словарь цветов, зависящий от активной темы (#95, #104).
+    COLORS: dict[str, str] = _DynamicThemeColors(
+        {
+            "danger": LIGHT_PALETTE.danger,
+            "warning": LIGHT_PALETTE.warning,
+            "success": LIGHT_PALETTE.success,
+            "info": LIGHT_PALETTE.info,
+            "muted": LIGHT_PALETTE.muted,
+        }
+    )
 
     # Единая шкала отступов для layout.setContentsMargins()/setSpacing().
     MARGIN = 4

@@ -170,7 +170,7 @@ jobs:
           if ("${{ github.event_name }}" -eq "pull_request") {
             $baseSha = "${{ github.event.pull_request.base.sha }}"
           }
-          uv run python scripts/check_diff_coverage.py --coverage-json coverage.json --base-sha $baseSha --head-sha "${{ github.sha }}" --min-file-coverage 40
+          uv run python scripts/check_diff_coverage.py --coverage-json coverage.json --base-sha $baseSha --head-sha "${{ github.sha }}" --min-file-coverage 70
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -210,11 +210,9 @@ jobs:
           if ($auditOutput) {
             $auditOutput | ForEach-Object { Write-Host $_ }
           }
-          if ($auditExitCode -eq 0) {
-            Write-Host "pip-audit completed: no known vulnerabilities were reported."
+          if ($auditExitCode -ne 0) {
+            Write-Host "::error::Security vulnerabilities found by pip-audit — blocking CI"
+            exit $auditExitCode
           }
-          else {
-            Write-Host "pip-audit completed: vulnerabilities or audit issues were reported above. This job is non-blocking for now."
-          }
-          exit 0
+          Write-Host "pip-audit completed: no known vulnerabilities were reported."
 

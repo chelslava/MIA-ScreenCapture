@@ -912,6 +912,33 @@ class TestAudioRecorderSounddeviceRecovery:
         assert received[0].payload["type"] == "audio_failure"
         assert publication_lock_states == [True]
 
+    def test_attempt_recovery_exceeded_publishes_event_and_calls_on_error(
+        self,
+    ) -> None:
+        """Прямой вызов _attempt_recovery при исчерпании публикует ERROR в EventBus и on_error."""
+        from core.event_bus import InMemoryEventBus, RecordingEventType
+
+        bus = InMemoryEventBus()
+        received: list = []
+        bus.subscribe(RecordingEventType.ERROR, received.append)
+        recorder = AudioRecorder(event_bus=bus)
+        error_callback = MagicMock()
+        recorder.set_callbacks(on_error=error_callback)
+
+        recorder._recovery_attempts = (
+            3  # лимит 3, следующий вызов будет 4 (> 3)
+        )
+        exc = OSError("fatal sounddevice error")
+        result = recorder._attempt_recovery(exc)
+
+        assert result is False
+        assert len(received) == 1
+        assert received[0].payload["type"] == "audio_failure"
+        assert received[0].payload["recovery_attempts"] == 4
+        assert "fatal sounddevice error" in received[0].payload["message"]
+        error_callback.assert_called_once_with("fatal sounddevice error")
+        assert recorder._terminal_failure_reported is True
+
 
 class TestAudioRecorderEventBus:
     """Тесты публикации событий через event bus при потере аудио-чанков."""
