@@ -53,10 +53,11 @@
 event_bus.subscribe(RecordingEventType.STARTED, self._on_recording_started)
 
 # Публикация события
-event_bus.publish(RecordingEvent(
-    event_type=RecordingEventType.STARTED,
-    payload={"file": path}
-))
+event_bus.publish(
+    RecordingEvent(
+        event_type=RecordingEventType.STARTED, payload={"file": path}
+    )
+)
 
 # Обращение к фасаду
 result = facade.start_recording({"area": "full", "fps": 30})

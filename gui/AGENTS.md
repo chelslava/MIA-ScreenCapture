@@ -61,6 +61,7 @@ PyQt6 GUI-слой приложения. Реализует MVC-паттерн: 
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
 
+
 class MyView(QWidget):
     some_action = pyqtSignal(str)  # сигнал на уровне класса
 

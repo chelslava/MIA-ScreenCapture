@@ -40,18 +40,20 @@
 ### Common Patterns
 ```python
 # Добавление задачи
-scheduler.add_task({
-    "schedule_type": "daily",
-    "time": "09:00",
-    "recording_params": {"area": "full", "fps": 30}
-})
+scheduler.add_task(
+    {
+        "schedule_type": "daily",
+        "time": "09:00",
+        "recording_params": {"area": "full", "fps": 30},
+    }
+)
 
 # Типы расписания
-ScheduleType.ONCE    # разовая
-ScheduleType.DAILY   # ежедневно в время HH:MM
+ScheduleType.ONCE  # разовая
+ScheduleType.DAILY  # ежедневно в время HH:MM
 ScheduleType.WEEKLY  # по дням недели
 ScheduleType.INTERVAL  # каждые N минут
-ScheduleType.CRON    # cron-выражение
+ScheduleType.CRON  # cron-выражение
 ```
 
 ## Dependencies
