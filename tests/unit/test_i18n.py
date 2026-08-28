@@ -395,3 +395,132 @@ class TestCLIAndConfigIntegration:
         # Проверка, что скрипт check_catalogs возвращает 0 (валидные каталоги)
         res = check_catalogs(strict=True)
         assert res == 0
+
+
+class TestI18nManagerExtended:
+    """Расширенные тесты для веток core/i18n/manager.py."""
+
+    def setup_method(self) -> None:
+        I18nManager.reset_instance()
+
+    def teardown_method(self) -> None:
+        I18nManager.reset_instance()
+
+    def test_lazy_string_methods(self) -> None:
+        from core.i18n import lazy_pgettext
+        from core.i18n.manager import LazyString
+
+        ls = LazyString(lambda: "hello")
+        assert repr(ls) == "LazyString('hello')"
+        assert ls == "hello"
+        assert ls == LazyString(lambda: "hello")
+        assert ls != "world"
+        assert hash(ls) == hash("hello")
+
+        ls_fmt = LazyString(lambda: "value: {}")
+        assert ls_fmt.format(42) == "value: 42"
+
+        lp = lazy_pgettext("button", "Open")
+        with use_locale("en"):
+            assert str(lp) == "Open"
+
+    def test_find_locales_dir_branches(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        import sys
+
+        from core.i18n.manager import _find_locales_dir
+
+        # 1. MEIPASS
+        meipass_loc = tmp_path / "meipass_loc"
+        (meipass_loc / "locales").mkdir(parents=True)
+        monkeypatch.setattr(sys, "_MEIPASS", str(meipass_loc), raising=False)
+        assert _find_locales_dir() == meipass_loc / "locales"
+
+        # 2. Frozen
+        monkeypatch.delattr(sys, "_MEIPASS", raising=False)
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        fake_exe = tmp_path / "app.exe"
+        (tmp_path / "locales").mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(sys, "executable", str(fake_exe))
+        assert _find_locales_dir() == tmp_path / "locales"
+
+    def test_detect_system_locale_windows_api(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        manager = I18nManager.get_instance()
+        monkeypatch.delenv("MIA_LANGUAGE", raising=False)
+        monkeypatch.delenv("LC_ALL", raising=False)
+        monkeypatch.delenv("LC_MESSAGES", raising=False)
+        monkeypatch.delenv("LANG", raising=False)
+
+        class MockKernel32:
+            def __init__(self, lang_id):
+                self._lang_id = lang_id
+
+            def GetUserDefaultUILanguage(self):
+                return self._lang_id
+
+        class MockWindll:
+            def __init__(self, lang_id):
+                self.kernel32 = MockKernel32(lang_id)
+
+        import ctypes
+
+        monkeypatch.setattr(
+            ctypes, "windll", MockWindll(0x0419), raising=False
+        )  # Russian
+        assert manager.detect_system_locale() == "ru"
+
+        monkeypatch.setattr(
+            ctypes, "windll", MockWindll(0x0409), raising=False
+        )  # English
+        assert manager.detect_system_locale() == "en"
+
+        # Auto locale switch
+        assert set_locale("auto") in ("ru", "en")
+
+    def test_detect_system_locale_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import locale
+        import sys
+
+        manager = I18nManager.get_instance()
+        monkeypatch.delenv("MIA_LANGUAGE", raising=False)
+        monkeypatch.delenv("LC_ALL", raising=False)
+        monkeypatch.delenv("LC_MESSAGES", raising=False)
+        monkeypatch.delenv("LANG", raising=False)
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setattr(
+            locale, "getdefaultlocale", lambda: ("fr_FR", "UTF-8")
+        )
+        assert manager.detect_system_locale() == "ru"
+
+    def test_locales_dir_property(self) -> None:
+        manager = I18nManager.get_instance()
+        assert manager.locales_dir.exists()
+
+    def test_ensure_mo_file_recompiles_when_missing(self, tmp_path) -> None:
+        # Каталог с po, но без mo
+        locales_dir = tmp_path / "locales"
+        ru_dir = locales_dir / "ru" / "LC_MESSAGES"
+        ru_dir.mkdir(parents=True)
+        po_file = ru_dir / "mia.po"
+        po_file.write_text(
+            'msgid ""\nmsgstr ""\n"Content-Type: text/plain; charset=utf-8\\n"\n\n'
+            'msgid "test_str"\nmsgstr "тест_стр"\n',
+            encoding="utf-8",
+        )
+        manager = I18nManager(locales_dir=locales_dir)
+        manager._ensure_mo_file("ru")
+        assert (ru_dir / "mia.mo").exists()
+
+    def test_npgettext_and_pgettext_fallback(self) -> None:
+        from core.i18n import npgettext, pgettext
+
+        # Empty string fast paths
+        assert pgettext("ctx", "") == ""
+        # npgettext
+        assert npgettext("ctx", "item", "items", 1) == "item"
+        assert npgettext("ctx", "item", "items", 2) == "items"
