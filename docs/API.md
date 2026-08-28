@@ -1557,12 +1557,7 @@ headers = {"X-API-Key": API_KEY}
 response = requests.post(
     f"{BASE_URL}/api/v1/recording/start",
     headers=headers,
-    json={
-        "area": "full",
-        "audio": "none",
-        "fps": 30,
-        "bitrate": "2M"
-    }
+    json={"area": "full", "audio": "none", "fps": 30, "bitrate": "2M"},
 )
 print(response.json())
 

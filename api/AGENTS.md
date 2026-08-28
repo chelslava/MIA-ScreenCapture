@@ -58,10 +58,10 @@ return jsonify({"success": True, "data": result}), 200
 # Ошибка через _error_response
 return _error_response(400, "validation_error", "Invalid fps", details=[...])
 
+
 # Защита маршрута API-ключом
 @require_api_key
-def my_route():
-    ...
+def my_route(): ...
 ```
 
 ## Dependencies

@@ -48,7 +48,7 @@ PyQt6 виджеты-представления (View в MVC). Каждый фа
 ### Common Patterns
 ```python
 class CaptureView(QWidget):
-    area_changed = pyqtSignal(str)   # сигнал изменения области
+    area_changed = pyqtSignal(str)  # сигнал изменения области
 
     def __init__(self, parent=None):
         super().__init__(parent)

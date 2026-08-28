@@ -39,6 +39,7 @@ from gui.models.recording_state import RecordingState, CaptureType
 
 # Кодеки
 from gui.models.video_codecs import VideoCodec
+
 codecs = VideoCodec.get_available()
 ```
 

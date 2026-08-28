@@ -169,6 +169,7 @@ uv run python main.py --headless  # Только API
 - Используй модуль `logging` через централизованную настройку из `logger_config.py`:
   ```python
   from logger_config import get_module_logger
+
   logger = get_module_logger(__name__)
   ```
 - Уровни логирования:
@@ -216,12 +217,13 @@ class TestVideoSettings:
       400,
       "validation_error",
       "Invalid parameters",
-      details=[{"field": "fps", "message": "Must be 1-120"}]
+      details=[{"field": "fps", "message": "Must be 1-120"}],
   )
   ```
 - Пример Pydantic-схемы:
   ```python
   from pydantic import BaseModel, Field, field_validator
+
 
   class StartRecordingRequest(BaseModel):
       area: Literal["full", "window", "rect"] = Field(default="full")
@@ -242,6 +244,7 @@ class TestVideoSettings:
   ```python
   from PyQt6.QtCore import Qt, pyqtSignal
   from PyQt6.QtWidgets import QMainWindow, QVBoxLayout
+
 
   class MainWindow(QMainWindow):
       recording_started = pyqtSignal(str)

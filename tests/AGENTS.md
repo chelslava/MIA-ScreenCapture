@@ -51,6 +51,7 @@ uv run pytest tests/unit/test_config.py -v
 ```python
 import pytest
 
+
 class TestMyFeature:
     def test_happy_path(self, mock_config_manager):
         # arrange
@@ -60,10 +61,13 @@ class TestMyFeature:
         # assert
         assert result == expected
 
-    @pytest.mark.parametrize("input,expected", [
-        (1, "one"),
-        (2, "two"),
-    ])
+    @pytest.mark.parametrize(
+        "input,expected",
+        [
+            (1, "one"),
+            (2, "two"),
+        ],
+    )
     def test_parametrized(self, input, expected):
         assert format_number(input) == expected
 ```

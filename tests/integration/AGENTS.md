@@ -53,6 +53,7 @@ uv run pytest tests/integration/ -m "not slow"
 def client(app):
     return app.test_client()
 
+
 class TestApiIntegration:
     def test_health_endpoint(self, client):
         response = client.get("/health")
