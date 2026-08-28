@@ -1,41 +1,45 @@
 # Changelog
 
-## [Unreleased] - 2026-07-01
+## [1.5.0] - 2026-08-28
 
 ### Added
-- **Closed issue #113:** Включение полного строгого режима проверки типов mypy (`disallow_untyped_defs = true`, `disallow_incomplete_defs = true`) для всех 113 модулей кодовой базы:
-  - Устранены все исключения `[[tool.mypy.overrides]]` в `pyproject.toml`.
-  - Добавлены недостающие аннотации типов в `recorder/utils.py`, `recorder/audio_recorder.py`, `recorder/ffmpeg_writer.py`, `recorder/video_recorder.py`, `scheduler/task_scheduler.py`, `api/routes.py`, `api/server.py`, `config.py`, `gui/views/area_selector.py`, `gui/views/recording_indicator.py`, `gui/views/finalization_progress_dialog.py`, `gui/scheduler/task_dialog.py`, `gui/tray_icon.py`, `gui/scheduler/scheduler_tab.py`, `gui/main_window.py`, `main.py`.
-  - Проверено прохождение `uv run mypy .` без ошибок на всех исходных файлах проекта.
-- **Closed issue #114:** Профилирование hot-path захвата кадра, вычисление фактического FPS, jitter межкадровых интервалов, задержки кодирования и учет пропущенных кадров:
-  - Создан модуль `recorder/frame_metrics.py` с классом `FrameMetrics` и датаклассом `FrameMetricsSnapshot`.
-  - Интегрирован сбор метрик в hot-path захвата `recorder/video_recorder.py`.
-  - Добавлен REST API эндпоинт `GET /api/v1/recording/metrics` (и алиас `GET /api/v1/metrics`) с Pydantic-схемами в `api/schemas.py` и документацией Swagger в `api/swagger.py`.
-  - Реализовано динамическое отображение текущего FPS и Jitter в строке состояния GUI (`gui/main_window.py`).
+- **Интернационализация (i18n) и локализация (l10n) (ADR-022):**
+  - Поддержка русского (`ru`) и английского (`en`) языков интерфейса на базе GNU gettext и Babel.
+  - Автоматическое определение языка операционной системы через Windows UI Language API (`GetUserDefaultUILanguage`) и переменные окружения.
+  - Селектор языка в настройках GUI (`AppearanceView`), параметры CLI `--language` / `--lang`.
+  - Потокобезопасный менеджер локалей `I18nManager` с контекстным менеджером `use_locale`, поддержка плюрализации (`ngettext`) и контекстных переводов (`pgettext`).
+  - Локализованное форматирование чисел, процентов, размеров файлов и дат (`format_*_locale`).
+  - CLI-утилита `scripts/i18n.py` (`extract`, `init`, `update`, `compile`, `check --strict`).
+- **Авто-обновление через GitHub Releases с дельта-патчами (#128, #50, PR #138):**
+  - Подсистема `core/updater` (`GitHubReleaseClient`, `UpdatePatcher`, `AppUpdater`) с фоновой проверкой и поблочным скачиванием обновлений.
+  - REST API эндпоинты `/api/v1/updates/*` (`GET /config`, `PUT /config`, `GET/POST /check`, `POST /download`, `POST /apply`, `GET /status`).
+  - Диалоговое окно `UpdateDialog` в GUI с отображением release notes, прогресс-баром скачивания и управлением установкой.
+- **Closed issue #113:** Включение полного строгого режима проверки типов mypy (`disallow_untyped_defs = true`, `disallow_incomplete_defs = true`) для всех модулей кодовой базы.
+- **Closed issue #114:** Профилирование hot-path захвата кадра, вычисление фактического FPS, jitter межкадровых интервалов, задержки кодирования (`recorder/frame_metrics.py`), REST API `GET /api/v1/recording/metrics` и отображение в GUI.
 
 ### Security
-- **Closed issues #92, #93 (Phase 1):** Persistent rate limiter with JSON state persistence (`api/rate_limiter_persistence.py`) + Auth rate limiter for 401 tracking (`api/auth_rate_limiter.py`)
-- **New:** `RateLimiterStatePersistence` class with atomic writes via `atomic_write_json`
-- **New:** `PersistentRateLimiter` extends `InMemoryRateLimiter` with auto-load/save state
-- **New:** `AuthRateLimiter` tracks failed auth attempts (401 responses) with exponential backoff
-- **Updated:** API server now uses `PersistentRateLimiter` for persistence across restarts
-- **Updated:** `require_api_key` decorator now uses `AuthRateLimiter` for brute-force protection (5 attempts, 60*2^N sec backoff)
-
-## [Unreleased] - 2026-07-01
+- **Устранение уязвимостей и предупреждений CodeQL (GitHub Code Scanning):**
+  - Добавлен явный блок `permissions: { contents: read }` в `.github/workflows/ci.yml`.
+  - Исключено логирование маскированного API-ключа в `api/server.py`.
+  - Безопасные предупреждения и вывод ошибок без интерполяции sensitive переменных в `api/auth.py` и `main.py`.
+  - Исключена утечка стектрейсов/деталей исключений в `api/routes_updates.py` через `_internal_error_response()`.
+  - Настроен регулярный аудит Dependabot и CodeQL workflow.
+- **Closed issues #92, #93 (Phase 1):** Persistent rate limiter with JSON state persistence (`api/rate_limiter_persistence.py`) + Auth rate limiter for 401 tracking (`api/auth_rate_limiter.py`).
+- **Closed issue #106:** Защита от Path traversal в API (`FilePathRequest`, `_validate_path_safe`).
+- **Closed issue #107:** Timing-safe проверка токена WebSocket через `secrets.compare_digest()`.
+- **Closed issue #108:** Ограничение прав доступа к конфигурационным файлам (`0o600`).
 
 ### Fixed
-- **Closed issue #97:** AudioRecorder crash recovery with exponential backoff and EventBus integration — `AudioRecorder._attempt_recovery()` method with 3 max retries, `1s/2s/4s` backoff delays, `logger.warning` for all silent `except Exception: pass`, `RecordingEvent(RecordingEventType.ERROR)` published to EventBus on audio failure
-- **Closed issue #98:** FFmpeg segment auto-merge on recording stop — `FFmpegVideoWriter._merge_segments()` creates concat file and runs FFmpeg concat, called in `close()`, temp segment files cleaned up after successful merge
-- **Closed issue #99:** EventBus exception logging enhanced with subscriber name, event_type, and `traceback.format_exc()` for full stack trace on subscriber failures
-- **Closed issue #100:** Proper EventBus cleanup on application shutdown — `detach_event_bus()` calls added to `_cleanup()` in `main.py` for `WebSocketManager` and `WebhookNotifier` in LIFO order
-- **Closed issue #101:** WebSocket status indicator with colored ● icon (Connected/Disconnected/Reconnecting) in `MainWindow._ws_status_label`, toast notifications on WebSocket state transitions connected to `WebSocketController` signals
-- **Closed issue #102:** EventBus notification on FFmpeg crash/recovery from `FFmpegVideoWriter` — `RecordingEvent(RecordingEventType.WARNING)` published on FFmpeg exit, `gui/main_window.py` subscribes and shows toast, `recovery_count` in `diagnostics_view.py`
-- **Closed issue #103:** Recording thumbnail generation via `generate_thumbnail()` in `recorder/utils.py` with `{cache_dir}/thumbnails/` caching, background QThread in `output_view.py`, placeholder if FFmpeg unavailable
-- **Closed issue #104:** WCAG AA contrast ratio audit of all 4 theme palettes in `gui/styles/theme.py` — `_relative_luminance()` and `_contrast_ratio()` helper functions, failing colors adjusted (e.g., `border` in dark palettes, `selection` in light)
-- **Closed issue #105:** Loading overlay widget (`gui/views/loading_overlay.py`) with semi-transparent spinner and "Загрузка..." text, integrated into `capture_view.py`, `diagnostics_view.py`, `video_view.py` with 500ms timer threshold
-- **Closed issue #106:** Path traversal protection via `@field_validator("file_path", mode="after")` in `api/schemas.py` `FilePathRequest`, `_validate_path_safe()` helper in `recorder/utils.py` with path normalization and `..` blocking
-- **Closed issue #107:** Timing-safe WebSocket auth via `secrets.compare_digest()` in `api/server.py` `_check_ws_auth()` and `api/websocket_transport.py` fallback
-- **Closed issue #108:** Secure config file permissions — `atomic_write_json()` in `utils.py` accepts `mode` parameter, `_restrict_file_permissions()` sets `0o600` owner-only access, `config.py` `save()` passes `mode=0o600`
+- **Closed issue #97:** AudioRecorder crash recovery с exponential backoff и публикацией событий в EventBus.
+- **Closed issue #98:** Автоматическое объединение сегментов FFmpeg (`_merge_segments()`) при остановке записи.
+- **Closed issue #99:** Расширенное логирование исключений подписчиков EventBus.
+- **Closed issue #100:** Корректная очистка и отписка EventBus при завершении работы приложения.
+- **Closed issue #101:** Индикатор статуса WebSocket в строке состояния GUI с тост-уведомлениями.
+- **Closed issue #102:** Уведомления EventBus при сбоях/восстановлении FFmpeg.
+- **Closed issue #103:** Фоновая генерация и кэширование превью записей в `output_view.py`.
+- **Closed issue #104:** Аудит контрастности палитр по WCAG AA для всех 4 тем оформления.
+- **Closed issue #105:** Loading overlay виджет со спиннером для длительных операций GUI.
+
 
 ## [1.4.9] - 2026-06-24
 
