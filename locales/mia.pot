@@ -1,0 +1,151 @@
+# Translations template for MIA-ScreenCapture.
+# Copyright (C) 2026 MIA Development Team
+# This file is distributed under the same license as the MIA-ScreenCapture
+# project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: MIA-ScreenCapture 1.5.0\n"
+"Report-Msgid-Bugs-To: support@mia-screencapture.local\n"
+"POT-Creation-Date: 2026-08-28 00:56+0300\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:517
+#, python-brace-format
+msgid "Неверный тип области: {area_type}"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:526
+msgid "Требуются координаты прямоугольника для режима rect"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:532
+msgid ""
+"Неверные координаты прямоугольника (x2 должен быть > x1, y2 должен быть >"
+" y1)"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:538
+msgid "Требуется заголовок окна для режима window"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:543
+#, python-brace-format
+msgid "Неверный FPS: {fps} (должен быть 1-120)"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:552
+#, python-brace-format
+msgid "Неверная длительность: {duration} (должна быть положительной)"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:564
+#, python-brace-format
+msgid "Путь вывода существует, но не является файлом: {output_path}"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:581
+msgid "ПАУЗА"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:583
+msgid "ЗАПИСЬ"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:602
+msgid "Нет запланированных задач"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:606
+#, python-brace-format
+msgid "Запланированная задача ({count}):"
+msgid_plural "Запланированные задачи ({count}):"
+msgstr[0] ""
+msgstr[1] ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:613
+msgid "ВКЛЮЧЕНО"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:613
+msgid "ВЫКЛЮЧЕНО"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:631
+msgid "Установленные плагины не обнаружены."
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:635
+#, python-brace-format
+msgid "Установленный плагин ({count}):"
+msgid_plural "Установленные плагины ({count}):"
+msgstr[0] ""
+msgstr[1] ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:70
+msgid "MIA-ScreenCapture - Ожидание"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:124
+msgid "Показать окно"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:156
+msgid "Выход"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:181
+msgid "Выход из MIA-ScreenCapture"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:182
+msgid "Вы уверены, что хотите выйти?"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:72
+msgid "Язык интерфейса"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:84
+msgid "Внешний вид"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:95
+msgid "Сворачивать в трей при закрытии"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:99
+msgid ""
+"Если включено, крестик закрытия главного окна сворачивает приложение в "
+"системный трей (запись продолжается). Выход доступен через меню иконки "
+"трея."
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:109
+msgid "Горячие клавиши"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:116
+msgid "Обновления программы"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:120
+msgid "Проверять обновления при запуске"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:126
+msgid "Автоматически скачивать обновления"
+msgstr ""
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:131
+msgid "Проверить обновления сейчас"
+msgstr ""
+

@@ -58,6 +58,8 @@ tmp_pytest_run*/
 # Translations
 *.mo
 *.pot
+!locales/**/*.mo
+!locales/*.pot
 
 # Environments
 .env

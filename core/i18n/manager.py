@@ -289,11 +289,47 @@ class I18nManager:
                 if hasattr(self._thread_local, "current_locale"):
                     del self._thread_local.current_locale
 
+    def _ensure_mo_file(self, loc: str) -> None:
+        """Автоматически компилирует .po в .mo, если бинарный каталог отсутствует или устарел."""
+        try:
+            lc_messages = self._locales_dir / loc / "LC_MESSAGES"
+            po_file = lc_messages / f"{DOMAIN}.po"
+            mo_file = lc_messages / f"{DOMAIN}.mo"
+
+            if po_file.exists():
+                should_compile = not mo_file.exists() or (
+                    po_file.stat().st_mtime > mo_file.stat().st_mtime
+                )
+                if should_compile:
+                    from babel.messages.mofile import write_mo
+                    from babel.messages.pofile import read_po
+
+                    with po_file.open("r", encoding="utf-8") as pf:
+                        catalog = read_po(pf, locale=loc)
+                    lc_messages.mkdir(parents=True, exist_ok=True)
+                    with mo_file.open("wb") as mf:
+                        write_mo(mf, catalog)
+                    logger.debug(
+                        "Скомпилирован каталог переводов для '%s' -> %s",
+                        loc,
+                        mo_file,
+                    )
+        except Exception as e:
+            logger.debug(
+                "Не удалось скомпилировать каталог переводов для '%s': %s",
+                loc,
+                e,
+            )
+
     def _get_translation(self, loc: str) -> gettext.NullTranslations:
         """Загружает и кэширует каталог переводов."""
         with self._lock:
             if loc in self._translations_cache:
                 return self._translations_cache[loc]
+
+            self._ensure_mo_file(loc)
+            if loc != FALLBACK_LOCALE:
+                self._ensure_mo_file(FALLBACK_LOCALE)
 
             trans: gettext.NullTranslations
             try:
