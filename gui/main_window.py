@@ -37,6 +37,7 @@ from PyQt6.QtWidgets import (
 
 from config import get_config
 from core.event_bus import RecordingEvent, RecordingEventType
+from core.i18n import set_locale
 from core.readiness import (
     ReadinessSnapshot,
     RecordingReadinessService,
@@ -738,6 +739,9 @@ class MainWindow(QMainWindow):
 
         # Сигналы AppearanceView
         self._appearance_view.theme_changed.connect(self._on_theme_changed)
+        self._appearance_view.language_changed.connect(
+            self._on_language_changed
+        )
         self._appearance_view.hotkeys_requested.connect(
             self._show_hotkeys_view
         )
@@ -1061,6 +1065,11 @@ class MainWindow(QMainWindow):
             self._settings_controller.get_theme_mode()
         )
 
+        # Язык интерфейса
+        self._appearance_view.set_current_language(
+            self._settings_controller.get_language()
+        )
+
         # Поведение закрытия окна (сворачивание в трей)
         self._appearance_view.set_minimize_to_tray(
             self._settings_controller.get_minimize_to_tray()
@@ -1188,6 +1197,12 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             apply_theme(app, mode)
+
+    def _on_language_changed(self, language: str) -> None:
+        """Обработка выбора языка интерфейса."""
+        self._settings_controller.set_language(language)
+        set_locale(language)
+        logger.info(f"Язык интерфейса изменен на: {language}")
 
     def _on_minimize_to_tray_changed(self, enabled: bool) -> None:
         """Обработка переключения «сворачивать в трей при закрытии»."""

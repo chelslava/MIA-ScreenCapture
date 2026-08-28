@@ -33,10 +33,7 @@ if TYPE_CHECKING:
     from gui.tray_icon import TrayIcon
     from scheduler.task_scheduler import TaskScheduler
 
-from api.auth import (
-    API_KEY_ENV_VAR,
-    API_KEY_HEADER,
-)
+from api.auth import API_KEY_HEADER
 from api.websocket import WebSocketManager
 from app_runtime.api_coordinator import ApiRuntimeCoordinator
 from app_runtime.constants import GUI_DEFAULT_TIMEOUT_SECONDS
@@ -54,6 +51,7 @@ from core.api_runtime_manager import ApiRuntimeManager
 from core.application_facade import ApplicationFacade
 from core.application_service import ApplicationService
 from core.command_queue import CommandQueue
+from core.i18n import set_locale
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
 from core.multi_recording_service import MultiRecordingService
 from core.recording_service import RecordingService
@@ -499,8 +497,8 @@ class VideoRecorderApp:
             Код выхода (1) с выводом сообщения об ошибке.
         """
         print(
-            f"Ошибка: Требуется аутентификация. Установите переменную окружения "
-            f"{API_KEY_ENV_VAR} с API ключом.",
+            "Ошибка: Требуется аутентификация. Установите переменную окружения "
+            "MIA_API_KEY с API ключом.",
             file=sys.stderr,
         )
         return 1
@@ -2101,7 +2099,19 @@ def main() -> int:
     # Инициализация конфигурации
     config_path_arg = config.get("config_path")
     config_path = Path(config_path_arg) if config_path_arg else None
-    init_config(config_path)
+    cfg_manager = init_config(config_path)
+
+    # Инициализация языка интерфейса
+    cfg_lang = None
+    if (
+        cfg_manager
+        and hasattr(cfg_manager, "settings")
+        and hasattr(cfg_manager.settings, "language")
+    ):
+        cfg_lang = cfg_manager.settings.language
+
+    active_lang = config.get("language") or cfg_lang or "auto"
+    set_locale(active_lang)
 
     mode = config.get("mode", "gui")
     if mode not in _SINGLE_INSTANCE_MODES:

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from core.i18n import _
 from gui.accessibility import apply_accessible_metadata
 from gui.styles.theme import THEME_LABELS
 from logger_config import get_module_logger
@@ -27,18 +28,26 @@ _THEME_MODES: tuple[tuple[str, str], ...] = (
     *THEME_LABELS.items(),
 )
 
+_LANGUAGE_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("auto", "Авто (системный) / Auto (system)"),
+    ("en", "English"),
+    ("ru", "Русский"),
+)
+
 
 class AppearanceView(QWidget):
     """
     Представление для настройки внешнего вида.
 
     Содержит:
+    - Выбор языка интерфейса.
     - Выбор темы оформления (системная или одна из тем `THEME_LABELS`).
     - Чекбокс «Сворачивать в трей при закрытии» (`minimize_to_tray`).
     - Кнопку вызова экрана горячих клавиш.
     """
 
     theme_changed = pyqtSignal(str)
+    language_changed = pyqtSignal(str)
     hotkeys_requested = pyqtSignal()
     minimize_to_tray_changed = pyqtSignal(bool)
     check_updates_requested = pyqtSignal()
@@ -59,7 +68,20 @@ class AppearanceView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        group = QGroupBox("Внешний вид")
+        # Секция языка интерфейса
+        lang_group = QGroupBox(_("Язык интерфейса"))
+        lang_layout = QVBoxLayout(lang_group)
+
+        self._lang_combo = QComboBox()
+        self._lang_combo.addItems([label for _, label in _LANGUAGE_OPTIONS])
+        self._lang_combo.currentIndexChanged.connect(
+            self._on_language_index_changed
+        )
+        lang_layout.addWidget(self._lang_combo)
+        layout.addWidget(lang_group)
+
+        # Секция темы оформления
+        group = QGroupBox(_("Внешний вид"))
         group_layout = QVBoxLayout(group)
 
         self._theme_combo = QComboBox()
@@ -70,41 +92,43 @@ class AppearanceView(QWidget):
         group_layout.addWidget(self._theme_combo)
 
         self._minimize_to_tray_checkbox = QCheckBox(
-            "Сворачивать в трей при закрытии"
+            _("Сворачивать в трей при закрытии")
         )
         self._minimize_to_tray_checkbox.setToolTip(
-            "Если включено, крестик закрытия главного окна сворачивает "
-            "приложение в системный трей (запись продолжается). "
-            "Выход доступен через меню иконки трея."
+            _(
+                "Если включено, крестик закрытия главного окна сворачивает "
+                "приложение в системный трей (запись продолжается). "
+                "Выход доступен через меню иконки трея."
+            )
         )
         self._minimize_to_tray_checkbox.toggled.connect(
             self._on_minimize_to_tray_toggled
         )
         group_layout.addWidget(self._minimize_to_tray_checkbox)
 
-        self._hotkeys_btn = QPushButton("Горячие клавиши")
+        self._hotkeys_btn = QPushButton(_("Горячие клавиши"))
         self._hotkeys_btn.clicked.connect(self._on_hotkeys_clicked)
         group_layout.addWidget(self._hotkeys_btn)
 
         layout.addWidget(group)
 
         # Секция авто-обновлений
-        updates_group = QGroupBox("Обновления программы")
+        updates_group = QGroupBox(_("Обновления программы"))
         updates_layout = QVBoxLayout(updates_group)
 
         self._check_on_startup_cb = QCheckBox(
-            "Проверять обновления при запуске"
+            _("Проверять обновления при запуске")
         )
         self._check_on_startup_cb.setChecked(True)
         updates_layout.addWidget(self._check_on_startup_cb)
 
         self._auto_download_cb = QCheckBox(
-            "Автоматически скачивать обновления"
+            _("Автоматически скачивать обновления")
         )
         self._auto_download_cb.setChecked(False)
         updates_layout.addWidget(self._auto_download_cb)
 
-        self._check_updates_btn = QPushButton("Проверить обновления сейчас")
+        self._check_updates_btn = QPushButton(_("Проверить обновления сейчас"))
         self._check_updates_btn.clicked.connect(self._on_check_updates_clicked)
         updates_layout.addWidget(self._check_updates_btn)
 
@@ -182,7 +206,7 @@ class AppearanceView(QWidget):
         Args:
             mode: `"system"` или один из ключей `gui.styles.theme.THEME_LABELS`.
         """
-        for index, (mode_value, _) in enumerate(_THEME_MODES):
+        for index, (mode_value, _label) in enumerate(_THEME_MODES):
             if mode_value == mode:
                 self._theme_combo.setCurrentIndex(index)
                 return
@@ -216,3 +240,35 @@ class AppearanceView(QWidget):
         """Устанавливает значения чекбоксов настроек обновлений."""
         self._check_on_startup_cb.setChecked(check_on_startup)
         self._auto_download_cb.setChecked(auto_download)
+
+    def _on_language_index_changed(self, index: int) -> None:
+        """Обработка выбора языка."""
+        if index < 0 or index >= len(_LANGUAGE_OPTIONS):
+            return
+        lang_code = _LANGUAGE_OPTIONS[index][0]
+        self.language_changed.emit(lang_code)
+
+    def set_current_language(self, language: str) -> None:
+        """
+        Установить выбранный язык в комбобоксе.
+
+        Args:
+            language: Код языка ('auto', 'en', 'ru' и др.).
+        """
+        for index, (code, _label) in enumerate(_LANGUAGE_OPTIONS):
+            if code == language:
+                self._lang_combo.setCurrentIndex(index)
+                return
+        self._lang_combo.setCurrentIndex(0)
+
+    def get_current_language(self) -> str:
+        """
+        Получить текущий выбранный язык.
+
+        Returns:
+            Код языка.
+        """
+        index = self._lang_combo.currentIndex()
+        if 0 <= index < len(_LANGUAGE_OPTIONS):
+            return _LANGUAGE_OPTIONS[index][0]
+        return "auto"

@@ -42,6 +42,23 @@ conventionally written in Russian (the original author's language). If
 you're not comfortable writing Russian, English is fine — a maintainer
 can adjust wording during review.
 
+## Internationalization (i18n) Guidelines
+
+All user-facing strings must be wrapped in translation functions from `core.i18n`:
+
+- **Single messages**: `_("Settings")` or `_("Connected to {server}").format(server=server)`
+- **Plural forms**: `ngettext("{count} file", "{count} files", count).format(count=count)`
+- **Context-aware messages**: `pgettext("button", "Open")` / `pgettext("status", "Open")`
+- **Numbers / Dates / File sizes**: Use locale-aware formatters:
+  ```python
+  from core.i18n import format_filesize_locale, format_datetime_locale
+  ```
+
+**Important rules**:
+- Never concatenate translations: use whole sentences with named `{placeholders}`.
+- Do not localize internal identifiers, API keys, JSON payload keys, enum values, or developer debug logs (`logger.debug(...)` stays in English/Russian without `_()`).
+- Always run `uv run python scripts/i18n.py check` before submitting a PR.
+
 ## Pull request expectations
 
 - New logic should come with unit tests. See `tests/unit/` for existing

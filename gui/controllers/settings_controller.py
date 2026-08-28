@@ -256,6 +256,20 @@ class SettingsController:
         self._config.settings.theme = mode
         self._config.save()
 
+    def get_language(self) -> str:
+        """Получить текущий язык из конфигурации."""
+        return str(self._config.settings.language)
+
+    def set_language(self, language: str) -> None:
+        """
+        Установить и сохранить выбранный язык.
+
+        Args:
+            language: Код языка ('auto', 'en', 'ru' и др.).
+        """
+        self._config.settings.language = language
+        self._config.save()
+
     def get_minimize_to_tray(self) -> bool:
         """Получить настройку «сворачивать в трей при закрытии».
 

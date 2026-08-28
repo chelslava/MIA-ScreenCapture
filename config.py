@@ -245,6 +245,14 @@ class AppSettingsSchema(BaseModel):
             )
         return v
 
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, v: str) -> str:
+        cleaned = v.strip().lower()
+        if cleaned in ("auto", "en", "ru", "de", "fr", "es", "zh", "ja"):
+            return cleaned
+        return "en"
+
 
 # ============================================================================
 # Dataclass модели (для совместимости)

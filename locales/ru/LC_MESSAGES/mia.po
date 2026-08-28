@@ -1,0 +1,220 @@
+# Russian translations for MIA-ScreenCapture.
+# Copyright (C) 2026 MIA Development Team
+# This file is distributed under the same license as the MIA-ScreenCapture project.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: MIA-ScreenCapture 1.5.0\n"
+"Report-Msgid-Bugs-To: support@mia-screencapture.local\n"
+"POT-Creation-Date: 2026-08-28 00:56+0300\n"
+"PO-Revision-Date: 2026-08-28 00:56+0300\n"
+"Last-Translator: MIA Development Team <support@mia-screencapture.local>\n"
+"Language-Team: Russian <ru@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:517
+#, python-brace-format
+msgid "Неверный тип области: {area_type}"
+msgstr "Неверный тип области: {area_type}"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:526
+msgid "Требуются координаты прямоугольника для режима rect"
+msgstr "Требуются координаты прямоугольника для режима rect"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:532
+msgid ""
+"Неверные координаты прямоугольника (x2 должен быть > x1, y2 должен быть >"
+" y1)"
+msgstr ""
+"Неверные координаты прямоугольника (x2 должен быть > x1, y2 должен быть >"
+" y1)"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:538
+msgid "Требуется заголовок окна для режима window"
+msgstr "Требуется заголовок окна для режима window"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:543
+#, python-brace-format
+msgid "Неверный FPS: {fps} (должен быть 1-120)"
+msgstr "Неверный FPS: {fps} (должен быть 1-120)"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:552
+#, python-brace-format
+msgid "Неверная длительность: {duration} (должна быть положительной)"
+msgstr "Неверная длительность: {duration} (должна быть положительной)"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:564
+#, python-brace-format
+msgid "Путь вывода существует, но не является файлом: {output_path}"
+msgstr "Путь вывода существует, но не является файлом: {output_path}"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:581
+msgid "ПАУЗА"
+msgstr "ПАУЗА"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:583
+msgid "ЗАПИСЬ"
+msgstr "ЗАПИСЬ"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:588
+msgid "ОЖИДАНИЕ"
+msgstr "ОЖИДАНИЕ"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:584
+msgid "Статус"
+msgstr "Статус"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:585
+msgid "Время"
+msgstr "Время"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:587
+msgid "Файл"
+msgstr "Файл"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:602
+msgid "Нет запланированных задач"
+msgstr "Нет запланированных задач"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:606
+#, python-brace-format
+msgid "Запланированная задача ({count}):"
+msgid_plural "Запланированные задачи ({count}):"
+msgstr[0] "Запланированная задача ({count}):"
+msgstr[1] "Запланированные задачи ({count}):"
+msgstr[2] "Запланированных задач ({count}):"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:613
+msgid "ВКЛЮЧЕНО"
+msgstr "ВКЛЮЧЕНО"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:613
+msgid "ВЫКЛЮЧЕНО"
+msgstr "ВЫКЛЮЧЕНО"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:615
+msgid "Имя"
+msgstr "Имя"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:616
+msgid "Тип"
+msgstr "Тип"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:619
+msgid "Следующий запуск"
+msgstr "Следующий запуск"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:631
+msgid "Установленные плагины не обнаружены."
+msgstr "Установленные плагины не обнаружены."
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:635
+#, python-brace-format
+msgid "Установленный плагин ({count}):"
+msgid_plural "Установленные плагины ({count}):"
+msgstr[0] "Установленный плагин ({count}):"
+msgstr[1] "Установленные плагины ({count}):"
+msgstr[2] "Установленных плагинов ({count}):"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:648
+msgid "Информация о плагине"
+msgstr "Информация о плагине"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:650
+msgid "Версия"
+msgstr "Версия"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:652
+msgid "Автор"
+msgstr "Автор"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:653
+msgid "Сайт"
+msgstr "Сайт"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:654
+msgid "Описание"
+msgstr "Описание"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:656
+msgid "Ошибка"
+msgstr "Ошибка"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:658
+msgid "Настройки"
+msgstr "Настройки"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:660
+msgid "JSON Schema"
+msgstr "JSON Schema"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:652
+msgid "н/д"
+msgstr "н/д"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:70
+msgid "MIA-ScreenCapture - Ожидание"
+msgstr "MIA-ScreenCapture - Ожидание"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:124
+msgid "Показать окно"
+msgstr "Показать окно"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:156
+msgid "Выход"
+msgstr "Выход"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:181
+msgid "Выход из MIA-ScreenCapture"
+msgstr "Выход из MIA-ScreenCapture"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:182
+msgid "Вы уверены, что хотите выйти?"
+msgstr "Вы уверены, что хотите выйти?"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:72
+msgid "Язык интерфейса"
+msgstr "Язык интерфейса"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:84
+msgid "Внешний вид"
+msgstr "Внешний вид"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:95
+msgid "Сворачивать в трей при закрытии"
+msgstr "Сворачивать в трей при закрытии"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:99
+msgid ""
+"Если включено, крестик закрытия главного окна сворачивает приложение в "
+"системный трей (запись продолжается). Выход доступен через меню иконки "
+"трея."
+msgstr ""
+"Если включено, крестик закрытия главного окна сворачивает приложение в "
+"системный трей (запись продолжается). Выход доступен через меню иконки "
+"трея."
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:109
+msgid "Горячие клавиши"
+msgstr "Горячие клавиши"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:116
+msgid "Обновления программы"
+msgstr "Обновления программы"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:120
+msgid "Проверять обновления при запуске"
+msgstr "Проверять обновления при запуске"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:126
+msgid "Автоматически скачивать обновления"
+msgstr "Автоматически скачивать обновления"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:131
+msgid "Проверить обновления сейчас"
+msgstr "Проверить обновления сейчас"

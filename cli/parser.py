@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from core.i18n import _, ngettext
 from logger_config import get_module_logger
 from version import get_version
 
@@ -337,6 +338,15 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     other_group.add_argument(
+        "--language",
+        "--lang",
+        type=str,
+        default=None,
+        metavar="LANG",
+        help="Язык интерфейса / Language (auto, en, ru)",
+    )
+
+    other_group.add_argument(
         "--version", action="version", version=f"%(prog)s {get_version()}"
     )
 
@@ -359,6 +369,9 @@ def process_args(args: argparse.Namespace) -> dict[str, Any]:
         "api": {},
         "scheduler": {},
     }
+
+    if getattr(args, "language", None):
+        config["language"] = args.language
 
     # Определение режима
     if args.headless:
@@ -501,34 +514,44 @@ def validate_recording_params(
     # Валидация типа области
     area_type = params.get("area_type", "full")
     if area_type not in ("full", "window", "rect"):
-        return False, f"Неверный тип области: {area_type}"
+        return False, _("Неверный тип области: {area_type}").format(
+            area_type=area_type
+        )
 
     # Валидация координат прямоугольника
     if area_type == "rect":
         rect = params.get("rect_coords")
         if not rect or len(rect) != 4:
-            return False, "Требуются координаты прямоугольника для режима rect"
+            return False, _(
+                "Требуются координаты прямоугольника для режима rect"
+            )
         if rect[2] <= rect[0] or rect[3] <= rect[1]:
             return (
                 False,
-                "Неверные координаты прямоугольника (x2 должен быть > x1, y2 должен быть > y1)",
+                _(
+                    "Неверные координаты прямоугольника (x2 должен быть > x1, y2 должен быть > y1)"
+                ),
             )
 
     # Валидация заголовка окна
     if area_type == "window" and not params.get("window_title"):
-        return False, "Требуется заголовок окна для режима window"
+        return False, _("Требуется заголовок окна для режима window")
 
     # Валидация FPS
     fps = params.get("fps", 30)
     if fps < 1 or fps > 120:
-        return False, f"Неверный FPS: {fps} (должен быть 1-120)"
+        return False, _("Неверный FPS: {fps} (должен быть 1-120)").format(
+            fps=fps
+        )
 
     # Валидация длительности
     duration = params.get("duration")
     if duration is not None and duration < 1:
         return (
             False,
-            f"Неверная длительность: {duration} (должна быть положительной)",
+            _(
+                "Неверная длительность: {duration} (должна быть положительной)"
+            ).format(duration=duration),
         )
 
     # Валидация пути вывода
@@ -538,7 +561,9 @@ def validate_recording_params(
         if path.exists() and not path.is_file():
             return (
                 False,
-                f"Путь вывода существует, но не является файлом: {output_path}",
+                _(
+                    "Путь вывода существует, но не является файлом: {output_path}"
+                ).format(output_path=output_path),
             )
 
     return True, None
@@ -552,14 +577,16 @@ def print_status(status: dict[str, Any]) -> None:
         status: Словарь статуса
     """
     if status.get("is_recording"):
-        state = "ПАУЗА" if status.get("is_paused") else "ЗАПИСЬ"
+        state = _("ПАУЗА") if status.get("is_paused") else _("ЗАПИСЬ")
         elapsed = status.get("elapsed_time", 0)
-        print(f"Статус: {state}")
-        print(f"Время: {int(elapsed // 60):02d}:{int(elapsed % 60):02d}")
+        print(f"{_('Статус')}: {state}")
+        print(
+            f"{_('Время')}: {int(elapsed // 60):02d}:{int(elapsed % 60):02d}"
+        )
         if status.get("current_file"):
-            print(f"Файл: {status['current_file']}")
+            print(f"{_('Файл')}: {status['current_file']}")
     else:
-        print("Статус: ОЖИДАНИЕ")
+        print(f"{_('Статус')}: {_('ОЖИДАНИЕ')}")
 
 
 def print_schedule_list(tasks: list[dict[str, Any]]) -> None:
@@ -570,19 +597,24 @@ def print_schedule_list(tasks: list[dict[str, Any]]) -> None:
         tasks: Список словарей задач
     """
     if not tasks:
-        print("Нет запланированных задач")
+        print(_("Нет запланированных задач"))
         return
 
-    print(f"Запланированные задачи ({len(tasks)}):")
+    header = ngettext(
+        "Запланированная задача ({count}):",
+        "Запланированные задачи ({count}):",
+        len(tasks),
+    ).format(count=len(tasks))
+    print(header)
     print("-" * 60)
     for task in tasks:
-        status = "ВКЛЮЧЕНО" if task.get("enabled") else "ВЫКЛЮЧЕНО"
+        status = _("ВКЛЮЧЕНО") if task.get("enabled") else _("ВЫКЛЮЧЕНО")
         print(f"ID: {task.get('id')}")
-        print(f"  Имя: {task.get('name')}")
-        print(f"  Тип: {task.get('schedule_type')}")
-        print(f"  Статус: {status}")
+        print(f"  {_('Имя')}: {task.get('name')}")
+        print(f"  {_('Тип')}: {task.get('schedule_type')}")
+        print(f"  {_('Статус')}: {status}")
         if task.get("next_run"):
-            print(f"  Следующий запуск: {task['next_run']}")
+            print(f"  {_('Следующий запуск')}: {task['next_run']}")
         print()
 
 
@@ -594,10 +626,15 @@ def print_plugins_list(plugins: list[dict[str, Any]]) -> None:
         plugins: Список словарей метаданных плагинов.
     """
     if not plugins:
-        print("Установленные плагины не обнаружены.")
+        print(_("Установленные плагины не обнаружены."))
         return
 
-    print(f"Установленные плагины ({len(plugins)}):")
+    header = ngettext(
+        "Установленный плагин ({count}):",
+        "Установленные плагины ({count}):",
+        len(plugins),
+    ).format(count=len(plugins))
+    print(header)
     print("-" * 60)
     for p in plugins:
         status = p.get("status", "unknown").upper()
@@ -617,19 +654,19 @@ def print_plugin_info(info: dict[str, Any]) -> None:
     Args:
         info: Словарь метаданных плагина.
     """
-    print(f"Информация о плагине: {info.get('name')}")
+    print(f"{_('Информация о плагине')}: {info.get('name')}")
     print("-" * 60)
-    print(f"  Версия:      {info.get('version', 'unknown')}")
-    print(f"  Статус:      {info.get('status', 'unknown').upper()}")
-    print(f"  Автор:       {info.get('author', 'н/д')}")
-    print(f"  Сайт:        {info.get('homepage', 'н/д')}")
-    print(f"  Описание:    {info.get('description', 'н/д')}")
+    print(f"  {_('Версия')}:      {info.get('version', 'unknown')}")
+    print(f"  {_('Статус')}:      {info.get('status', 'unknown').upper()}")
+    print(f"  {_('Автор')}:       {info.get('author', _('н/д'))}")
+    print(f"  {_('Сайт')}:        {info.get('homepage', _('н/д'))}")
+    print(f"  {_('Описание')}:    {info.get('description', _('н/д'))}")
     if info.get("error_message"):
-        print(f"  Ошибка:      {info.get('error_message')}")
+        print(f"  {_('Ошибка')}:      {info.get('error_message')}")
     if info.get("config"):
-        print(f"  Настройки:   {info.get('config')}")
+        print(f"  {_('Настройки')}:   {info.get('config')}")
     if info.get("settings_schema"):
-        print(f"  JSON Schema: {info.get('settings_schema')}")
+        print(f"  {_('JSON Schema')}: {info.get('settings_schema')}")
     print()
 
 

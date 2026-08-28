@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING, Any
 from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 
-from api.routes import _error_response, _execute_with_idempotency
+from api.routes import (
+    _error_response,
+    _execute_with_idempotency,
+    _internal_error_response,
+)
 from api.schemas import (
     CheckUpdateApiRequest,
     DownloadUpdateApiRequest,
@@ -41,7 +45,7 @@ def create_updates_blueprint(server: APIServer) -> Blueprint:
             return jsonify({"success": True, "data": cfg}), 200
         except Exception as e:
             logger.error("Ошибка при получении настроек обновлений: %s", e)
-            return _error_response(500, "internal_error", str(e))
+            return _internal_error_response()
 
     @bp.route("/config", methods=["PUT"])
     def update_update_config() -> Any:
@@ -86,7 +90,7 @@ def create_updates_blueprint(server: APIServer) -> Blueprint:
                 logger.error(
                     "Ошибка при сохранении настроек обновлений: %s", ex
                 )
-                return _error_response(500, "internal_error", str(ex))
+                return _internal_error_response()
 
         return _execute_with_idempotency(server, _do_update)
 
@@ -123,7 +127,7 @@ def create_updates_blueprint(server: APIServer) -> Blueprint:
             return jsonify({"success": True, "data": res}), 200
         except Exception as e:
             logger.error("Ошибка при проверке обновлений: %s", e)
-            return _error_response(500, "internal_error", str(e))
+            return _internal_error_response()
 
     @bp.route("/download", methods=["POST"])
     def download_update() -> Any:
@@ -160,7 +164,7 @@ def create_updates_blueprint(server: APIServer) -> Blueprint:
                 return jsonify(res), 200
             except Exception as ex:
                 logger.error("Ошибка при скачивании обновления: %s", ex)
-                return _error_response(500, "internal_error", str(ex))
+                return _internal_error_response()
 
         return _execute_with_idempotency(server, _do_download)
 
@@ -185,7 +189,7 @@ def create_updates_blueprint(server: APIServer) -> Blueprint:
                 return jsonify(res), 200
             except Exception as ex:
                 logger.error("Ошибка при применении обновления: %s", ex)
-                return _error_response(500, "internal_error", str(ex))
+                return _internal_error_response()
 
         return _execute_with_idempotency(server, _do_apply)
 
@@ -202,6 +206,6 @@ def create_updates_blueprint(server: APIServer) -> Blueprint:
             return jsonify({"success": True, "data": st}), 200
         except Exception as e:
             logger.error("Ошибка при получении статуса обновлений: %s", e)
-            return _error_response(500, "internal_error", str(e))
+            return _internal_error_response()
 
     return bp

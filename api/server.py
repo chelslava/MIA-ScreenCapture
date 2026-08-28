@@ -235,18 +235,11 @@ class APIServer:
         # Инициализация API аутентификации
         self.api_key = init_api_auth(self.app, self.api_key)
 
-        # Логирование API ключа для пользователя (частично, для безопасности)
-        api_key = self.get_api_key()
-        if api_key:
-            # Показываем только начало и конец ключа для идентификации
-            masked_key = (
-                f"{api_key[:8]}...{api_key[-4:]}"
-                if len(api_key) > 12
-                else "***"
-            )
-            logger.info(f"API ключ: {masked_key}")
+        # Информирование о статусе API ключа
+        if self.get_api_key():
+            logger.info("API аутентификация активна (API ключ настроен)")
             logger.warning(
-                "Сохраните этот ключ для использования с CLI! "
+                "Сохраните API ключ для использования с CLI! "
                 "Установите переменную окружения MIA_API_KEY для постоянного ключа."
             )
 

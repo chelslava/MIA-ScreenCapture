@@ -13,6 +13,7 @@ from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QMenu, QMessageBox, QSystemTrayIcon
 
+from core.i18n import _
 from gui.desktop_actions import DesktopActionId, get_desktop_action_spec
 from logger_config import get_module_logger
 
@@ -66,7 +67,7 @@ class TrayIcon(QSystemTrayIcon):
 
         # Установка начальной иконки
         self.setIcon(self._icons["idle"])
-        self.setToolTip("MIA-ScreenCapture - Ожидание")
+        self.setToolTip(_("MIA-ScreenCapture - Ожидание"))
 
         # Создание контекстного меню
         self._create_menu()
@@ -120,7 +121,7 @@ class TrayIcon(QSystemTrayIcon):
         menu = QMenu()
 
         # Действие показа окна
-        self._show_action = QAction("Показать окно", self)
+        self._show_action = QAction(_("Показать окно"), self)
         self._show_action.triggered.connect(self.show_window_requested)
         menu.addAction(self._show_action)
 
@@ -152,7 +153,7 @@ class TrayIcon(QSystemTrayIcon):
         menu.addSeparator()
 
         # Действие выхода
-        self._exit_action = QAction("Выход", self)
+        self._exit_action = QAction(_("Выход"), self)
         self._exit_action.triggered.connect(self._on_exit)
         menu.addAction(self._exit_action)
 
@@ -177,8 +178,8 @@ class TrayIcon(QSystemTrayIcon):
         """Обработка действия выхода."""
         reply = QMessageBox.question(
             None,
-            "Выход из MIA-ScreenCapture",
-            "Вы уверены, что хотите выйти?",
+            _("Выход из MIA-ScreenCapture"),
+            _("Вы уверены, что хотите выйти?"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

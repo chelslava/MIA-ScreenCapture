@@ -1,0 +1,216 @@
+# English translations for MIA-ScreenCapture.
+# Copyright (C) 2026 MIA Development Team
+# This file is distributed under the same license as the MIA-ScreenCapture project.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: MIA-ScreenCapture 1.5.0\n"
+"Report-Msgid-Bugs-To: support@mia-screencapture.local\n"
+"POT-Creation-Date: 2026-08-28 00:56+0300\n"
+"PO-Revision-Date: 2026-08-28 00:56+0300\n"
+"Last-Translator: MIA Development Team <support@mia-screencapture.local>\n"
+"Language-Team: English <en@li.org>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:517
+#, python-brace-format
+msgid "Неверный тип области: {area_type}"
+msgstr "Invalid capture area type: {area_type}"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:526
+msgid "Требуются координаты прямоугольника для режима rect"
+msgstr "Rectangle coordinates required for rect mode"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:532
+msgid ""
+"Неверные координаты прямоугольника (x2 должен быть > x1, y2 должен быть >"
+" y1)"
+msgstr ""
+"Invalid rectangle coordinates (x2 must be > x1, y2 must be > y1)"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:538
+msgid "Требуется заголовок окна для режима window"
+msgstr "Window title required for window mode"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:543
+#, python-brace-format
+msgid "Неверный FPS: {fps} (должен быть 1-120)"
+msgstr "Invalid FPS: {fps} (must be 1-120)"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:552
+#, python-brace-format
+msgid "Неверная длительность: {duration} (должна быть положительной)"
+msgstr "Invalid duration: {duration} (must be positive)"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:564
+#, python-brace-format
+msgid "Путь вывода существует, но не является файлом: {output_path}"
+msgstr "Output path exists but is not a file: {output_path}"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:581
+msgid "ПАУЗА"
+msgstr "PAUSED"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:583
+msgid "ЗАПИСЬ"
+msgstr "RECORDING"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:588
+msgid "ОЖИДАНИЕ"
+msgstr "IDLE"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:584
+msgid "Статус"
+msgstr "Status"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:585
+msgid "Время"
+msgstr "Time"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:587
+msgid "Файл"
+msgstr "File"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:602
+msgid "Нет запланированных задач"
+msgstr "No scheduled tasks"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:606
+#, python-brace-format
+msgid "Запланированная задача ({count}):"
+msgid_plural "Запланированные задачи ({count}):"
+msgstr[0] "Scheduled task ({count}):"
+msgstr[1] "Scheduled tasks ({count}):"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:613
+msgid "ВКЛЮЧЕНО"
+msgstr "ENABLED"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:613
+msgid "ВЫКЛЮЧЕНО"
+msgstr "DISABLED"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:615
+msgid "Имя"
+msgstr "Name"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:616
+msgid "Тип"
+msgstr "Type"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:619
+msgid "Следующий запуск"
+msgstr "Next run"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:631
+msgid "Установленные плагины не обнаружены."
+msgstr "No installed plugins found."
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:635
+#, python-brace-format
+msgid "Установленный плагин ({count}):"
+msgid_plural "Установленные плагины ({count}):"
+msgstr[0] "Installed plugin ({count}):"
+msgstr[1] "Installed plugins ({count}):"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:648
+msgid "Информация о плагине"
+msgstr "Plugin Information"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:650
+msgid "Версия"
+msgstr "Version"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:652
+msgid "Автор"
+msgstr "Author"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:653
+msgid "Сайт"
+msgstr "Website"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:654
+msgid "Описание"
+msgstr "Description"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:656
+msgid "Ошибка"
+msgstr "Error"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:658
+msgid "Настройки"
+msgstr "Settings"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:660
+msgid "JSON Schema"
+msgstr "JSON Schema"
+
+#: D:/Repo/MIA-ScreenCapture/cli/parser.py:652
+msgid "н/д"
+msgstr "N/A"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:70
+msgid "MIA-ScreenCapture - Ожидание"
+msgstr "MIA-ScreenCapture - Idle"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:124
+msgid "Показать окно"
+msgstr "Show Window"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:156
+msgid "Выход"
+msgstr "Exit"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:181
+msgid "Выход из MIA-ScreenCapture"
+msgstr "Exit MIA-ScreenCapture"
+
+#: D:/Repo/MIA-ScreenCapture/gui/tray_icon.py:182
+msgid "Вы уверены, что хотите выйти?"
+msgstr "Are you sure you want to exit?"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:72
+msgid "Язык интерфейса"
+msgstr "Interface Language"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:84
+msgid "Внешний вид"
+msgstr "Appearance"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:95
+msgid "Сворачивать в трей при закрытии"
+msgstr "Minimize to tray on close"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:99
+msgid ""
+"Если включено, крестик закрытия главного окна сворачивает приложение в "
+"системный трей (запись продолжается). Выход доступен через меню иконки "
+"трея."
+msgstr ""
+"If enabled, closing the main window minimizes the app to system tray "
+"(recording continues). Exit is available from tray menu."
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:109
+msgid "Горячие клавиши"
+msgstr "Hotkeys"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:116
+msgid "Обновления программы"
+msgstr "Application Updates"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:120
+msgid "Проверять обновления при запуске"
+msgstr "Check for updates on startup"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:126
+msgid "Автоматически скачивать обновления"
+msgstr "Download updates automatically"
+
+#: D:/Repo/MIA-ScreenCapture/gui/views/appearance_view.py:131
+msgid "Проверить обновления сейчас"
+msgstr "Check for updates now"

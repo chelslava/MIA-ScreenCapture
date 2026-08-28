@@ -49,6 +49,7 @@
   - [Примеры curl](#примеры-curl)
   - [Пример клиента на Python](#пример-клиента-на-python)
 - [Архитектура](#архитектура)
+- [Интернационализация и локализация (i18n/l10n)](#интернационализация-и-локализация-i18nl10n)
 - [Конфигурация](#конфигурация)
 - [Разработка](#разработка)
 - [Решение проблем](#решение-проблем)
@@ -460,13 +461,52 @@ api/            REST API: маршруты Flask, аутентификация, 
                 idempotency, circuit breaker, WebSocket-транспорт, Swagger
 app_runtime/    Тонкие runtime-координаторы между core/ и GUI/API
 cli/            CLI на argparse и подкоманды планировщика
-core/           Доменный слой: event bus, DI-контейнер, lifecycle, фасад
+core/           Доменный слой: event bus, DI-контейнер, lifecycle, фасад, i18n
 gui/            PyQt6 GUI (MVC: views/controllers/models, backends, стили)
+locales/        Исходные и скомпилированные каталоги переводов (.po, .mo, .pot)
 recorder/       Физический захват: Windows Graphics Capture, sounddevice,
                 кодирование FFmpeg, восстановление после краша, ротация
 scheduler/      Планировщик задач на APScheduler и их персистентность
 tests/          79+ unit-тестов, 11+ интеграционных тестов
 ```
+
+## Интернационализация и локализация (i18n/l10n)
+
+В MIA-ScreenCapture реализована надежная расширяемая система мультиязычности на базе стандартного модуля Python `gettext` и библиотеки `Babel`.
+
+### Поддерживаемые языки
+- 🇬🇧 **English** (`en`) — Язык по умолчанию / Fallback
+- 🇷🇺 **Русский** (`ru`) — Полная поддержка множественных форм (плюрализации) и локализованного форматирования
+
+### Выбор языка
+1. **В графическом интерфейсе (GUI)**: откройте раздел **Настройки → Внешний вид → Язык интерфейса** и выберите нужный язык или вариант **Авто (системный)**.
+2. **В командной строке (CLI)**: используйте параметр `--language` или `--lang`:
+   ```bash
+   uv run python main.py --lang ru
+   uv run python main.py --lang en
+   ```
+3. **В файле конфигурации**: укажите `"language": "ru"` в `config/config.json`.
+
+### Добавление нового языка (например, немецкого `de`)
+1. Инициализируйте каталог для нового языка:
+   ```bash
+   uv run python scripts/i18n.py init de
+   ```
+2. Заполните переводы в созданном файле `locales/de/LC_MESSAGES/mia.po`.
+3. Скомпилируйте бинарные каталоги:
+   ```bash
+   uv run python scripts/i18n.py compile
+   ```
+4. Проверьте корректность каталогов встроенным валидатором:
+   ```bash
+   uv run python scripts/i18n.py check --strict
+   ```
+
+### Управление каталогами переводов
+- **Извлечение строк из кода**: `uv run python scripts/i18n.py extract`
+- **Обновление .po из шаблона .pot**: `uv run python scripts/i18n.py update`
+- **Компиляция в бинарные .mo**: `uv run python scripts/i18n.py compile`
+- **Валидация каталогов (CI check)**: `uv run python scripts/i18n.py check`
 
 ## Конфигурация
 

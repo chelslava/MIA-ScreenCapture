@@ -119,3 +119,18 @@ class TestRoutesUpdates:
         data = res.get_json()
         assert data["success"] is True
         assert data["data"]["status"] == "idle"
+
+    def test_endpoint_exception_returns_safe_500(
+        self, client, mock_server: MagicMock
+    ) -> None:
+        def _raise_error(*args, **kwargs):
+            raise RuntimeError("Database connection string password123 secret")
+
+        mock_server.get_callback.return_value = _raise_error
+        res = client.get("/api/v1/updates/config")
+        assert res.status_code == 500
+        data = res.get_json()
+        assert data["success"] is False
+        assert data["error"]["code"] == "internal_error"
+        assert "password123" not in str(data)
+        assert data["error"]["message"] == "Внутренняя ошибка сервера"

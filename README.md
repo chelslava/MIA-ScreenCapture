@@ -49,6 +49,7 @@
   - [curl Examples](#curl-examples)
   - [Python Client Example](#python-client-example)
 - [Architecture](#architecture)
+- [Internationalization & Localization (i18n/l10n)](#internationalization--localization-i18nl10n)
 - [Configuration](#configuration)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
@@ -460,13 +461,52 @@ api/            REST API: Flask routes, auth, rate limiting, idempotency,
                 circuit breaker, WebSocket transport, Swagger
 app_runtime/    Thin runtime coordinators between core/ and GUI/API
 cli/            argparse-based CLI and scheduler subcommands
-core/           Domain layer: event bus, DI container, lifecycle, facade
+core/           Domain layer: event bus, DI container, lifecycle, facade, i18n
 gui/            PyQt6 GUI (MVC: views/controllers/models, backends, styles)
+locales/        Compiled and source translation catalogs (.po, .mo, .pot)
 recorder/       Physical capture: Windows Graphics Capture, sounddevice,
                 FFmpeg encoding, crash recovery, segment rollover
 scheduler/      APScheduler-based task scheduling and persistence
 tests/          79+ unit tests, 11+ integration tests
 ```
+
+## Internationalization & Localization (i18n/l10n)
+
+MIA-ScreenCapture provides enterprise-grade internationalization and localization powered by Python `gettext` and `Babel`.
+
+### Supported Languages
+- 🇬🇧 **English** (`en`) — Fallback / Default
+- 🇷🇺 **Russian** (`ru`) — Full pluralization and localized formatting
+
+### Selecting Language
+1. **GUI**: Navigate to **Settings → Appearance → Interface Language** and pick your preferred language or **Auto (system)**.
+2. **CLI**: Use the `--language` or `--lang` argument:
+   ```bash
+   uv run python main.py --lang ru
+   uv run python main.py --lang en
+   ```
+3. **Configuration**: Set `"language": "ru"` in `config/config.json`.
+
+### Adding a New Language (e.g. German `de`)
+1. Initialize the new locale:
+   ```bash
+   uv run python scripts/i18n.py init de
+   ```
+2. Translate strings in `locales/de/LC_MESSAGES/mia.po`.
+3. Compile binary catalogs:
+   ```bash
+   uv run python scripts/i18n.py compile
+   ```
+4. Verify catalogs with the strict validator:
+   ```bash
+   uv run python scripts/i18n.py check --strict
+   ```
+
+### Translation Catalog Maintenance
+- **Extract strings**: `uv run python scripts/i18n.py extract`
+- **Update catalogs from template**: `uv run python scripts/i18n.py update`
+- **Compile catalogs**: `uv run python scripts/i18n.py compile`
+- **Validate catalogs**: `uv run python scripts/i18n.py check`
 
 ## Configuration
 
