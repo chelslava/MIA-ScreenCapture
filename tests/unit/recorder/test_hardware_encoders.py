@@ -100,17 +100,23 @@ class TestHardwareEncoderFallback:
             lambda ev: events.append(ev.payload),
         )
 
-        writer = FFmpegVideoWriter(
-            output_path=out,
-            width=1920,
-            height=1080,
-            codec="h264_nvenc",
-            event_bus=event_bus,
-        )
+        # Патчим get_ffmpeg_path ДО конструирования writer: путь
+        # разрешается в __init__ (self._ffmpeg_path), и на CI без
+        # установленного ffmpeg он был бы None.
+        with patch(
+            "recorder.ffmpeg_writer.get_ffmpeg_path", return_value="ffmpeg"
+        ):
+            writer = FFmpegVideoWriter(
+                output_path=out,
+                width=1920,
+                height=1080,
+                codec="h264_nvenc",
+                event_bus=event_bus,
+            )
 
         call_count = 0
 
-        def fake_popen(*args, **kwargs):
+        def fake_popen(*_args: object, **_kwargs: object) -> MagicMock:
             nonlocal call_count
             call_count += 1
             mock_proc = MagicMock()
@@ -126,22 +132,19 @@ class TestHardwareEncoderFallback:
             mock_proc.stderr.readline.return_value = b""
             return mock_proc
 
-        with patch(
-            "recorder.ffmpeg_writer.get_ffmpeg_path", return_value="ffmpeg"
-        ):
-            with patch("subprocess.Popen", side_effect=fake_popen):
-                ok = writer._open_process(out)
-                assert ok is True
-                assert writer.codec == "h264_nvenc"
-                assert writer.actual_codec == "libx264"
-                assert writer.fallback_occurred is True
-                assert call_count == 2
+        with patch("subprocess.Popen", side_effect=fake_popen):
+            ok = writer._open_process(out)
+            assert ok is True
+            assert writer.codec == "h264_nvenc"
+            assert writer.actual_codec == "libx264"
+            assert writer.fallback_occurred is True
+            assert call_count == 2
 
-                # Проверяем публикацию события в EventBus
-                assert len(events) == 1
-                assert events[0]["type"] == "hardware_encoder_fallback"
-                assert events[0]["requested_codec"] == "h264_nvenc"
-                assert events[0]["fallback_codec"] == "libx264"
+            # Проверяем публикацию события в EventBus
+            assert len(events) == 1
+            assert events[0]["type"] == "hardware_encoder_fallback"
+            assert events[0]["requested_codec"] == "h264_nvenc"
+            assert events[0]["fallback_codec"] == "libx264"
 
     def test_ffmpeg_writer_falls_back_from_hevc_amf_to_libx265(
         self, tmp_path: Path
@@ -149,17 +152,23 @@ class TestHardwareEncoderFallback:
         """При ошибке запуска hevc_amf происходит переключение на libx265."""
         out = tmp_path / "test.mp4"
         event_bus = InMemoryEventBus()
-        writer = FFmpegVideoWriter(
-            output_path=out,
-            width=1920,
-            height=1080,
-            codec="hevc_amf",
-            event_bus=event_bus,
-        )
+        # Патчим get_ffmpeg_path ДО конструирования writer: путь
+        # разрешается в __init__ (self._ffmpeg_path), и на CI без
+        # установленного ffmpeg он был бы None.
+        with patch(
+            "recorder.ffmpeg_writer.get_ffmpeg_path", return_value="ffmpeg"
+        ):
+            writer = FFmpegVideoWriter(
+                output_path=out,
+                width=1920,
+                height=1080,
+                codec="hevc_amf",
+                event_bus=event_bus,
+            )
 
         call_count = 0
 
-        def fake_popen(*args, **kwargs):
+        def fake_popen(*_args: object, **_kwargs: object) -> MagicMock:
             nonlocal call_count
             call_count += 1
             mock_proc = MagicMock()
@@ -173,38 +182,36 @@ class TestHardwareEncoderFallback:
             mock_proc.stderr.readline.return_value = b""
             return mock_proc
 
-        with patch(
-            "recorder.ffmpeg_writer.get_ffmpeg_path", return_value="ffmpeg"
-        ):
-            with patch("subprocess.Popen", side_effect=fake_popen):
-                ok = writer._open_process(out)
-                assert ok is True
-                assert writer.codec == "hevc_amf"
-                assert writer.actual_codec == "libx265"
-                assert writer.fallback_occurred is True
+        with patch("subprocess.Popen", side_effect=fake_popen):
+            ok = writer._open_process(out)
+            assert ok is True
+            assert writer.codec == "hevc_amf"
+            assert writer.actual_codec == "libx265"
+            assert writer.fallback_occurred is True
 
     def test_software_encoder_failure_does_not_loop_fallback(
         self, tmp_path: Path
     ) -> None:
         """При падении программного кодека libx264 повторный fallback не вызывается."""
         out = tmp_path / "test.mp4"
-        writer = FFmpegVideoWriter(
-            output_path=out,
-            width=1920,
-            height=1080,
-            codec="libx264",
-        )
-
+        # Патчим get_ffmpeg_path ДО конструирования (см. тест выше).
         with patch(
             "recorder.ffmpeg_writer.get_ffmpeg_path", return_value="ffmpeg"
         ):
-            with patch(
-                "subprocess.Popen", side_effect=OSError("Process spawn failed")
-            ):
-                ok = writer._open_process(out)
-                assert ok is False
-                assert writer.actual_codec == "libx264"
-                assert writer.fallback_occurred is False
+            writer = FFmpegVideoWriter(
+                output_path=out,
+                width=1920,
+                height=1080,
+                codec="libx264",
+            )
+
+        with patch(
+            "subprocess.Popen", side_effect=OSError("Process spawn failed")
+        ):
+            ok = writer._open_process(out)
+            assert ok is False
+            assert writer.actual_codec == "libx264"
+            assert writer.fallback_occurred is False
 
 
 class TestVideoRecorderCodecProperties:
