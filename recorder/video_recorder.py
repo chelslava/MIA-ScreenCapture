@@ -650,6 +650,20 @@ class VideoRecorder:
         return self._stopped_due_to_segment_rotation_failure
 
     @property
+    def actual_codec(self) -> str:
+        """Фактический используемый видеокодек (с учётом fallback)."""
+        if self._ffmpeg_writer is not None:
+            return str(self._ffmpeg_writer.actual_codec)
+        return self.codec
+
+    @property
+    def fallback_occurred(self) -> bool:
+        """Признак, произошло ли автоматическое переключение на программный кодек."""
+        if self._ffmpeg_writer is not None:
+            return bool(self._ffmpeg_writer.fallback_occurred)
+        return False
+
+    @property
     def frame_count(self) -> int:
         """Получение общего количества захваченных кадров."""
         return self._frame_count

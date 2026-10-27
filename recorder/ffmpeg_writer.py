@@ -19,6 +19,10 @@ from typing import IO, Any, TypeVar
 import numpy as np
 
 from core.event_bus import EventBus, RecordingEvent, RecordingEventType
+from gui.models.video_codecs import (
+    get_software_fallback_codec,
+    is_hardware_accelerated,
+)
 from logger_config import get_module_logger
 from recorder.utils import (
     get_available_disk_space,
@@ -142,6 +146,20 @@ class FFmpegVideoWriter:
             "-cq",
             "23",
         ],
+        "h264_amf": [
+            "-c:v",
+            "h264_amf",
+            "-usage",
+            "transcoding",
+            "-quality",
+            "speed",
+            "-rc",
+            "cqp",
+            "-qp_p",
+            "23",
+            "-qp_i",
+            "23",
+        ],
         "h264_qsv": [
             "-c:v",
             "h264_qsv",
@@ -166,6 +184,28 @@ class FFmpegVideoWriter:
             "-rc",
             "vbr",
             "-cq",
+            "28",
+        ],
+        "hevc_amf": [
+            "-c:v",
+            "hevc_amf",
+            "-usage",
+            "transcoding",
+            "-quality",
+            "speed",
+            "-rc",
+            "cqp",
+            "-qp_p",
+            "28",
+            "-qp_i",
+            "28",
+        ],
+        "hevc_qsv": [
+            "-c:v",
+            "hevc_qsv",
+            "-preset",
+            "fast",
+            "-global_quality",
             "28",
         ],
     }
@@ -199,7 +239,7 @@ class FFmpegVideoWriter:
             width: Ширина видео
             height: Высота видео
             fps: Частота кадров
-            codec: Кодек (libx264, h264_nvenc, h264_qsv, libx265)
+            codec: Кодек (libx264, h264_nvenc, h264_amf, h264_qsv, libx265, hevc_nvenc, hevc_amf, hevc_qsv)
             bitrate: Битрейт (2M, 4M, etc.)
             preset: Preset кодирования
             pixel_format: Формат пикселей (bgr24 для OpenCV)
@@ -230,6 +270,8 @@ class FFmpegVideoWriter:
         self._height = height
         self._fps = fps
         self._codec = codec
+        self._actual_codec = codec
+        self._fallback_occurred = False
         self._bitrate = bitrate
         self._preset = preset
         self._pixel_format = pixel_format
@@ -304,6 +346,21 @@ class FFmpegVideoWriter:
         if self._start_time == 0:
             return 0
         return time.time() - self._start_time
+
+    @property
+    def codec(self) -> str:
+        """Запрошенный видеокодек."""
+        return self._codec
+
+    @property
+    def actual_codec(self) -> str:
+        """Фактически используемый видеокодек (с учётом fallback)."""
+        return self._actual_codec
+
+    @property
+    def fallback_occurred(self) -> bool:
+        """Признак, произошло ли автоматическое переключение на программный кодек."""
+        return self._fallback_occurred
 
     @property
     def is_opened(self) -> bool:
@@ -551,8 +608,8 @@ class FFmpegVideoWriter:
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            codec_key = self._codec
-            if self._codec == "libx264" and self._preset in (
+            codec_key = self._actual_codec
+            if self._actual_codec == "libx264" and self._preset in (
                 "ultrafast",
                 "superfast",
                 "veryfast",
@@ -565,7 +622,9 @@ class FFmpegVideoWriter:
                 self.CODEC_ARGS.get(codec_key, self.CODEC_ARGS["libx264"])
             )
 
-            if self._preset != "medium" and self._codec.startswith("libx"):
+            if self._preset != "medium" and self._actual_codec.startswith(
+                "libx"
+            ):
                 for i, arg in enumerate(codec_args):
                     if arg == "-preset" and i + 1 < len(codec_args):
                         codec_args[i + 1] = self._preset
@@ -611,10 +670,59 @@ class FFmpegVideoWriter:
             self._stderr_tail.clear()
             self._start_stderr_reader(self._process.stderr)
 
+            # Проверка падения процесса при инициализации аппаратного кодека
+            if is_hardware_accelerated(self._actual_codec):
+                poll_code = self._process.poll()
+                if poll_code is not None:
+                    logger.warning(
+                        "FFmpeg процесс завершился сразу после запуска с кодом %s",
+                        poll_code,
+                    )
+                    fallback_codec = get_software_fallback_codec(
+                        self._actual_codec
+                    )
+                    logger.warning(
+                        "Аппаратный кодек %s недоступен. Автоматическое переключение на программный кодек %s",
+                        self._actual_codec,
+                        fallback_codec,
+                    )
+                    if self._event_bus:
+                        self._event_bus.publish(
+                            RecordingEvent(
+                                event_type=RecordingEventType.WARNING,
+                                payload={
+                                    "type": "hardware_encoder_fallback",
+                                    "requested_codec": self._codec,
+                                    "fallback_codec": fallback_codec,
+                                    "message": (
+                                        f"Аппаратный кодек {self._codec} недоступен. "
+                                        f"Запись выполняется с использованием {fallback_codec}."
+                                    ),
+                                },
+                            )
+                        )
+                    self._terminate_process_safely()
+                    self._actual_codec = fallback_codec
+                    self._fallback_occurred = True
+                    return self._open_process(output_path)
+
             return True
 
         except Exception as e:
             logger.error(f"Ошибка открытия FFmpeg: {e}")
+            if is_hardware_accelerated(self._actual_codec):
+                fallback_codec = get_software_fallback_codec(
+                    self._actual_codec
+                )
+                logger.warning(
+                    "Ошибка запуска аппаратного кодека %s: %s. Переключение на %s",
+                    self._actual_codec,
+                    e,
+                    fallback_codec,
+                )
+                self._actual_codec = fallback_codec
+                self._fallback_occurred = True
+                return self._open_process(output_path)
             return False
 
     def _check_disk_space(self) -> DiskSpaceLevel:

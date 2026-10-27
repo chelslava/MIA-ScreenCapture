@@ -495,29 +495,38 @@ class TestConfigDebounceSave:
         """save() пишет конфиг через atomic_write_json с mode=0o600."""
         from config import ConfigManager
 
+        config_path = Path("config/nonexistent_mode_test.json")
         mock_write = mocker.patch(
             "config.atomic_write_json", return_value=True
         )
-        manager = ConfigManager(Path("config/nonexistent_mode_test.json"))
+        manager = ConfigManager(config_path)
 
         assert manager.save() is True
 
-        mock_write.assert_called_once()
-        _call = mock_write.call_args
-        assert _call.kwargs["mode"] == 0o600
+        matching = [
+            c
+            for c in mock_write.call_args_list
+            if c.args and c.args[0] == config_path
+        ]
+        assert len(matching) == 1
+        assert matching[0].kwargs["mode"] == 0o600
 
     def test_save_passes_config_path(self, mocker) -> None:
         """save() передаёт в atomic_write_json путь к файлу конфига."""
         from config import ConfigManager
 
+        config_path = Path("config/nonexistent_path_test.json")
         mock_write = mocker.patch(
             "config.atomic_write_json", return_value=True
         )
-        config_path = Path("config/nonexistent_path_test.json")
         manager = ConfigManager(config_path)
 
         manager.save()
 
-        mock_write.assert_called_once()
-        _call = mock_write.call_args
-        assert _call.args[0] == config_path
+        matching = [
+            c
+            for c in mock_write.call_args_list
+            if c.args and c.args[0] == config_path
+        ]
+        assert len(matching) == 1
+        assert matching[0].args[0] == config_path

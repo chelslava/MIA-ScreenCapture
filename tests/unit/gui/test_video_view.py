@@ -46,9 +46,9 @@ class TestVideoView:
         """Список кодеков заполняется при инициализации."""
         view = _patch_view_runtime(VideoView())
 
-        assert view._codec_combo.count() == 6
+        assert view._codec_combo.count() == 9
         assert view._codec_combo.itemText(0) == "libx264 (CPU)"
-        assert view._codec_combo.itemText(5) == "mp4v"
+        assert view._codec_combo.itemText(8) == "mp4v"
 
     def test_get_codec_uses_catalog_mapping(self, qapp: QApplication) -> None:
         """Геттер кодека возвращает codec id, а не display text."""

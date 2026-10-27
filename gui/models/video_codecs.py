@@ -28,6 +28,12 @@ AVAILABLE_VIDEO_CODECS: tuple[CodecInfo, ...] = (
         hardware_acceleration=True,
     ),
     CodecInfo(
+        codec_id="h264_amf",
+        display_name="h264_amf (AMD GPU)",
+        description="Аппаратное кодирование AMD AMF H.264.",
+        hardware_acceleration=True,
+    ),
+    CodecInfo(
         codec_id="h264_qsv",
         display_name="h264_qsv (Intel GPU)",
         description="Аппаратное кодирование Intel Quick Sync H.264.",
@@ -42,6 +48,18 @@ AVAILABLE_VIDEO_CODECS: tuple[CodecInfo, ...] = (
         codec_id="hevc_nvenc",
         display_name="hevc_nvenc (NVIDIA HEVC)",
         description="Аппаратное кодирование NVIDIA HEVC.",
+        hardware_acceleration=True,
+    ),
+    CodecInfo(
+        codec_id="hevc_amf",
+        display_name="hevc_amf (AMD HEVC)",
+        description="Аппаратное кодирование AMD AMF HEVC.",
+        hardware_acceleration=True,
+    ),
+    CodecInfo(
+        codec_id="hevc_qsv",
+        display_name="hevc_qsv (Intel HEVC)",
+        description="Аппаратное кодирование Intel Quick Sync HEVC.",
         hardware_acceleration=True,
     ),
     CodecInfo(
@@ -91,3 +109,18 @@ def display_name_from_codec_id(codec_id: str) -> str:
     if codec is None:
         return _CODEC_BY_ID[DEFAULT_CODEC_ID].display_name
     return codec.display_name
+
+
+def is_hardware_accelerated(codec_id: str) -> bool:
+    """Проверить, является ли кодек аппаратно-ускоренным (GPU)."""
+
+    info = get_codec_info_by_id(codec_id)
+    return bool(info and info.hardware_acceleration)
+
+
+def get_software_fallback_codec(codec_id: str) -> str:
+    """Получить безопасный программный аналог (fallback) для кодека."""
+
+    if "hevc" in codec_id or "265" in codec_id:
+        return "libx265"
+    return "libx264"

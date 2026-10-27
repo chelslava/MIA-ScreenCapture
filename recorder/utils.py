@@ -1137,3 +1137,123 @@ class Singleton(type):
         if cls not in cls._instances:
             cls._instances[cls] = super().__call__(*args, **kwargs)
         return cls._instances[cls]
+
+
+_PROBED_ENCODERS_CACHE: dict[str, bool] = {}
+
+
+def get_supported_video_encoders(
+    ffmpeg_bin: str | None = None,
+) -> set[str]:
+    """
+    Получить множество названий видеокодеков, скомпилированных в FFmpeg.
+
+    Выполняет ``ffmpeg -encoders`` и извлекает все доступные энкодеры с префиксом ``V``.
+
+    Args:
+        ffmpeg_bin: Путь к бинарному файлу FFmpeg. Если None, используется get_ffmpeg_path().
+
+    Returns:
+        Множество поддерживаемых идентификаторов видеокодеков (например, {'libx264', 'h264_nvenc', ...}).
+    """
+    bin_path = ffmpeg_bin or get_ffmpeg_path()
+    if bin_path is None:
+        return set()
+
+    creationflags = get_subprocess_creationflags()
+    run_kwargs: dict[str, Any] = {
+        "capture_output": True,
+        "text": True,
+        "timeout": 10,
+    }
+    if creationflags:
+        run_kwargs["creationflags"] = creationflags
+
+    try:
+        result = subprocess.run([bin_path, "-encoders"], **run_kwargs)
+        if result.returncode != 0:
+            logger.warning(
+                "ffmpeg -encoders вернул код ошибки: %d", result.returncode
+            )
+            return set()
+
+        encoders: set[str] = set()
+        for line in result.stdout.splitlines():
+            trimmed = line.strip()
+            if trimmed.startswith("V") and len(trimmed) > 7:
+                parts = trimmed[6:].strip().split()
+                if parts:
+                    encoders.add(parts[0])
+
+        return encoders
+
+    except Exception as e:
+        logger.warning("Ошибка при вызове ffmpeg -encoders: %s", e)
+        return set()
+
+
+def probe_encoder_availability(
+    encoder_id: str,
+    ffmpeg_bin: str | None = None,
+    timeout: float = 3.0,
+    use_cache: bool = True,
+) -> bool:
+    """
+    Проверить фактическую доступность кодировщика на текущем оборудовании.
+
+    Выполняет пробный запуск FFmpeg (кодирование синтетического кадра nullsrc в null).
+    Для аппаратных GPU кодеков (NVENC, AMF, QSV) это подтверждает наличие совместимого
+    GPU устройства и драйвера в системе.
+
+    Args:
+        encoder_id: Идентификатор кодека (например, 'h264_nvenc', 'h264_amf', 'libx264').
+        ffmpeg_bin: Путь к бинарному файлу FFmpeg.
+        timeout: Таймаут выполнения пробного кодирования в секундах.
+        use_cache: Использовать ли кэш предыдущих проверок.
+
+    Returns:
+        True, если кодировщик успешно инициализирован и работает, иначе False.
+    """
+    if use_cache and encoder_id in _PROBED_ENCODERS_CACHE:
+        return _PROBED_ENCODERS_CACHE[encoder_id]
+
+    bin_path = ffmpeg_bin or get_ffmpeg_path()
+    if bin_path is None:
+        return False
+
+    creationflags = get_subprocess_creationflags()
+    run_kwargs: dict[str, Any] = {
+        "capture_output": True,
+        "text": True,
+        "timeout": timeout,
+    }
+    if creationflags:
+        run_kwargs["creationflags"] = creationflags
+
+    cmd = [
+        bin_path,
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "nullsrc=s=64x64:d=0.04",
+        "-c:v",
+        encoder_id,
+        "-f",
+        "null",
+        "-",
+    ]
+
+    try:
+        result = subprocess.run(cmd, **run_kwargs)
+        is_ok = result.returncode == 0
+    except Exception as e:
+        logger.debug(
+            "Проверка кодека %s завершилась с исключением: %s", encoder_id, e
+        )
+        is_ok = False
+
+    if use_cache:
+        _PROBED_ENCODERS_CACHE[encoder_id] = is_ok
+
+    return is_ok
