@@ -63,6 +63,10 @@ class RecordingController:
         self._temp_audio: Path | None = None
         self._ffmpeg_check_cache: tuple[float, bool, str | None] | None = None
         self._on_error: Callable[[str], None] | None = None
+        # Callback потери аудио-чанков (#154) — вызывается из потока
+        # sounddevice, поэтому GUI обязан маршалировать через сигнал.
+        # Имя не пересекается с методом _on_audio_chunks_dropped.
+        self._on_audio_chunks_dropped_user: Callable[[int], None] | None = None
         # Трекер прогресса финализации (#96) — общий между кодировщиком
         # и GUI/API. Создаётся здесь, пробрасывается в RecordingEncoder
         # при каждом start_recording.
@@ -116,6 +120,19 @@ class RecordingController:
                       Если None, отключает callback.
         """
         self._on_error = callback
+
+    def set_audio_chunks_dropped_callback(
+        self, callback: Callable[[int], None] | None
+    ) -> None:
+        """
+        Установить callback потери аудио-чанков (#154).
+
+        Args:
+            callback: Функция с сигнатурой (int) -> None, вызывается при
+                переполнении аудио-очереди с суммарным числом потерянных
+                чанков. Если None, отключает callback.
+        """
+        self._on_audio_chunks_dropped_user = callback
 
     def build_capture_area(self, capture: CaptureSettings) -> CaptureArea:
         """
@@ -576,6 +593,13 @@ class RecordingController:
             count: Общее количество потерянных чанков
         """
         logger.warning(f"Потеряно аудио-чанков: {count}")
+        user_callback = self._on_audio_chunks_dropped_user
+        if user_callback is None:
+            return
+        try:
+            user_callback(count)
+        except Exception as e:
+            logger.warning(f"Ошибка в callback потери аудио-чанков: {e}")
 
     @property
     def dropped_audio_chunks(self) -> int:

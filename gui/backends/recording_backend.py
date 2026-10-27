@@ -111,7 +111,9 @@ class GUIRecordingBackend(RecordingBackend):
 
     def get_metrics(self) -> dict[str, Any]:
         """Возвращает текущие метрики кадров записи (#114)."""
-        return self._controller.frame_metrics
+        metrics = self._controller.frame_metrics
+        metrics["dropped_audio_chunks"] = self._controller.dropped_audio_chunks
+        return metrics
 
     def get_finalization_status(self) -> dict[str, Any]:
         """Возвращает статус финализации записи (#151)."""

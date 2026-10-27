@@ -349,3 +349,16 @@ def test_get_finalization_status_from_tracker() -> None:
     assert status["active"] is True
     assert status["percent"] == 55.0
     assert status["eta_s"] == 3.4
+
+
+def test_get_metrics_includes_dropped_audio_chunks() -> None:
+    """Метрики дополняются счётчиком потерянных аудио-чанков (#154)."""
+    controller = MagicMock()
+    controller.frame_metrics = {"actual_fps": 30.0, "total_frames": 10}
+    controller.dropped_audio_chunks = 3
+    backend = GUIRecordingBackend(controller=controller)
+
+    metrics = backend.get_metrics()
+
+    assert metrics["dropped_audio_chunks"] == 3
+    assert metrics["actual_fps"] == 30.0

@@ -616,3 +616,33 @@ class TestSettingsController:
         assert "recording_" in str(result)
         assert str(result).endswith(".mp4")
         assert "default" in str(result) or "path" in str(result)
+
+
+class TestAudioChunksDroppedCallback:
+    """Callback потери аудио-чанков для GUI-индикации (#154)."""
+
+    def test_callback_invoked_with_total_count(self) -> None:
+        controller = RecordingController()
+        callback = MagicMock()
+        controller.set_audio_chunks_dropped_callback(callback)
+
+        controller._on_audio_chunks_dropped(5)
+
+        callback.assert_called_once_with(5)
+
+    def test_callback_exception_does_not_propagate(self) -> None:
+        controller = RecordingController()
+
+        def failing(count: int) -> None:
+            raise RuntimeError("boom")
+
+        controller.set_audio_chunks_dropped_callback(failing)
+        controller._on_audio_chunks_dropped(2)  # не должно упасть
+
+    def test_no_callback_registered_is_safe(self) -> None:
+        controller = RecordingController()
+        controller._on_audio_chunks_dropped(1)  # не должно упасть
+
+    def test_dropped_audio_chunks_reads_recorder_counter(self) -> None:
+        controller = RecordingController()
+        assert controller.dropped_audio_chunks == 0

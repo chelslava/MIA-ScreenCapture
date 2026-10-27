@@ -137,6 +137,9 @@ class MainWindow(QMainWindow):
     recording_paused = pyqtSignal()
     recording_resumed = pyqtSignal()
     error_occurred = pyqtSignal(str)
+    # Потеря аудио-чанков: суммарное количество за текущую запись (#154).
+    # Сигнал нужен для маршалинга из потока sounddevice в GUI-поток.
+    audio_chunks_dropped = pyqtSignal(int)
     close_requested = pyqtSignal(object)
     stop_operation_finished = pyqtSignal(object, object)
     dependency_check_completed = pyqtSignal(object, object)
@@ -170,6 +173,15 @@ class MainWindow(QMainWindow):
         )
         self._recording_controller.set_error_callback(
             self._show_non_modal_error
+        )
+        # Потеря аудио-чанков (#154): callback приходит из потока
+        # sounddevice — в GUI уходим через queued-сигнал.
+        self._audio_drop_warning_shown = False
+        self._recording_controller.set_audio_chunks_dropped_callback(
+            self.audio_chunks_dropped.emit
+        )
+        self.audio_chunks_dropped.connect(
+            self._on_audio_chunks_dropped_warning
         )
         self._settings_controller = SettingsController(
             self._state, get_config()
@@ -1733,11 +1745,22 @@ class MainWindow(QMainWindow):
         """Обработка запуска записи."""
         self._set_status_updates_enabled(True)
         self._update_ui_state(RecordingStatus.RECORDING)
+        self._audio_drop_warning_shown = False
         if capture is not None:
             self._recording_indicator.show_for_capture(capture)
 
         self.recording_started.emit(str(output_path))
         logger.info(f"Запись запущена: {output_path}")
+
+    def _on_audio_chunks_dropped_warning(self, total: int) -> None:
+        """Тост о первом переполнении аудио-очереди за запись (#154)."""
+        if self._audio_drop_warning_shown:
+            return
+        self._audio_drop_warning_shown = True
+        self._show_toast(
+            f"Потеряно {total} аудио-чанков — переполнение очереди",
+            duration_ms=5000,
+        )
 
     def _on_recording_stopped(self, output_path: Path) -> None:
         """Обработка остановки записи."""
@@ -2372,9 +2395,14 @@ class MainWindow(QMainWindow):
         Получение текущих метрик производительности видеозаписи (#114).
 
         Returns:
-            Словарь с метриками кадров (FPS, jitter, latency и др.)
+            Словарь с метриками кадров (FPS, jitter, latency и др.) и
+            счётчиком потерянных аудио-чанков (#154).
         """
-        return self._recording_controller.frame_metrics
+        metrics = self._recording_controller.frame_metrics
+        metrics["dropped_audio_chunks"] = (
+            self._recording_controller.dropped_audio_chunks
+        )
+        return metrics
 
     def get_finalization_status(self) -> dict[str, Any]:
         """
@@ -2421,6 +2449,9 @@ class MainWindow(QMainWindow):
                 audio=audio,
                 snapshot=readiness_snapshot,
                 recovery_count=recovery_count,
+                dropped_audio_chunks=(
+                    self._recording_controller.dropped_audio_chunks
+                ),
             )
             logger.info("Диагностика завершена")
         except Exception as e:

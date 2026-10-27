@@ -124,9 +124,7 @@ class TestRunGitDiff:
             "subprocess.run",
             side_effect=subprocess.CalledProcessError(1, "git"),
         ):
-            with pytest.raises(
-                RuntimeError, match="Не удалось получить diff"
-            ):
+            with pytest.raises(RuntimeError, match="Не удалось получить diff"):
                 _run_git_diff("base", "head")
 
 
@@ -394,9 +392,7 @@ class TestMain:
         ):
             assert main() == 0
 
-    def test_returns_1_when_file_below_threshold(
-        self, tmp_path: Path
-    ) -> None:
+    def test_returns_1_when_file_below_threshold(self, tmp_path: Path) -> None:
         cov_file = tmp_path / "coverage.json"
         cov_file.write_text(
             json.dumps(

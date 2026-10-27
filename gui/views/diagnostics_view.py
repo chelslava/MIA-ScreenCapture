@@ -93,6 +93,12 @@ class DiagnosticsView(QWidget):
         )
         self._checks_layout.addWidget(self._recovery_group)
 
+        self._audio_drop_group = self._create_check_group(
+            "Потеря аудио",
+            "Чанки, потерянные из-за переполнения очереди аудио (#154)",
+        )
+        self._checks_layout.addWidget(self._audio_drop_group)
+
         self._output_group = self._create_check_group(
             "Папка вывода", "Проверка прав на запись в папку вывода"
         )
@@ -183,6 +189,7 @@ class DiagnosticsView(QWidget):
         audio: AudioSettings | None = None,
         snapshot: ReadinessSnapshot | None = None,
         recovery_count: int = 0,
+        dropped_audio_chunks: int = 0,
     ) -> dict[str, bool]:
         """
         Запуск всех проверок.
@@ -193,6 +200,8 @@ class DiagnosticsView(QWidget):
             capture: Настройки текущего захвата
             audio: Настройки текущего аудио
             snapshot: Готовый readiness snapshot, если он уже был собран.
+            recovery_count: Количество восстановлений FFmpeg в текущей записи
+            dropped_audio_chunks: Потерянные аудио-чанки в текущей записи (#154)
 
         Returns:
             Словарь с результатами проверок
@@ -236,6 +245,21 @@ class DiagnosticsView(QWidget):
                     self._recovery_group,
                     ok=True,
                     message="Нет восстановлений",
+                )
+
+            # Потеря аудио-чанков (#154)
+            if dropped_audio_chunks > 0:
+                self._update_group_status(
+                    self._audio_drop_group,
+                    ok=False,
+                    message=f"Потеряно {dropped_audio_chunks} аудио-чанков",
+                    warning=True,
+                )
+            else:
+                self._update_group_status(
+                    self._audio_drop_group,
+                    ok=True,
+                    message="Потерь нет",
                 )
         except Exception as e:
             logger.error(f"Ошибка при выполнении проверок: {e}")
