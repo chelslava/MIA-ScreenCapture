@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from config import get_config
 from core.event_bus import (
@@ -32,6 +32,11 @@ from logger_config import get_module_logger
 from recorder.utils import attempt_repair_video, verify_video_integrity
 
 logger = get_module_logger(__name__)
+
+# Задержка сервисной автоостановки сверх duration: рекордер сам
+# останавливает захват точно в duration, сервисный stop() срабатывает
+# сразу после и доводит финализацию и статус до конца (#153).
+_DURATION_AUTO_STOP_GRACE_S: Final[float] = 1.0
 
 
 def build_recording_output_path(params: dict[str, Any]) -> Path:
@@ -92,6 +97,9 @@ class RecordingService:
         self._backend = backend
         self._lock = threading.Lock()
         self._event_bus = event_bus or InMemoryEventBus()
+        # Таймер автоостановки по duration (#153); отменяется при явном
+        # stop_recording().
+        self._duration_timer: threading.Timer | None = None
         from core.post_processing.manager import PostProcessingManager
 
         self._post_processing_manager = PostProcessingManager(
@@ -185,6 +193,8 @@ class RecordingService:
                 logger.info(f"Recording started: {output_path}")
                 result = {"success": True, "output_path": str(output_path)}
                 self._publish_event(RecordingEventType.STARTED, result)
+                if duration is not None:
+                    self._arm_duration_auto_stop(float(duration))
                 return result
 
             except RecordingError as e:
@@ -211,6 +221,7 @@ class RecordingService:
             только логируются — на результат `stop()` не влияют.
         """
         with self._lock:
+            self._cancel_duration_timer()
             backend_status = self._backend.get_status()
             if (
                 not backend_status.is_recording
@@ -421,6 +432,64 @@ class RecordingService:
             ):
                 return None
         return self.stop_recording()
+
+    def _arm_duration_auto_stop(self, duration_s: float) -> None:
+        """
+        Взводит таймер автоостановки записи по истечении duration (#153).
+
+        Сам рекордер останавливает захват точно в duration, но без
+        сервисного stop() состояние записи не сбрасывается и файл не
+        финализируется — `/health` продолжал показывать active. Таймер
+        daemon-овый, чтобы не удерживать процесс при завершении.
+
+        Args:
+            duration_s: Заданная длительность записи в секундах.
+        """
+        self._cancel_duration_timer()
+        timer = threading.Timer(
+            duration_s + _DURATION_AUTO_STOP_GRACE_S,
+            self._auto_stop_by_duration,
+        )
+        timer.daemon = True
+        self._duration_timer = timer
+        timer.start()
+        logger.info(
+            f"Автоостановка записи запланирована через {duration_s:.0f} с"
+        )
+
+    def _cancel_duration_timer(self) -> None:
+        """Отменяет таймер автоостановки, если он взведён."""
+        if self._duration_timer is not None:
+            self._duration_timer.cancel()
+            self._duration_timer = None
+
+    def _auto_stop_by_duration(self) -> None:
+        """
+        Останавливает активную запись по истечении duration (#153).
+
+        Raises:
+            Не выбрасывает исключений: ошибки stop_recording() уже
+            перехватываются внутри него и возвращаются в результате.
+        """
+        with self._lock:
+            self._duration_timer = None
+            backend_status = self._backend.get_status()
+            if (
+                not backend_status.is_recording
+                and not backend_status.is_paused
+            ):
+                return
+        logger.info("Достигнута заданная длительность — автоостановка")
+        result = self.stop_recording()
+        if result.get("success"):
+            logger.info(
+                f"Запись сохранена (auto-stop): {result.get('filepath')}"
+            )
+        else:
+            logger.error(
+                "Ошибка автоостановки записи: "
+                f"{result.get('error', 'неизвестна')}"
+            )
 
     def _normalize_params(self, params: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(params)

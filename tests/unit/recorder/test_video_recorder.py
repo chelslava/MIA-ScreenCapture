@@ -567,6 +567,90 @@ class TestVideoRecorder:
         assert recorder.stopped_due_to_low_disk_space is False
         assert recorder.stopped_due_to_segment_rotation_failure is True
 
+    def test_capture_loop_finalizes_on_duration_limit(self) -> None:
+        """
+        Завершение по лимиту duration финализирует контейнер и
+        помечает рекордер как самозавершённый (#153).
+        """
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._state = RecordingState.RECORDING
+        recorder._capture_area = CaptureArea(type="full", width=32, height=32)
+        recorder._ffmpeg_writer = MagicMock()
+        recorder._ffmpeg_writer.is_corrupted = False
+        recorder._duration = 1.0
+        # Время старта в прошлом — лимит достигается на первой итерации
+        recorder._start_time = time.time() - 10.0
+
+        class MockSession:
+            """Mock capture-сессии, всегда возвращающей кадр."""
+
+            def __init__(self) -> None:
+                self.is_capture_lost = False
+
+            def start(self, capture_area: CaptureArea) -> None:
+                _ = capture_area
+
+            def read_frame(self, timeout: float):
+                _ = timeout
+                return np.zeros((32, 32, 3), dtype=np.uint8)
+
+            def stop(self) -> None:
+                return
+
+        writer_mock = recorder._ffmpeg_writer
+        with patch(
+            "recorder.video_recorder._WindowsCaptureSession",
+            return_value=MockSession(),
+        ):
+            recorder._capture_loop()
+
+        assert recorder._finished_naturally is True
+        assert recorder.state == RecordingState.IDLE
+        writer_mock.close.assert_called_once()
+
+    def test_stop_after_duration_autostop_returns_true(self) -> None:
+        """
+        Повторный stop() после самозавершения по duration — успех,
+        чтобы верхний уровень довёл финализацию записи (#153).
+        """
+        recorder = VideoRecorder(use_ffmpeg=False)
+        recorder._state = RecordingState.IDLE
+        recorder._finished_naturally = True
+
+        assert recorder.stop() is True
+
+    def test_stop_from_idle_without_autostop_returns_false(self) -> None:
+        """Из IDLE без самозавершения stop() по-прежнему возвращает False."""
+        recorder = VideoRecorder(use_ffmpeg=False)
+        recorder._state = RecordingState.IDLE
+        recorder._finished_naturally = False
+
+        assert recorder.stop() is False
+
+    def test_start_resets_finished_naturally_flag(
+        self, tmp_path: Path
+    ) -> None:
+        """Новый старт записи сбрасывает флаг самозавершения."""
+        recorder = VideoRecorder(use_ffmpeg=True)
+        recorder._finished_naturally = True
+        capture_area = CaptureArea(type="full", width=1280, height=720)
+        mock_writer = MagicMock()
+        mock_writer.open.return_value = True
+
+        with (
+            patch(
+                "recorder.video_recorder.get_platform", return_value="windows"
+            ),
+            patch(
+                "recorder.ffmpeg_writer.FFmpegVideoWriter",
+                MagicMock(return_value=mock_writer),
+            ),
+            patch.object(recorder, "_capture_loop"),
+        ):
+            recorder.start(tmp_path / "video.mp4", capture_area)
+
+        assert recorder._finished_naturally is False
+
     def test_start_passes_disk_thresholds_to_ffmpeg_writer(
         self, tmp_path: Path
     ) -> None:

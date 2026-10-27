@@ -711,3 +711,91 @@ class TestRecordingServiceExtraEdgeCases:
             result = service.stop_active_recording_if_any()
         assert result is not None
         assert result["success"] is True
+
+
+class TestDurationAutoStop:
+    """Автоостановка записи по истечении duration (#153)."""
+
+    def test_start_with_duration_arms_daemon_timer(self) -> None:
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+
+        result = service.start_recording(
+            {"area": "full", "audio": "none", "duration": 60}
+        )
+
+        assert result["success"] is True
+        timer = service._duration_timer
+        assert timer is not None
+        assert timer.daemon is True
+        service._cancel_duration_timer()
+
+    def test_start_without_duration_arms_no_timer(self) -> None:
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+
+        result = service.start_recording({"area": "full", "audio": "none"})
+
+        assert result["success"] is True
+        assert service._duration_timer is None
+
+    def test_failed_start_arms_no_timer(self) -> None:
+        backend = FakeBackend()
+        backend.start_result = (False, "Backend failure")
+        service = RecordingService(backend=backend)
+
+        result = service.start_recording(
+            {"area": "full", "audio": "none", "duration": 60}
+        )
+
+        assert result["success"] is False
+        assert service._duration_timer is None
+
+    def test_auto_stop_by_duration_stops_active_recording(self) -> None:
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+        service.start_recording(
+            {"area": "full", "audio": "none", "duration": 0.05}
+        )
+
+        service._auto_stop_by_duration()
+
+        assert backend.status.is_recording is False
+        assert service._duration_timer is None
+
+    def test_auto_stop_end_to_end_transitions_status(self) -> None:
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+        with patch("core.recording_service._DURATION_AUTO_STOP_GRACE_S", 0.05):
+            result = service.start_recording(
+                {"area": "full", "audio": "none", "duration": 0.05}
+            )
+            assert result["success"] is True
+            timer = service._duration_timer
+            assert timer is not None
+            timer.join(timeout=5.0)
+
+        assert backend.status.is_recording is False
+        assert service.get_status()["is_recording"] is False
+
+    def test_explicit_stop_cancels_auto_stop_timer(self) -> None:
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+        service.start_recording(
+            {"area": "full", "audio": "none", "duration": 3600}
+        )
+        assert service._duration_timer is not None
+
+        with (
+            patch("core.recording_service.get_config") as get_config_mock,
+            patch.object(Path, "exists", return_value=False),
+        ):
+            get_config_mock.return_value = MagicMock()
+            result = service.stop_recording()
+
+        assert result["success"] is True
+        assert service._duration_timer is None
+
+        # Повторный вызов колбэка таймера безопасен — запись уже не активна
+        service._auto_stop_by_duration()
+        assert backend.status.is_recording is False

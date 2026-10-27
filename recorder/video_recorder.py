@@ -397,6 +397,9 @@ class VideoRecorder:
         self._last_segment_paths: list[Path] = []
         self._stopped_due_to_low_disk_space: bool = False
         self._stopped_due_to_segment_rotation_failure: bool = False
+        # Запись завершилась сама (лимит duration) без явного stop() —
+        # позволяет повторному stop() считать остановку успешной (#153).
+        self._finished_naturally: bool = False
 
         # Горячее переключение источника захвата (#48)
         self._switch_lock = threading.Lock()
@@ -742,6 +745,7 @@ class VideoRecorder:
                 self._capture_lost = False  # Сброс флага потери захвата
                 self._stopped_due_to_low_disk_space = False
                 self._stopped_due_to_segment_rotation_failure = False
+                self._finished_naturally = False
                 self._pending_switch_area = None
                 self._switch_done_event.clear()
                 self._switch_result = None
@@ -980,7 +984,9 @@ class VideoRecorder:
         Остановка записи и сохранение файла.
 
         Returns:
-            True если запись успешно остановлена
+            True если запись успешно остановлена, в том числе если она
+            уже завершилась сама по лимиту duration (повторный вызов
+            идемпотентен, #153).
 
         Raises:
             Не выбрасывает исключений: ошибка остановки capture session
@@ -991,7 +997,10 @@ class VideoRecorder:
         """
         with self._lock:
             if self._state == VideoRecorderState.IDLE:
-                return False
+                # Запись уже завершилась сама (например, по лимиту
+                # duration): повторный stop() — не ошибка, иначе
+                # верхний уровень пропустит финализацию контейнера (#153).
+                return self._finished_naturally
 
             self._state = VideoRecorderState.STOPPING
             self._shutdown_event.set()
@@ -1047,6 +1056,7 @@ class VideoRecorder:
         disk_space_stop = False
         rotation_failed_stop = False
         capture_lost_requires_cleanup = False
+        duration_reached = False
         capture_lost_message = (
             "Захват потерян (окно закрыто или монитор отключен)"
         )
@@ -1251,6 +1261,7 @@ class VideoRecorder:
                 # Проверка лимита длительности
                 if self._duration and self.elapsed_time >= self._duration:
                     logger.info("Достигнут лимит длительности, остановка")
+                    duration_reached = True
                     break
 
         except (RecordingError, OSError, RuntimeError) as e:
@@ -1272,6 +1283,15 @@ class VideoRecorder:
             return
 
         if capture_lost_requires_cleanup:
+            self._cleanup()
+            return
+
+        if duration_reached:
+            # Завершение по лимиту duration: финализируем контейнер здесь,
+            # как при явном stop(), — иначе temp-файл останется открытым
+            # без трейлера, а повторный stop() посчитал бы запись
+            # неактивной и пропустил бы сохранение (#153).
+            self._finished_naturally = True
             self._cleanup()
             return
 
