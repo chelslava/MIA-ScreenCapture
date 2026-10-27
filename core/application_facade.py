@@ -31,6 +31,10 @@ class ApplicationFacade(Protocol):
         """Возвращает текущие метрики кадров записи (#114)."""
         ...
 
+    def get_finalization_status(self) -> dict[str, Any]:
+        """Возвращает статус финализации записи (#151)."""
+        ...
+
     def start_recording(
         self, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:

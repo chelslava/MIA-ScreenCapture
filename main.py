@@ -338,6 +338,10 @@ class VideoRecorderApp:
         """Возвращает метрики текущей записи (#114)."""
         return self._get_recording_metrics()
 
+    def get_finalization_status(self) -> dict[str, Any]:
+        """Возвращает статус финализации записи (#151)."""
+        return self._recording_runtime_coordinator.get_finalization_status()
+
     def start_recording(
         self,
         params: dict[str, Any] | None = None,

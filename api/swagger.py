@@ -789,6 +789,62 @@ SWAGGER_SPEC: dict[str, Any] = {
                 },
             },
         },
+        "/api/v1/recording/finalization-status": {
+            "get": {
+                "summary": "Получить статус финализации записи",
+                "description": (
+                    "Возвращает прогресс финализации последней записи "
+                    "(объединение видео/аудио, перенос файла): процент, "
+                    "этап, прошедшее время и оценку остатка (#151)"
+                ),
+                "operationId": "getFinalizationStatus",
+                "responses": {
+                    "200": {
+                        "description": "Статус финализации записи",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": True,
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "active": {
+                                                    "type": "boolean",
+                                                    "example": True,
+                                                },
+                                                "percent": {
+                                                    "type": "number",
+                                                    "example": 42.5,
+                                                },
+                                                "stage": {
+                                                    "type": "string",
+                                                    "example": "Объединение видео",
+                                                },
+                                                "elapsed_s": {
+                                                    "type": "number",
+                                                    "nullable": True,
+                                                    "example": 12.3,
+                                                },
+                                                "eta_s": {
+                                                    "type": "number",
+                                                    "nullable": True,
+                                                    "example": 16.7,
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
         "/api/recordings": {
             "get": {
                 "summary": "Получить список записей",

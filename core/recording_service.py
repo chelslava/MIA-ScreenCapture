@@ -142,6 +142,15 @@ class RecordingService:
         """Возвращает текущие метрики кадров записи (#114)."""
         return self._backend.get_metrics()
 
+    def get_finalization_status(self) -> dict[str, Any]:
+        """Возвращает статус финализации записи (#151).
+
+        Raises:
+            Не выбрасывает исключений напрямую — делегирует в
+            `backend.get_finalization_status()`.
+        """
+        return self._backend.get_finalization_status()
+
     def start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         Start recording from API/scheduler parameters.

@@ -138,3 +138,38 @@ class TestThreadSafety:
         assert not errors
         snap_percent = float(tracker.snapshot()["percent"])
         assert 0.0 <= snap_percent <= 100.0
+
+
+class TestElapsedAndEta:
+    """Поля elapsed_s/eta_s снапшота для REST API (#151)."""
+
+    def test_snapshot_before_start_has_no_timing(self) -> None:
+        tracker = FinalizationProgressTracker()
+        snapshot = tracker.snapshot()
+        assert snapshot["elapsed_s"] is None
+        assert snapshot["eta_s"] is None
+
+    def test_update_starts_elapsed_tracking(self) -> None:
+        tracker = FinalizationProgressTracker()
+        tracker.update(percent=50.0, stage="Объединение")
+        snapshot = tracker.snapshot()
+        assert snapshot["elapsed_s"] is not None
+        assert snapshot["elapsed_s"] >= 0.0
+        # ETA по темпу 50% за ~0с — маленькое положительное число
+        assert snapshot["eta_s"] is not None
+
+    def test_reset_clears_timing(self) -> None:
+        tracker = FinalizationProgressTracker()
+        tracker.update(percent=50.0, stage="X")
+        tracker.reset()
+        snapshot = tracker.snapshot()
+        assert snapshot["elapsed_s"] is None
+        assert snapshot["eta_s"] is None
+
+    def test_eta_none_at_full_progress(self) -> None:
+        tracker = FinalizationProgressTracker()
+        tracker.update(percent=100.0, stage="Завершено")
+        snapshot = tracker.snapshot()
+        assert snapshot["percent"] == 100.0
+        assert snapshot["eta_s"] is None
+        assert snapshot["elapsed_s"] is not None

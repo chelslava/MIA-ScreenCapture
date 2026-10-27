@@ -160,3 +160,14 @@ class RecordingRuntimeCoordinator:
                 ),
             )
         return self._app._recording_service.get_metrics()
+
+    def get_finalization_status(self) -> dict[str, Any]:
+        """Возвращает статус финализации записи (#151)."""
+        if self._app._main_window:
+            return cast(
+                dict[str, Any],
+                self._app._run_on_gui_thread(
+                    lambda: self._app._main_window.get_finalization_status()
+                ),
+            )
+        return self._app._recording_service.get_finalization_status()

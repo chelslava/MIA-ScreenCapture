@@ -227,6 +227,21 @@ def register_recording_routes(
             logger.exception(f"Ошибка получения метрик записи: {e}")
             return exception_response(e)
 
+    @api_v1.route("recording/finalization-status", methods=["GET"])
+    @require_api_key
+    def get_finalization_status() -> Any:
+        """Статус финализации последней записи (#151)."""
+        try:
+            callback = server.get_callback("finalization_status")
+            if callback:
+                status = callback()
+                return jsonify({"success": True, "data": status})
+            return internal_error_response()
+
+        except Exception as e:
+            logger.exception(f"Ошибка получения статуса финализации: {e}")
+            return exception_response(e)
+
     @api_v1.route("recordings/verify", methods=["POST"])
     @rate_limit
     @require_api_key

@@ -324,3 +324,28 @@ def test_elapsed_time_zero_initially() -> None:
     status = backend.get_status()
 
     assert status.elapsed_time == 0.0
+
+
+# ====================
+# Тесты finalization status (#151)
+# ====================
+
+
+def test_get_finalization_status_from_tracker() -> None:
+    """get_finalization_status берёт снапшот трекера контроллера."""
+    controller = MagicMock()
+    controller.progress_tracker.snapshot.return_value = {
+        "active": True,
+        "percent": 55.0,
+        "stage": "Объединение видео",
+        "elapsed_s": 4.2,
+        "eta_s": 3.4,
+    }
+    backend = GUIRecordingBackend(controller=controller)
+
+    status = backend.get_finalization_status()
+
+    controller.progress_tracker.snapshot.assert_called_once()
+    assert status["active"] is True
+    assert status["percent"] == 55.0
+    assert status["eta_s"] == 3.4

@@ -63,3 +63,7 @@ class RecordingBackend(Protocol):
     def get_metrics(self) -> dict[str, Any]:
         """Возвращает текущие метрики кадров записи (#114)."""
         ...
+
+    def get_finalization_status(self) -> dict[str, Any]:
+        """Возвращает статус финализации записи (#151)."""
+        ...

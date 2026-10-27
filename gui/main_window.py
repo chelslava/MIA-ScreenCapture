@@ -2376,6 +2376,15 @@ class MainWindow(QMainWindow):
         """
         return self._recording_controller.frame_metrics
 
+    def get_finalization_status(self) -> dict[str, Any]:
+        """
+        Получение статуса финализации записи (#151).
+
+        Returns:
+            Словарь {active, percent, stage, elapsed_s, eta_s}.
+        """
+        return self._recording_controller.progress_tracker.snapshot()
+
     def _run_diagnostics(self) -> None:
         """Запуск диагностики системы."""
         logger.info("_run_diagnostics вызван")

@@ -485,6 +485,7 @@ class TestMainApiRuntime:
         assert set(app._api_server.callbacks.keys()) == {
             "status",
             "recording_metrics",
+            "finalization_status",
             "start",
             "stop",
             "pause",

@@ -63,6 +63,8 @@ class FinalizationProgressTracker:
         self._stage: str = ""
         self._duration_seconds: float | None = None
         self._callback: FinalizationProgressCallback | None = None
+        # Monotonic-метка начала текущей финализации (для elapsed/eta #151)
+        self._started_at: float | None = None
 
     def set_total_duration(self, seconds: float | None) -> None:
         """Установить полную длительность видео (для нормализации)."""
@@ -83,6 +85,7 @@ class FinalizationProgressTracker:
         with self._lock:
             self._percent = 0.0
             self._stage = ""
+            self._started_at = None
             # duration и callback сохраняются между вызовами
 
     def update(
@@ -98,6 +101,8 @@ class FinalizationProgressTracker:
         """
         callback: FinalizationProgressCallback | None
         with self._lock:
+            if self._started_at is None:
+                self._started_at = time.monotonic()
             if percent is not None:
                 # Клампим в диапазон 0..100
                 self._percent = max(0.0, min(100.0, float(percent)))
@@ -116,16 +121,31 @@ class FinalizationProgressTracker:
                 logger.warning(f"Ошибка в callback прогресса: {e}")
 
     def snapshot(self) -> dict[str, Any]:
-        """Снимок текущего состояния для API.
+        """Снимок текущего состояния для API (#96, #151).
 
         Returns:
-            Словарь с полями ``percent``, ``stage``, ``active``.
+            Словарь с полями ``percent``, ``stage``, ``active``,
+            ``elapsed_s`` — секунды с начала финализации — и ``eta_s`` —
+            оценка остатка по текущему темпу. ``elapsed_s``/``eta_s``
+            равны ``None``, пока финализация не началась; ``eta_s``
+            дополнительно ``None`` при 0% и 100%.
         """
         with self._lock:
+            elapsed_s: float | None = None
+            eta_s: float | None = None
+            if self._started_at is not None:
+                elapsed_s = round(time.monotonic() - self._started_at, 1)
+                if 0.0 < self._percent < 100.0:
+                    eta_s = round(
+                        elapsed_s * (100.0 - self._percent) / self._percent,
+                        1,
+                    )
             return {
                 "percent": self._percent,
                 "stage": self._stage,
                 "active": bool(self._stage),
+                "elapsed_s": elapsed_s,
+                "eta_s": eta_s,
             }
 
     def update_from_ffmpeg_stderr(
