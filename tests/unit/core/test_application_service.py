@@ -27,3 +27,23 @@ def test_application_service_delegates_recording_and_api_calls() -> None:
     backend.start_recording.assert_called_once_with({"area": "full"})
     backend.get_api_status.assert_called_once_with()
     backend.stop_api_server.assert_called_once_with()
+
+
+def test_application_service_delegates_finalization_status() -> None:
+    """get_finalization_status делегируется в backend (#151)."""
+    backend = MagicMock()
+    backend.get_finalization_status.return_value = {
+        "active": True,
+        "percent": 80.0,
+        "stage": "Перенос файла",
+        "elapsed_s": 5.0,
+        "eta_s": 1.2,
+    }
+
+    service = ApplicationService(backend)
+
+    result = service.get_finalization_status()
+
+    backend.get_finalization_status.assert_called_once_with()
+    assert result["percent"] == 80.0
+    assert result["eta_s"] == 1.2

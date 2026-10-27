@@ -1,13 +1,17 @@
-"""Проверка покрытия изменённых Python-файлов по `coverage.json`.
+"""Проверка покрытия изменённых строк Python-кода по `coverage.json`.
 
 Скрипт используется в CI после прогона `pytest --cov-report=json`.
-Проверяет только production-файлы, изменённые между base/head.
+Вычисляет покрытие ТОЛЬКО изменённых (добавленных) строк между
+base/head — классический diff coverage: долг с покрытием legacy-кода
+не блокирует новые изменения, при этом порог держит давление на
+новом коде. Проверяются только production-файлы.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +31,9 @@ PRODUCTION_SINGLE_FILES = {
     "exceptions.py",
     "utils.py",
 }
+
+# Заголовок hunk-а unified diff: @@ -a,b +c,d @@
+_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
 def _normalize_path(path: str) -> str:
@@ -70,14 +77,15 @@ def _resolve_base_sha(base_sha: str | None, head_sha: str) -> str:
     return resolved
 
 
-def _get_changed_python_files(base_sha: str, head_sha: str) -> list[str]:
-    """Возвращает список изменённых production Python-файлов."""
+def _run_git_diff(base_sha: str, head_sha: str) -> str:
+    """Возвращает unified diff `git diff -U0` между SHA."""
     try:
         result = subprocess.run(
             [
                 "git",
                 "diff",
-                "--name-only",
+                "-U0",
+                "--no-color",
                 base_sha,
                 head_sha,
                 "--",
@@ -87,53 +95,102 @@ def _get_changed_python_files(base_sha: str, head_sha: str) -> list[str]:
             text=True,
             check=True,
         )
-    except subprocess.CalledProcessError:
-        try:
-            fallback_base = subprocess.run(
-                ["git", "rev-parse", f"{head_sha}~1"],
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout.strip()
-            result = subprocess.run(
-                [
-                    "git",
-                    "diff",
-                    "--name-only",
-                    fallback_base,
-                    head_sha,
-                    "--",
-                    "*.py",
-                ],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-        except subprocess.CalledProcessError as fallback_exc:
-            raise RuntimeError(
-                "Не удалось получить список изменённых файлов через git diff"
-            ) from fallback_exc
-
-    files = [
-        _normalize_path(line.strip())
-        for line in result.stdout.splitlines()
-        if line.strip()
-    ]
-    return [path for path in files if _is_production_python_file(path)]
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            "Не удалось получить diff между base и head"
+        ) from exc
+    return result.stdout
 
 
-def _load_coverage_map(coverage_json_path: Path) -> dict[str, float]:
-    """Загружает карту `файл -> покрытие` из `coverage.json`."""
+def _parse_changed_lines(diff_text: str) -> dict[str, set[int]]:
+    """
+    Извлекает из unified diff номера добавленных строк по файлам.
+
+    Returns:
+        Словарь `путь (POSIX) -> множество номеров строк в новой
+        версии` только для production-файлов.
+    """
+    changed: dict[str, set[int]] = {}
+    current_file: str | None = None
+
+    for line in diff_text.splitlines():
+        if line.startswith("diff ") or line.startswith("index "):
+            continue
+        if line.startswith("--- "):
+            continue
+        if line.startswith("+++ "):
+            if line.startswith("+++ b/"):
+                current_file = _normalize_path(line[len("+++ b/") :])
+                changed.setdefault(current_file, set())
+            else:
+                # +++ /dev/null — файл удалён, добавленных строк нет
+                current_file = None
+            continue
+        if current_file is None:
+            continue
+        header = _HUNK_HEADER_RE.match(line)
+        if header is not None:
+            start = int(header.group(1))
+            count = int(header.group(2)) if header.group(2) else 1
+            if count > 0:
+                changed[current_file].update(range(start, start + count))
+
+    return {
+        path: lines
+        for path, lines in changed.items()
+        if lines and _is_production_python_file(path)
+    }
+
+
+def _load_coverage_map(
+    coverage_json_path: Path,
+) -> dict[str, tuple[set[int], set[int]]]:
+    """
+    Загружает карту `файл -> (исполненные строки, пропущенные строки)`.
+
+    Raises:
+        ValueError: если в coverage.json нет построчных данных
+            (executed_lines/missing_lines).
+    """
     raw = json.loads(coverage_json_path.read_text(encoding="utf-8"))
     files = raw.get("files", {})
-    coverage_by_file: dict[str, float] = {}
+    coverage_by_file: dict[str, tuple[set[int], set[int]]] = {}
 
     for path, payload in files.items():
         normalized = _normalize_path(path)
-        summary = payload.get("summary", {})
-        percent = float(summary.get("percent_covered", 0.0))
-        coverage_by_file[normalized] = percent
+        executed = payload.get("executed_lines")
+        missing = payload.get("missing_lines")
+        if executed is None or missing is None:
+            raise ValueError(
+                "coverage.json не содержит построчных данных "
+                f"(executed_lines/missing_lines) для {path}: "
+                "перегенерируйте отчёт командой "
+                "`pytest --cov --cov-report=json`"
+            )
+        coverage_by_file[normalized] = (
+            {int(n) for n in executed},
+            {int(n) for n in missing},
+        )
     return coverage_by_file
+
+
+def _diff_coverage_percent(
+    changed_lines: set[int],
+    executed: set[int],
+    missing: set[int],
+) -> float | None:
+    """
+    Считает покрытие изменённых строк файла.
+
+    Returns:
+        Процент покрытия изменённых строк или None, если среди
+        изменённых строк нет исполняемых (docstring/комментарии).
+    """
+    executable_changed = changed_lines & (executed | missing)
+    if not executable_changed:
+        return None
+    covered_changed = executable_changed & executed
+    return len(covered_changed) / len(executable_changed) * 100.0
 
 
 def main() -> int:
@@ -143,19 +200,19 @@ def main() -> int:
         target = file or sys.stdout
         try:
             target.write(message + "\n")  # type: ignore[union-attr]
-            target.flush()  # type: ignore[union-attr]
+            target.flush()
         except (AttributeError, UnicodeEncodeError):
             encoded = message.encode("ascii", "backslashreplace").decode(
                 "ascii"
             )
             try:
                 target.write(encoded + "\n")  # type: ignore[union-attr]
-                target.flush()  # type: ignore[union-attr]
+                target.flush()
             except Exception:
                 print(encoded)
 
     parser = argparse.ArgumentParser(
-        description="Проверка покрытия изменённых Python-файлов",
+        description="Проверка покрытия изменённых строк Python-кода",
     )
     parser.add_argument(
         "--coverage-json",
@@ -167,8 +224,8 @@ def main() -> int:
     parser.add_argument(
         "--min-file-coverage",
         type=float,
-        default=40.0,
-        help="Минимальное покрытие для изменённого файла (%)",
+        default=70.0,
+        help="Минимальное покрытие изменённых строк файла (%)",
     )
     args = parser.parse_args()
 
@@ -182,27 +239,43 @@ def main() -> int:
 
     try:
         base_sha = _resolve_base_sha(args.base_sha, args.head_sha)
-        changed_files = _get_changed_python_files(base_sha, args.head_sha)
-    except RuntimeError as exc:
+        changed_lines_by_file = _parse_changed_lines(
+            _run_git_diff(base_sha, args.head_sha)
+        )
+        coverage_map = _load_coverage_map(coverage_json_path)
+    except (RuntimeError, ValueError) as exc:
         safe_print(f"[diff-coverage] {exc}", file=sys.stderr)
         return 2
 
-    if not changed_files:
-        safe_print("[diff-coverage] Нет изменённых production Python-файлов.")
+    if not changed_lines_by_file:
+        safe_print("[diff-coverage] Нет изменённых строк в production-файлах.")
         return 0
 
-    coverage_map = _load_coverage_map(coverage_json_path)
     failed: list[tuple[str, float]] = []
+    skipped: list[str] = []
 
     safe_print(
-        "[diff-coverage] Проверка изменённых файлов "
+        "[diff-coverage] Покрытие изменённых строк "
         f"(порог: {args.min_file_coverage:.1f}%):"
     )
-    for path in changed_files:
-        coverage_percent = coverage_map.get(path, 0.0)
-        safe_print(f"  - {path}: {coverage_percent:.2f}%")
-        if coverage_percent < args.min_file_coverage:
-            failed.append((path, coverage_percent))
+    for path, changed_lines in sorted(changed_lines_by_file.items()):
+        if path not in coverage_map:
+            # Файл изменён, но отсутствует в отчёте покрытия —
+            # считаем это ошибкой конфигурации, а не успехом.
+            safe_print(f"  - {path}: нет данных покрытия")
+            failed.append((path, 0.0))
+            continue
+        executed, missing = coverage_map[path]
+        percent = _diff_coverage_percent(changed_lines, executed, missing)
+        if percent is None:
+            skipped.append(path)
+            continue
+        safe_print(f"  - {path}: {percent:.2f}%")
+        if percent < args.min_file_coverage:
+            failed.append((path, percent))
+
+    for path in skipped:
+        safe_print(f"  - {path}: нет исполняемых изменённых строк (ok)")
 
     if not failed:
         safe_print("[diff-coverage] Все изменённые файлы проходят порог.")

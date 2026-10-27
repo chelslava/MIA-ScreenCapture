@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import main
+from config import RateLimitSettings
 
 
 class FakeRecordingService:
@@ -68,12 +69,14 @@ class FakeApiServer:
         server_threads: int = 4,
         api_key: str | None = None,
         trust_proxy_headers: bool = False,
+        rate_limit: object | None = None,
     ) -> None:
         self.host = host
         self.port = port
         self.server_threads = server_threads
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.trust_proxy_headers = trust_proxy_headers
+        self.rate_limit = rate_limit
         self.app = SimpleNamespace(name="fake-app")
         self.callbacks: dict[str, object] = {}
         self.websocket_manager: object | None = None
@@ -155,6 +158,7 @@ def _build_app(
         server_threads=server_threads,
         api_key=api_key,
         trust_proxy_headers=False,
+        rate_limit=RateLimitSettings(),
     )
     fake_config = SimpleNamespace(
         settings=SimpleNamespace(
@@ -1239,3 +1243,31 @@ class TestShutdownDetachEventBus:
         app._save_config = MagicMock()
 
         app._cleanup()  # Не должно бросать исключений
+
+
+class TestMainFinalizationStatus:
+    """Проброс статуса финализации через app-фасад (#151)."""
+
+    def test_get_finalization_status_delegates_to_coordinator(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        expected = {
+            "active": True,
+            "percent": 75.0,
+            "stage": "Объединение видео",
+            "elapsed_s": 2.5,
+            "eta_s": 0.8,
+        }
+        app._recording_runtime_coordinator = SimpleNamespace(
+            get_finalization_status=lambda: expected,
+            get_status=lambda: {},
+            start_recording=lambda *a, **k: {},
+            stop_recording=lambda: {},
+            toggle_pause=lambda: {},
+            switch_capture_source=lambda p: {},
+            get_recordings=lambda: [],
+            get_metrics=lambda: {},
+        )
+
+        assert app.get_finalization_status() == expected

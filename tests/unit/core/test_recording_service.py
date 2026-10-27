@@ -74,6 +74,12 @@ class FakeBackend:
         self.switch_capture_source_calls.append(capture)
         return self.switch_capture_source_result
 
+    def get_metrics(self):
+        return {}
+
+    def get_finalization_status(self):
+        return getattr(self, "finalization_status", None)
+
 
 class TestRecordingService:
     """Тесты сервиса записи без GUI."""
@@ -799,3 +805,22 @@ class TestDurationAutoStop:
         # Повторный вызов колбэка таймера безопасен — запись уже не активна
         service._auto_stop_by_duration()
         assert backend.status.is_recording is False
+
+
+class TestFinalizationStatus:
+    """Проброс статуса финализации через сервис (#151)."""
+
+    def test_get_finalization_status_delegates_to_backend(self) -> None:
+        backend = FakeBackend()
+        backend.finalization_status = {
+            "active": True,
+            "percent": 65.0,
+            "stage": "Объединение видео",
+            "elapsed_s": 3.1,
+            "eta_s": 1.7,
+        }
+        service = RecordingService(backend=backend)
+
+        result = service.get_finalization_status()
+
+        assert result == backend.finalization_status

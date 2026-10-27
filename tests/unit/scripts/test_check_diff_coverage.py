@@ -10,11 +10,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from scripts.check_diff_coverage import (
-    _get_changed_python_files,
+    _diff_coverage_percent,
     _is_production_python_file,
     _load_coverage_map,
     _normalize_path,
+    _parse_changed_lines,
     _resolve_base_sha,
+    _run_git_diff,
     main,
 )
 
@@ -105,53 +107,106 @@ class TestResolveBaseSha:
                 _resolve_base_sha("", "HEAD")
 
 
-class TestGetChangedPythonFiles:
-    """Тесты получения списка изменённых Python-файлов."""
+class TestRunGitDiff:
+    """Тесты получения unified diff."""
 
-    def test_returns_filtered_production_files(self) -> None:
-        diff_output = "core/profiles.py\ntests/unit/test_profiles.py\nREADME.md\nmain.py\n"
+    def test_returns_diff_stdout(self) -> None:
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout=diff_output)
-            changed = _get_changed_python_files("base", "head")
-            assert changed == ["core/profiles.py", "main.py"]
+            mock_run.return_value = MagicMock(stdout="diff text")
+            assert _run_git_diff("base", "head") == "diff text"
+            args = mock_run.call_args.args[0]
+            assert args[:3] == ["git", "diff", "-U0"]
+            assert "--no-color" in args
+            assert args[-1] == "*.py"
 
-    def test_fallback_when_first_git_fails(self) -> None:
-        with patch("subprocess.run") as mock_run:
-            # First diff fails, rev-parse succeeds, fallback diff succeeds
-            mock_run.side_effect = [
-                subprocess.CalledProcessError(1, "git diff"),
-                MagicMock(stdout="fallback_base\n"),
-                MagicMock(stdout="api/routes.py\n"),
-            ]
-            changed = _get_changed_python_files("invalid_base", "head")
-            assert changed == ["api/routes.py"]
-
-    def test_raises_when_fallback_also_fails(self) -> None:
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = [
-                subprocess.CalledProcessError(1, "git diff"),
-                subprocess.CalledProcessError(1, "git rev-parse"),
-            ]
+    def test_raises_on_git_error(self) -> None:
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.CalledProcessError(1, "git"),
+        ):
             with pytest.raises(
-                RuntimeError, match="Не удалось получить список"
+                RuntimeError, match="Не удалось получить diff"
             ):
-                _get_changed_python_files("invalid_base", "head")
+                _run_git_diff("base", "head")
+
+
+class TestParseChangedLines:
+    """Тесты разбора добавленных строк из unified diff."""
+
+    DIFF = (
+        "diff --git a/core/profiles.py b/core/profiles.py\n"
+        "index 111..222 100644\n"
+        "--- a/core/profiles.py\n"
+        "+++ b/core/profiles.py\n"
+        "@@ -10,0 +11,3 @@ def foo():\n"
+        "+line1\n"
+        "+line2\n"
+        "+line3\n"
+        "diff --git a/tests/unit/test_x.py b/tests/unit/test_x.py\n"
+        "index 333..444 100644\n"
+        "--- a/tests/unit/test_x.py\n"
+        "+++ b/tests/unit/test_x.py\n"
+        "@@ -1,0 +2 @@\n"
+        "+import os\n"
+        "diff --git a/gui/old.py b/gui/old.py\n"
+        "deleted file mode 100644\n"
+        "--- a/gui/old.py\n"
+        "+++ /dev/null\n"
+        "@@ -1,2 +0,0 @@\n"
+        "-old1\n"
+        "-old2\n"
+    )
+
+    def test_parses_added_lines_of_production_files(self) -> None:
+        changed = _parse_changed_lines(self.DIFF)
+        assert changed == {"core/profiles.py": {11, 12, 13}}
+
+    def test_empty_diff_gives_no_files(self) -> None:
+        assert _parse_changed_lines("") == {}
+
+    def test_filters_non_production_files(self) -> None:
+        diff = (
+            "diff --git a/tests/unit/test_x.py b/tests/unit/test_x.py\n"
+            "--- a/tests/unit/test_x.py\n"
+            "+++ b/tests/unit/test_x.py\n"
+            "@@ -1,0 +2 @@\n"
+            "+import os\n"
+        )
+        assert _parse_changed_lines(diff) == {}
+
+    def test_skips_deleted_files(self) -> None:
+        diff = (
+            "diff --git a/gui/old.py b/gui/old.py\n"
+            "--- a/gui/old.py\n"
+            "+++ /dev/null\n"
+            "@@ -1,2 +0,0 @@\n"
+            "-old1\n"
+        )
+        assert _parse_changed_lines(diff) == {}
+
+    def test_single_line_hunk_without_count(self) -> None:
+        diff = (
+            "diff --git a/config.py b/config.py\n"
+            "--- a/config.py\n"
+            "+++ b/config.py\n"
+            "@@ -5,0 +6 @@\n"
+            "+VALUE = 1\n"
+        )
+        assert _parse_changed_lines(diff) == {"config.py": {6}}
 
 
 class TestLoadCoverageMap:
     """Тесты загрузки coverage.json."""
 
-    def test_loads_percent_covered_map(self, tmp_path: Path) -> None:
+    def test_loads_line_sets(self, tmp_path: Path) -> None:
         cov_file = tmp_path / "coverage.json"
         cov_file.write_text(
             json.dumps(
                 {
                     "files": {
                         "core\\profiles.py": {
-                            "summary": {"percent_covered": 85.5}
-                        },
-                        "api/routes.py": {
-                            "summary": {"percent_covered": 92.0}
+                            "executed_lines": [1, 2, 11, 12],
+                            "missing_lines": [13],
                         },
                     }
                 }
@@ -159,8 +214,40 @@ class TestLoadCoverageMap:
             encoding="utf-8",
         )
         cov_map = _load_coverage_map(cov_file)
-        assert cov_map["core/profiles.py"] == 85.5
-        assert cov_map["api/routes.py"] == 92.0
+        assert cov_map["core/profiles.py"] == ({1, 2, 11, 12}, {13})
+
+    def test_raises_when_no_line_data(self, tmp_path: Path) -> None:
+        cov_file = tmp_path / "coverage.json"
+        cov_file.write_text(
+            json.dumps(
+                {
+                    "files": {
+                        "core/profiles.py": {
+                            "summary": {"percent_covered": 85.5}
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="построчных данных"):
+            _load_coverage_map(cov_file)
+
+
+class TestDiffCoveragePercent:
+    """Расчёт покрытия изменённых строк."""
+
+    def test_fully_covered(self) -> None:
+        percent = _diff_coverage_percent({11, 12}, {11, 12}, set())
+        assert percent == 100.0
+
+    def test_partially_covered(self) -> None:
+        percent = _diff_coverage_percent({11, 12, 13}, {11}, {12, 13})
+        assert percent == pytest.approx(100 / 3)
+
+    def test_no_executable_lines_returns_none(self) -> None:
+        # Изменены только docstring/комментарии — их нет в coverage
+        assert _diff_coverage_percent({11}, set(), set()) is None
 
 
 class TestMain:
@@ -191,7 +278,46 @@ class TestMain:
         ):
             assert main() == 2
 
-    def test_returns_0_when_no_changed_files(self, tmp_path: Path) -> None:
+    def test_returns_2_when_coverage_has_no_line_data(
+        self, tmp_path: Path
+    ) -> None:
+        cov_file = tmp_path / "coverage.json"
+        cov_file.write_text(
+            json.dumps(
+                {
+                    "files": {
+                        "core/profiles.py": {
+                            "summary": {"percent_covered": 85.5}
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        diff = (
+            "diff --git a/core/profiles.py b/core/profiles.py\n"
+            "--- a/core/profiles.py\n"
+            "+++ b/core/profiles.py\n"
+            "@@ -10,0 +11 @@\n"
+            "+a\n"
+        )
+        with (
+            patch(
+                "sys.argv",
+                ["check_diff_coverage.py", "--coverage-json", str(cov_file)],
+            ),
+            patch(
+                "scripts.check_diff_coverage._resolve_base_sha",
+                return_value="base",
+            ),
+            patch(
+                "scripts.check_diff_coverage._run_git_diff",
+                return_value=diff,
+            ),
+        ):
+            assert main() == 2
+
+    def test_returns_0_when_no_changed_lines(self, tmp_path: Path) -> None:
         cov_file = tmp_path / "coverage.json"
         cov_file.write_text("{}", encoding="utf-8")
         with (
@@ -204,8 +330,8 @@ class TestMain:
                 return_value="base",
             ),
             patch(
-                "scripts.check_diff_coverage._get_changed_python_files",
-                return_value=[],
+                "scripts.check_diff_coverage._run_git_diff",
+                return_value="",
             ),
         ):
             assert main() == 0
@@ -219,13 +345,32 @@ class TestMain:
                 {
                     "files": {
                         "core/profiles.py": {
-                            "summary": {"percent_covered": 75.0}
+                            "executed_lines": [11, 12],
+                            "missing_lines": [],
                         },
-                        "main.py": {"summary": {"percent_covered": 65.0}},
+                        "main.py": {
+                            "executed_lines": [20],
+                            "missing_lines": [21, 22],
+                        },
                     }
                 }
             ),
             encoding="utf-8",
+        )
+        diff = (
+            "diff --git a/core/profiles.py b/core/profiles.py\n"
+            "--- a/core/profiles.py\n"
+            "+++ b/core/profiles.py\n"
+            "@@ -10,0 +11,2 @@\n"
+            "+a\n"
+            "+b\n"
+            "diff --git a/main.py b/main.py\n"
+            "--- a/main.py\n"
+            "+++ b/main.py\n"
+            "@@ -19,0 +20,3 @@\n"
+            "+x\n"
+            "+y\n"
+            "+z\n"
         )
         with (
             patch(
@@ -235,7 +380,7 @@ class TestMain:
                     "--coverage-json",
                     str(cov_file),
                     "--min-file-coverage",
-                    "60",
+                    "30",
                 ],
             ),
             patch(
@@ -243,25 +388,36 @@ class TestMain:
                 return_value="base",
             ),
             patch(
-                "scripts.check_diff_coverage._get_changed_python_files",
-                return_value=["core/profiles.py", "main.py"],
+                "scripts.check_diff_coverage._run_git_diff",
+                return_value=diff,
             ),
         ):
             assert main() == 0
 
-    def test_returns_1_when_file_below_threshold(self, tmp_path: Path) -> None:
+    def test_returns_1_when_file_below_threshold(
+        self, tmp_path: Path
+    ) -> None:
         cov_file = tmp_path / "coverage.json"
         cov_file.write_text(
             json.dumps(
                 {
                     "files": {
                         "core/profiles.py": {
-                            "summary": {"percent_covered": 55.0}
+                            "executed_lines": [11],
+                            "missing_lines": [12],
                         },
                     }
                 }
             ),
             encoding="utf-8",
+        )
+        diff = (
+            "diff --git a/core/profiles.py b/core/profiles.py\n"
+            "--- a/core/profiles.py\n"
+            "+++ b/core/profiles.py\n"
+            "@@ -10,0 +11,2 @@\n"
+            "+a\n"
+            "+b\n"
         )
         with (
             patch(
@@ -271,7 +427,7 @@ class TestMain:
                     "--coverage-json",
                     str(cov_file),
                     "--min-file-coverage",
-                    "60",
+                    "70",
                 ],
             ),
             patch(
@@ -279,8 +435,88 @@ class TestMain:
                 return_value="base",
             ),
             patch(
-                "scripts.check_diff_coverage._get_changed_python_files",
-                return_value=["core/profiles.py"],
+                "scripts.check_diff_coverage._run_git_diff",
+                return_value=diff,
             ),
         ):
             assert main() == 1
+
+    def test_returns_1_when_file_missing_from_coverage(
+        self, tmp_path: Path
+    ) -> None:
+        cov_file = tmp_path / "coverage.json"
+        cov_file.write_text(json.dumps({"files": {}}), encoding="utf-8")
+        diff = (
+            "diff --git a/core/profiles.py b/core/profiles.py\n"
+            "--- a/core/profiles.py\n"
+            "+++ b/core/profiles.py\n"
+            "@@ -10,0 +11 @@\n"
+            "+a\n"
+        )
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "check_diff_coverage.py",
+                    "--coverage-json",
+                    str(cov_file),
+                    "--min-file-coverage",
+                    "70",
+                ],
+            ),
+            patch(
+                "scripts.check_diff_coverage._resolve_base_sha",
+                return_value="base",
+            ),
+            patch(
+                "scripts.check_diff_coverage._run_git_diff",
+                return_value=diff,
+            ),
+        ):
+            assert main() == 1
+
+    def test_returns_0_when_only_non_executable_lines_changed(
+        self, tmp_path: Path
+    ) -> None:
+        cov_file = tmp_path / "coverage.json"
+        cov_file.write_text(
+            json.dumps(
+                {
+                    "files": {
+                        "core/profiles.py": {
+                            "executed_lines": [1],
+                            "missing_lines": [],
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        diff = (
+            "diff --git a/core/profiles.py b/core/profiles.py\n"
+            "--- a/core/profiles.py\n"
+            "+++ b/core/profiles.py\n"
+            "@@ -10,0 +11 @@\n"
+            "+# только комментарий\n"
+        )
+        with (
+            patch(
+                "sys.argv",
+                [
+                    "check_diff_coverage.py",
+                    "--coverage-json",
+                    str(cov_file),
+                    "--min-file-coverage",
+                    "70",
+                ],
+            ),
+            patch(
+                "scripts.check_diff_coverage._resolve_base_sha",
+                return_value="base",
+            ),
+            patch(
+                "scripts.check_diff_coverage._run_git_diff",
+                return_value=diff,
+            ),
+        ):
+            assert main() == 0

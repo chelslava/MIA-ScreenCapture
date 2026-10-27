@@ -2103,3 +2103,21 @@ class TestThreadTracker:
         tracker.join_all(timeout=5.0)
         with tracker._lock:
             assert t not in tracker._threads
+
+
+def test_get_finalization_status_returns_tracker_snapshot() -> None:
+    """get_finalization_status возвращает снапшот трекера контроллера (#151)."""
+    window = _build_window()
+    window._recording_controller.progress_tracker.snapshot.return_value = {
+        "active": True,
+        "percent": 42.5,
+        "stage": "Объединение видео",
+        "elapsed_s": 12.3,
+        "eta_s": 16.7,
+    }
+
+    status = window.get_finalization_status()
+
+    window._recording_controller.progress_tracker.snapshot.assert_called_once()
+    assert status["percent"] == 42.5
+    assert status["eta_s"] == 16.7
