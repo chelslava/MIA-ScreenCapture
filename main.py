@@ -118,6 +118,9 @@ class _RecordingRuntimeCoordinatorProtocol(Protocol):
     def get_metrics(self) -> dict[str, Any]:
         """Возвращает текущие метрики кадров записи (#114)."""
 
+    def get_finalization_status(self) -> dict[str, Any]:
+        """Возвращает статус финализации записи (#151)."""
+
 
 class _ApiRuntimeCoordinatorProtocol(Protocol):
     """Минимальный контракт API runtime coordinator."""
@@ -1386,6 +1389,7 @@ class VideoRecorderApp:
             CaptureSettingsSchema,
             OutputSettings,
             OutputSettingsSchema,
+            RateLimitSettings,
             SchedulerSettings,
             SchedulerSettingsSchema,
             VideoSettings,
@@ -1436,10 +1440,24 @@ class VideoRecorderApp:
                     if key in merged_values:
                         merged_values[key] = value
 
+                # Вложенный dataclass (rate_limit, #152) сериализуем
+                # в словарь для Pydantic-валидации
+                if section_name == "api":
+                    rl_value = merged_values.get("rate_limit")
+                    if isinstance(rl_value, RateLimitSettings):
+                        merged_values["rate_limit"] = asdict(rl_value)
+
                 validated = section_schemas[section_name].model_validate(
                     merged_values
                 )
-                staged_sections[section_name] = validated.model_dump()
+                staged_values = validated.model_dump()
+                if section_name == "api" and isinstance(
+                    staged_values.get("rate_limit"), dict
+                ):
+                    staged_values["rate_limit"] = RateLimitSettings(
+                        **staged_values["rate_limit"]
+                    )
+                staged_sections[section_name] = staged_values
                 updated_sections.append(section_name)
 
                 # Проверка, нужен ли перезапуск

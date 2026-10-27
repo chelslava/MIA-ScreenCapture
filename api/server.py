@@ -34,6 +34,7 @@ from api.observability import APIServerObservability
 from api.operation_store import APIOperationStore
 from api.request_lifecycle import register_request_lifecycle
 from api.runtime_models import APIOperation, IdempotencyBeginResult
+from config import RateLimitSettings
 from logger_config import get_module_logger, set_structured_api_logging
 from version import get_version
 
@@ -127,6 +128,7 @@ class APIServer:
         trust_proxy_headers: bool = False,
         structured_logs: bool = False,
         state_persistence: Any | None = None,
+        rate_limit: RateLimitSettings | None = None,
     ):
         """
         Инициализация API сервера.
@@ -143,6 +145,8 @@ class APIServer:
             state_persistence: Опциональный кастомный StatePersistence для rate limiter.
                 Если не указан, используется RateLimiterStatePersistence() по умолчанию.
                 Тесты передают уникальный state_file через temp_dir fixture.
+            rate_limit: Настройки rate limiting из config.json (#152);
+                None — значения по умолчанию
 
         Raises:
             Не выбрасывает собственных исключений — создание Flask
@@ -157,6 +161,11 @@ class APIServer:
         self.trust_proxy_headers = trust_proxy_headers
         self.structured_logs = structured_logs
         self.state_persistence = state_persistence
+        self.rate_limit_settings = (
+            rate_limit
+            if isinstance(rate_limit, RateLimitSettings)
+            else RateLimitSettings()
+        )
         _patch_waitress_shutdown_for_windows()
 
         # Flask приложение
@@ -196,15 +205,28 @@ class APIServer:
         state_persistence = (
             self.state_persistence or RateLimiterStatePersistence()
         )
+        # Настройки лимитеров берутся из config.json (api.rate_limit, #152):
+        # до этого из пользовательской конфигурации приходил только
+        # trust_proxy_headers, остальные параметры всегда были дефолтными.
+        rl = self.rate_limit_settings
         self._rate_limiter = PersistentRateLimiter(
             config=RateLimitConfig(
-                trust_proxy_headers=self.trust_proxy_headers
+                enabled=rl.enabled,
+                requests_per_minute=rl.requests_per_minute,
+                requests_per_hour=rl.requests_per_hour,
+                burst_limit=rl.burst_limit,
+                block_duration=rl.block_duration,
+                whitelist=list(rl.whitelist),
+                trust_proxy_headers=self.trust_proxy_headers,
             ),
             persistence=state_persistence,
         )
 
         self._auth_rate_limiter = AuthRateLimiter(
-            config=AuthRateLimitConfig(max_attempts=5, base_delay=60)
+            config=AuthRateLimitConfig(
+                max_attempts=rl.auth_max_attempts,
+                base_delay=rl.auth_base_delay,
+            )
         )
 
         self._rate_limiter.load_state_on_init()

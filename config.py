@@ -113,6 +113,21 @@ class OutputSettingsSchema(BaseModel):
     filename_template: str = Field(default="recording_{datetime}")
 
 
+class RateLimitSettingsSchema(BaseModel):
+    """Схема валидации настроек rate limiting API (#152)."""
+
+    enabled: bool = Field(default=True)
+    requests_per_minute: int = Field(default=60, ge=1, le=100_000)
+    requests_per_hour: int = Field(default=1000, ge=1, le=1_000_000)
+    burst_limit: int = Field(default=10, ge=1, le=1000)
+    block_duration: int = Field(default=10, ge=1, le=3600)
+    # IP-адреса без ограничений
+    whitelist: list[str] = Field(default_factory=list)
+    # Лимитер неудачных аутентификаций
+    auth_max_attempts: int = Field(default=5, ge=1, le=100)
+    auth_base_delay: int = Field(default=60, ge=0, le=3600)
+
+
 class APISettingsSchema(BaseModel):
     """Схема валидации настроек API."""
 
@@ -128,6 +143,9 @@ class APISettingsSchema(BaseModel):
     trust_proxy_headers: bool = Field(default=False)
     # Использовать структурированные JSON-логи для API
     structured_logs: bool = Field(default=False)
+    rate_limit: RateLimitSettingsSchema = Field(
+        default_factory=RateLimitSettingsSchema
+    )
 
     @field_validator("api_key", mode="before")
     @classmethod
@@ -309,6 +327,20 @@ class OutputSettings:
 
 
 @dataclass
+class RateLimitSettings:
+    """Настройки rate limiting API (#152)."""
+
+    enabled: bool = True
+    requests_per_minute: int = 60
+    requests_per_hour: int = 1000
+    burst_limit: int = 10
+    block_duration: int = 10
+    whitelist: list[str] = field(default_factory=list)
+    auth_max_attempts: int = 5
+    auth_base_delay: int = 60
+
+
+@dataclass
 class APISettings:
     """Настройки API сервера."""
 
@@ -322,6 +354,7 @@ class APISettings:
     webhook_enabled: bool = False
     trust_proxy_headers: bool = False
     structured_logs: bool = False
+    rate_limit: RateLimitSettings = field(default_factory=RateLimitSettings)
 
 
 @dataclass
@@ -473,7 +506,16 @@ class ConfigManager:
             audio = AudioSettings(**data.get("audio", {}))
             capture = CaptureSettings(**data.get("capture", {}))
             output = OutputSettings(**data.get("output", {}))
-            api = APISettings(**data.get("api", {}))
+            api_data = dict(data.get("api", {}))
+            # rate_limit приходит из Pydantic model_dump() как словарь —
+            # разворачиваем в dataclass вручную (#152)
+            rate_limit_data = api_data.get("rate_limit")
+            api_data["rate_limit"] = (
+                RateLimitSettings(**rate_limit_data)
+                if isinstance(rate_limit_data, dict)
+                else RateLimitSettings()
+            )
+            api = APISettings(**api_data)
             scheduler = SchedulerSettings(**data.get("scheduler", {}))
             post_processing = PostProcessingSettings(
                 **data.get("post_processing", {})

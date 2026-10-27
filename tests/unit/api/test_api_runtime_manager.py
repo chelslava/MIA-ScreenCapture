@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from config import RateLimitSettings
 from core.api_runtime_manager import ApiRuntimeManager
 from core.application_service import ApplicationService
 
@@ -576,6 +577,9 @@ class TestGetApiRuntimeSettings:
             mock_cfg.settings.api.host = "0.0.0.0"
             mock_cfg.settings.api.port = 8080
             mock_cfg.settings.api.server_threads = 8
+            mock_cfg.settings.api.rate_limit = RateLimitSettings(
+                requests_per_minute=120
+            )
             mock.return_value = mock_cfg
 
             with patch.object(
@@ -587,6 +591,7 @@ class TestGetApiRuntimeSettings:
                 assert result["port"] == 8080
                 assert result["server_threads"] == 8
                 assert result["api_key"] == "test-key"
+                assert result["rate_limit"].requests_per_minute == 120
 
     def test_cli_mode_merges_cli_config(
         self, manager: ApiRuntimeManager, mock_app: MockApp

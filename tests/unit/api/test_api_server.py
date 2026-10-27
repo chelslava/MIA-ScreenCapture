@@ -1200,3 +1200,62 @@ class TestHealthCheckEndpoint:
         assert "timestamp" in data
         assert "version" in data
         assert "uptime_seconds" in data
+
+
+class TestAPIServerRateLimitFromConfig:
+    """Применение настроек rate limiting из config.json (#152)."""
+
+    def test_custom_limits_applied_to_rate_limiter(self) -> None:
+        """Кастомные лимиты из конфига попадают в PersistentRateLimiter."""
+        from config import RateLimitSettings
+
+        settings = RateLimitSettings(
+            requests_per_minute=120,
+            requests_per_hour=2000,
+            burst_limit=25,
+            block_duration=30,
+            whitelist=["127.0.0.1", "192.168.1.10"],
+        )
+
+        server = APIServer(rate_limit=settings)
+
+        config = server._rate_limiter.config
+        assert config.requests_per_minute == 120
+        assert config.requests_per_hour == 2000
+        assert config.burst_limit == 25
+        assert config.block_duration == 30
+        assert config.whitelist == ["127.0.0.1", "192.168.1.10"]
+
+    def test_auth_limiter_values_applied(self) -> None:
+        """Настройки лимитера аутентификации берутся из конфига."""
+        from config import RateLimitSettings
+
+        settings = RateLimitSettings(auth_max_attempts=3, auth_base_delay=15)
+
+        server = APIServer(rate_limit=settings)
+
+        auth_config = server._auth_rate_limiter.config
+        assert auth_config.max_attempts == 3
+        assert auth_config.base_delay == 15
+
+    def test_default_settings_when_not_passed(self) -> None:
+        """Без rate_limit применяются дефолтные значения."""
+        server = APIServer()
+
+        config = server._rate_limiter.config
+        assert config.requests_per_minute == 60
+        assert config.requests_per_hour == 1000
+        assert config.burst_limit == 10
+        assert config.block_duration == 10
+        assert config.whitelist == []
+        auth_config = server._auth_rate_limiter.config
+        assert auth_config.max_attempts == 5
+        assert auth_config.base_delay == 60
+
+    def test_disabled_flag_propagates(self) -> None:
+        """Флаг enabled=False отключает rate limiting."""
+        from config import RateLimitSettings
+
+        server = APIServer(rate_limit=RateLimitSettings(enabled=False))
+
+        assert server._rate_limiter.config.enabled is False

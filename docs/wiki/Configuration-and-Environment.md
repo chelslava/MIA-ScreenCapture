@@ -34,10 +34,31 @@
     "enabled": true,
     "host": "127.0.0.1",
     "port": 5010,
-    "api_key": "test1234"
+    "api_key": "test1234",
+    "rate_limit": {
+      "enabled": true,
+      "requests_per_minute": 60,
+      "requests_per_hour": 1000,
+      "burst_limit": 10,
+      "block_duration": 10,
+      "whitelist": ["127.0.0.1"],
+      "auth_max_attempts": 5,
+      "auth_base_delay": 60
+    }
   }
 }
 ```
+
+## Rate limiting (#152)
+
+Лимиты запросов настраиваются в `api.rate_limit` (см. пример выше) и применяются при старте API-сервера:
+
+- `requests_per_minute` / `requests_per_hour` — лимиты на клиента;
+- `burst_limit` + `block_duration` — защита от всплесков (лимит в секунду и длительность блокировки);
+- `whitelist` — IP-адреса без ограничений;
+- `auth_max_attempts` + `auth_base_delay` — лимитер неудачных аутентификаций.
+
+Невалидные значения отклоняются при загрузке конфигурации (ошибка в логе, применяются дефолты). Подробности — в [API](API).
 
 ## Рекомендации по секретам
 

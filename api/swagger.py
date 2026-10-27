@@ -15,7 +15,14 @@ SWAGGER_SPEC: dict[str, Any] = {
     "openapi": "3.0.3",
     "info": {
         "title": "MIA-ScreenCapture API",
-        "description": "REST API для управления записью экрана",
+        "description": (
+            "REST API для управления записью экрана.\n\n"
+            "**Rate limiting (#152):** write-операции ограничиваются "
+            "лимитами из `api.rate_limit` в config.json. Заголовки "
+            "ответа: `Retry-After` (секунды до снятия блокировки) и "
+            "`X-RateLimit-Limit` (применённый лимит окна). При "
+            "превышении возвращается 429 с кодом `rate_limited`."
+        ),
         "version": get_version(),
         "contact": {
             "name": "MIA Development Team",

@@ -20,6 +20,7 @@ from config import (
     CaptureSettings,
     ConfigManager,
     OutputSettings,
+    RateLimitSettings,
     SchedulerSettings,
     VideoSettings,
     get_config,
@@ -583,3 +584,95 @@ class TestConfigManagerInvalidData:
         manager = ConfigManager(config_path)
 
         assert isinstance(manager.settings, AppSettings)
+
+
+class TestRateLimitSettings:
+    """Настройки rate limiting API из config.json (#152)."""
+
+    def test_default_values(self):
+        """Проверка значений по умолчанию."""
+        settings = RateLimitSettings()
+
+        assert settings.enabled is True
+        assert settings.requests_per_minute == 60
+        assert settings.requests_per_hour == 1000
+        assert settings.burst_limit == 10
+        assert settings.block_duration == 10
+        assert settings.whitelist == []
+        assert settings.auth_max_attempts == 5
+        assert settings.auth_base_delay == 60
+
+    def test_schema_parses_rate_limit_section(self):
+        """AppSettingsSchema разбирает вложенный раздел api.rate_limit."""
+        validated = AppSettingsSchema.model_validate(
+            {
+                "api": {
+                    "rate_limit": {
+                        "requests_per_minute": 120,
+                        "burst_limit": 25,
+                        "whitelist": ["127.0.0.1", "192.168.1.10"],
+                        "auth_max_attempts": 3,
+                    }
+                }
+            }
+        )
+
+        rate_limit = validated.api.rate_limit
+        assert rate_limit.requests_per_minute == 120
+        assert rate_limit.burst_limit == 25
+        assert rate_limit.whitelist == ["127.0.0.1", "192.168.1.10"]
+        assert rate_limit.auth_max_attempts == 3
+        # Непереданные поля получают дефолты
+        assert rate_limit.enabled is True
+        assert rate_limit.requests_per_hour == 1000
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("requests_per_minute", 0),
+            ("requests_per_hour", -5),
+            ("burst_limit", 0),
+            ("block_duration", 0),
+            ("auth_max_attempts", 0),
+            ("auth_base_delay", -1),
+        ],
+    )
+    def test_schema_rejects_invalid_values(self, field: str, value: int):
+        """Невалидные значения дают понятную ошибку валидации."""
+        with pytest.raises(ValidationError) as exc_info:
+            AppSettingsSchema.model_validate(
+                {"api": {"rate_limit": {field: value}}}
+            )
+        assert field in str(exc_info.value)
+
+    def test_dict_to_settings_converts_rate_limit(
+        self, temp_config_file: Path
+    ):
+        """`_dict_to_settings` разворачивает словарь rate_limit в dataclass."""
+        manager = ConfigManager(temp_config_file)
+
+        settings = manager._dict_to_settings(
+            {
+                "api": {
+                    "rate_limit": {
+                        "requests_per_minute": 30,
+                        "whitelist": ["10.0.0.1"],
+                    }
+                }
+            }
+        )
+
+        assert isinstance(settings.api.rate_limit, RateLimitSettings)
+        assert settings.api.rate_limit.requests_per_minute == 30
+        assert settings.api.rate_limit.whitelist == ["10.0.0.1"]
+
+    def test_dict_to_settings_defaults_rate_limit_when_missing(
+        self, temp_config_file: Path
+    ):
+        """Без раздела rate_limit (старый config.json) применяются дефолты."""
+        manager = ConfigManager(temp_config_file)
+
+        settings = manager._dict_to_settings({"api": {"port": 8080}})
+
+        assert isinstance(settings.api.rate_limit, RateLimitSettings)
+        assert settings.api.rate_limit.requests_per_minute == 60

@@ -180,6 +180,7 @@ class ApiRuntimeManager:
                 trust_proxy_headers=api_config.get(
                     "trust_proxy_headers", False
                 ),
+                rate_limit=api_config.get("rate_limit"),
             )
             self._host.set_api_server_instance(api_server)
             self.sync_api_key_env(api_config.get("api_key"))
@@ -224,6 +225,7 @@ class ApiRuntimeManager:
                 "server_threads": config_api.server_threads,
                 "api_key": self.get_effective_api_key(),
                 "trust_proxy_headers": config_api.trust_proxy_headers,
+                "rate_limit": config_api.rate_limit,
             }
 
         return {
@@ -238,6 +240,7 @@ class ApiRuntimeManager:
             "trust_proxy_headers": cli_api.get(
                 "trust_proxy_headers", config_api.trust_proxy_headers
             ),
+            "rate_limit": config_api.rate_limit,
         }
 
     def get_api_status(self) -> dict[str, Any]:
