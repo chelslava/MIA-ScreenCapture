@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.6.0] - 2026-10-27
+
+### Added
+- **Аппаратное кодирование видео NVENC/AMF/QSV с автоматическим fallback:**
+  - Поддержка GPU-кодеков NVIDIA NVENC, AMD AMF и Intel QSV в
+    `recorder/utils.py` (`recorder/ffmpeg_writer.py`, `gui/models/video_codecs.py`)
+    с автоматическим откатом на программные кодеки при недоступности
+    оборудования или сбое инициализации (b1692a4).
+- **REST-эндпоинт статуса финализации записи (#151):**
+  - `GET /api/v1/recording/finalization-status` — снапшот
+    `FinalizationProgressTracker` (`{active, percent, stage, elapsed_s, eta_s}`)
+    для headless/API-клиентов; проброс через все слои (backend → сервис →
+    фасад → callback). Документирован в Swagger и `docs/API.md`.
+- **Настройки rate limiting из config.json (#152):**
+  - Новый раздел `api.rate_limit`: `enabled`, `requests_per_minute`,
+    `requests_per_hour`, `burst_limit`, `block_duration`, `whitelist`,
+    `auth_max_attempts`, `auth_base_delay`. Значения применяются при старте
+    API-сервера; невалидные значения отклоняются при загрузке конфигурации.
+    Убран жёсткий хардкод `max_attempts=5/base_delay=60` лимитера аутентификации.
+- **Индикация потери аудио-чанков в GUI (#154):**
+  - Тост при первом переполнении аудио-очереди за запись (по аналогии с
+    ffmpeg_recovery-тостами), группа «Потеря аудио» на вкладке диагностики
+    и поле `dropped_audio_chunks` в `GET /api/v1/recording/metrics`.
+
+### Fixed
+- **Closed issue #153:** Зависание статуса `recording: active` в `/health`
+  после автоостановки по `--duration`: естественное завершение
+  `VideoRecorder` по лимиту длительности теперь финализирует контейнер
+  (как явный stop), повторный `stop()` идемпотентен, а `RecordingService`
+  доводит остановку daemon-таймером с grace-задержкой.
+- **CI:** diff-coverage гейт теперь считает покрытие изменённых строк, а не
+  всего файла — legacy-долг покрытия больше не блокирует новые изменения
+  (порог 70% для нового кода сохранён).
+
+### Maintenance
+- Dependabot: обновлена нижняя граница `ruff` (#148), бамп группы GitHub
+  Actions (#149).
+
 ## [1.5.0] - 2026-08-28
 
 ### Added
