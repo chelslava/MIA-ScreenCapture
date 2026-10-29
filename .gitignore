@@ -151,7 +151,8 @@ config/*.json
 
 # UV package manager
 .uv/
-uv.lock
+# uv.lock коммитится: без лока CI разрешает
+# зависимости заново, что ломает воспроизводимость CI
 
 # Ruff
 .ruff_cache/
