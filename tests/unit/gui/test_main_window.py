@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from config import RecordingTunables, get_config
 from core.readiness import ReadinessIssue, ReadinessSnapshot
 from core.recording_types import AudioMode, CaptureMode
 from gui.desktop_actions import DesktopActionId, DesktopActionRegistry
@@ -67,6 +68,7 @@ def _build_window():
         get_recoveries_count=MagicMock(return_value=0),
         dropped_audio_chunks=0,
     )
+    window._recording_tunables_view = MagicMock()
     window._readiness_service = MagicMock(
         evaluate=MagicMock(return_value=ReadinessSnapshot()),
         get_recoveries_count=MagicMock(return_value=0),
@@ -2177,3 +2179,62 @@ class TestAudioChunksDroppedIndication:
         # факт регистрации колбэка в __init__ через реальный класс сигнала
         assert hasattr(window, "audio_chunks_dropped")
         assert hasattr(window, "_audio_drop_warning_shown")
+
+
+class TestRecordingTunablesSettings:
+    """Секция тонких параметров записи в настройках (#155)."""
+
+    def test_create_settings_tab_wires_tunables_view(self) -> None:
+        """Вкладка настроек создаёт tunables view и подключает сигнал."""
+        from gui.main_window import MainWindow
+
+        window = _build_window()
+
+        with (
+            patch("gui.main_window.AudioView"),
+            patch("gui.main_window.VideoView"),
+            patch("gui.main_window.OutputView"),
+            patch("gui.main_window.AppearanceView"),
+            patch("gui.main_window.PostProcessingView"),
+            patch("gui.main_window.RecordingTunablesView") as tunables_cls,
+        ):
+            MainWindow._create_settings_tab(window)
+
+        assert window._recording_tunables_view is tunables_cls.return_value
+        tunables_cls.return_value.settings_changed.connect.assert_called_once_with(
+            window._on_recording_tunables_changed
+        )
+
+    def test_apply_settings_to_views_loads_tunables(self) -> None:
+        """Загрузка настроек применяет recording_tunables к view."""
+        window = _build_window()
+        window._refresh_recent_recordings = MagicMock()
+
+        window._apply_settings_to_views()
+
+        window._recording_tunables_view.set_settings.assert_called_once_with(
+            get_config().settings.recording_tunables
+        )
+
+    def test_on_recording_tunables_changed_persists(self) -> None:
+        """Изменение tunables в UI сохраняется в конфигурацию."""
+        window = _build_window()
+        new_tunables = RecordingTunables(max_recovery_attempts=7)
+        window._recording_tunables_view.get_settings.return_value = (
+            new_tunables
+        )
+        config = get_config()
+        original_save = config.save
+
+        with patch.object(config, "save", wraps=original_save) as save_mock:
+            window._on_recording_tunables_changed()
+
+        assert config.settings.recording_tunables is new_tunables
+        save_mock.assert_called_once()
+
+    def test_on_recording_tunables_changed_without_view_is_safe(self) -> None:
+        """Отсутствие view (старые тесты) не должно падать."""
+        window = _build_window()
+        del window._recording_tunables_view
+
+        window._on_recording_tunables_changed()  # не должно упасть
