@@ -151,9 +151,7 @@ class TestAppearanceView:
 class TestUiAnimationsSetting:
     """Чекбокс плавных переходов между вкладками (#161)."""
 
-    def test_ui_animations_checkbox_present(
-        self, qapp: QApplication
-    ) -> None:
+    def test_ui_animations_checkbox_present(self, qapp: QApplication) -> None:
         view = AppearanceView()
 
         assert view._ui_animations_checkbox is not None
