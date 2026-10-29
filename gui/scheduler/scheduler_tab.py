@@ -50,6 +50,9 @@ class SchedulerTab(QWidget):
     task_updated = pyqtSignal(dict)
     task_deleted = pyqtSignal(str)
     task_toggled = pyqtSignal(str, bool)
+    # Массовые операции multi-select (#160)
+    tasks_deleted = pyqtSignal(list)
+    tasks_toggled = pyqtSignal(list, bool)
 
     def __init__(self, parent: Any = None) -> None:
         """Инициализация вкладки планировщика."""
@@ -123,8 +126,9 @@ class SchedulerTab(QWidget):
         self.table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
+        # Multi-select: Ctrl/Shift+клик, Ctrl+A (#160)
         self.table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
+            QAbstractItemView.SelectionMode.ExtendedSelection
         )
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         self.table.doubleClicked.connect(self._edit_task)
@@ -213,6 +217,46 @@ class SchedulerTab(QWidget):
             return None
         return tasks[row]
 
+    def _selected_tasks(self) -> list[ScheduleTask]:
+        """Все выделенные задачи (multi-select, #160)."""
+        selected: list[ScheduleTask] = []
+        seen_rows: set[int] = set()
+        for item in self.table.selectedItems():
+            row = item.row()
+            if row in seen_rows:
+                continue
+            seen_rows.add(row)
+            task = self._task_at_row(row)
+            if task is not None:
+                selected.append(task)
+        return selected
+
+    def _delete_selected_tasks(self) -> None:
+        """Массовое удаление выделенных задач с подтверждением (#160)."""
+        tasks = self._selected_tasks()
+        if not tasks:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Удаление задач",
+            (
+                f"Удалить запланированные задачи ({len(tasks)})?\n"
+                + "\n".join(f"• {t.name}" for t in tasks[:5])
+                + ("\n…" if len(tasks) > 5 else "")
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.tasks_deleted.emit([t.id for t in tasks])
+
+    def _toggle_selected_tasks(self, enabled: bool) -> None:
+        """Массовое включение/отключение выделенных задач (#160)."""
+        tasks = self._selected_tasks()
+        if tasks:
+            self.tasks_toggled.emit([t.id for t in tasks], enabled)
+
     def _edit_task(self) -> None:
         """Открытие диалога для редактирования выбранной задачи."""
         task = self._task_at_row(self.table.currentRow())
@@ -257,21 +301,47 @@ class SchedulerTab(QWidget):
             return
         self.table.setCurrentCell(row, 0)
 
+        selected = self._selected_tasks()
+        count = len(selected)
+        count_suffix = f" ({count})" if count > 1 else ""
+
         menu = QMenu(self)
 
-        edit_action = QAction("Редактировать", menu)
-        edit_action.triggered.connect(self._edit_task)
-        menu.addAction(edit_action)
+        if count > 1:
+            # Массовые операции: редактирование доступно только одиночное
+            enable_action = QAction(f"Включить выбранные{count_suffix}", menu)
+            enable_action.triggered.connect(
+                lambda: self._toggle_selected_tasks(True)
+            )
+            menu.addAction(enable_action)
 
-        toggle_action = QAction("Включить/Отключить", menu)
-        toggle_action.triggered.connect(self._toggle_task)
-        menu.addAction(toggle_action)
+            disable_action = QAction(
+                f"Отключить выбранные{count_suffix}", menu
+            )
+            disable_action.triggered.connect(
+                lambda: self._toggle_selected_tasks(False)
+            )
+            menu.addAction(disable_action)
 
-        menu.addSeparator()
+            menu.addSeparator()
 
-        delete_action = QAction("Удалить", menu)
-        delete_action.triggered.connect(self._delete_task)
-        menu.addAction(delete_action)
+            delete_action = QAction(f"Удалить выбранные…{count_suffix}", menu)
+            delete_action.triggered.connect(self._delete_selected_tasks)
+            menu.addAction(delete_action)
+        else:
+            edit_action = QAction("Редактировать", menu)
+            edit_action.triggered.connect(self._edit_task)
+            menu.addAction(edit_action)
+
+            toggle_action = QAction("Включить/Отключить", menu)
+            toggle_action.triggered.connect(self._toggle_task)
+            menu.addAction(toggle_action)
+
+            menu.addSeparator()
+
+            delete_action = QAction("Удалить", menu)
+            delete_action.triggered.connect(self._delete_task)
+            menu.addAction(delete_action)
 
         viewport = self.table.viewport()
         global_pos = viewport.mapToGlobal(pos) if viewport else pos

@@ -323,6 +323,34 @@ class MockQWidgetBase:
         """Для QSpinBox."""
         return getattr(self, "_suffix", "")
 
+    def mimeData(self, _items):
+        """Для QListWidget: без данных — вызывающий создаёт свой (#160)."""
+        return None
+
+    def setSelectionMode(self, mode):
+        """Для QAbstractItemView (#160)."""
+        self._selection_mode = mode
+
+    def selectionMode(self):
+        """Для QAbstractItemView (#160)."""
+        return getattr(self, "_selection_mode", None)
+
+    def setDragEnabled(self, enabled: bool):
+        """Для QAbstractItemView (#160)."""
+        self._drag_enabled = enabled
+
+    def dragEnabled(self) -> bool:
+        """Для QAbstractItemView (#160)."""
+        return getattr(self, "_drag_enabled", False)
+
+    def setDefaultDropAction(self, action):
+        """Для QAbstractItemView (#160)."""
+        self._default_drop_action = action
+
+    def defaultDropAction(self):
+        """Для QAbstractItemView (#160)."""
+        return getattr(self, "_default_drop_action", None)
+
     def setWidgetResizable(self, resizable: bool):
         """Для QScrollArea."""
         self._widget_resizable = resizable

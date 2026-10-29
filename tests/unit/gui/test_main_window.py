@@ -898,12 +898,19 @@ class TestMainWindowMethods:
             def __init__(self, text: str) -> None:
                 self.text = text
                 self.payload = None
+                self.flags_value = 0
 
             def setData(self, _role, payload: str) -> None:
                 self.payload = payload
 
             def setIcon(self, _icon) -> None:
                 pass
+
+            def flags(self) -> int:
+                return self.flags_value
+
+            def setFlags(self, flags: int) -> None:
+                self.flags_value = flags
 
         added_items: list[FakeListWidgetItem] = []
         window.recordings_list.addItem.side_effect = added_items.append
@@ -1703,7 +1710,7 @@ class TestMainWindowMethods:
     def test_recordings_context_menu_wires_expected_actions(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Меню записи выбирает элемент под курсором и вызывает 3 действия."""
+        """Меню записи выбирает элемент под курсором и вызывает действия."""
         import gui.main_window as main_window_module
 
         window = _build_window()
@@ -1712,6 +1719,9 @@ class TestMainWindowMethods:
         window._open_selected_recording = MagicMock()
         window._open_recording_folder = MagicMock()
         window._copy_selected_recording_path = MagicMock()
+        window._post_process_selected_recordings = MagicMock()
+        window._move_selected_recordings = MagicMock()
+        window._delete_selected_recordings = MagicMock()
 
         _FakeContextMenu.created = []
         monkeypatch.setattr(main_window_module, "QMenu", _FakeContextMenu)
@@ -1727,6 +1737,9 @@ class TestMainWindowMethods:
             "Открыть файл",
             "Открыть папку",
             "Копировать путь",
+            "Добавить в постобработку",
+            "Переместить в папку…",
+            "Удалить из списка…",
         }
 
         menu.actions["Открыть файл"].triggered.emit()
@@ -1737,6 +1750,15 @@ class TestMainWindowMethods:
 
         menu.actions["Копировать путь"].triggered.emit()
         window._copy_selected_recording_path.assert_called_once()
+
+        menu.actions["Добавить в постобработку"].triggered.emit()
+        window._post_process_selected_recordings.assert_called_once()
+
+        menu.actions["Переместить в папку…"].triggered.emit()
+        window._move_selected_recordings.assert_called_once()
+
+        menu.actions["Удалить из списка…"].triggered.emit()
+        window._delete_selected_recordings.assert_called_once()
 
     def test_copy_selected_recording_path_sets_clipboard(self) -> None:
         """Путь выбранной записи копируется в буфер обмена."""
@@ -2238,3 +2260,117 @@ class TestRecordingTunablesSettings:
         del window._recording_tunables_view
 
         window._on_recording_tunables_changed()  # не должно упасть
+
+
+class TestRecordingsMultiSelect:
+    """Multi-select и массовые операции списка записей (#160)."""
+
+    def test_selected_paths_via_widget(self) -> None:
+        """Пути выделенных записей берутся из RecordingsListWidget."""
+        from gui.views.recordings_list import RecordingsListWidget
+
+        window = _build_window()
+        window.recordings_list = RecordingsListWidget()
+        window.recordings_list.selectedItems = MagicMock(
+            return_value=[
+                SimpleNamespace(data=lambda role: "D:/a.mp4"),
+                SimpleNamespace(data=lambda role: "D:/b.mp4"),
+            ]
+        )
+
+        paths = window._selected_recording_paths()
+
+        assert [p.name for p in paths] == ["a.mp4", "b.mp4"]
+
+    def test_selected_paths_fallback_to_current_item(self) -> None:
+        """Без helper-метода используется currentItem (обратная совместимость)."""
+        window = _build_window()
+        window.recordings_list = MagicMock()
+        window.recordings_list.currentItem.return_value = SimpleNamespace(
+            data=lambda role: "D:/single.mp4"
+        )
+
+        paths = window._selected_recording_paths()
+
+        assert [p.name for p in paths] == ["single.mp4"]
+
+    def test_delete_selected_with_confirmation(self, monkeypatch) -> None:
+        """Удаление выделенных из списка недавних с подтверждением."""
+        from PyQt6.QtWidgets import QMessageBox
+
+        window = _build_window()
+        window._selected_recording_paths = MagicMock(
+            return_value=[Path("D:/a.mp4"), Path("D:/b.mp4")]
+        )
+        window._refresh_recent_recordings = MagicMock()
+        monkeypatch.setattr(
+            "gui.main_window.QMessageBox.question",
+            lambda *a, **k: QMessageBox.StandardButton.Yes,
+        )
+        config_mock = MagicMock()
+        config_mock.remove_recent_recordings.return_value = 2
+
+        with patch("gui.main_window.get_config", return_value=config_mock):
+            window._delete_selected_recordings()
+
+        config_mock.remove_recent_recordings.assert_called_once_with(
+            ["D:\\a.mp4", "D:\\b.mp4"]
+        )
+        window._refresh_recent_recordings.assert_called_once()
+
+    def test_delete_selected_cancelled(self, monkeypatch) -> None:
+        """Отмена подтверждения не трогает конфигурацию."""
+        from PyQt6.QtWidgets import QMessageBox
+
+        window = _build_window()
+        window._selected_recording_paths = MagicMock(
+            return_value=[Path("D:/a.mp4")]
+        )
+        monkeypatch.setattr(
+            "gui.main_window.QMessageBox.question",
+            lambda *a, **k: QMessageBox.StandardButton.No,
+        )
+        config_mock = MagicMock()
+
+        with patch("gui.main_window.get_config", return_value=config_mock):
+            window._delete_selected_recordings()
+
+        config_mock.remove_recent_recordings.assert_not_called()
+
+    def test_post_process_selected(self) -> None:
+        """Выделенные записи ставятся в очередь постобработки."""
+        window = _build_window()
+        window._selected_recording_paths = MagicMock(
+            return_value=[Path("D:/a.mp4"), Path("D:/b.mp4")]
+        )
+        window._application_facade = MagicMock()
+        window._application_facade.run_post_processing.return_value = {
+            "success": True
+        }
+
+        window._post_process_selected_recordings()
+
+        assert window._application_facade.run_post_processing.call_count == 2
+
+    def test_move_selected_records_and_refresh(self, monkeypatch) -> None:
+        """Перемещение выделенных файлов в выбранную папку."""
+
+        window = _build_window()
+        window._selected_recording_paths = MagicMock(
+            return_value=[Path("D:/a.mp4")]
+        )
+        window._refresh_recent_recordings = MagicMock()
+        monkeypatch.setattr(
+            "gui.main_window.QFileDialog.getExistingDirectory",
+            lambda *a, **k: "D:/dest",
+        )
+
+        with (
+            patch("gui.main_window.shutil.move") as move_mock,
+            patch.object(Path, "exists", return_value=True),
+        ):
+            window._move_selected_recordings()
+
+        move_mock.assert_called_once()
+        assert move_mock.call_args.args[1].endswith("a.mp4")
+        window._refresh_recent_recordings.assert_called_once()

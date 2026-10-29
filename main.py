@@ -1018,6 +1018,13 @@ class VideoRecorderApp:
             self._main_window.scheduler_tab.task_toggled.connect(
                 self._toggle_schedule
             )
+            # Массовые операции multi-select (#160)
+            self._main_window.scheduler_tab.tasks_deleted.connect(
+                self._delete_schedules
+            )
+            self._main_window.scheduler_tab.tasks_toggled.connect(
+                self._toggle_schedules
+            )
 
     def _execute_scheduled_task(self, params: Any) -> None:
         """Выполнение запланированной задачи записи."""
@@ -1230,6 +1237,45 @@ class VideoRecorderApp:
             )
 
         return {"success": success}
+
+    def _delete_schedules(self, task_ids: list) -> dict[str, Any]:
+        """Массовое удаление запланированных задач (#160)."""
+        if not self._scheduler:
+            return {"success": False, "error": "Планировщик недоступен"}
+
+        deleted = sum(
+            1 for task_id in task_ids if self._scheduler.remove_task(task_id)
+        )
+
+        if deleted and self._main_window:
+            self._run_on_gui_thread(
+                lambda: self._main_window.scheduler_tab.set_tasks(
+                    self._scheduler.get_all_tasks()
+                )
+            )
+
+        return {"success": True, "deleted": deleted}
+
+    def _toggle_schedules(
+        self, task_ids: list, enabled: bool
+    ) -> dict[str, Any]:
+        """Массовое включение/отключение запланированных задач (#160)."""
+        if not self._scheduler:
+            return {"success": False, "error": "Планировщик недоступен"}
+
+        toggled = 0
+        for task_id in task_ids:
+            if self._scheduler.enable_task(task_id, enabled):
+                toggled += 1
+
+        if toggled and self._main_window:
+            self._run_on_gui_thread(
+                lambda: self._main_window.scheduler_tab.set_tasks(
+                    self._scheduler.get_all_tasks()
+                )
+            )
+
+        return {"success": True, "toggled": toggled}
 
     def _update_schedule(self, data: dict[str, Any]) -> dict[str, Any]:
         """Обновление запланированной задачи."""

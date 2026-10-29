@@ -777,3 +777,68 @@ class TestRecordingTunables:
 
         assert isinstance(settings.recording_tunables, RecordingTunables)
         assert settings.recording_tunables.enable_frame_skip is False
+
+
+class TestRemoveRecentRecordings:
+    """Массовое удаление из списка недавних записей (#160)."""
+
+    def test_removes_matching_paths_and_returns_count(
+        self, temp_config_file: Path
+    ) -> None:
+        manager = ConfigManager(temp_config_file)
+        manager.settings.recent_recordings = [
+            {"path": "D:/a.mp4", "date": "2026-01-01", "size": 1},
+            {"path": "D:/b.mp4", "date": "2026-01-02", "size": 2},
+            {"path": "D:/c.mp4", "date": "2026-01-03", "size": 3},
+        ]
+
+        removed = manager.remove_recent_recordings(["D:/a.mp4", "D:/c.mp4"])
+
+        assert removed == 2
+        assert [r["path"] for r in manager.settings.recent_recordings] == [
+            "D:/b.mp4"
+        ]
+
+    def test_no_matches_returns_zero(self, temp_config_file: Path) -> None:
+        manager = ConfigManager(temp_config_file)
+        manager.settings.recent_recordings = [
+            {"path": "D:/a.mp4", "date": "2026-01-01", "size": 1},
+        ]
+
+        removed = manager.remove_recent_recordings(["D:/x.mp4"])
+
+        assert removed == 0
+        assert len(manager.settings.recent_recordings) == 1
+
+    def test_debounced_save_triggered_on_removal(
+        self, temp_config_file: Path, monkeypatch
+    ) -> None:
+        manager = ConfigManager(temp_config_file)
+        manager.settings.recent_recordings = [
+            {"path": "D:/a.mp4", "date": "2026-01-01", "size": 1},
+        ]
+        calls: list[str] = []
+        monkeypatch.setattr(
+            manager,
+            "_save_recent_recordings_debounced",
+            lambda: calls.append("save"),
+        )
+
+        manager.remove_recent_recordings(["D:/a.mp4"])
+
+        assert calls == ["save"]
+
+    def test_no_removal_skips_save(
+        self, temp_config_file: Path, monkeypatch
+    ) -> None:
+        manager = ConfigManager(temp_config_file)
+        calls: list[str] = []
+        monkeypatch.setattr(
+            manager,
+            "_save_recent_recordings_debounced",
+            lambda: calls.append("save"),
+        )
+
+        manager.remove_recent_recordings(["D:/missing.mp4"])
+
+        assert calls == []

@@ -19,6 +19,11 @@ from scheduler.task_scheduler import (
 )
 
 
+def _item_at_row(row: int) -> Any:
+    """QTableWidgetItem-заглушка с методом row() (#160)."""
+    return SimpleNamespace(row=lambda: row)
+
+
 class _Emitter:
     """Простой collector для emitted сигналов."""
 
@@ -282,6 +287,8 @@ def _build_scheduler_tab() -> scheduler_tab_impl.SchedulerTab:
     tab.task_updated = _Emitter()
     tab.task_deleted = _Emitter()
     tab.task_toggled = _Emitter()
+    tab.tasks_deleted = _Emitter()
+    tab.tasks_toggled = _Emitter()
     return tab
 
 
@@ -808,3 +815,94 @@ def test_task_dialog_refresh_schedule_preview_shows_inline_error() -> None:
     assert dialog._inline_validation_label.visible is True
     assert "Интервал" in dialog._inline_validation_label.text_value
     assert "Исправьте ошибки" in dialog._schedule_preview_label.text_value
+
+
+class TestMultiSelectMassOps:
+    """Multi-select и массовые операции планировщика (#160)."""
+
+    @staticmethod
+    def _make_task(task_id: str, name: str) -> ScheduleTask:
+        return ScheduleTask(
+            id=task_id,
+            name=name,
+            schedule_type=ScheduleType.ONCE,
+            params=RecordingParams(area_type="full"),
+        )
+
+    def _tab_with_tasks(self) -> Any:
+        tab = _build_scheduler_tab()
+        task_a = self._make_task("id-a", "Задача A")
+        task_b = self._make_task("id-b", "Задача B")
+        task_c = self._make_task("id-c", "Задача C")
+        tab._tasks = [task_a, task_b, task_c]
+        tab._visible_tasks = [task_a, task_b, task_c]
+        return tab
+
+    def test_selected_tasks_deduplicates_rows(self) -> None:
+        """Элементы одной строки (6 колонок) дают одну задачу."""
+        tab = self._tab_with_tasks()
+        rows = [_item_at_row(1), _item_at_row(1), _item_at_row(2)]
+        tab.table._selected_items = rows
+
+        selected = tab._selected_tasks()
+
+        assert [t.id for t in selected] == ["id-b", "id-c"]
+
+    def test_delete_selected_emits_ids_after_confirm(
+        self, monkeypatch: Any
+    ) -> None:
+        """Подтверждённое удаление эмитит список id."""
+        tab = self._tab_with_tasks()
+        tab.table._selected_items = [
+            _item_at_row(0),
+            _item_at_row(2),
+        ]
+        monkeypatch.setattr(
+            scheduler_tab_impl.QMessageBox,
+            "question",
+            lambda *a, **k: QMessageBox.StandardButton.Yes,
+        )
+
+        tab._delete_selected_tasks()
+
+        assert tab.tasks_deleted.calls == [(["id-a", "id-c"],)]
+
+    def test_delete_selected_cancelled_emits_nothing(
+        self, monkeypatch: Any
+    ) -> None:
+        """Отмена в диалоге не удаляет ничего."""
+        tab = self._tab_with_tasks()
+        tab.table._selected_items = [_item_at_row(0)]
+        monkeypatch.setattr(
+            scheduler_tab_impl.QMessageBox,
+            "question",
+            lambda *a, **k: QMessageBox.StandardButton.No,
+        )
+
+        tab._delete_selected_tasks()
+
+        assert tab.tasks_deleted.calls == []
+
+    def test_toggle_selected_emits_ids_and_state(self) -> None:
+        """Включение/отключение эмитит id и целевое состояние."""
+        tab = self._tab_with_tasks()
+        tab.table._selected_items = [_item_at_row(1)]
+
+        tab._toggle_selected_tasks(True)
+        tab._toggle_selected_tasks(False)
+
+        assert tab.tasks_toggled.calls == [
+            (["id-b"], True),
+            (["id-b"], False),
+        ]
+
+    def test_mass_ops_with_empty_selection_are_noop(self) -> None:
+        """Без выделения массовые операции ничего не эмитят."""
+        tab = self._tab_with_tasks()
+        tab.table._selected_items = []
+
+        tab._delete_selected_tasks()
+        tab._toggle_selected_tasks(True)
+
+        assert tab.tasks_deleted.calls == []
+        assert tab.tasks_toggled.calls == []

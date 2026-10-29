@@ -788,6 +788,30 @@ class ConfigManager:
             self._settings.recent_recordings = []
         self.save()
 
+    def remove_recent_recordings(self, paths: list[str]) -> int:
+        """
+        Массовое удаление записей из списка недавних (#160).
+
+        Args:
+            paths: Пути записей для удаления.
+
+        Returns:
+            Количество фактически удалённых элементов.
+        """
+        path_set = {str(p) for p in paths}
+        with self._settings_lock:
+            before = len(self._settings.recent_recordings)
+            self._settings.recent_recordings = [
+                r
+                for r in self._settings.recent_recordings
+                if r.get("path") not in path_set
+            ]
+            removed = before - len(self._settings.recent_recordings)
+
+        if removed:
+            self._save_recent_recordings_debounced()
+        return removed
+
     def get_output_path(self, filename: str | None = None) -> Path:
         """
         Получение пути вывода для записи.
