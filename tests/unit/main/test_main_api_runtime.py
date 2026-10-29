@@ -5,6 +5,7 @@ Unit тесты runtime-управления API из main.py.
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -1326,3 +1327,66 @@ class TestStartStopHotkeys:
         app._stop_recording_hotkey()
 
         app.request_stop_recording.assert_called_once_with()
+
+
+class TestMassScheduleOps:
+    """Массовое удаление/переключение задач планировщика (#160)."""
+
+    def _make_app(self, monkeypatch: pytest.MonkeyPatch) -> Any:
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app._scheduler = SimpleNamespace(
+            remove_task=MagicMock(
+                side_effect=lambda task_id: task_id != "missing"
+            ),
+            enable_task=MagicMock(return_value=True),
+            get_all_tasks=MagicMock(return_value=[]),
+        )
+        refresh_mock = MagicMock()
+        app._main_window = SimpleNamespace(
+            scheduler_tab=SimpleNamespace(set_tasks=refresh_mock)
+        )
+        app._run_on_gui_thread = lambda fn, **kwargs: fn()
+        return app, refresh_mock
+
+    def test_delete_schedules_removes_each_and_refreshes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        app, refresh_mock = self._make_app(monkeypatch)
+
+        result = app._delete_schedules(["a", "b", "missing"])
+
+        assert result == {"success": True, "deleted": 2}
+        app._scheduler.remove_task.assert_any_call("a")
+        app._scheduler.remove_task.assert_any_call("b")
+        refresh_mock.assert_called_once_with([])
+
+    def test_toggle_schedules_enables_each(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        app, refresh_mock = self._make_app(monkeypatch)
+
+        result = app._toggle_schedules(["a", "b"], True)
+
+        assert result == {"success": True, "toggled": 2}
+        app._scheduler.enable_task.assert_any_call("a", True)
+        app._scheduler.enable_task.assert_any_call("b", True)
+        refresh_mock.assert_called_once_with([])
+
+    def test_no_scheduler_returns_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        app, _ = self._make_app(monkeypatch)
+        app._scheduler = None
+
+        assert app._delete_schedules(["a"])["success"] is False
+        assert app._toggle_schedules(["a"], True)["success"] is False
+
+    def test_no_changes_skips_refresh(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        app, refresh_mock = self._make_app(monkeypatch)
+
+        app._delete_schedules(["missing"])
+        app._toggle_schedules([], True)
+
+        refresh_mock.assert_not_called()
