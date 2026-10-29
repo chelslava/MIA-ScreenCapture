@@ -46,6 +46,7 @@ from core.readiness import (
     build_readiness_checks,
 )
 from core.recording_types import AudioMode, CaptureMode
+from gui import transitions
 from gui.controllers.desktop_actions_controller import DesktopActionsController
 from gui.controllers.profile_gui_controller import ProfileGUIController
 from gui.controllers.readiness_controller import ReadinessController
@@ -395,6 +396,15 @@ class MainWindow(QMainWindow):
         current_row = self._sidebar.currentRow()
         if current_row >= 0:
             self._content_stack.setCurrentIndex(current_row)
+            self._animate_current_page_in()
+
+    def _animate_current_page_in(self) -> None:
+        """Fade-переход вкладки с учётом настроек и reduced-motion (#161)."""
+        if not get_config().settings.ui_animations:
+            return
+        if transitions.reduced_motion_preferred():
+            return
+        transitions.animate_page_in(self._content_stack.currentWidget())
 
     def _make_sidebar_item(
         self, icon_name: str, label: str
@@ -771,6 +781,9 @@ class MainWindow(QMainWindow):
         self._appearance_view.minimize_to_tray_changed.connect(
             self._on_minimize_to_tray_changed
         )
+        self._appearance_view.ui_animations_changed.connect(
+            self._on_ui_animations_changed
+        )
         self.stop_operation_finished.connect(self._on_stop_operation_finished)
         self.dependency_check_completed.connect(
             self._on_dependency_check_completed
@@ -1098,6 +1111,11 @@ class MainWindow(QMainWindow):
             self._settings_controller.get_minimize_to_tray()
         )
 
+        # Анимации переходов (#161)
+        self._appearance_view.set_ui_animations(
+            get_config().settings.ui_animations
+        )
+
         # Ширина боковой панели
         self._apply_sidebar_width(
             self._settings_controller.get_sidebar_width()
@@ -1242,6 +1260,12 @@ class MainWindow(QMainWindow):
         self._settings_controller.set_language(language)
         set_locale(language)
         logger.info(f"Язык интерфейса изменен на: {language}")
+
+    def _on_ui_animations_changed(self, enabled: bool) -> None:
+        """Сохранение настройки плавных переходов (#161)."""
+        config = get_config()
+        config.settings.ui_animations = bool(enabled)
+        config.save()
 
     def _on_minimize_to_tray_changed(self, enabled: bool) -> None:
         """Обработка переключения «сворачивать в трей при закрытии»."""

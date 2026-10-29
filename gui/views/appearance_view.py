@@ -50,6 +50,7 @@ class AppearanceView(QWidget):
     language_changed = pyqtSignal(str)
     hotkeys_requested = pyqtSignal()
     minimize_to_tray_changed = pyqtSignal(bool)
+    ui_animations_changed = pyqtSignal(bool)
     check_updates_requested = pyqtSignal()
     updates_settings_changed = pyqtSignal()
 
@@ -105,6 +106,22 @@ class AppearanceView(QWidget):
             self._on_minimize_to_tray_toggled
         )
         group_layout.addWidget(self._minimize_to_tray_checkbox)
+
+        # Анимации переходов (#161): выключаются и системным reduced-motion
+        self._ui_animations_checkbox = QCheckBox(
+            _("Плавные переходы между вкладками")
+        )
+        self._ui_animations_checkbox.setToolTip(
+            _(
+                "Fade-переходы при переключении вкладок. Также отключается "
+                "системной настройкой Windows «анимации элементов "
+                "интерфейса» (reduced motion)."
+            )
+        )
+        self._ui_animations_checkbox.toggled.connect(
+            self._on_ui_animations_toggled
+        )
+        group_layout.addWidget(self._ui_animations_checkbox)
 
         self._hotkeys_btn = QPushButton(_("Горячие клавиши"))
         self._hotkeys_btn.clicked.connect(self._on_hotkeys_clicked)
@@ -167,6 +184,28 @@ class AppearanceView(QWidget):
         """Обработка переключения чекбокса «сворачивать в трей»."""
         logger.info(f"minimize_to_tray изменено: {checked}")
         self.minimize_to_tray_changed.emit(bool(checked))
+
+    def _on_ui_animations_toggled(self, checked: bool) -> None:
+        """Обработка переключения чекбокса плавных переходов (#161)."""
+        logger.info(f"ui_animations изменено: {checked}")
+        self.ui_animations_changed.emit(bool(checked))
+
+    def set_ui_animations(self, enabled: bool) -> None:
+        """Установить состояние чекбокса без отправки сигнала (#161).
+
+        Args:
+            enabled: Текущее значение настройки ``ui_animations``.
+        """
+        checkbox = self._ui_animations_checkbox
+        block_signals = getattr(checkbox, "blockSignals", None)
+        if callable(block_signals):
+            checkbox.blockSignals(True)
+            try:
+                checkbox.setChecked(bool(enabled))
+            finally:
+                checkbox.blockSignals(False)
+        else:
+            checkbox.setChecked(bool(enabled))
 
     def set_minimize_to_tray(self, enabled: bool) -> None:
         """Установить состояние чекбокса без отправки сигнала.

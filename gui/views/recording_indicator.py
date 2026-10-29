@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import QWidget
 
 from core.recording_state import CaptureSettings
 from core.recording_types import CaptureMode
+from gui.constants import RECORDING_INDICATOR_TICK_MS
 from logger_config import get_module_logger
 from recorder.utils import get_available_windows, get_screen_size
 
@@ -20,7 +21,8 @@ logger = get_module_logger(__name__)
 
 IndicatorRect = tuple[int, int, int, int]
 
-_INDICATOR_TICK_MS = 450
+# Такт мигания — общая константа для recording-индикаторов (#161)
+_INDICATOR_TICK_MS = RECORDING_INDICATOR_TICK_MS
 _INDICATOR_MARGIN = 2
 _INDICATOR_LINE_WIDTH = 4
 _ACTIVE_ALPHA = 180

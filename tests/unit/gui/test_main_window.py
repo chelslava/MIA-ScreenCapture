@@ -2374,3 +2374,84 @@ class TestRecordingsMultiSelect:
         move_mock.assert_called_once()
         assert move_mock.call_args.args[1].endswith("a.mp4")
         window._refresh_recent_recordings.assert_called_once()
+
+
+class TestTabTransitionAnimations:
+    """Fade-переходы вкладок с учётом настроек (#161)."""
+
+    def test_selection_change_animates_when_enabled(self, monkeypatch) -> None:
+        window = _build_window()
+        window._sidebar = MagicMock(currentRow=MagicMock(return_value=2))
+        window._content_stack = MagicMock()
+        monkeypatch.setattr(
+            "gui.main_window.get_config",
+            MagicMock(
+                return_value=SimpleNamespace(
+                    settings=SimpleNamespace(ui_animations=True)
+                )
+            ),
+        )
+        with patch("gui.main_window.transitions") as transitions_mock:
+            transitions_mock.reduced_motion_preferred.return_value = False
+            window._on_sidebar_selection_changed()
+
+        window._content_stack.setCurrentIndex.assert_called_once_with(2)
+        transitions_mock.animate_page_in.assert_called_once_with(
+            window._content_stack.currentWidget()
+        )
+        transitions_mock.reduced_motion_preferred.assert_called_once()
+
+    def test_animation_skipped_when_disabled(self, monkeypatch) -> None:
+        window = _build_window()
+        window._sidebar = MagicMock(currentRow=MagicMock(return_value=1))
+        window._content_stack = MagicMock()
+        monkeypatch.setattr(
+            "gui.main_window.get_config",
+            MagicMock(
+                return_value=SimpleNamespace(
+                    settings=SimpleNamespace(ui_animations=False)
+                )
+            ),
+        )
+        with patch("gui.main_window.transitions") as transitions_mock:
+            window._on_sidebar_selection_changed()
+
+        transitions_mock.animate_page_in.assert_not_called()
+
+    def test_animation_skipped_on_reduced_motion(self, monkeypatch) -> None:
+        window = _build_window()
+        window._sidebar = MagicMock(currentRow=MagicMock(return_value=1))
+        window._content_stack = MagicMock()
+        monkeypatch.setattr(
+            "gui.main_window.get_config",
+            MagicMock(
+                return_value=SimpleNamespace(
+                    settings=SimpleNamespace(ui_animations=True)
+                )
+            ),
+        )
+        with patch("gui.main_window.transitions") as transitions_mock:
+            transitions_mock.reduced_motion_preferred.return_value = True
+            window._on_sidebar_selection_changed()
+
+        transitions_mock.animate_page_in.assert_not_called()
+
+    def test_ui_animations_setting_persisted(self) -> None:
+        window = _build_window()
+        config_mock = MagicMock()
+
+        with patch("gui.main_window.get_config", return_value=config_mock):
+            window._on_ui_animations_changed(False)
+
+        assert config_mock.settings.ui_animations is False
+        config_mock.save.assert_called_once()
+
+    def test_ui_animations_loaded_into_view(self) -> None:
+        """Загрузка настроек применяет ui_animations к appearance view."""
+        window = _build_window()
+
+        window._apply_settings_to_views()
+
+        window._appearance_view.set_ui_animations.assert_called_once_with(
+            get_config().settings.ui_animations
+        )

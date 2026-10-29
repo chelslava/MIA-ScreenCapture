@@ -842,3 +842,14 @@ class TestRemoveRecentRecordings:
         manager.remove_recent_recordings(["D:/missing.mp4"])
 
         assert calls == []
+
+
+def test_ui_animations_default_and_parsing(temp_config_file: Path):
+    """Флаг плавных переходов (#161): дефолт True, читается из словаря."""
+    manager = ConfigManager(temp_config_file)
+
+    defaults = manager._dict_to_settings({})
+    parsed = manager._dict_to_settings({"ui_animations": False})
+
+    assert defaults.ui_animations is True
+    assert parsed.ui_animations is False

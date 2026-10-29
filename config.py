@@ -279,6 +279,8 @@ class AppSettingsSchema(BaseModel):
     updates: UpdateSettingsSchema = Field(default_factory=UpdateSettingsSchema)
     minimize_to_tray: bool = Field(default=True)
     show_notifications: bool = Field(default=True)
+    # Плавные переходы вкладок (#161); уважает reduced-motion системы
+    ui_animations: bool = Field(default=True)
     language: str = Field(default="en")
     theme: str = Field(default="system")
     sidebar_width: int = Field(default=110, ge=44, le=400)
@@ -478,6 +480,7 @@ class AppSettings:
     updates: UpdateSettings = field(default_factory=UpdateSettings)
     minimize_to_tray: bool = True
     show_notifications: bool = True
+    ui_animations: bool = True
     language: str = "en"
     theme: str = "system"
     sidebar_width: int = 110
@@ -596,6 +599,7 @@ class ConfigManager:
                 updates=updates,
                 minimize_to_tray=data.get("minimize_to_tray", True),
                 show_notifications=data.get("show_notifications", True),
+                ui_animations=data.get("ui_animations", True),
                 language=data.get("language", "en"),
                 theme=data.get("theme", "system"),
                 sidebar_width=data.get("sidebar_width", 110),
