@@ -752,3 +752,25 @@ class TestRecordingTunablesPlumbing:
         assert success is True
         _, kwargs = mock_audio_recorder.call_args
         assert kwargs["max_recovery_attempts"] == 8
+
+
+class TestTempVideoSize:
+    """Размер temp-файла видео для плавающего виджета (#158)."""
+
+    def test_none_without_recording(self) -> None:
+        controller = RecordingController()
+        assert controller.temp_video_size is None
+
+    def test_reads_temp_file_size(self, tmp_path) -> None:
+        controller = RecordingController()
+        temp_file = tmp_path / "video.mp4"
+        temp_file.write_bytes(b"x" * 2048)
+        controller._temp_video = temp_file
+
+        assert controller.temp_video_size == 2048
+
+    def test_none_when_stat_fails(self) -> None:
+        controller = RecordingController()
+        controller._temp_video = Path("Z:/definitely/missing/video.mp4")
+
+        assert controller.temp_video_size is None
