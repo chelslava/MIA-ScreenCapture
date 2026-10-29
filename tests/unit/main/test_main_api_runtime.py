@@ -1271,3 +1271,58 @@ class TestMainFinalizationStatus:
         )
 
         assert app.get_finalization_status() == expected
+
+
+class TestStartStopHotkeys:
+    """Регистрация START/STOP горячих клавиш (#162)."""
+
+    def test_setup_hotkeys_registers_all_four_actions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Все действия DEFAULT_HOTKEYS должны иметь callbacks."""
+        from gui.hotkeys import PYNPUT_AVAILABLE, GlobalHotkeys, HotkeyAction
+
+        if not PYNPUT_AVAILABLE:
+            import pytest
+
+            pytest.skip("pynput недоступен")
+
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app._setup_hotkeys()
+
+        hotkeys = app._hotkeys
+        assert isinstance(hotkeys, GlobalHotkeys)
+        for action in HotkeyAction:
+            assert hotkeys.get_hotkey(action) is not None, action
+
+    def test_start_hotkey_starts_only_when_idle(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """START-клавиша стартует запись только при отсутствии записи."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app.get_status = MagicMock(
+            side_effect=[{"is_recording": False}, {"is_recording": True}]
+        )
+        app.request_start_recording = MagicMock()
+        app._main_window = SimpleNamespace()
+
+        app._start_recording_hotkey()
+        app._start_recording_hotkey()
+
+        app.request_start_recording.assert_called_once_with()
+
+    def test_stop_hotkey_stops_only_when_recording(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """STOP-клавиша останавливает только активную запись."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app.get_status = MagicMock(
+            side_effect=[{"is_recording": True}, {"is_recording": False}]
+        )
+        app.request_stop_recording = MagicMock()
+        app._main_window = SimpleNamespace()
+
+        app._stop_recording_hotkey()
+        app._stop_recording_hotkey()
+
+        app.request_stop_recording.assert_called_once_with()

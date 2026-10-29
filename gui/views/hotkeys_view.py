@@ -24,11 +24,13 @@ from gui.accessibility import apply_accessible_metadata
 from gui.desktop_actions import DesktopActionRegistry
 from gui.styles.theme import Theme
 
-# Реально зарегистрированы в main.py:_setup_hotkeys (только 2 из 4
-# DEFAULT_HOTKEYS из gui/hotkeys.py — START/STOP не подключены к callback).
+# Реально зарегистрированы в main.py:_setup_hotkeys — все действия
+# DEFAULT_HOTKEYS из gui/hotkeys.py (#162).
 GLOBAL_HOTKEYS: tuple[tuple[str, str], ...] = (
     ("Переключить запись (старт/стоп)", "Ctrl+Alt+T"),
     ("Пауза/продолжить запись", "Ctrl+Alt+P"),
+    ("Старт записи (если не идёт)", "Ctrl+Alt+R"),
+    ("Стоп записи (если идёт)", "Ctrl+Alt+S"),
 )
 
 

@@ -24,13 +24,15 @@ def _build_hotkeys_view(
 class TestGlobalHotkeysConstant:
     """Проверки статичного списка глобальных горячих клавиш."""
 
-    def test_contains_toggle_and_pause(self) -> None:
-        """Должны быть ровно те 2 действия, что реально зарегистрированы
-        в main.py:_setup_hotkeys (а не все 4 DEFAULT_HOTKEYS)."""
+    def test_contains_all_registered_actions(self) -> None:
+        """Справка показывает все 4 действия, зарегистрированные в
+        main.py:_setup_hotkeys (#162)."""
         shortcuts = dict(GLOBAL_HOTKEYS)
         assert shortcuts["Переключить запись (старт/стоп)"] == "Ctrl+Alt+T"
         assert shortcuts["Пауза/продолжить запись"] == "Ctrl+Alt+P"
-        assert len(GLOBAL_HOTKEYS) == 2
+        assert shortcuts["Старт записи (если не идёт)"] == "Ctrl+Alt+R"
+        assert shortcuts["Стоп записи (если идёт)"] == "Ctrl+Alt+S"
+        assert len(GLOBAL_HOTKEYS) == 4
 
 
 class TestAppHotkeyRows:

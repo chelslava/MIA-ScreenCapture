@@ -923,6 +923,9 @@ class VideoRecorderApp:
             logger.warning("Горячие клавиши недоступны (pynput не установлен)")
             return
 
+        # Все четыре действия DEFAULT_HOTKEYS реально работают (#162):
+        # START/STOP ранее не подключались к callback и были мёртвой
+        # конфигурацией
         self._hotkeys.register(
             HotkeyAction.TOGGLE_RECORDING,
             self._toggle_recording_hotkey,
@@ -930,6 +933,14 @@ class VideoRecorderApp:
         self._hotkeys.register(
             HotkeyAction.PAUSE_RECORDING,
             self._pause_recording_hotkey,
+        )
+        self._hotkeys.register(
+            HotkeyAction.START_RECORDING,
+            self._start_recording_hotkey,
+        )
+        self._hotkeys.register(
+            HotkeyAction.STOP_RECORDING,
+            self._stop_recording_hotkey,
         )
         self._hotkeys.start()
         logger.info("Горячие клавиши активированы")
@@ -948,6 +959,22 @@ class VideoRecorderApp:
         facade = self.get_application_facade()
         if self._main_window:
             facade.request_toggle_pause_recording()
+
+    def _start_recording_hotkey(self) -> None:
+        """Старт записи по горячей клавише (no-op, если запись идёт)."""
+        facade = self.get_application_facade()
+        if self._main_window and not facade.get_status().get(
+            "is_recording", False
+        ):
+            facade.request_start_recording()
+
+    def _stop_recording_hotkey(self) -> None:
+        """Стоп записи по горячей клавише (no-op, если записи нет)."""
+        facade = self.get_application_facade()
+        if self._main_window and facade.get_status().get(
+            "is_recording", False
+        ):
+            facade.request_stop_recording()
 
     def _start_scheduler(self) -> None:
         """Запуск планировщика задач."""
