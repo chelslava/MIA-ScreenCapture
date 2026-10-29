@@ -49,6 +49,28 @@
 }
 ```
 
+## Тонкие параметры записи (#155)
+
+Секция `recording_tunables` в `config/config.json` — frame-skip, попытки восстановления, пороги диска, лимиты сегментов. Дефолты идентичны прежнему поведению:
+
+```json
+{
+  "recording_tunables": {
+    "enable_frame_skip": false,
+    "max_recovery_attempts": 3,
+    "audio_max_recovery_attempts": 3,
+    "disk_warning_mb": 1024.0,
+    "disk_critical_mb": 100.0,
+    "disk_check_interval_s": 30.0,
+    "max_segment_size_mb": null,
+    "max_segment_duration_s": null,
+    "health_check_interval_s": 1.0
+  }
+}
+```
+
+Те же параметры редактируются в GUI («Настройки» → «Расширенные параметры записи»). Невалидные значения отклоняются при загрузке конфигурации.
+
 ## Rate limiting (#152)
 
 Лимиты запросов настраиваются в `api.rate_limit` (см. пример выше) и применяются при старте API-сервера:
