@@ -281,6 +281,8 @@ class AppSettingsSchema(BaseModel):
     show_notifications: bool = Field(default=True)
     # Плавные переходы вкладок (#161); уважает reduced-motion системы
     ui_animations: bool = Field(default=True)
+    # Позиция плавающего виджета записи [x, y] (#158); None — по умолчанию
+    floating_widget_pos: list[int] | None = Field(default=None)
     language: str = Field(default="en")
     theme: str = Field(default="system")
     sidebar_width: int = Field(default=110, ge=44, le=400)
@@ -481,6 +483,7 @@ class AppSettings:
     minimize_to_tray: bool = True
     show_notifications: bool = True
     ui_animations: bool = True
+    floating_widget_pos: list[int] | None = None
     language: str = "en"
     theme: str = "system"
     sidebar_width: int = 110
@@ -548,6 +551,23 @@ class ConfigManager:
                 self._settings = AppSettings()
             logger.info("Создана конфигурация по умолчанию")
 
+    @staticmethod
+    def _parse_floating_widget_pos(value: Any) -> list[int] | None:
+        """Валидирует позицию плавающего виджета из конфига (#158).
+
+        Returns:
+            [x, y] или None при отсутствии/невалидности.
+        """
+        if (
+            isinstance(value, list)
+            and len(value) == 2
+            and all(
+                isinstance(v, int) and not isinstance(v, bool) for v in value
+            )
+        ):
+            return [int(value[0]), int(value[1])]
+        return None
+
     def _dict_to_settings(self, data: dict[str, Any]) -> AppSettings:
         """
         Преобразование словаря в dataclass AppSettings.
@@ -600,6 +620,9 @@ class ConfigManager:
                 minimize_to_tray=data.get("minimize_to_tray", True),
                 show_notifications=data.get("show_notifications", True),
                 ui_animations=data.get("ui_animations", True),
+                floating_widget_pos=self._parse_floating_widget_pos(
+                    data.get("floating_widget_pos")
+                ),
                 language=data.get("language", "en"),
                 theme=data.get("theme", "system"),
                 sidebar_width=data.get("sidebar_width", 110),

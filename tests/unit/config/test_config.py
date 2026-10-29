@@ -853,3 +853,43 @@ def test_ui_animations_default_and_parsing(temp_config_file: Path):
 
     assert defaults.ui_animations is True
     assert parsed.ui_animations is False
+
+
+class TestFloatingWidgetPos:
+    """Позиция плавающего виджета в конфиге (#158)."""
+
+    def test_default_is_none(self, temp_config_file: Path) -> None:
+        manager = ConfigManager(temp_config_file)
+        assert manager._dict_to_settings({}).floating_widget_pos is None
+
+    def test_valid_pair_parsed(self, temp_config_file: Path) -> None:
+        manager = ConfigManager(temp_config_file)
+
+        settings = manager._dict_to_settings(
+            {"floating_widget_pos": [100, 200]}
+        )
+
+        assert settings.floating_widget_pos == [100, 200]
+
+    @pytest.mark.parametrize(
+        "value",
+        [[1], [1, 2, 3], ["a", "b"], [1.5, 2.5], None, "10,20"],
+    )
+    def test_invalid_values_fall_back_to_none(
+        self, temp_config_file: Path, value
+    ) -> None:
+        manager = ConfigManager(temp_config_file)
+
+        settings = manager._dict_to_settings({"floating_widget_pos": value})
+
+        assert settings.floating_widget_pos is None
+
+    def test_bool_rejected_as_int(self, temp_config_file: Path) -> None:
+        """True/False — не валидные координаты (bool is int)."""
+        manager = ConfigManager(temp_config_file)
+
+        settings = manager._dict_to_settings(
+            {"floating_widget_pos": [True, False]}
+        )
+
+        assert settings.floating_widget_pos is None

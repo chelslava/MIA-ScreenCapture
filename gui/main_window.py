@@ -75,6 +75,12 @@ from gui.views.capture_view import CaptureView
 from gui.views.finalization_progress_dialog import (
     FinalizationProgressDialog,
 )
+from gui.views.floating_widget import (
+    STATE_FINALIZING,
+    STATE_PAUSED,
+    STATE_RECORDING,
+    FloatingRecordingWidget,
+)
 from gui.views.output_view import OutputView
 from gui.views.post_processing_view import PostProcessingView
 from gui.views.readiness_center_view import ReadinessCenterView
@@ -212,6 +218,8 @@ class MainWindow(QMainWindow):
         # Диалог прогресса финализации создаётся лениво,
         # чтобы не требовать QApplication слишком рано
         self._finalization_dialog: FinalizationProgressDialog | None = None
+        # Плавающий виджет записи (#158) — также лениво
+        self._floating_widget: FloatingRecordingWidget | None = None
         self._readiness_request_id = 0
         self._latest_readiness_snapshot: ReadinessSnapshot | None = None
         self._latest_readiness_inputs: dict[str, object] | None = None
@@ -1728,6 +1736,7 @@ class MainWindow(QMainWindow):
         """Запустить остановку записи в фоне."""
         self._stop_operation_in_progress = True
         self._update_ui_state(RecordingStatus.STOPPING)
+        self._set_floating_widget_state(STATE_FINALIZING)
         self.status_bar.showMessage("Финализация записи...", 0)
         self._show_finalization_progress_dialog()
         self._stop_operation_thread = threading.Thread(
@@ -1774,6 +1783,7 @@ class MainWindow(QMainWindow):
         self._stop_operation_thread = None
         self.stop_btn.setText("Стоп")
         self._hide_finalization_progress_dialog()
+        self._hide_floating_widget()
 
         if output_path is not None:
             self._on_recording_stopped(output_path)
@@ -1800,6 +1810,7 @@ class MainWindow(QMainWindow):
         if capture is not None:
             self._recording_indicator.show_for_capture(capture)
 
+        self._show_floating_widget()
         self.recording_started.emit(str(output_path))
         logger.info(f"Запись запущена: {output_path}")
 
@@ -1845,6 +1856,7 @@ class MainWindow(QMainWindow):
         self._set_status_updates_enabled(False)
         self._update_ui_state(RecordingStatus.PAUSED)
         self._recording_indicator.set_paused(True)
+        self._set_floating_widget_state(STATE_PAUSED)
 
         self.recording_paused.emit()
 
@@ -1853,8 +1865,74 @@ class MainWindow(QMainWindow):
         self._set_status_updates_enabled(True)
         self._update_ui_state(RecordingStatus.RECORDING)
         self._recording_indicator.set_paused(False)
+        self._set_floating_widget_state(STATE_RECORDING)
 
         self.recording_resumed.emit()
+
+    def _get_floating_widget(self) -> FloatingRecordingWidget | None:
+        """Лениво создать плавающий виджет записи (#158)."""
+        if self._floating_widget is None:
+            try:
+                self._floating_widget = FloatingRecordingWidget()
+            except Exception as e:
+                logger.warning(
+                    "Не удалось создать плавающий виджет записи: %s", e
+                )
+                return None
+        return self._floating_widget
+
+    def _show_floating_widget(self) -> None:
+        """Показать плавающий виджет в состоянии записи (#158)."""
+        widget = self._get_floating_widget()
+        if widget is None:
+            return
+        widget.set_state(STATE_RECORDING)
+        try:
+            from recorder.utils import get_screen_size
+
+            widget.restore_position(get_screen_size())
+        except Exception as e:
+            logger.debug("Позиция плавающего виджета не восстановлена: %s", e)
+        if hasattr(widget, "show"):
+            widget.show()
+        widget.start_updates(self._on_floating_widget_tick)
+
+    def _hide_floating_widget(self) -> None:
+        """Скрыть плавающий виджет и сохранить позицию (#158)."""
+        widget = self._floating_widget
+        if widget is None:
+            return
+        widget.stop_updates()
+        widget.save_position()
+        if hasattr(widget, "hide"):
+            widget.hide()
+        widget.set_state("idle")
+
+    def _set_floating_widget_state(self, state: str) -> None:
+        """Переключить состояние плавающего виджета, если он виден (#158)."""
+        widget = self._floating_widget
+        if widget is not None:
+            widget.set_state(state)
+
+    def _on_floating_widget_tick(self) -> None:
+        """Тик плавающего виджета: обновить метрики (#158)."""
+        widget = self._floating_widget
+        if widget is None or self._floating_widget is None:
+            return
+        self._update_floating_widget_metrics()
+
+    def _update_floating_widget_metrics(self) -> None:
+        """Передать в плавающий виджет таймер/FPS/размер файла (#158)."""
+        widget = self._floating_widget
+        if widget is None or not hasattr(widget, "isVisible"):
+            return
+        if not widget.isVisible():
+            return
+        elapsed = self._recording_controller.elapsed_time
+        metrics = self._recording_controller.frame_metrics
+        actual_fps = float(metrics.get("actual_fps", 0.0))
+        size = self._recording_controller.temp_video_size
+        widget.update_metrics(elapsed, actual_fps, size)
 
     def _update_status(self) -> None:
         """Обновление отображения статуса."""
@@ -1869,6 +1947,7 @@ class MainWindow(QMainWindow):
             else:
                 display_text = formatted_time
             self._status_bar_controller.update_time_display(display_text)
+            self._update_floating_widget_metrics()
 
     def _set_status_updates_enabled(self, enabled: bool) -> None:
         """

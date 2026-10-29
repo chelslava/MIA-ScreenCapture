@@ -64,6 +64,7 @@ def _build_window():
     window._state = RecordingState()
     window._settings_controller = MagicMock()
     window._audio_drop_warning_shown = False
+    window._floating_widget = None
     window._recording_controller = MagicMock(
         get_recoveries_count=MagicMock(return_value=0),
         dropped_audio_chunks=0,
@@ -2455,3 +2456,106 @@ class TestTabTransitionAnimations:
         window._appearance_view.set_ui_animations.assert_called_once_with(
             get_config().settings.ui_animations
         )
+
+
+class TestFloatingWidgetWiring:
+    """Проводка плавающего виджета записи (#158)."""
+
+    def test_recording_start_shows_widget_in_recording_state(self) -> None:
+        window = _build_window()
+        widget_mock = MagicMock()
+        window._floating_widget = widget_mock
+
+        window._on_recording_started(Path("D:/capture.mp4"))
+
+        widget_mock.set_state.assert_called_with("recording")
+        widget_mock.show.assert_called_once()
+        widget_mock.start_updates.assert_called_once()
+
+    def test_stop_operation_sets_finalizing(self) -> None:
+        window = _build_window()
+        widget_mock = MagicMock()
+        window._floating_widget = widget_mock
+        window._update_ui_state = MagicMock()
+        window._show_finalization_progress_dialog = MagicMock()
+
+        window._begin_stop_operation()
+
+        widget_mock.set_state.assert_called_with("finalizing")
+
+    def test_stop_operation_finished_hides_widget(self) -> None:
+        window = _build_window()
+        widget_mock = MagicMock()
+        window._floating_widget = widget_mock
+        window._on_recording_stopped = MagicMock()
+
+        window._on_stop_operation_finished(Path("D:/out.mp4"), None)
+
+        widget_mock.stop_updates.assert_called_once()
+        widget_mock.save_position.assert_called_once()
+        widget_mock.hide.assert_called_once()
+        widget_mock.set_state.assert_called_with("idle")
+
+    def test_pause_resume_update_widget_state(self) -> None:
+        window = _build_window()
+        widget_mock = MagicMock()
+        window._floating_widget = widget_mock
+        window._set_status_updates_enabled = MagicMock()
+        window._update_ui_state = MagicMock()
+
+        window._on_recording_paused()
+        window._on_recording_resumed()
+
+        states = [c.args[0] for c in widget_mock.set_state.call_args_list]
+        assert states == ["paused", "recording"]
+
+    def test_metrics_tick_feeds_controller_data(self) -> None:
+        window = _build_window()
+        widget_mock = MagicMock()
+        widget_mock.isVisible.return_value = True
+        window._floating_widget = widget_mock
+        window._recording_controller.frame_metrics = {"actual_fps": 24.5}
+
+        window._update_floating_widget_metrics()
+
+        args = widget_mock.update_metrics.call_args.args
+        assert args[0] == window._recording_controller.elapsed_time
+        assert args[1] == 24.5
+        assert args[2] == window._recording_controller.temp_video_size
+
+    def test_metrics_skipped_when_widget_hidden(self) -> None:
+        window = _build_window()
+        widget_mock = MagicMock()
+        widget_mock.isVisible.return_value = False
+        window._floating_widget = widget_mock
+
+        window._update_floating_widget_metrics()
+
+        widget_mock.update_metrics.assert_not_called()
+
+    def test_widget_creation_failure_disables_it(self) -> None:
+        """Ошибка создания виджета не ломает запись (defensive)."""
+        window = _build_window()
+        window._floating_widget = None
+
+        with patch(
+            "gui.main_window.FloatingRecordingWidget",
+            side_effect=RuntimeError("no Qt"),
+        ):
+            result = window._get_floating_widget()
+
+        assert result is None
+
+    def test_recording_started_with_broken_widget_is_safe(self) -> None:
+        """Старт записи работает, если виджет создать не удалось."""
+        window = _build_window()
+        window._floating_widget = None
+        window._recording_indicator = MagicMock()
+        window._update_ui_state = MagicMock()
+        window._set_status_updates_enabled = MagicMock()
+
+        with patch(
+            "gui.main_window.FloatingRecordingWidget",
+            side_effect=RuntimeError("no Qt"),
+        ):
+            window._on_recording_started(Path("D:/capture.mp4"))  # не падает

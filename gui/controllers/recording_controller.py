@@ -629,6 +629,16 @@ class RecordingController:
             return int(self._audio_recorder.dropped_chunks)
         return 0
 
+    @property
+    def temp_video_size(self) -> int | None:
+        """Размер temp-файла видео в байтах (растёт при записи, #158)."""
+        if self._temp_video is not None:
+            try:
+                return self._temp_video.stat().st_size
+            except OSError:
+                return None
+        return None
+
     def get_recoveries_count(self) -> int:
         if self._video_recorder and hasattr(
             self._video_recorder, "_ffmpeg_writer"

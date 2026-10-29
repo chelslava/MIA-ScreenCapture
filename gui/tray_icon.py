@@ -14,6 +14,7 @@ from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QMenu, QMessageBox, QSystemTrayIcon
 
 from core.i18n import _
+from gui.constants import RECORDING_INDICATOR_TICK_MS
 from gui.desktop_actions import DesktopActionId, get_desktop_action_spec
 from logger_config import get_module_logger
 
@@ -230,7 +231,8 @@ class TrayIcon(QSystemTrayIcon):
                 self._animation_timer.stop()
             else:
                 self.setToolTip("MIA-ScreenCapture - Запись")
-                self._animation_timer.start(500)  # Мигание каждые 500мс
+                # Единый такт мигания recording-индикаторов (#158, #161)
+                self._animation_timer.start(RECORDING_INDICATOR_TICK_MS)
         else:
             self.setIcon(self._icons["idle"])
             self.setToolTip("MIA-ScreenCapture - Ожидание")
