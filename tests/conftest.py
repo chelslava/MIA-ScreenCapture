@@ -50,6 +50,50 @@ pytest_pathlib.cleanup_dead_symlinks = _safe_cleanup_dead_symlinks
 pytest_tmpdir.cleanup_dead_symlinks = _safe_cleanup_dead_symlinks
 
 
+def _cleanup_stale_pytest_dirs(
+    max_age_hours: float = 24.0,
+    retries: int = 3,
+    backoff_seconds: float = 0.05,
+) -> None:
+    """
+    Удаляет stale-директории прошлых прогонов с retry-бэкоффом (#163).
+
+    Прошлые basetemp-каталоги `pytest_*` копятся в tests/.local_tmp/system:
+    без очистки — неограниченный рост, а удаление на Windows может упасть
+    с WinError 5 (антивирус/индексатор держат файл). Очистка best-effort:
+    единичная неудача не должна ломать прогон — каталог дочистит
+    следующий запуск.
+
+    Args:
+        max_age_hours: Возраст каталога, после которого он подлежит удалению.
+        retries: Число попыток удаления одного каталога.
+        backoff_seconds: Пауза между попытками.
+    """
+    cutoff = time.time() - max_age_hours * 3600.0
+    try:
+        candidates = list(_LOCAL_SYSTEM_TMP.glob("pytest_*"))
+    except OSError:
+        return
+
+    for stale_dir in candidates:
+        try:
+            if not stale_dir.is_dir():
+                continue
+            if stale_dir.stat().st_mtime > cutoff:
+                continue
+        except OSError:
+            continue
+
+        for attempt in range(retries):
+            try:
+                shutil.rmtree(stale_dir, ignore_errors=False)
+                break
+            except OSError:
+                if attempt < retries - 1:
+                    time.sleep(backoff_seconds * (attempt + 1))
+        # Остаток (заблокирован антивирусом) доочистит следующий запуск
+
+
 def _bootstrap_local_tmp_dirs() -> None:
     """
     Подготавливает изолированные tmp/cache директории для pytest.
@@ -60,6 +104,7 @@ def _bootstrap_local_tmp_dirs() -> None:
     _LOCAL_PYTEST_BASETEMP.mkdir(parents=True, exist_ok=True)
     (_LOCAL_TMP_ROOT / ".pytest_cache").mkdir(parents=True, exist_ok=True)
     _LOCAL_SYSTEM_TMP.mkdir(parents=True, exist_ok=True)
+    _cleanup_stale_pytest_dirs()
     tempfile.tempdir = str(_LOCAL_SYSTEM_TMP)
     os.environ["TMP"] = str(_LOCAL_SYSTEM_TMP)
     os.environ["TEMP"] = str(_LOCAL_SYSTEM_TMP)
