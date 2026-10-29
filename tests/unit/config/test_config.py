@@ -21,6 +21,7 @@ from config import (
     ConfigManager,
     OutputSettings,
     RateLimitSettings,
+    RecordingTunables,
     SchedulerSettings,
     VideoSettings,
     get_config,
@@ -676,3 +677,103 @@ class TestRateLimitSettings:
 
         assert isinstance(settings.api.rate_limit, RateLimitSettings)
         assert settings.api.rate_limit.requests_per_minute == 60
+
+
+class TestRecordingTunables:
+    """Тонкие параметры записи (#155)."""
+
+    def test_default_values_match_legacy_behavior(self):
+        """Дефолты идентичны прежнему поведению конструкторов."""
+        tunables = RecordingTunables()
+
+        assert tunables.enable_frame_skip is False
+        assert tunables.max_recovery_attempts == 3
+        assert tunables.disk_warning_mb == 1024.0
+        assert tunables.disk_critical_mb == 100.0
+        assert tunables.disk_check_interval_s == 30.0
+        assert tunables.max_segment_size_mb is None
+        assert tunables.max_segment_duration_s is None
+        assert tunables.health_check_interval_s == 1.0
+        assert tunables.audio_max_recovery_attempts == 3
+
+    def test_schema_parses_section(self):
+        """AppSettingsSchema разбирает секцию recording_tunables."""
+        validated = AppSettingsSchema.model_validate(
+            {
+                "recording_tunables": {
+                    "enable_frame_skip": True,
+                    "max_recovery_attempts": 5,
+                    "disk_warning_mb": 2048,
+                    "max_segment_size_mb": 256,
+                }
+            }
+        )
+
+        tunables = validated.recording_tunables
+        assert tunables.enable_frame_skip is True
+        assert tunables.max_recovery_attempts == 5
+        assert tunables.disk_warning_mb == 2048
+        assert tunables.max_segment_size_mb == 256
+        # Непереданные поля — дефолты
+        assert tunables.disk_critical_mb == 100.0
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("max_recovery_attempts", 0),
+            ("max_recovery_attempts", 11),
+            ("disk_check_interval_s", 0.5),
+            ("health_check_interval_s", 0.0),
+            ("audio_max_recovery_attempts", 0),
+            ("max_segment_size_mb", 0.5),
+            ("disk_critical_mb", -1),
+        ],
+    )
+    def test_schema_rejects_invalid_values(self, field: str, value):
+        """Невалидные значения отклоняются схемой."""
+        with pytest.raises(ValidationError) as exc_info:
+            AppSettingsSchema.model_validate(
+                {"recording_tunables": {field: value}}
+            )
+        assert field in str(exc_info.value)
+
+    def test_schema_rejects_critical_above_warning(self):
+        """Критический порог диска выше warning — ошибка валидации."""
+        with pytest.raises(ValidationError) as exc_info:
+            AppSettingsSchema.model_validate(
+                {
+                    "recording_tunables": {
+                        "disk_warning_mb": 500,
+                        "disk_critical_mb": 1000,
+                    }
+                }
+            )
+        assert "disk_critical_mb" in str(exc_info.value)
+
+    def test_dict_to_settings_converts_tunables(self, temp_config_file: Path):
+        """`_dict_to_settings` разворачивает словарь tunables в dataclass."""
+        manager = ConfigManager(temp_config_file)
+
+        settings = manager._dict_to_settings(
+            {
+                "recording_tunables": {
+                    "enable_frame_skip": True,
+                    "max_segment_duration_s": 300,
+                }
+            }
+        )
+
+        assert isinstance(settings.recording_tunables, RecordingTunables)
+        assert settings.recording_tunables.enable_frame_skip is True
+        assert settings.recording_tunables.max_segment_duration_s == 300
+
+    def test_dict_to_settings_defaults_tunables_when_missing(
+        self, temp_config_file: Path
+    ):
+        """Без секции tunables (старый config.json) применяются дефолты."""
+        manager = ConfigManager(temp_config_file)
+
+        settings = manager._dict_to_settings({})
+
+        assert isinstance(settings.recording_tunables, RecordingTunables)
+        assert settings.recording_tunables.enable_frame_skip is False

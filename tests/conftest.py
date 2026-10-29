@@ -581,6 +581,29 @@ MockQRadioButton = _create_widget_mock_class("QRadioButton")
 MockQCheckBox = _create_widget_mock_class("QCheckBox")
 MockQComboBox = _create_widget_mock_class("QComboBox")
 MockQSpinBox = _create_widget_mock_class("QSpinBox")
+
+
+class _MockQDoubleSpinBoxBase(MockQWidgetBase):
+    """Методы QDoubleSpinBox, отсутствующие в базовом mock."""
+
+    valueChanged = MockSignal()
+
+    def setDecimals(self, decimals: int):
+        self._decimals = decimals
+
+    def decimals(self) -> int:
+        return getattr(self, "_decimals", 2)
+
+    def setSpecialValueText(self, text: str):
+        self._special_value_text = text
+
+    def specialValueText(self) -> str:
+        return getattr(self, "_special_value_text", "")
+
+
+MockQDoubleSpinBox = _create_mock_class(
+    "QDoubleSpinBox", (_MockQDoubleSpinBoxBase,)
+)
 MockQLineEdit = _create_widget_mock_class("QLineEdit")
 MockQTextEdit = _create_widget_mock_class("QTextEdit")
 MockQListWidget = _create_widget_mock_class("QListWidget")
@@ -764,7 +787,8 @@ class MockQFormLayoutBase:
     def setContentsMargins(self, left, top, right, bottom):
         pass
 
-    def addRow(self, label, field):
+    def addRow(self, label, field=None):
+        # addRow(widget) одной строкой — легитимная форма Qt
         self._rows.append((label, field))
 
     def setSpacing(self, spacing):
@@ -812,6 +836,7 @@ qt_widgets_mock.QRadioButton = MockQRadioButton
 qt_widgets_mock.QCheckBox = MockQCheckBox
 qt_widgets_mock.QComboBox = MockQComboBox
 qt_widgets_mock.QSpinBox = MockQSpinBox
+qt_widgets_mock.QDoubleSpinBox = MockQDoubleSpinBox
 qt_widgets_mock.QLineEdit = MockQLineEdit
 qt_widgets_mock.QTextEdit = MockQTextEdit
 qt_widgets_mock.QTextBrowser = _create_mock_class(

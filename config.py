@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from logger_config import get_module_logger
 from utils import atomic_write_json
@@ -111,6 +111,34 @@ class OutputSettingsSchema(BaseModel):
 
     default_path: str = Field(default="")
     filename_template: str = Field(default="recording_{datetime}")
+
+
+class RecordingTunablesSchema(BaseModel):
+    """Схема тонких параметров записи (#155).
+
+    Значения по умолчанию идентичны прежнему поведению: до этого
+    параметры были доступны только через конструкторы writer'ов.
+    """
+
+    enable_frame_skip: bool = Field(default=False)
+    max_recovery_attempts: int = Field(default=3, ge=1, le=10)
+    disk_warning_mb: float = Field(default=1024.0, ge=0, le=2_000_000)
+    disk_critical_mb: float = Field(default=100.0, ge=0, le=2_000_000)
+    disk_check_interval_s: float = Field(default=30.0, ge=1, le=600)
+    # None — лимит сегментов отключён (прежнее поведение)
+    max_segment_size_mb: float | None = Field(default=None, ge=1)
+    max_segment_duration_s: float | None = Field(default=None, ge=1)
+    health_check_interval_s: float = Field(default=1.0, ge=0.1, le=60)
+    audio_max_recovery_attempts: int = Field(default=3, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def validate_disk_thresholds(self) -> "RecordingTunablesSchema":
+        """Критический порог диска не должен превышать warning."""
+        if self.disk_critical_mb > self.disk_warning_mb:
+            raise ValueError(
+                "disk_critical_mb не может быть больше disk_warning_mb"
+            )
+        return self
 
 
 class RateLimitSettingsSchema(BaseModel):
@@ -234,6 +262,9 @@ class AppSettingsSchema(BaseModel):
 
     video: VideoSettingsSchema = Field(default_factory=VideoSettingsSchema)
     audio: AudioSettingsSchema = Field(default_factory=AudioSettingsSchema)
+    recording_tunables: RecordingTunablesSchema = Field(
+        default_factory=RecordingTunablesSchema
+    )
     capture: CaptureSettingsSchema = Field(
         default_factory=CaptureSettingsSchema
     )
@@ -281,6 +312,26 @@ class AppSettingsSchema(BaseModel):
 CONFIG_DIR = Path(__file__).parent / "config"
 CONFIG_DIR.mkdir(exist_ok=True)
 CONFIG_FILE = CONFIG_DIR / "config.json"
+
+
+@dataclass
+class RecordingTunables:
+    """Тонкие параметры записи (#155).
+
+    Настраиваются в config.json (`recording_tunables`) и в GUI
+    (вкладка настроек). Дефолты идентичны прежнему поведению
+    конструкторов рекордеров.
+    """
+
+    enable_frame_skip: bool = False
+    max_recovery_attempts: int = 3
+    disk_warning_mb: float = 1024.0
+    disk_critical_mb: float = 100.0
+    disk_check_interval_s: float = 30.0
+    max_segment_size_mb: float | None = None
+    max_segment_duration_s: float | None = None
+    health_check_interval_s: float = 1.0
+    audio_max_recovery_attempts: int = 3
 
 
 @dataclass
@@ -414,6 +465,9 @@ class AppSettings:
 
     video: VideoSettings = field(default_factory=VideoSettings)
     audio: AudioSettings = field(default_factory=AudioSettings)
+    recording_tunables: RecordingTunables = field(
+        default_factory=RecordingTunables
+    )
     capture: CaptureSettings = field(default_factory=CaptureSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
     api: APISettings = field(default_factory=APISettings)
@@ -504,6 +558,14 @@ class ConfigManager:
         try:
             video = VideoSettings(**data.get("video", {}))
             audio = AudioSettings(**data.get("audio", {}))
+            # Вложенные секции приходят из Pydantic model_dump() словарями —
+            # разворачиваем в dataclass вручную (#152, #155)
+            tunables_data = data.get("recording_tunables")
+            recording_tunables = (
+                RecordingTunables(**tunables_data)
+                if isinstance(tunables_data, dict)
+                else RecordingTunables()
+            )
             capture = CaptureSettings(**data.get("capture", {}))
             output = OutputSettings(**data.get("output", {}))
             api_data = dict(data.get("api", {}))
@@ -525,6 +587,7 @@ class ConfigManager:
             return AppSettings(
                 video=video,
                 audio=audio,
+                recording_tunables=recording_tunables,
                 capture=capture,
                 output=output,
                 api=api,

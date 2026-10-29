@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from config import RecordingTunables
 from core.recording_types import AudioMode, CaptureMode
 from gui.controllers.recording_controller import RecordingController
 from gui.controllers.settings_controller import SettingsController
@@ -646,3 +647,108 @@ class TestAudioChunksDroppedCallback:
     def test_dropped_audio_chunks_reads_recorder_counter(self) -> None:
         controller = RecordingController()
         assert controller.dropped_audio_chunks == 0
+
+
+class TestRecordingTunablesPlumbing:
+    """Прокидывание тонких параметров из config.json (#155)."""
+
+    @patch("gui.controllers.recording_controller.get_config")
+    @patch("gui.controllers.recording_controller.VideoRecorder")
+    @patch("gui.controllers.recording_controller.RecordingEncoder")
+    @patch("gui.controllers.recording_controller.check_ffmpeg")
+    def test_start_recording_passes_tunables_to_video_recorder(
+        self,
+        mock_check_ffmpeg: MagicMock,
+        mock_encoder: MagicMock,
+        mock_video_recorder: MagicMock,
+        mock_get_config: MagicMock,
+    ) -> None:
+        """VideoRecorder получает tunables из конфигурации."""
+        mock_check_ffmpeg.return_value = FFmpegStatus(
+            available=True, version="5.0"
+        )
+        encoder_instance = MagicMock()
+        encoder_instance.setup.return_value = (
+            Path("/tmp/video.mp4"),
+            Path("/tmp/audio.wav"),
+        )
+        mock_encoder.return_value = encoder_instance
+        video_instance = MagicMock()
+        video_instance.start.return_value = True
+        mock_video_recorder.return_value = video_instance
+        mock_get_config.return_value.settings.recording_tunables = (
+            RecordingTunables(
+                enable_frame_skip=True,
+                max_recovery_attempts=7,
+                disk_warning_mb=4096.0,
+                disk_critical_mb=512.0,
+                disk_check_interval_s=15.0,
+                max_segment_size_mb=128.0,
+                max_segment_duration_s=600.0,
+                health_check_interval_s=2.0,
+            )
+        )
+
+        controller = RecordingController()
+        success, _ = controller.start_recording(
+            Path("/output/test.mp4"),
+            CaptureSettings(),
+            AudioSettings(),
+            VideoSettings(),
+        )
+
+        assert success is True
+        _, kwargs = mock_video_recorder.call_args
+        assert kwargs["enable_frame_skip"] is True
+        assert kwargs["max_recovery_attempts"] == 7
+        assert kwargs["disk_warning_mb"] == 4096.0
+        assert kwargs["disk_critical_mb"] == 512.0
+        assert kwargs["disk_check_interval_s"] == 15.0
+        assert kwargs["max_segment_size_mb"] == 128.0
+        assert kwargs["max_segment_duration_s"] == 600.0
+        assert kwargs["health_check_interval_s"] == 2.0
+
+    @patch("gui.controllers.recording_controller.get_config")
+    @patch("gui.controllers.recording_controller.AudioRecorder")
+    @patch("gui.controllers.recording_controller.VideoRecorder")
+    @patch("gui.controllers.recording_controller.RecordingEncoder")
+    @patch("gui.controllers.recording_controller.check_ffmpeg")
+    def test_start_recording_passes_audio_recovery_attempts(
+        self,
+        mock_check_ffmpeg: MagicMock,
+        mock_encoder: MagicMock,
+        mock_video_recorder: MagicMock,
+        mock_audio_recorder: MagicMock,
+        mock_get_config: MagicMock,
+    ) -> None:
+        """AudioRecorder получает audio_max_recovery_attempts."""
+        mock_check_ffmpeg.return_value = FFmpegStatus(
+            available=True, version="5.0"
+        )
+        encoder_instance = MagicMock()
+        encoder_instance.setup.return_value = (
+            Path("/tmp/video.mp4"),
+            Path("/tmp/audio.wav"),
+        )
+        mock_encoder.return_value = encoder_instance
+        video_instance = MagicMock()
+        video_instance.start.return_value = True
+        mock_video_recorder.return_value = video_instance
+        audio_instance = MagicMock()
+        audio_instance.start.return_value = True
+        mock_audio_recorder.return_value = audio_instance
+        mock_get_config.return_value.settings.recording_tunables = (
+            RecordingTunables(audio_max_recovery_attempts=8)
+        )
+
+        controller = RecordingController()
+        success, _ = controller.start_recording(
+            Path("/output/test.mp4"),
+            CaptureSettings(),
+            AudioSettings(audio_type=AudioMode.MIC),
+            VideoSettings(),
+        )
+
+        assert success is True
+        _, kwargs = mock_audio_recorder.call_args
+        assert kwargs["max_recovery_attempts"] == 8

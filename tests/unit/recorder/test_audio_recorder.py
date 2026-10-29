@@ -1019,3 +1019,19 @@ class TestAudioRecorderEventBus:
             recorder._enqueue_audio_chunk(b"overflow", 1)
 
         assert len(received) == 1
+
+
+class TestAudioRecoveryAttemptsConfig:
+    """Настраиваемые попытки восстановления аудио (#155)."""
+
+    def test_default_recovery_attempts_is_three(self) -> None:
+        recorder = AudioRecorder()
+        assert recorder._max_recovery_attempts == 3
+
+    def test_custom_recovery_attempts_applied(self) -> None:
+        recorder = AudioRecorder(max_recovery_attempts=5)
+        assert recorder._max_recovery_attempts == 5
+
+    def test_recovery_attempts_clamped_to_minimum(self) -> None:
+        recorder = AudioRecorder(max_recovery_attempts=0)
+        assert recorder._max_recovery_attempts == 1

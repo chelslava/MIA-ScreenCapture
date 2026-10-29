@@ -13,6 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from config import get_config
 from core.recording_state import (
     AudioSettings,
     CaptureSettings,
@@ -277,15 +278,29 @@ class RecordingController:
             self._cleanup()
             return False, error_msg
 
+        # Тонкие параметры записи из config.json (#155)
+        tunables = get_config().settings.recording_tunables
+
         try:
             # Инициализация видеозаписи
             preset = getattr(video, "preset", "medium")
+            # Тонкие параметры записи из config.json (#155): до этого
+            # frame-skip, recovery, пороги диска и лимиты сегментов были
+            # доступны только через конструкторы writer'ов.
             self._video_recorder = VideoRecorder(
                 fps=video.fps,
                 codec=video.codec,
                 bitrate=video.bitrate,
                 use_ffmpeg=True,
                 preset=preset,
+                max_recovery_attempts=tunables.max_recovery_attempts,
+                disk_warning_mb=tunables.disk_warning_mb,
+                disk_critical_mb=tunables.disk_critical_mb,
+                disk_check_interval_s=tunables.disk_check_interval_s,
+                max_segment_size_mb=tunables.max_segment_size_mb,
+                max_segment_duration_s=tunables.max_segment_duration_s,
+                enable_frame_skip=tunables.enable_frame_skip,
+                health_check_interval_s=tunables.health_check_interval_s,
                 event_bus=self._event_bus,
             )
             if self._on_error:
@@ -303,7 +318,9 @@ class RecordingController:
 
             # Запуск аудиозаписи при необходимости
             if audio.audio_type in (AudioMode.MIC, AudioMode.BOTH):
-                self._audio_recorder = AudioRecorder()
+                self._audio_recorder = AudioRecorder(
+                    max_recovery_attempts=tunables.audio_max_recovery_attempts
+                )
                 self._audio_recorder.set_callbacks(
                     on_chunks_dropped=self._on_audio_chunks_dropped
                 )
@@ -317,7 +334,11 @@ class RecordingController:
                     return False, "Не удалось запустить аудиозапись"
             elif audio.audio_type == AudioMode.SYSTEM:
                 try:
-                    self._audio_recorder = SystemAudioRecorder()
+                    self._audio_recorder = SystemAudioRecorder(
+                        max_recovery_attempts=(
+                            tunables.audio_max_recovery_attempts
+                        )
+                    )
                     self._audio_recorder.set_callbacks(
                         on_chunks_dropped=self._on_audio_chunks_dropped
                     )

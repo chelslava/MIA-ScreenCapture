@@ -1523,3 +1523,34 @@ class TestVideoRecorderErrorHandling:
             recorder._capture_loop()
 
         assert "Ошибка при остановке capture session в finally" in caplog.text
+
+    def test_start_passes_tunables_to_ffmpeg_writer(
+        self, tmp_path: Path
+    ) -> None:
+        """Тонкие параметры (#155) передаются в FFmpegVideoWriter."""
+        recorder = VideoRecorder(
+            use_ffmpeg=True,
+            enable_frame_skip=True,
+            health_check_interval_s=2.5,
+        )
+        capture_area = CaptureArea(type="full", width=1280, height=720)
+        mock_writer = MagicMock()
+        mock_writer.open.return_value = True
+        mock_writer_class = MagicMock(return_value=mock_writer)
+
+        with (
+            patch(
+                "recorder.video_recorder.get_platform", return_value="windows"
+            ),
+            patch(
+                "recorder.ffmpeg_writer.FFmpegVideoWriter",
+                mock_writer_class,
+            ),
+            patch.object(recorder, "_capture_loop"),
+        ):
+            result = recorder.start(tmp_path / "video.mp4", capture_area)
+
+        assert result is True
+        _, kwargs = mock_writer_class.call_args
+        assert kwargs["enable_frame_skip"] is True
+        assert kwargs["health_check_interval_s"] == 2.5

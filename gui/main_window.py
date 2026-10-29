@@ -76,6 +76,7 @@ from gui.views.output_view import OutputView
 from gui.views.post_processing_view import PostProcessingView
 from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_indicator import RecordingIndicatorOverlay
+from gui.views.recording_tunables_view import RecordingTunablesView
 from gui.views.video_view import VideoView
 from logger_config import get_module_logger, open_logs_folder
 from recorder.utils import (
@@ -571,6 +572,13 @@ class MainWindow(QMainWindow):
             self._on_post_processing_changed
         )
         layout.addWidget(self._post_processing_view)
+
+        # Тонкие параметры записи (#155)
+        self._recording_tunables_view = RecordingTunablesView()
+        self._recording_tunables_view.settings_changed.connect(
+            self._on_recording_tunables_changed
+        )
+        layout.addWidget(self._recording_tunables_view)
 
         layout.addStretch()
         return widget
@@ -1098,6 +1106,12 @@ class MainWindow(QMainWindow):
                 get_config().settings.post_processing
             )
 
+        # Тонкие параметры записи (#155)
+        if hasattr(self, "_recording_tunables_view"):
+            self._recording_tunables_view.set_settings(
+                get_config().settings.recording_tunables
+            )
+
         # Недавние записи
         self._refresh_recent_recordings()
 
@@ -1108,6 +1122,15 @@ class MainWindow(QMainWindow):
         new_settings = self._post_processing_view.get_settings()
         config = get_config()
         config.settings.post_processing = new_settings
+        config.save()
+
+    def _on_recording_tunables_changed(self) -> None:
+        """Сохранение тонких параметров записи при изменении в UI (#155)."""
+        if not hasattr(self, "_recording_tunables_view"):
+            return
+        new_tunables = self._recording_tunables_view.get_settings()
+        config = get_config()
+        config.settings.recording_tunables = new_tunables
         config.save()
 
     def _refresh_recent_recordings(self) -> None:

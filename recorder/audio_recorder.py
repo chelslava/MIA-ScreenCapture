@@ -99,6 +99,7 @@ class AudioRecorder:
         chunk_size: int = 1024,
         event_bus: "EventBus | None" = None,
         audio_queue_max_chunks: int = _AUDIO_QUEUE_MAX_CHUNKS,
+        max_recovery_attempts: int = 3,
     ):
         """
         Инициализация аудиозаписи.
@@ -112,6 +113,8 @@ class AudioRecorder:
                 Большие значения сглаживают пиковые задержки writer-потока
                 (#86). При 44100 Hz/2ch/1024 frames чанк ≈ 11,6 мс, так что
                 2048 чанков ≈ 23 сек буфера при полной остановке записи.
+            max_recovery_attempts: Сколько раз перезапускать аудиопоток
+                при сбое, прежде чем сообщить терминальную ошибку (#155).
         """
         self.config = AudioConfig(
             sample_rate=sample_rate, channels=channels, chunk_size=chunk_size
@@ -155,7 +158,7 @@ class AudioRecorder:
 
         # Crash recovery tracking
         self._recovery_attempts = 0
-        self._max_recovery_attempts = 3
+        self._max_recovery_attempts = max(1, int(max_recovery_attempts))
         self._last_recovery_time = 0.0
         self._recovery_backoff_delays = [1.0, 2.0, 4.0]
         self._terminal_failure_reported = False
