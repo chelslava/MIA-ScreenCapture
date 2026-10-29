@@ -146,3 +146,38 @@ class TestAppearanceView:
         # Состояние виджета обновлено, но сигнал не отправлен
         assert received == []
         assert not view._minimize_to_tray_checkbox.isChecked()
+
+
+class TestUiAnimationsSetting:
+    """Чекбокс плавных переходов между вкладками (#161)."""
+
+    def test_ui_animations_checkbox_present(
+        self, qapp: QApplication
+    ) -> None:
+        view = AppearanceView()
+
+        assert view._ui_animations_checkbox is not None
+
+    def test_ui_animations_changed_emitted_on_toggle(
+        self, qapp: QApplication
+    ) -> None:
+        view = AppearanceView()
+        received: list[bool] = []
+        view.ui_animations_changed.connect(received.append)
+
+        view._on_ui_animations_toggled(True)
+        view._on_ui_animations_toggled(False)
+
+        assert received == [True, False]
+
+    def test_set_ui_animations_no_signal(self, qapp: QApplication) -> None:
+        """set_ui_animations не эмитит сигнал (защита от циклов)."""
+        view = AppearanceView()
+        received: list[bool] = []
+        view.ui_animations_changed.connect(received.append)
+
+        view.set_ui_animations(True)
+        view.set_ui_animations(False)
+
+        assert received == []
+        assert not view._ui_animations_checkbox.isChecked()
