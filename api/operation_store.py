@@ -39,6 +39,10 @@ class APIOperationStore:
         self._lock = threading.Lock()
         self._operations: dict[str, APIOperation] = {}
         self._events: dict[str, threading.Event] = {}
+        # Порядок вставки для детерминированного вытеснения (#156):
+        # completed_at может совпасть до микросекунды на быстрых машинах
+        self._created_seq: dict[str, int] = {}
+        self._sequence = 0
         self._inflight_semaphore = threading.Semaphore(self._max_inflight)
         self._executor = ThreadPoolExecutor(
             max_workers=self._max_workers,
@@ -90,11 +94,16 @@ class APIOperationStore:
             self._cleanup_expired_locked()
             self._operations[operation_id] = operation
             self._events[operation_id] = done_event
+            self._sequence += 1
+            self._created_seq[operation_id] = self._sequence
             self._submitted_total += 1
             self._inflight_current += 1
             self._max_inflight_seen = max(
                 self._max_inflight_seen, self._inflight_current
             )
+            # Вытеснение ПОСЛЕ добавления: инвариант
+            # `len <= max_store_size` соблюдается во всех точках наблюдения
+            self._evict_over_capacity_locked()
 
         try:
             self._executor.submit(self._run_operation, operation_id, runner)
@@ -163,6 +172,7 @@ class APIOperationStore:
         """Возвращает snapshot операции по id."""
         with self._lock:
             self._cleanup_expired_locked()
+            self._evict_over_capacity_locked()
             operation = self._operations.get(operation_id)
             if operation is None:
                 return None
@@ -211,8 +221,7 @@ class APIOperationStore:
         for op_id in stale_ids:
             self._operations.pop(op_id, None)
             self._events.pop(op_id, None)
-
-        self._evict_over_capacity_locked()
+            self._created_seq.pop(op_id, None)
 
     def _evict_over_capacity_locked(self) -> None:
         """
@@ -226,17 +235,21 @@ class APIOperationStore:
         if overflow <= 0:
             return
 
-        def _completion_key(item: tuple[str, APIOperation]) -> tuple:
+        def _eviction_key(item: tuple[str, APIOperation]) -> tuple:
             op_id, op = item
+            # Порядок вставки, а не completed_at: timestamp может
+            # совпасть, а op_id случаен — недетерминированно (#156)
+            seq = self._created_seq.get(op_id, 0)
             if op.completed_at is None:
                 # Running-операции в конец очереди вытеснения
-                return (1, op.created_at, op_id)
-            return (0, op.completed_at, op_id)
+                return (1, seq, op_id)
+            return (0, seq, op_id)
 
-        oldest_first = sorted(self._operations.items(), key=_completion_key)
+        oldest_first = sorted(self._operations.items(), key=_eviction_key)
         for op_id, _op in oldest_first[:overflow]:
             self._operations.pop(op_id, None)
             self._events.pop(op_id, None)
+            self._created_seq.pop(op_id, None)
             self._evicted_total += 1
 
     def _build_rejected_operation(
@@ -256,8 +269,11 @@ class APIOperationStore:
             done_event = threading.Event()
             done_event.set()
             self._events[operation_id] = done_event
+            self._sequence += 1
+            self._created_seq[operation_id] = self._sequence
             self._rejected_total += 1
             self._failed_total += 1
+            self._evict_over_capacity_locked()
         return operation
 
     def _release_inflight_slot(self) -> None:

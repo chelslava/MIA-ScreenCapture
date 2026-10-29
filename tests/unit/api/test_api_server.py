@@ -985,7 +985,11 @@ class TestAPIOperationStoreBounded:
             first_id: str | None = None
             for index in range(8):
                 operation = store.submit("quick", lambda idx=index: {"n": idx})
-                store.wait(operation.operation_id, timeout=1.0)
+                # Детерминизм: каждая операция подтверждённо завершена до
+                # следующего submit, иначе порядок вытеснения недетерминирован
+                completed = store.wait(operation.operation_id, timeout=5.0)
+                assert completed is not None
+                assert completed.status == "succeeded"
                 if first_id is None:
                     first_id = operation.operation_id
 
