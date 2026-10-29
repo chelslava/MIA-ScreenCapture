@@ -956,6 +956,91 @@ class TestAPIOperationStore:
             store.stop()
 
 
+class TestAPIOperationStoreBounded:
+    """Bounded store и метрики размера (#156)."""
+
+    def test_store_size_metric_exposed(self) -> None:
+        """get_metrics_snapshot содержит store_size и evicted_total."""
+        store = APIOperationStore(max_workers=1, max_queue_size=1)
+        try:
+            operation = store.submit("quick", lambda: {"ok": True})
+            store.wait(operation.operation_id, timeout=1.0)
+
+            metrics = store.get_metrics_snapshot()
+
+            assert metrics["store_size"] >= 1
+            assert metrics["evicted_total"] == 0
+            assert metrics["max_store_size"] > 0
+        finally:
+            store.stop()
+
+    def test_evicts_oldest_completed_when_over_capacity(self) -> None:
+        """При превышении max_store_size старейшие завершённые вытесняются."""
+        store = APIOperationStore(
+            max_workers=1,
+            max_queue_size=1,
+            max_store_size=4,
+        )
+        try:
+            first_id: str | None = None
+            for index in range(8):
+                operation = store.submit("quick", lambda idx=index: {"n": idx})
+                store.wait(operation.operation_id, timeout=1.0)
+                if first_id is None:
+                    first_id = operation.operation_id
+
+            assert len(store._operations) <= 4
+            # Самая первая операция вытеснена как старейшая завершённая
+            assert first_id is not None
+            assert store.get(first_id) is None
+            metrics = store.get_metrics_snapshot()
+            assert metrics["evicted_total"] == 4
+            assert metrics["store_size"] == 4
+        finally:
+            store.stop()
+
+    def test_running_operations_evicted_last(self) -> None:
+        """Running-операция не вытесняется, пока есть завершённые."""
+        store = APIOperationStore(
+            max_workers=1,
+            max_queue_size=0,
+            max_store_size=2,
+        )
+        release_event = threading.Event()
+
+        def slow_runner() -> dict[str, bool]:
+            release_event.wait(timeout=1.0)
+            return {"success": True}
+
+        try:
+            running = store.submit("slow", slow_runner)
+            store.submit("quick", lambda: {"ok": True})
+            store.submit("quick", lambda: {"ok": True})
+
+            # Переполнение: 3 записи при max_store_size=2 — вытесняются
+            # завершённые, running остаётся
+            assert store.get(running.operation_id) is not None
+            metrics = store.get_metrics_snapshot()
+            assert metrics["store_size"] <= 2
+        finally:
+            release_event.set()
+            store.stop()
+
+    def test_expired_operations_removed_on_submit(self) -> None:
+        """TTL-очистка удаляет истёкшие операции (лениво, на submit/get)."""
+        # Отрицательный TTL: любая завершённая операция истекла сразу;
+        # ttl=0.0 недетерминирован из-за гранулярности часов Windows
+        store = APIOperationStore(ttl_seconds=-1.0, max_workers=1)
+        try:
+            operation = store.submit("quick", lambda: {"ok": True})
+            store.wait(operation.operation_id, timeout=1.0)
+
+            # Ленивая очистка на get: истёкшая операция удалена
+            assert store.get(operation.operation_id) is None
+        finally:
+            store.stop()
+
+
 class TestHealthCheckEndpoint:
     """Тесты health-check endpoint /health."""
 

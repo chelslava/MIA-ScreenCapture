@@ -12,6 +12,11 @@ from typing import Any
 from api.runtime_models import APIOperation, OperationStatus
 
 _OPERATION_RESULT_TTL_SECONDS = 600.0
+# Жёсткая верхняя граница числа записей (#156): TTL-очистка ленивая
+# (на submit/get), поэтому при интенсивной подаче операций за окно TTL
+# хранилище могло бы расти неограниченно — старые завершённые операции
+# вытесняются раньше истечения TTL.
+_API_OPERATION_MAX_STORE_SIZE = 512
 _API_OPERATION_MAX_WORKERS = 2
 _API_OPERATION_QUEUE_SIZE = 16
 
@@ -24,11 +29,13 @@ class APIOperationStore:
         ttl_seconds: float = _OPERATION_RESULT_TTL_SECONDS,
         max_workers: int = _API_OPERATION_MAX_WORKERS,
         max_queue_size: int = _API_OPERATION_QUEUE_SIZE,
+        max_store_size: int = _API_OPERATION_MAX_STORE_SIZE,
     ):
         self._ttl_seconds = ttl_seconds
         self._max_workers = max(1, int(max_workers))
         self._max_queue_size = max(0, int(max_queue_size))
         self._max_inflight = self._max_workers + self._max_queue_size
+        self._max_store_size = max(1, int(max_store_size))
         self._lock = threading.Lock()
         self._operations: dict[str, APIOperation] = {}
         self._events: dict[str, threading.Event] = {}
@@ -41,6 +48,7 @@ class APIOperationStore:
         self._completed_total = 0
         self._failed_total = 0
         self._rejected_total = 0
+        self._evicted_total = 0
         self._inflight_current = 0
         self._max_inflight_seen = 0
         self._stopped = False
@@ -204,6 +212,33 @@ class APIOperationStore:
             self._operations.pop(op_id, None)
             self._events.pop(op_id, None)
 
+        self._evict_over_capacity_locked()
+
+    def _evict_over_capacity_locked(self) -> None:
+        """
+        Вытесняет старейшие завершённые операции при переполнении (#156).
+
+        Running-операции уходят последними (их число ограничено inflight-
+        семафором и при `max_store_size >= _max_inflight` вытеснение
+        running не достигается).
+        """
+        overflow = len(self._operations) - self._max_store_size
+        if overflow <= 0:
+            return
+
+        def _completion_key(item: tuple[str, APIOperation]) -> tuple:
+            op_id, op = item
+            if op.completed_at is None:
+                # Running-операции в конец очереди вытеснения
+                return (1, op.created_at, op_id)
+            return (0, op.completed_at, op_id)
+
+        oldest_first = sorted(self._operations.items(), key=_completion_key)
+        for op_id, _op in oldest_first[:overflow]:
+            self._operations.pop(op_id, None)
+            self._events.pop(op_id, None)
+            self._evicted_total += 1
+
     def _build_rejected_operation(
         self,
         operation_type: str,
@@ -251,6 +286,9 @@ class APIOperationStore:
                 "completed_total": self._completed_total,
                 "failed_total": self._failed_total,
                 "rejected_total": self._rejected_total,
+                "evicted_total": self._evicted_total,
+                "store_size": len(self._operations),
+                "max_store_size": self._max_store_size,
                 "max_inflight_seen": self._max_inflight_seen,
                 "saturation_ratio": round(saturation, 4),
             }
