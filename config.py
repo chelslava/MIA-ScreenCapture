@@ -283,6 +283,8 @@ class AppSettingsSchema(BaseModel):
     ui_animations: bool = Field(default=True)
     # Позиция плавающего виджета записи [x, y] (#158); None — по умолчанию
     floating_widget_pos: list[int] | None = Field(default=None)
+    # Материал Windows 11 (Mica) под главным окном (#157); на Win10 игнорируется
+    win11_backdrop: bool = Field(default=False)
     language: str = Field(default="en")
     theme: str = Field(default="system")
     sidebar_width: int = Field(default=110, ge=44, le=400)
@@ -484,6 +486,7 @@ class AppSettings:
     show_notifications: bool = True
     ui_animations: bool = True
     floating_widget_pos: list[int] | None = None
+    win11_backdrop: bool = False
     language: str = "en"
     theme: str = "system"
     sidebar_width: int = 110
@@ -623,6 +626,7 @@ class ConfigManager:
                 floating_widget_pos=self._parse_floating_widget_pos(
                     data.get("floating_widget_pos")
                 ),
+                win11_backdrop=data.get("win11_backdrop", False),
                 language=data.get("language", "en"),
                 theme=data.get("theme", "system"),
                 sidebar_width=data.get("sidebar_width", 110),

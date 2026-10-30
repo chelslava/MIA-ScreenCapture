@@ -41,10 +41,7 @@ class GuiRuntimeCoordinator:
         if icon_path.exists():
             self._app._app.setWindowIcon(QIcon(str(icon_path)))
 
-        from config import get_config
-        from gui.styles.theme import apply_theme
-
-        apply_theme(self._app._app, get_config().settings.theme)
+        self._apply_theme_and_backdrop()
 
         self._setup_main_window()
         self._setup_tray_icon()
@@ -55,6 +52,23 @@ class GuiRuntimeCoordinator:
         self._app._main_window.show()
         self._app._running = True
         return self._app._app.exec()
+
+    def _apply_theme_and_backdrop(self) -> None:
+        """Применяет тему и материал Windows 11 до создания окна (#157).
+
+        Флаг материала выставляется до apply_theme — QSS строится
+        с полупрозрачным фоном; DWM-атрибут применит main_window
+        после создания hwnd.
+        """
+        from config import get_config
+        from gui.styles.backdrop import resolve_backdrop_active
+        from gui.styles.theme import apply_theme, set_backdrop_active
+
+        config = get_config()
+        set_backdrop_active(
+            resolve_backdrop_active(config.settings.win11_backdrop)
+        )
+        apply_theme(self._app._app, config.settings.theme)
 
     def _setup_main_window(self) -> None:
         """Создаёт главное окно приложения."""

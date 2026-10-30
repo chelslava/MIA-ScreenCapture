@@ -179,3 +179,34 @@ class TestUiAnimationsSetting:
 
         assert received == []
         assert not view._ui_animations_checkbox.isChecked()
+
+
+class TestWin11BackdropSetting:
+    """Чекбокс материала Windows 11 (#157)."""
+
+    def test_backdrop_checkbox_present(self, qapp: QApplication) -> None:
+        view = AppearanceView()
+        assert view._win11_backdrop_checkbox is not None
+
+    def test_backdrop_changed_emitted_on_toggle(
+        self, qapp: QApplication
+    ) -> None:
+        view = AppearanceView()
+        received: list[bool] = []
+        view.win11_backdrop_changed.connect(received.append)
+
+        view._on_win11_backdrop_toggled(True)
+        view._on_win11_backdrop_toggled(False)
+
+        assert received == [True, False]
+
+    def test_set_backdrop_no_signal(self, qapp: QApplication) -> None:
+        view = AppearanceView()
+        received: list[bool] = []
+        view.win11_backdrop_changed.connect(received.append)
+
+        view.set_win11_backdrop(True)
+        view.set_win11_backdrop(False)
+
+        assert received == []
+        assert not view._win11_backdrop_checkbox.isChecked()

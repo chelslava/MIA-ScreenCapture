@@ -241,11 +241,34 @@ def get_palette(resolved: str) -> ColorPalette:
     return THEME_REGISTRY.get(resolved, LIGHT_PALETTE)
 
 
-def build_stylesheet(palette: ColorPalette) -> str:
-    """Собрать глобальный QSS из набора цветовых токенов."""
+def _hex_to_rgba(hex_color: str, alpha: int) -> str:
+    """Конвертация ``#RRGGBB`` в ``rgba(r, g, b, a)`` (Mica-прослойка #157)."""
+    value = hex_color.lstrip("#")
+    r = int(value[0:2], 16)
+    g = int(value[2:4], 16)
+    b = int(value[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+def build_stylesheet(
+    palette: ColorPalette, *, translucent_background: bool = False
+) -> str:
+    """Собрать глобальный QSS из набора цветовых токенов.
+
+    Args:
+        palette: Набор цветовых токенов.
+        translucent_background: Полупрозрачный фон окна — под материалом
+            Windows 11 (Mica); поверхности элементов остаются непрозрачными
+            ради читаемости (#157).
+    """
+    window_background = (
+        _hex_to_rgba(palette.background, 205)
+        if translucent_background
+        else palette.background
+    )
     return f"""
         QWidget, QMainWindow {{
-            background-color: {palette.background};
+            background-color: {window_background};
             color: {palette.text_primary};
         }}
         QGroupBox {{
@@ -396,6 +419,20 @@ class _DynamicThemeColors(dict):
 # Используется Theme.COLORS/status_style для выбора семантических цветов.
 _active_palette: ColorPalette = LIGHT_PALETTE
 
+# Активен ли системный материал Windows 11 (#157): apply_theme строит
+# полупрозрачный фон, чтобы материал просвечивал
+_backdrop_active: bool = False
+
+
+def set_backdrop_active(active: bool) -> None:
+    """Установить флаг активного Mica-материала (#157).
+
+    Args:
+        active: True — последующие apply_theme строят полупрозрачный фон.
+    """
+    global _backdrop_active
+    _backdrop_active = bool(active)
+
 
 def apply_theme(app: object, mode: str) -> str:
     """
@@ -423,7 +460,9 @@ def apply_theme(app: object, mode: str) -> str:
     )
     set_stylesheet = getattr(app, "setStyleSheet", None)
     if callable(set_stylesheet):
-        set_stylesheet(build_stylesheet(palette))
+        set_stylesheet(
+            build_stylesheet(palette, translucent_background=_backdrop_active)
+        )
     return resolved
 
 

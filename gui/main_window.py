@@ -68,7 +68,11 @@ from gui.models.recording_state import (
     RecordingStatus,
     VideoSettings,
 )
-from gui.styles.theme import Theme, apply_theme
+from gui.styles.backdrop import (
+    apply_mica_backdrop,
+    resolve_backdrop_active,
+)
+from gui.styles.theme import Theme, apply_theme, set_backdrop_active
 from gui.views.appearance_view import AppearanceView
 from gui.views.audio_view import AudioView
 from gui.views.capture_view import CaptureView
@@ -231,6 +235,9 @@ class MainWindow(QMainWindow):
         # Настройка окна
         self._setup_window()
         self._setup_ui()
+        # Mica требует созданный hwnd; QSS-прослойку выставляет
+        # gui_coordinator до apply_theme (#157)
+        self._apply_mica_backdrop()
         self._recordings_controller = RecordingsController(
             state=self._state,
             settings_controller=self._settings_controller,
@@ -792,6 +799,9 @@ class MainWindow(QMainWindow):
         self._appearance_view.ui_animations_changed.connect(
             self._on_ui_animations_changed
         )
+        self._appearance_view.win11_backdrop_changed.connect(
+            self._on_win11_backdrop_changed
+        )
         self.stop_operation_finished.connect(self._on_stop_operation_finished)
         self.dependency_check_completed.connect(
             self._on_dependency_check_completed
@@ -1124,6 +1134,11 @@ class MainWindow(QMainWindow):
             get_config().settings.ui_animations
         )
 
+        # Материал Windows 11 (#157)
+        self._appearance_view.set_win11_backdrop(
+            get_config().settings.win11_backdrop
+        )
+
         # Ширина боковой панели
         self._apply_sidebar_width(
             self._settings_controller.get_sidebar_width()
@@ -1262,6 +1277,36 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             apply_theme(app, mode)
+        self._apply_mica_backdrop()
+
+    def _apply_mica_backdrop(self) -> None:
+        """Включить материал Windows 11 для окна при включённой опции (#157).
+
+        DWM-материал требует hwnd, поэтому применяется после создания окна;
+        на Windows 10 / при отказе DWM окно остаётся с обычной темой.
+        """
+        active = resolve_backdrop_active(get_config().settings.win11_backdrop)
+        set_backdrop_active(active)
+        if not active:
+            return
+        if not hasattr(self, "winId"):
+            return
+        try:
+            apply_mica_backdrop(int(self.winId()))
+        except Exception as e:
+            logger.warning("Не удалось применить Mica: %s", e)
+
+    def _on_win11_backdrop_changed(self, enabled: bool) -> None:
+        """Сохранение и применение настройки материала Windows 11 (#157)."""
+        config = get_config()
+        config.settings.win11_backdrop = bool(enabled)
+        config.save()
+        from PyQt6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None:
+            apply_theme(app, self._settings_controller.get_theme_mode())
+        self._apply_mica_backdrop()
 
     def _on_language_changed(self, language: str) -> None:
         """Обработка выбора языка интерфейса."""

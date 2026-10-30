@@ -2559,3 +2559,97 @@ class TestFloatingWidgetWiring:
             side_effect=RuntimeError("no Qt"),
         ):
             window._on_recording_started(Path("D:/capture.mp4"))  # не падает
+
+
+class TestMicaBackdropWiring:
+    """Материал Windows 11 в главном окне (#157)."""
+
+    def test_enabled_backdrop_applies_dwm(self, monkeypatch) -> None:
+        window = _build_window()
+        monkeypatch.setattr(
+            "gui.main_window.get_config",
+            MagicMock(
+                return_value=SimpleNamespace(
+                    settings=SimpleNamespace(win11_backdrop=True)
+                )
+            ),
+        )
+        with (
+            patch(
+                "gui.styles.backdrop.backdrop_supported",
+                return_value=True,
+            ),
+            patch("gui.main_window.set_backdrop_active") as set_active_mock,
+            patch("gui.main_window.apply_mica_backdrop") as apply_mock,
+            patch.object(window, "winId", create=True, return_value=7777),
+        ):
+            window._apply_mica_backdrop()
+
+        set_active_mock.assert_called_once_with(True)
+        apply_mock.assert_called_once_with(7777)
+
+    def test_disabled_backdrop_skips_dwm(self, monkeypatch) -> None:
+        window = _build_window()
+        monkeypatch.setattr(
+            "gui.main_window.get_config",
+            MagicMock(
+                return_value=SimpleNamespace(
+                    settings=SimpleNamespace(win11_backdrop=False)
+                )
+            ),
+        )
+        with (
+            patch(
+                "gui.styles.backdrop.backdrop_supported",
+                return_value=True,
+            ),
+            patch("gui.main_window.set_backdrop_active") as set_active_mock,
+            patch("gui.main_window.apply_mica_backdrop") as apply_mock,
+        ):
+            window._apply_mica_backdrop()
+
+        set_active_mock.assert_called_once_with(False)
+        apply_mock.assert_not_called()
+
+    def test_windows_10_degrades_gracefully(self, monkeypatch) -> None:
+        """На Win10 (backdrop_supported=False) DWM не вызывается."""
+        window = _build_window()
+        monkeypatch.setattr(
+            "gui.main_window.get_config",
+            MagicMock(
+                return_value=SimpleNamespace(
+                    settings=SimpleNamespace(win11_backdrop=True)
+                )
+            ),
+        )
+        with (
+            patch(
+                "gui.styles.backdrop.backdrop_supported",
+                return_value=False,
+            ),
+            patch("gui.main_window.set_backdrop_active") as set_active_mock,
+            patch("gui.main_window.apply_mica_backdrop") as apply_mock,
+        ):
+            window._apply_mica_backdrop()
+
+        set_active_mock.assert_called_once_with(False)
+        apply_mock.assert_not_called()
+
+    def test_backdrop_setting_persisted(self) -> None:
+        window = _build_window()
+        config_mock = MagicMock()
+
+        with patch("gui.main_window.get_config", return_value=config_mock):
+            window._on_win11_backdrop_changed(True)
+
+        assert config_mock.settings.win11_backdrop is True
+        config_mock.save.assert_called_once()
+
+    def test_backdrop_loaded_into_view(self) -> None:
+        window = _build_window()
+
+        window._apply_settings_to_views()
+
+        window._appearance_view.set_win11_backdrop.assert_called_once_with(
+            get_config().settings.win11_backdrop
+        )

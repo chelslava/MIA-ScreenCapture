@@ -51,6 +51,7 @@ class AppearanceView(QWidget):
     hotkeys_requested = pyqtSignal()
     minimize_to_tray_changed = pyqtSignal(bool)
     ui_animations_changed = pyqtSignal(bool)
+    win11_backdrop_changed = pyqtSignal(bool)
     check_updates_requested = pyqtSignal()
     updates_settings_changed = pyqtSignal()
 
@@ -123,6 +124,22 @@ class AppearanceView(QWidget):
         )
         group_layout.addWidget(self._ui_animations_checkbox)
 
+        # Материал Windows 11 (Mica) (#157): на Win10 чекбокс не даст эффекта
+        self._win11_backdrop_checkbox = QCheckBox(
+            _("Материал Windows 11 (Mica)")
+        )
+        self._win11_backdrop_checkbox.setToolTip(
+            _(
+                "Полупрозрачный фон главного окна с системным материалом "
+                "Mica. Работает только на Windows 11 (22H2+); на Windows 10 "
+                "используется обычная тема."
+            )
+        )
+        self._win11_backdrop_checkbox.toggled.connect(
+            self._on_win11_backdrop_toggled
+        )
+        group_layout.addWidget(self._win11_backdrop_checkbox)
+
         self._hotkeys_btn = QPushButton(_("Горячие клавиши"))
         self._hotkeys_btn.clicked.connect(self._on_hotkeys_clicked)
         group_layout.addWidget(self._hotkeys_btn)
@@ -184,6 +201,28 @@ class AppearanceView(QWidget):
         """Обработка переключения чекбокса «сворачивать в трей»."""
         logger.info(f"minimize_to_tray изменено: {checked}")
         self.minimize_to_tray_changed.emit(bool(checked))
+
+    def _on_win11_backdrop_toggled(self, checked: bool) -> None:
+        """Обработка переключения материала Windows 11 (#157)."""
+        logger.info(f"win11_backdrop изменено: {checked}")
+        self.win11_backdrop_changed.emit(bool(checked))
+
+    def set_win11_backdrop(self, enabled: bool) -> None:
+        """Установить состояние чекбокса Mica без сигнала (#157).
+
+        Args:
+            enabled: Текущее значение настройки ``win11_backdrop``.
+        """
+        checkbox = self._win11_backdrop_checkbox
+        block_signals = getattr(checkbox, "blockSignals", None)
+        if callable(block_signals):
+            checkbox.blockSignals(True)
+            try:
+                checkbox.setChecked(bool(enabled))
+            finally:
+                checkbox.blockSignals(False)
+        else:
+            checkbox.setChecked(bool(enabled))
 
     def _on_ui_animations_toggled(self, checked: bool) -> None:
         """Обработка переключения чекбокса плавных переходов (#161)."""

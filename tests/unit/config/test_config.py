@@ -893,3 +893,14 @@ class TestFloatingWidgetPos:
         )
 
         assert settings.floating_widget_pos is None
+
+
+def test_win11_backdrop_default_and_parsing(temp_config_file: Path):
+    """Флаг материала Windows 11 (#157): дефолт False, читается из словаря."""
+    manager = ConfigManager(temp_config_file)
+
+    defaults = manager._dict_to_settings({})
+    parsed = manager._dict_to_settings({"win11_backdrop": True})
+
+    assert defaults.win11_backdrop is False
+    assert parsed.win11_backdrop is True
