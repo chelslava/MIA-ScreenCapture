@@ -1296,6 +1296,24 @@ class TestStartStopHotkeys:
         for action in HotkeyAction:
             assert hotkeys.get_hotkey(action) is not None, action
 
+    def test_draw_overlay_hotkey_toggles_main_window(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Хоткей рисования вызывает toggle у главного окна (#159)."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app._main_window = MagicMock()
+        app._toggle_draw_overlay_hotkey()
+        app._main_window.toggle_draw_overlay_mode.assert_called_once_with()
+
+    def test_draw_overlay_hotkey_without_window_is_noop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Без главного окна хоткей рисования — no-op (#159)."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app._main_window = None
+
+        app._toggle_draw_overlay_hotkey()  # не должно упасть
+
     def test_start_hotkey_starts_only_when_idle(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
