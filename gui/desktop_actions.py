@@ -20,6 +20,7 @@ class DesktopActionId(StrEnum):
     SHOW_DIAGNOSTICS_TAB = "show_diagnostics_tab"
     SHOW_API_TAB = "show_api_tab"
     OPEN_APP_LOGS = "open_app_logs"
+    TOGGLE_DRAW_OVERLAY = "toggle_draw_overlay"
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +100,14 @@ DESKTOP_ACTION_SPECS: dict[DesktopActionId, DesktopActionSpec] = {
         title="Открыть логи приложения",
         description="Открывает папку с логами приложения.",
         shortcut="Ctrl+Alt+L",
+    ),
+    DesktopActionId.TOGGLE_DRAW_OVERLAY: DesktopActionSpec(
+        title="Режим рисования поверх экрана",
+        description=(
+            "Показывает или скрывает полноэкранный оверлей с "
+            "инструментами быстрых аннотаций (#159)."
+        ),
+        shortcut="Ctrl+D",
     ),
 }
 

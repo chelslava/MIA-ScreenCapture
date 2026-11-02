@@ -63,6 +63,7 @@ from gui.styles.backdrop import (
     resolve_backdrop_active,
 )
 from gui.styles.theme import Theme, apply_theme, set_backdrop_active
+from gui.views.draw_overlay import DrawOverlayWidget
 from gui.views.finalization_progress_dialog import (
     FinalizationProgressDialog,
 )
@@ -208,6 +209,8 @@ class MainWindow(
         self._finalization_dialog: FinalizationProgressDialog | None = None
         # Плавающий виджет записи (#158) — также лениво
         self._floating_widget: FloatingRecordingWidget | None = None
+        # Оверлей рисования (#159) — создаётся по первому хоткею
+        self._draw_overlay: DrawOverlayWidget | None = None
         self._readiness_request_id = 0
         self._latest_readiness_snapshot: ReadinessSnapshot | None = None
         self._latest_readiness_inputs: dict[str, object] | None = None
@@ -1150,6 +1153,12 @@ class MainWindow(
             return
 
         self._settings_controller.save_settings()
+        draw_overlay = getattr(self, "_draw_overlay", None)
+        if (
+            draw_overlay is not None
+            and getattr(draw_overlay, "isVisible", lambda: False)()
+        ):
+            draw_overlay.close_overlay()
         self._update_timer.stop()
         self._thread_tracker.join_all()
         event.accept()
@@ -1227,6 +1236,46 @@ class MainWindow(
             self.status_label, self.status_bar, message, duration_ms
         )
         self.error_occurred.emit(message)
+
+    # === Режим рисования поверх экрана (#159) ===
+
+    def _get_draw_overlay(self) -> DrawOverlayWidget | None:
+        """Лениво создать оверлей рисования (#159)."""
+        if self._draw_overlay is None:
+            try:
+                self._draw_overlay = DrawOverlayWidget()
+            except Exception as e:
+                logger.warning("Не удалось создать оверлей рисования: %s", e)
+                return None
+            self._draw_overlay.screenshot_taken.connect(
+                self._on_draw_screenshot_taken
+            )
+        return self._draw_overlay
+
+    def toggle_draw_overlay_mode(self) -> None:
+        """Показать или скрыть оверлей быстрых аннотаций (#159)."""
+        overlay = getattr(self, "_draw_overlay", None)
+        if (
+            overlay is not None
+            and getattr(overlay, "isVisible", lambda: False)()
+        ):
+            overlay.close_overlay()
+            return
+        overlay = self._get_draw_overlay()
+        if overlay is None:
+            return
+        overlay.open_overlay()
+        self.status_bar.showMessage(
+            "Режим рисования: Esc — выход, Ctrl+Z — отмена", 5000
+        )
+
+    def _toggle_draw_overlay(self) -> None:
+        """Callback desktop-действия и глобального хоткея."""
+        self.toggle_draw_overlay_mode()
+
+    def _on_draw_screenshot_taken(self, path_text: str) -> None:
+        """Тост о сохранённом аннотированном скриншоте (#159)."""
+        self._show_toast(f"Скриншот сохранён: {path_text}", 5000)
 
     # === Публичные методы для API ===
 

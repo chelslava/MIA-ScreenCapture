@@ -32,7 +32,7 @@ class TestGlobalHotkeysConstant:
         assert shortcuts["Пауза/продолжить запись"] == "Ctrl+Alt+P"
         assert shortcuts["Старт записи (если не идёт)"] == "Ctrl+Alt+R"
         assert shortcuts["Стоп записи (если идёт)"] == "Ctrl+Alt+S"
-        assert len(GLOBAL_HOTKEYS) == 4
+        assert len(GLOBAL_HOTKEYS) == 5
 
 
 class TestAppHotkeyRows:

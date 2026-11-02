@@ -942,8 +942,17 @@ class VideoRecorderApp:
             HotkeyAction.STOP_RECORDING,
             self._stop_recording_hotkey,
         )
+        self._hotkeys.register(
+            HotkeyAction.TOGGLE_DRAW_OVERLAY,
+            self._toggle_draw_overlay_hotkey,
+        )
         self._hotkeys.start()
         logger.info("Горячие клавиши активированы")
+
+    def _toggle_draw_overlay_hotkey(self) -> None:
+        """Режим рисования поверх экрана по горячей клавише (#159)."""
+        if self._main_window:
+            self._main_window.toggle_draw_overlay_mode()
 
     def _toggle_recording_hotkey(self) -> None:
         """Переключение записи по горячей клавише."""

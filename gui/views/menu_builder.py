@@ -77,6 +77,7 @@ class MainWindowMenuActionsMixin(_QWindowBase):
         _open_latest_recording: Callable[[], None]
         _open_recording_folder: Callable[[], None]
         _open_application_logs: Callable[[], None]
+        _toggle_draw_overlay: Callable[[], None]
 
     def _setup_desktop_actions(self) -> None:
         """Создать action registry, shortcuts и accessibility metadata."""
@@ -107,6 +108,7 @@ class MainWindowMenuActionsMixin(_QWindowBase):
                 else None
             ),
             DesktopActionId.OPEN_APP_LOGS: self._open_application_logs,
+            DesktopActionId.TOGGLE_DRAW_OVERLAY: (self._toggle_draw_overlay),
         }
         enabled_conditions = {
             DesktopActionId.START_RECORDING: lambda: (
@@ -176,6 +178,12 @@ class MainWindowMenuActionsMixin(_QWindowBase):
                 (
                     DesktopActionId.OPEN_APP_LOGS,
                     get_desktop_action_spec(DesktopActionId.OPEN_APP_LOGS),
+                ),
+                (
+                    DesktopActionId.TOGGLE_DRAW_OVERLAY,
+                    get_desktop_action_spec(
+                        DesktopActionId.TOGGLE_DRAW_OVERLAY
+                    ),
                 ),
             ]:
                 self._desktop_actions.register(

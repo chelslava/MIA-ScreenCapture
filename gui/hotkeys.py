@@ -29,6 +29,7 @@ class HotkeyAction(Enum):
     STOP_RECORDING = "stop_recording"
     PAUSE_RECORDING = "pause_recording"
     TOGGLE_RECORDING = "toggle_recording"
+    TOGGLE_DRAW_OVERLAY = "toggle_draw_overlay"
 
 
 class GlobalHotkeys:
@@ -44,6 +45,7 @@ class GlobalHotkeys:
         HotkeyAction.STOP_RECORDING: "<ctrl>+<alt>+s",
         HotkeyAction.PAUSE_RECORDING: "<ctrl>+<alt>+p",
         HotkeyAction.TOGGLE_RECORDING: "<ctrl>+<alt>+t",
+        HotkeyAction.TOGGLE_DRAW_OVERLAY: "<ctrl>+<alt>+d",
     }
 
     def __init__(self) -> None:

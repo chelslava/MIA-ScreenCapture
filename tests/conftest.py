@@ -267,6 +267,35 @@ class MockQWidgetBase:
     def setLayout(self, layout):
         self._layout = layout
 
+    def setFixedWidth(self, width: int):
+        """Для кнопок/панелей фиксированной ширины."""
+        self._fixed_width = width
+
+    def setFixedHeight(self, height: int):
+        """Для кнопок/панелей фиксированной высоты."""
+        self._fixed_height = height
+
+    def setWindowFlags(self, *args, **kwargs):
+        """Для fullscreen-оверлеев и диалогов."""
+
+    def render(self, target, flags=None, region=None):
+        """Отрисовка виджета в QPixmap (композит скриншота #159)."""
+        self._render_target = target
+
+    def setAttribute(self, *args, **kwargs):
+        """WA_TranslucentBackground и прочие Qt-атрибуты."""
+
+    def setMouseTracking(self, enabled: bool):
+        """Для оверлеев, следящих за курсором."""
+        self._mouse_tracking = enabled
+
+    def setCursor(self, *args, **kwargs):
+        """Кастомный курсор виджета."""
+
+    def setFocusPolicy(self, policy):
+        """Политика фокуса виджета."""
+        self._focus_policy = policy
+
     def layout(self):
         return self._layout
 
@@ -606,6 +635,24 @@ class MockSignal:
 
 
 # Создаем mock классы с нужными методами
+_WIDGET_SIGNALS: dict[str, tuple[str, ...]] = {
+    "QRadioButton": ("toggled", "clicked"),
+    "QCheckBox": ("stateChanged", "toggled", "clicked"),
+    "QSpinBox": ("valueChanged",),
+    "QComboBox": ("currentTextChanged", "currentIndexChanged"),
+    "QLineEdit": ("textChanged", "textEdited", "returnPressed"),
+    "QTextEdit": ("textChanged",),
+    "QPushButton": ("clicked", "toggled"),
+    "QGroupBox": ("clicked", "toggled"),
+    "QListWidget": (
+        "currentRowChanged",
+        "itemSelectionChanged",
+        "itemDoubleClicked",
+        "itemClicked",
+    ),
+}
+
+
 def _create_widget_mock_class(name: str):
     """Создание mock класса для виджета с методами."""
 
@@ -614,33 +661,23 @@ def _create_widget_mock_class(name: str):
 
     MockWidget.__name__ = name
     MockWidget.__qualname__ = name
-    # Добавляем signals как атрибуты класса
-    if name == "QRadioButton":
-        MockWidget.toggled = MockSignal()
-        MockWidget.clicked = MockSignal()
-    elif name == "QCheckBox":
-        MockWidget.stateChanged = MockSignal()
-        MockWidget.toggled = MockSignal()
-        MockWidget.clicked = MockSignal()
-    elif name == "QSpinBox":
-        MockWidget.valueChanged = MockSignal()
-    elif name == "QComboBox":
-        MockWidget.currentTextChanged = MockSignal()
-        MockWidget.currentIndexChanged = MockSignal()
-    elif name == "QLineEdit":
-        MockWidget.textChanged = MockSignal()
-        MockWidget.textEdited = MockSignal()
-        MockWidget.returnPressed = MockSignal()
-    elif name == "QTextEdit":
-        MockWidget.textChanged = MockSignal()
-    elif name in ("QPushButton", "QGroupBox"):
-        MockWidget.clicked = MockSignal()
-        MockWidget.toggled = MockSignal()
-    elif name == "QListWidget":
-        MockWidget.currentRowChanged = MockSignal()
-        MockWidget.itemSelectionChanged = MockSignal()
-        MockWidget.itemDoubleClicked = MockSignal()
-        MockWidget.itemClicked = MockSignal()
+
+    signal_names = _WIDGET_SIGNALS.get(name, ())
+
+    # Инстансные сигналы: без этого все экземпляры класса делят один
+    # MockSignal, и emit на одной кнопке зажигает подписки всех (#159)
+    def _init_with_signals(self, *args, **kwargs):
+        MockQWidgetBase.__init__(self, *args, **kwargs)
+        for signal_name in signal_names:
+            setattr(self, signal_name, MockSignal())
+
+    MockWidget.__init__ = _init_with_signals
+
+    # Классовые сигналы оставляем для обратной совместимости (код,
+    # обращающийся к атрибуту класса до создания экземпляра)
+    for signal_name in signal_names:
+        setattr(MockWidget, signal_name, MockSignal())
+
     return MockWidget
 
 
