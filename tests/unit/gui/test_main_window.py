@@ -217,7 +217,7 @@ class TestSidebarIcons:
 
     def test_all_sidebar_icon_files_exist(self) -> None:
         """Все 5 иконок сайдбара должны существовать на диске."""
-        from gui.main_window import _SIDEBAR_ICONS_DIR
+        from gui.views.main_ui_builder import _SIDEBAR_ICONS_DIR
 
         for icon_name in (
             "record",
@@ -1319,7 +1319,10 @@ class TestMainWindowMethods:
             def start(self):
                 self.started = True
 
-        with patch("gui.main_window.threading.Thread", FakeThread):
+        with patch(
+            "gui.controllers.recording_flow_controller.threading.Thread",
+            FakeThread,
+        ):
             window._begin_stop_operation()
 
         assert window._stop_operation_in_progress is True
@@ -1378,7 +1381,10 @@ class TestMainWindowMethods:
             "jitter_ms": 0.0,
         }
 
-        with patch("gui.main_window.format_time", return_value="00:12"):
+        with patch(
+            "gui.controllers.recording_flow_controller.format_time",
+            return_value="00:12",
+        ):
             window._update_status()
 
         window.time_label.setText.assert_called_once_with("00:12")
@@ -1393,7 +1399,10 @@ class TestMainWindowMethods:
             "jitter_ms": 2.5,
         }
 
-        with patch("gui.main_window.format_time", return_value="00:12"):
+        with patch(
+            "gui.controllers.recording_flow_controller.format_time",
+            return_value="00:12",
+        ):
             window._update_status()
 
         window.time_label.setText.assert_called_once_with(
@@ -1416,7 +1425,10 @@ class TestMainWindowMethods:
 
         window = _build_window()
 
-        with patch("gui.main_window.threading.Thread", FakeThread):
+        with patch(
+            "gui.controllers.recording_flow_controller.threading.Thread",
+            FakeThread,
+        ):
             MainWindow._check_dependencies(window)
 
         assert started["value"] is True
@@ -1712,7 +1724,7 @@ class TestMainWindowMethods:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Меню записи выбирает элемент под курсором и вызывает действия."""
-        import gui.main_window as main_window_module
+        import gui.controllers.recordings_actions_controller as main_window_module
 
         window = _build_window()
         fake_item = MagicMock()
@@ -1824,7 +1836,9 @@ class TestMainWindowMethods:
         """Путь с завершающим слешем трактуется как директория."""
         window = _build_window()
 
-        with patch("gui.main_window.datetime") as mocked_datetime:
+        with patch(
+            "gui.controllers.api_params_recording.datetime"
+        ) as mocked_datetime:
             mocked_datetime.now.return_value.strftime.return_value = (
                 "20260403_123456"
             )
@@ -2214,12 +2228,14 @@ class TestRecordingTunablesSettings:
         window = _build_window()
 
         with (
-            patch("gui.main_window.AudioView"),
-            patch("gui.main_window.VideoView"),
-            patch("gui.main_window.OutputView"),
-            patch("gui.main_window.AppearanceView"),
-            patch("gui.main_window.PostProcessingView"),
-            patch("gui.main_window.RecordingTunablesView") as tunables_cls,
+            patch("gui.views.main_ui_builder.AudioView"),
+            patch("gui.views.main_ui_builder.VideoView"),
+            patch("gui.views.main_ui_builder.OutputView"),
+            patch("gui.views.main_ui_builder.AppearanceView"),
+            patch("gui.views.main_ui_builder.PostProcessingView"),
+            patch(
+                "gui.views.main_ui_builder.RecordingTunablesView"
+            ) as tunables_cls,
         ):
             MainWindow._create_settings_tab(window)
 
@@ -2305,13 +2321,16 @@ class TestRecordingsMultiSelect:
         )
         window._refresh_recent_recordings = MagicMock()
         monkeypatch.setattr(
-            "gui.main_window.QMessageBox.question",
+            "gui.controllers.recordings_actions_controller.QMessageBox.question",
             lambda *a, **k: QMessageBox.StandardButton.Yes,
         )
         config_mock = MagicMock()
         config_mock.remove_recent_recordings.return_value = 2
 
-        with patch("gui.main_window.get_config", return_value=config_mock):
+        with patch(
+            "gui.controllers.recordings_actions_controller.get_config",
+            return_value=config_mock,
+        ):
             window._delete_selected_recordings()
 
         config_mock.remove_recent_recordings.assert_called_once_with(
@@ -2328,12 +2347,15 @@ class TestRecordingsMultiSelect:
             return_value=[Path("D:/a.mp4")]
         )
         monkeypatch.setattr(
-            "gui.main_window.QMessageBox.question",
+            "gui.controllers.recordings_actions_controller.QMessageBox.question",
             lambda *a, **k: QMessageBox.StandardButton.No,
         )
         config_mock = MagicMock()
 
-        with patch("gui.main_window.get_config", return_value=config_mock):
+        with patch(
+            "gui.controllers.recordings_actions_controller.get_config",
+            return_value=config_mock,
+        ):
             window._delete_selected_recordings()
 
         config_mock.remove_recent_recordings.assert_not_called()
@@ -2362,12 +2384,14 @@ class TestRecordingsMultiSelect:
         )
         window._refresh_recent_recordings = MagicMock()
         monkeypatch.setattr(
-            "gui.main_window.QFileDialog.getExistingDirectory",
+            "gui.controllers.recordings_actions_controller.QFileDialog.getExistingDirectory",
             lambda *a, **k: "D:/dest",
         )
 
         with (
-            patch("gui.main_window.shutil.move") as move_mock,
+            patch(
+                "gui.controllers.recordings_actions_controller.shutil.move"
+            ) as move_mock,
             patch.object(Path, "exists", return_value=True),
         ):
             window._move_selected_recordings()
