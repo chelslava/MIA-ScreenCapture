@@ -14,7 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -45,8 +45,6 @@ from gui.views.recordings_list import RecordingsListWidget
 from gui.views.video_view import VideoView
 
 if TYPE_CHECKING:
-    from PyQt6.QtCore import QTimer
-
     from gui.controllers.settings_controller import SettingsController
 
 _SIDEBAR_DEFAULT_WIDTH = 110
