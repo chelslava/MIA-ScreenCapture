@@ -269,7 +269,8 @@ class TestDrawOverlayLifecycle:
     @staticmethod
     def _make_overlay() -> DrawOverlayWidget:
         overlay = DrawOverlayWidget()
-        overlay.showFullScreen = MagicMock()
+        overlay.show = MagicMock()
+        overlay.raise_ = MagicMock()
         overlay.activateWindow = MagicMock()
         overlay.hide = MagicMock()
         overlay.closed = MagicMock()
@@ -280,7 +281,8 @@ class TestDrawOverlayLifecycle:
 
         overlay.open_overlay()
 
-        overlay.showFullScreen.assert_called_once()
+        overlay.show.assert_called_once()
+        overlay.raise_.assert_called_once()
         overlay.activateWindow.assert_called_once()
 
     def test_close_overlay_hides_and_emits(self) -> None:

@@ -292,9 +292,30 @@ class DrawOverlayWidget(QWidget):
     # === Управление режимом ===
 
     def open_overlay(self) -> None:
-        """Показать оверлей на весь экран и передать ему фокус."""
-        if hasattr(self, "showFullScreen"):
-            self.showFullScreen()
+        """Показать оверлей на весь экран и передать ему фокус.
+
+        setGeometry + show (как в area_selector): showFullScreen на
+        Windows с WA_TranslucentBackground не доставляет события мыши
+        по прозрачным областям.
+        """
+        try:
+            from PyQt6.QtGui import QGuiApplication
+
+            screen = QGuiApplication.primaryScreen()
+            if screen is not None:
+                geometry = screen.geometry()
+                self.setGeometry(
+                    geometry.x(),
+                    geometry.y(),
+                    geometry.width(),
+                    geometry.height(),
+                )
+        except Exception as e:
+            logger.warning("Геометрия оверлея не установлена: %s", e)
+        if hasattr(self, "show"):
+            self.show()
+        if hasattr(self, "raise_"):
+            self.raise_()
         if hasattr(self, "activateWindow"):
             self.activateWindow()
 
@@ -402,6 +423,7 @@ class DrawOverlayWidget(QWidget):
     def mousePressEvent(self, event: Any) -> None:
         """Начать фигуру в точке нажатия."""
         pos = event.position()
+        logger.info("Штрих начат: (%.0f, %.0f)", pos.x(), pos.y())
         self._start_shape(float(pos.x()), float(pos.y()))
 
     def mouseMoveEvent(self, event: Any) -> None:
@@ -430,6 +452,11 @@ class DrawOverlayWidget(QWidget):
         shape = self._active_shape
         self._active_shape = None
         self._document.add_shape(shape)
+        logger.info(
+            "Штрих зафиксирован: %s, точек: %d",
+            shape.tool.value,
+            len(shape.points),
+        )
         self._request_repaint()
 
     def keyPressEvent(self, event: Any) -> None:
