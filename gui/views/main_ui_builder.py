@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QGuiApplication, QIcon
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui.constants import SidebarPage
 from gui.desktop_actions import DesktopActionId, DesktopActionRegistry
 from gui.styles.theme import Theme
 from gui.views.appearance_view import AppearanceView
@@ -42,6 +43,7 @@ from gui.views.post_processing_view import PostProcessingView
 from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_tunables_view import RecordingTunablesView
 from gui.views.recordings_list import RecordingsListWidget
+from gui.views.settings_page import SettingsPage
 from gui.views.video_view import VideoView
 
 if TYPE_CHECKING:
@@ -93,19 +95,49 @@ class MainWindowUIBuilderMixin(_QWindowBase):
         self.setWindowTitle("MIA-ScreenCapture")
         self.setMinimumSize(900, 650)
         self.resize(1000, 750)
+        self._restore_or_center_geometry()
 
-        # Центрирование на экране
-        from PyQt6.QtGui import QGuiApplication
+    def _restore_or_center_geometry(self) -> None:
+        """Восстановить сохранённую геометрию окна или центрировать.
 
+        Геометрия читается из конфигурации ([x, y, w, h]); восстанавливается
+        только если окно хотя бы частично попадает на доступную область
+        экрана — иначе (например, после отключения монитора) окно
+        «теряется» за пределами видимой зоны. Без сохранённой геометрии
+        окно центрируется на доступной области (с учётом таскбара).
+        """
         primary_screen = QGuiApplication.primaryScreen()
-        if primary_screen:
-            screen = primary_screen.geometry()
-        else:
-            screen = self._get_default_geometry()
+        available = (
+            primary_screen.availableGeometry()
+            if primary_screen is not None
+            else self._get_default_geometry()
+        )
+
+        saved = self._settings_controller.get_window_geometry()
+        if (
+            isinstance(saved, (list, tuple))
+            and len(saved) == 4
+            and all(
+                isinstance(v, int) and not isinstance(v, bool) for v in saved
+            )
+        ):
+            x, y, w, h = (int(v) for v in saved)
+            # Пересечение с доступной областью — без QRect: в mocked-
+            # тестах QRect недоступен, а арифметика по int достаточно
+            # проста, чтобы не тянуть Qt-тип
+            if (
+                available.x() < x + w
+                and x < available.x() + available.width()
+                and available.y() < y + h
+                and y < available.y() + available.height()
+            ):
+                self.setGeometry(x, y, w, h)
+                return
+
         size = self.geometry()
         self.move(
-            (screen.width() - size.width()) // 2,
-            (screen.height() - size.height()) // 2,
+            available.x() + (available.width() - size.width()) // 2,
+            available.y() + (available.height() - size.height()) // 2,
         )
 
     def _setup_ui(self) -> None:
@@ -152,18 +184,25 @@ class MainWindowUIBuilderMixin(_QWindowBase):
             self._on_sidebar_splitter_moved
         )
 
-        # Добавление страниц в stacked widget
-        # 0 - Запись
+        # Страницы добавляются в порядке SidebarPage — единого источника
+        # навигации (gui.constants.SidebarPage): индекс сайдбара всегда
+        # равен индексу content stack.
+        # SidebarPage.RECORD — быстрый старт записи
         recording_tab = self._create_recording_tab()
         self._content_stack.addWidget(recording_tab)
         self._sidebar.addItem(self._make_sidebar_item("record", "Запись"))
 
-        # 1 - Настройки
+        # SidebarPage.RECORDINGS — недавние записи отдельной страницей
+        recordings_tab = self._create_recordings_tab()
+        self._content_stack.addWidget(recordings_tab)
+        self._sidebar.addItem(self._make_sidebar_item("recordings", "Записи"))
+
+        # SidebarPage.SETTINGS
         settings_tab = self._create_settings_tab()
         self._content_stack.addWidget(settings_tab)
         self._sidebar.addItem(self._make_sidebar_item("settings", "Настройки"))
 
-        # 2 - Планировщик
+        # SidebarPage.SCHEDULER
         from gui.scheduler.scheduler_tab import SchedulerTab
 
         self.scheduler_tab = SchedulerTab()
@@ -172,7 +211,7 @@ class MainWindowUIBuilderMixin(_QWindowBase):
             self._make_sidebar_item("scheduler", "Планировщик")
         )
 
-        # 3 - Диагностика
+        # SidebarPage.DIAGNOSTICS
         from gui.views.diagnostics_view import DiagnosticsView
 
         self._diagnostics_view = DiagnosticsView()
@@ -188,7 +227,7 @@ class MainWindowUIBuilderMixin(_QWindowBase):
             self._make_sidebar_item("diagnostics", "Диагностика")
         )
 
-        # 4 - API
+        # SidebarPage.API
         from gui.views.api_settings_view import ApiSettingsView
 
         self._api_settings_view = ApiSettingsView()
@@ -196,8 +235,8 @@ class MainWindowUIBuilderMixin(_QWindowBase):
         self._sidebar.addItem(self._make_sidebar_item("api", "API"))
 
         # Выбрать первую страницу по умолчанию
-        self._sidebar.setCurrentRow(0)
-        self._content_stack.setCurrentIndex(0)
+        self._sidebar.setCurrentRow(int(SidebarPage.RECORD))
+        self._content_stack.setCurrentIndex(int(SidebarPage.RECORD))
 
         # Для совместимости с тестами - связать tabs с content_stack
         self.tabs = self._content_stack
@@ -320,19 +359,20 @@ class MainWindowUIBuilderMixin(_QWindowBase):
         self._content_stack = value
 
     def _create_recording_tab(self) -> QWidget:
-        """Создание вкладки записи (минимум - только для быстрого старта)."""
+        """Создание вкладки записи — только быстрый старт.
+
+        Панель недавних записей вынесена на отдельную страницу
+        «Записи» (`_create_recordings_tab`), чтобы страница записи
+        оставалась сфокусированной: захват, профиль, готовность,
+        управление.
+        """
         widget = QWidget()
-        layout = QHBoxLayout(widget)
+        layout = QVBoxLayout(widget)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
 
-        # Левая панель - Только область захвата и кнопки
-        left_panel = self._create_quick_start_panel()
-        layout.addWidget(left_panel, stretch=2)
-
-        # Правая панель - Последние записи
-        right_panel = self._create_right_panel()
-        layout.addWidget(right_panel, stretch=1)
+        # Область захвата, профиль, готовность и кнопки управления
+        layout.addWidget(self._create_quick_start_panel())
 
         return widget
 
@@ -375,44 +415,46 @@ class MainWindowUIBuilderMixin(_QWindowBase):
         return widget
 
     def _create_settings_tab(self) -> QWidget:
-        """Создание вкладки настроек (аудио, видео, вывод)."""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(6)
+        """Создание страницы настроек: категории + панель содержимого.
 
+        Шесть view-ов создаются здесь (тесты патчат их классы в
+        ``gui.views.main_ui_builder``) и передаются уже готовыми в
+        `SettingsPage`, который раскладывает их по категориям с
+        прокруткой — виджеты больше не сжимаются и не перекрываются.
+        """
         # Аудио настройки
         self._audio_view = AudioView()
-        layout.addWidget(self._audio_view)
 
         # Видео настройки
         self._video_view = VideoView()
-        layout.addWidget(self._video_view)
 
         # Путь вывода
         self._output_view = OutputView()
-        layout.addWidget(self._output_view)
 
         # Внешний вид (тема)
         self._appearance_view = AppearanceView()
-        layout.addWidget(self._appearance_view)
 
         # Постобработка (#118)
         self._post_processing_view = PostProcessingView()
         self._post_processing_view.settings_changed.connect(
             self._on_post_processing_changed
         )
-        layout.addWidget(self._post_processing_view)
 
         # Тонкие параметры записи (#155)
         self._recording_tunables_view = RecordingTunablesView()
         self._recording_tunables_view.settings_changed.connect(
             self._on_recording_tunables_changed
         )
-        layout.addWidget(self._recording_tunables_view)
 
-        layout.addStretch()
-        return widget
+        self._settings_page = SettingsPage(
+            video_view=self._video_view,
+            audio_view=self._audio_view,
+            output_view=self._output_view,
+            appearance_view=self._appearance_view,
+            post_processing_view=self._post_processing_view,
+            tunables_view=self._recording_tunables_view,
+        )
+        return self._settings_page
 
     def _create_control_buttons(self) -> QHBoxLayout:
         """Создание кнопок управления."""
@@ -439,20 +481,23 @@ class MainWindowUIBuilderMixin(_QWindowBase):
 
         return layout
 
-    def _create_right_panel(self) -> QWidget:
-        """Создание правой панели с последними записями."""
+    def _create_recordings_tab(self) -> QWidget:
+        """Создание страницы «Записи»: фильтр, список и действия.
+
+        Раньше это была правая панель страницы «Запись»; вынос на
+        отдельную страницу даёт списку всю ширину окна и разгружает
+        быстрый старт записи.
+        """
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        from PyQt6.QtWidgets import QGroupBox
+        header = QLabel("Последние записи")
+        header.setStyleSheet(Theme.title_style())
+        layout.addWidget(header)
 
-        group = QGroupBox("Последние записи")
-        group_layout = QVBoxLayout(group)
-        group_layout.setContentsMargins(4, 4, 4, 4)
-        group_layout.setSpacing(4)
-
+        # Фильтр по имени файла
         filter_layout = QHBoxLayout()
         self._recordings_filter_input = QLineEdit()
         self._recordings_filter_input.setPlaceholderText(
@@ -466,8 +511,9 @@ class MainWindowUIBuilderMixin(_QWindowBase):
         self._clear_filter_btn = QPushButton("Сбросить")
         self._clear_filter_btn.clicked.connect(self._clear_recordings_filter)
         filter_layout.addWidget(self._clear_filter_btn)
-        group_layout.addLayout(filter_layout)
+        layout.addLayout(filter_layout)
 
+        # Список записей
         self.recordings_list = RecordingsListWidget()
         self.recordings_list.itemDoubleClicked.connect(self._open_recording)
         self.recordings_list.setContextMenuPolicy(
@@ -476,7 +522,7 @@ class MainWindowUIBuilderMixin(_QWindowBase):
         self.recordings_list.customContextMenuRequested.connect(
             self._show_recordings_context_menu
         )
-        group_layout.addWidget(self.recordings_list)
+        layout.addWidget(self.recordings_list, stretch=1)
 
         # Кнопки
         btn_layout = QHBoxLayout()
@@ -495,9 +541,7 @@ class MainWindowUIBuilderMixin(_QWindowBase):
         self._clear_list_btn.clicked.connect(self._clear_recent_recordings)
         btn_layout.addWidget(self._clear_list_btn)
 
-        group_layout.addLayout(btn_layout)
-
-        layout.addWidget(group)
+        layout.addLayout(btn_layout)
 
         return widget
 

@@ -216,11 +216,12 @@ class TestSidebarIcons:
     """Проверки наличия PNG-иконок сайдбара (замена emoji)."""
 
     def test_all_sidebar_icon_files_exist(self) -> None:
-        """Все 5 иконок сайдбара должны существовать на диске."""
+        """Все 6 иконок сайдбара должны существовать на диске."""
         from gui.views.main_ui_builder import _SIDEBAR_ICONS_DIR
 
         for icon_name in (
             "record",
+            "recordings",
             "settings",
             "scheduler",
             "diagnostics",
@@ -1084,7 +1085,7 @@ class TestMainWindowMethods:
 
         window._recording_controller.start_recording.assert_not_called()
         window.status_bar.showMessage.assert_called()
-        window._sidebar.setCurrentRow.assert_called_once_with(3)
+        window._sidebar.setCurrentRow.assert_called_once_with(4)
         window._run_diagnostics.assert_called_once_with()
 
     def test_apply_action_metadata_sets_shortcut_and_accessibility(
@@ -1211,8 +1212,10 @@ class TestMainWindowMethods:
         MainWindow._on_diagnostics_fix(window, "Аудиоустройства")
         MainWindow._on_diagnostics_fix(window, "Окно захвата")
 
+        # Аудио-фиксы открывают категорию «Аудио» страницы настроек
+        # (строка 2), захват — страницу «Запись» (строка 0)
         assert window._sidebar.setCurrentRow.call_args_list == [
-            call(1),
+            call(2),
             call(0),
         ]
         window._audio_view._refresh_audio_devices.assert_called_once_with()
@@ -2049,7 +2052,7 @@ class TestMainWindowMethods:
             window._desktop_actions.execute(DesktopActionId.SHOW_SCHEDULER_TAB)
             is True
         )
-        window._sidebar.setCurrentRow.assert_called_with(2)
+        window._sidebar.setCurrentRow.assert_called_with(3)
 
         assert (
             window._desktop_actions.execute(DesktopActionId.OPEN_APP_LOGS)

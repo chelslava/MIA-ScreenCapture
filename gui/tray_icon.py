@@ -36,6 +36,7 @@ class TrayIcon(QSystemTrayIcon):
     stop_requested = pyqtSignal()
     pause_requested = pyqtSignal()
     show_window_requested = pyqtSignal()
+    settings_requested = pyqtSignal()
     exit_requested = pyqtSignal()
 
     def __init__(
@@ -125,6 +126,11 @@ class TrayIcon(QSystemTrayIcon):
         self._show_action = QAction(_("Показать окно"), self)
         self._show_action.triggered.connect(self.show_window_requested)
         menu.addAction(self._show_action)
+
+        # Действие настроек: показывает окно и открывает страницу настроек
+        self._settings_action = QAction(_("Настройки"), self)
+        self._settings_action.triggered.connect(self.settings_requested)
+        menu.addAction(self._settings_action)
 
         menu.addSeparator()
 

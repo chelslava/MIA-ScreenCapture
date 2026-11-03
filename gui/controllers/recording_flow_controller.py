@@ -106,6 +106,18 @@ class RecordingFlowControllerMixin(_QWindowBase):
             # Без GUI (например, в тестах) пропускаем диалог
             logger.debug(f"Не удалось создать диалог финализации: {e}")
             return
+        # Центрируем на главном окне: иначе диалог появляется в позиции
+        # ОС и может перекрыть плавающий виджет или важные области.
+        # Защищённо: в mocked-тестах геометрии может не быть.
+        parent_geometry = getattr(self, "geometry", None)
+        dialog_geometry = getattr(dialog, "frameGeometry", None)
+        if callable(parent_geometry) and callable(dialog_geometry):
+            window = parent_geometry()
+            box = dialog_geometry()
+            dialog.move(
+                window.x() + (window.width() - box.width()) // 2,
+                window.y() + (window.height() - box.height()) // 2,
+            )
         dialog.start()
 
     def _hide_finalization_progress_dialog(self) -> None:

@@ -10,8 +10,9 @@ PyQt6 GUI-слой приложения. Реализует MVC-паттерн: 
 
 | Файл | Описание |
 |------|----------|
-| `main_window.py` | `MainWindow(QMainWindow)` — главное окно со всеми вкладками |
-| `tray_icon.py` | `TrayIcon` — иконка в системном трее с контекстным меню |
+| `main_window.py` | `MainWindow(QMainWindow)` — главное окно; связующий слой между миксинами и контроллерами |
+| `constants.py` | Общие константы; `SidebarPage(IntEnum)` — единственный источник порядка страниц главного окна |
+| `tray_icon.py` | `TrayIcon` — иконка в системном трее с контекстным меню (показ окна, настройки, запись, выход) |
 | `hotkeys.py` | `HotkeyManager` — глобальные горячие клавиши через keyboard/pynput |
 | `desktop_actions.py` | `DesktopActions` — действия рабочего стола (уведомления, открытие файлов) |
 | `accessibility.py` | Accessibility атрибуты и ARIA-роли для виджетов |
@@ -35,6 +36,19 @@ PyQt6 GUI-слой приложения. Реализует MVC-паттерн: 
 - Все GUI-операции должны выполняться в главном потоке Qt. Используй `QMetaObject.invokeMethod` или сигналы для вызова из фона.
 - Сигналы объявляй на уровне класса как `pyqtSignal(...)`.
 - Не вызывай `ApplicationFacade` напрямую из views — только через controllers.
+- Страницы главного окна: порядок задаёт `gui.constants.SidebarPage`
+  (Запись, Записи, Настройки, Планировщик, Диагностика, API). Смена
+  страницы — только через `MainWindow._show_page(page)`; прямое
+  `setCurrentRow(<int>)`/`setCurrentIndex(<int>)` в новом коде запрещено.
+- Страница «Настройки» — `views/settings_page.py` (`SettingsPage`):
+  слева категории (`SettingsCategory`), справа раздел в `QScrollArea`.
+  Категория = одно представление; не добавляй группы настроек обратно
+  в одну колонку без прокрутки. View-ы настроек создаются в
+  `main_ui_builder._create_settings_tab` (точка патча для тестов).
+- Геометрия главного окна сохраняется в конфиг
+  (`SettingsController.set_window_geometry`, `window_geometry` в
+  `config.py`) и восстанавливается при запуске; вторичные окна
+  (HotkeysView, диалог финализации) центрируются на родителе.
 - `accessibility.py` добавляет `setAccessibleName`/`setAccessibleDescription` к виджетам.
 - При изменении темы — только в `styles/theme.py`.
 - Две конвенции для ошибок/предупреждений (см. UX-аудит, [[development-log]]

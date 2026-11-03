@@ -283,6 +283,8 @@ class AppSettingsSchema(BaseModel):
     ui_animations: bool = Field(default=True)
     # Позиция плавающего виджета записи [x, y] (#158); None — по умолчанию
     floating_widget_pos: list[int] | None = Field(default=None)
+    # Геометрия главного окна [x, y, w, h]; None — центрировать на экране
+    window_geometry: list[int] | None = Field(default=None)
     # Материал Windows 11 (Mica) под главным окном (#157); на Win10 игнорируется
     win11_backdrop: bool = Field(default=False)
     language: str = Field(default="en")
@@ -486,6 +488,7 @@ class AppSettings:
     show_notifications: bool = True
     ui_animations: bool = True
     floating_widget_pos: list[int] | None = None
+    window_geometry: list[int] | None = None
     win11_backdrop: bool = False
     language: str = "en"
     theme: str = "system"
@@ -571,6 +574,23 @@ class ConfigManager:
             return [int(value[0]), int(value[1])]
         return None
 
+    @staticmethod
+    def _parse_window_geometry(value: Any) -> list[int] | None:
+        """Валидирует геометрию главного окна из конфига.
+
+        Returns:
+            [x, y, w, h] или None при отсутствии/невалидности.
+        """
+        if (
+            isinstance(value, list)
+            and len(value) == 4
+            and all(
+                isinstance(v, int) and not isinstance(v, bool) for v in value
+            )
+        ):
+            return [int(v) for v in value]
+        return None
+
     def _dict_to_settings(self, data: dict[str, Any]) -> AppSettings:
         """
         Преобразование словаря в dataclass AppSettings.
@@ -625,6 +645,9 @@ class ConfigManager:
                 ui_animations=data.get("ui_animations", True),
                 floating_widget_pos=self._parse_floating_widget_pos(
                     data.get("floating_widget_pos")
+                ),
+                window_geometry=self._parse_window_geometry(
+                    data.get("window_geometry")
                 ),
                 win11_backdrop=data.get("win11_backdrop", False),
                 language=data.get("language", "en"),

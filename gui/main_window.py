@@ -36,6 +36,7 @@ from core.readiness import (
 )
 from core.recording_types import AudioMode, CaptureMode
 from gui import transitions
+from gui.constants import SidebarPage
 from gui.controllers.api_params_recording import ApiParamsRecordingMixin
 from gui.controllers.api_section_controller import ApiSectionControllerMixin
 from gui.controllers.desktop_actions_controller import DesktopActionsController
@@ -71,6 +72,7 @@ from gui.views.floating_widget import FloatingRecordingWidget
 from gui.views.main_ui_builder import MainWindowUIBuilderMixin
 from gui.views.menu_builder import MainWindowMenuActionsMixin
 from gui.views.recording_indicator import RecordingIndicatorOverlay
+from gui.views.settings_page import SettingsCategory
 from logger_config import get_module_logger, open_logs_folder
 from recorder.utils import (
     FFmpegStatus,
@@ -263,6 +265,35 @@ class MainWindow(
         if current_row >= 0:
             self._content_stack.setCurrentIndex(current_row)
             self._animate_current_page_in()
+
+    def _show_page(self, page: SidebarPage) -> None:
+        """Переключить страницу главного окна.
+
+        Единственный способ смены страницы из кода: прямой
+        ``setCurrentRow(<int>)`` запрещён, порядок задаёт `SidebarPage`.
+
+        Args:
+            page: Целевая страница.
+        """
+        if hasattr(self, "_sidebar"):
+            self._sidebar.setCurrentRow(int(page))
+        if hasattr(self, "_content_stack"):
+            self._content_stack.setCurrentIndex(int(page))
+
+    def show_settings_page(self) -> None:
+        """Открыть страницу настроек (публичный API, например для трея)."""
+        self._show_page(SidebarPage.SETTINGS)
+
+    def _show_settings_category(self, category: SettingsCategory) -> None:
+        """Открыть страницу настроек на заданной категории.
+
+        Args:
+            category: Категория настроек (`gui.views.settings_page`).
+        """
+        self._show_page(SidebarPage.SETTINGS)
+        settings_page = getattr(self, "_settings_page", None)
+        if settings_page is not None:
+            settings_page.show_category(int(category))
 
     def _animate_current_page_in(self) -> None:
         """Fade-переход вкладки с учётом настроек и reduced-motion (#161)."""
@@ -515,9 +546,22 @@ class MainWindow(
             self._hotkeys_view = HotkeysView(
                 self._desktop_actions, parent=self
             )
-        self._hotkeys_view.show()
-        self._hotkeys_view.raise_()
-        self._hotkeys_view.activateWindow()
+        # Центрируем на главном окне при каждом показе: без этого диалог
+        # открывается в позиции ОС и может перекрывать важные области.
+        # Защищённо: в mocked-тестах геометрии может не быть.
+        view = self._hotkeys_view
+        parent_geometry = getattr(self, "geometry", None)
+        view_geometry = getattr(view, "frameGeometry", None)
+        if callable(parent_geometry) and callable(view_geometry):
+            window = parent_geometry()
+            dialog = view_geometry()
+            view.move(
+                window.x() + (window.width() - dialog.width()) // 2,
+                window.y() + (window.height() - dialog.height()) // 2,
+            )
+        view.show()
+        view.raise_()
+        view.activateWindow()
 
     def _refresh_readiness_summary(self) -> None:
         """Асинхронно обновить compact readiness center."""
@@ -590,8 +634,8 @@ class MainWindow(
 
     def _show_readiness_details(self) -> None:
         """Открыть вкладку диагностики и запустить подробную проверку."""
-        if hasattr(self, "_sidebar") and hasattr(self, "_diagnostics_view"):
-            self._sidebar.setCurrentRow(3)
+        if hasattr(self, "_diagnostics_view"):
+            self._show_page(SidebarPage.DIAGNOSTICS)
         self._run_diagnostics()
 
     def _update_ws_status(self, status: str) -> None:
@@ -674,31 +718,26 @@ class MainWindow(
         """Выполнить one-click action из readiness center или диагностики."""
 
         def _refresh_windows_action() -> None:
-            if hasattr(self, "_sidebar"):
-                self._sidebar.setCurrentRow(0)
+            self._show_page(SidebarPage.RECORD)
             self._capture_view.refresh_windows()
 
         def _focus_capture_window_action() -> None:
-            if hasattr(self, "_sidebar"):
-                self._sidebar.setCurrentRow(0)
+            self._show_page(SidebarPage.RECORD)
             self._capture_view.set_capture_type(CaptureMode.WINDOW)
             self._capture_view.focus_window_combo()
 
         def _refresh_audio_devices_action() -> None:
-            if hasattr(self, "_sidebar"):
-                self._sidebar.setCurrentRow(1)
+            self._show_settings_category(SettingsCategory.AUDIO)
             self._audio_view._refresh_audio_devices()
 
         def _focus_microphone_selection_action() -> None:
-            if hasattr(self, "_sidebar"):
-                self._sidebar.setCurrentRow(1)
+            self._show_settings_category(SettingsCategory.AUDIO)
             focus = getattr(self._audio_view._mic_combo, "setFocus", None)
             if callable(focus):
                 focus()
 
         def _switch_to_api_tab() -> None:
-            if hasattr(self, "_sidebar"):
-                self._sidebar.setCurrentRow(4)
+            self._show_page(SidebarPage.API)
 
         handlers: dict[str, Callable[[], None]] = {
             "choose_output_path": self._select_output_folder,
@@ -831,8 +870,8 @@ class MainWindow(
             f"Старт заблокирован: {snapshot.summary_text()}",
             10000,
         )
-        if hasattr(self, "_sidebar") and hasattr(self, "_diagnostics_view"):
-            self._sidebar.setCurrentRow(3)
+        if hasattr(self, "_diagnostics_view"):
+            self._show_page(SidebarPage.DIAGNOSTICS)
             self._run_diagnostics()
         return False
 
@@ -1152,6 +1191,9 @@ class MainWindow(
         if not event.isAccepted():
             return
 
+        # Геометрия окна — UI-preference; сохраняем немедленно, чтобы
+        # позиция/размер пережили даже аварийное завершение
+        self._persist_window_geometry()
         self._settings_controller.save_settings()
         draw_overlay = getattr(self, "_draw_overlay", None)
         if (
@@ -1162,6 +1204,20 @@ class MainWindow(
         self._update_timer.stop()
         self._thread_tracker.join_all()
         event.accept()
+
+    def _persist_window_geometry(self) -> None:
+        """Сохранить текущую геометрию окна в конфигурацию.
+
+        Не делает ничего, если QWidget-часть окна недоступна (например,
+        в тестах на объекте, собранном без ``QMainWindow.__init__``).
+        """
+        get_geometry = getattr(self, "geometry", None)
+        if not callable(get_geometry):
+            return
+        rect = get_geometry()
+        self._settings_controller.set_window_geometry(
+            [rect.x(), rect.y(), rect.width(), rect.height()]
+        )
 
     def _ask_close_action_while_recording(self) -> str:
         """Диалог выбора действия при закрытии во время записи.

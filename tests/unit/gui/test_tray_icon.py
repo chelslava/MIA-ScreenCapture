@@ -196,6 +196,7 @@ class TestTrayIconSignalWiring:
         "action_attr,signal_attr",
         [
             ("_show_action", "show_window_requested"),
+            ("_settings_action", "settings_requested"),
             ("_start_action", "start_requested"),
             ("_stop_action", "stop_requested"),
             ("_pause_action", "pause_requested"),

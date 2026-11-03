@@ -315,6 +315,29 @@ class SettingsController:
         self._config.settings.sidebar_width = width
         self._config.save()
 
+    def get_window_geometry(self) -> list[int] | None:
+        """
+        Получить сохранённую геометрию главного окна из конфигурации.
+
+        Returns:
+            Список [x, y, w, h] или None, если геометрия не сохранялась
+            (окно центрируется на экране).
+        """
+        return self._config.settings.window_geometry
+
+    def set_window_geometry(self, geometry: list[int]) -> None:
+        """
+        Установить и немедленно сохранить геометрию главного окна.
+
+        UI-preference как ширина сайдбара: сохраняется сразу, чтобы
+        позиция окна пережила даже аварийное завершение приложения.
+
+        Args:
+            geometry: Геометрия окна [x, y, w, h].
+        """
+        self._config.settings.window_geometry = [int(v) for v in geometry]
+        self._config.save()
+
     def get_output_path(self) -> Path:
         """
         Получить путь к выходному файлу.

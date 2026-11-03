@@ -371,6 +371,22 @@ class MockQWidgetBase:
         """Для QWidget."""
         return getattr(self, "_style_sheet", "")
 
+    def setObjectName(self, name: str):
+        """Для QWidget (QSS-селекторы по objectName)."""
+        self._object_name = name
+
+    def objectName(self) -> str:
+        """Для QWidget."""
+        return getattr(self, "_object_name", "")
+
+    def setHorizontalScrollBarPolicy(self, policy):
+        """Для QScrollArea / QAbstractScrollArea."""
+        self._h_scroll_policy = policy
+
+    def setVerticalScrollBarPolicy(self, policy):
+        """Для QScrollArea / QAbstractScrollArea."""
+        self._v_scroll_policy = policy
+
     def setText(self, text: str):
         """Для QLabel, QPushButton, QLineEdit."""
         self._text = text
@@ -804,6 +820,13 @@ class MockQListWidgetItem:
 
     def icon(self) -> Any:
         return self._icon
+
+    def setToolTip(self, text: str):
+        """Подсказка пункта списка (SettingsPage и сайдбар)."""
+        self._tooltip = text
+
+    def toolTip(self) -> str:
+        return getattr(self, "_tooltip", "")
 
     def setData(self, role: int, value: Any):
         self._data[role] = value

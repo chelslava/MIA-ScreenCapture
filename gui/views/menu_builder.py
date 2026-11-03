@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
+from gui.constants import SidebarPage
 from gui.controllers.desktop_actions_controller import (
     DesktopActionsController,
 )
@@ -71,6 +72,7 @@ class MainWindowMenuActionsMixin(_QWindowBase):
         _recordings_filter_input: QLineEdit
 
         # Callback-методы MainWindow (регистрируются в desktop actions)
+        _show_page: Callable[[SidebarPage], None]
         _start_recording: Callable[[], None]
         _toggle_pause: Callable[[], None]
         _stop_recording: Callable[[], None]
@@ -87,25 +89,17 @@ class MainWindowMenuActionsMixin(_QWindowBase):
             DesktopActionId.STOP_RECORDING: self._stop_recording,
             DesktopActionId.OPEN_LATEST_RECORDING: self._open_latest_recording,
             DesktopActionId.OPEN_RECORDING_FOLDER: self._open_recording_folder,
-            DesktopActionId.SHOW_RECORDING_TAB: lambda: (
-                self._sidebar.setCurrentRow(0)
-                if hasattr(self, "_sidebar")
-                else None
+            DesktopActionId.SHOW_RECORDING_TAB: lambda: self._show_page(
+                SidebarPage.RECORD
             ),
-            DesktopActionId.SHOW_SCHEDULER_TAB: lambda: (
-                self._sidebar.setCurrentRow(2)
-                if hasattr(self, "_sidebar")
-                else None
+            DesktopActionId.SHOW_SCHEDULER_TAB: lambda: self._show_page(
+                SidebarPage.SCHEDULER
             ),
-            DesktopActionId.SHOW_DIAGNOSTICS_TAB: lambda: (
-                self._sidebar.setCurrentRow(3)
-                if hasattr(self, "_sidebar")
-                else None
+            DesktopActionId.SHOW_DIAGNOSTICS_TAB: lambda: self._show_page(
+                SidebarPage.DIAGNOSTICS
             ),
-            DesktopActionId.SHOW_API_TAB: lambda: (
-                self._sidebar.setCurrentRow(4)
-                if hasattr(self, "_sidebar")
-                else None
+            DesktopActionId.SHOW_API_TAB: lambda: self._show_page(
+                SidebarPage.API
             ),
             DesktopActionId.OPEN_APP_LOGS: self._open_application_logs,
             DesktopActionId.TOGGLE_DRAW_OVERLAY: (self._toggle_draw_overlay),

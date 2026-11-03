@@ -271,24 +271,52 @@ def build_stylesheet(
             background-color: {window_background};
             color: {palette.text_primary};
         }}
+        QToolTip {{
+            background-color: {palette.surface};
+            color: {palette.text_primary};
+            border: 1px solid {palette.border};
+            border-radius: 4px;
+            padding: 4px 6px;
+        }}
         QGroupBox {{
             background-color: {palette.surface};
             border: 1px solid {palette.border};
-            border-radius: 6px;
-            margin-top: 8px;
-            padding-top: 8px;
+            border-radius: 8px;
+            margin-top: 16px;
+            padding: 16px 8px 8px 8px;
+            font-weight: bold;
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
-            left: 8px;
+            subcontrol-position: top left;
+            left: 10px;
+            top: 0px;
             padding: 0 4px;
             color: {palette.text_primary};
+        }}
+        QGroupBox::indicator {{
+            width: 15px;
+            height: 15px;
+            border: 1px solid {palette.border};
+            border-radius: 4px;
+            background-color: {palette.background};
+        }}
+        QGroupBox::indicator:hover {{
+            border-color: {palette.accent};
+        }}
+        QGroupBox::indicator:checked {{
+            background-color: {palette.accent};
+            border-color: {palette.accent};
+        }}
+        QGroupBox::indicator:disabled {{
+            border-color: {palette.border};
+            background-color: {palette.surface};
         }}
         QPushButton {{
             background-color: {palette.surface};
             border: 1px solid {palette.border};
-            border-radius: 4px;
-            padding: 4px 10px;
+            border-radius: 6px;
+            padding: 5px 12px;
             color: {palette.text_primary};
         }}
         QPushButton:hover {{
@@ -304,19 +332,21 @@ def build_stylesheet(
         QPushButton:disabled {{
             color: {palette.text_secondary};
             border-color: {palette.border};
+            background-color: {palette.surface};
         }}
         QCheckBox, QRadioButton {{
             color: {palette.text_primary};
-            spacing: 6px;
+            spacing: 8px;
+            font-weight: normal;
         }}
         QCheckBox::indicator, QRadioButton::indicator {{
-            width: 14px;
-            height: 14px;
+            width: 15px;
+            height: 15px;
             border: 1px solid {palette.border};
             background-color: {palette.background};
         }}
         QCheckBox::indicator {{
-            border-radius: 3px;
+            border-radius: 4px;
         }}
         QRadioButton::indicator {{
             border-radius: 8px;
@@ -335,19 +365,39 @@ def build_stylesheet(
         QLineEdit, QComboBox, QSpinBox {{
             background-color: {palette.background};
             border: 1px solid {palette.border};
-            border-radius: 4px;
-            padding: 2px 4px;
+            border-radius: 6px;
+            padding: 4px 8px;
+            min-height: 18px;
             color: {palette.text_primary};
+        }}
+        QLineEdit:hover, QComboBox:hover, QSpinBox:hover {{
+            border-color: {palette.accent_hover};
         }}
         QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{
             border: 1px solid {palette.accent};
         }}
+        QComboBox::drop-down {{
+            border: none;
+            width: 20px;
+        }}
+        QComboBox QAbstractItemView {{
+            background-color: {palette.surface};
+            border: 1px solid {palette.border};
+            border-radius: 6px;
+            color: {palette.text_primary};
+            selection-background-color: {palette.selection};
+            selection-color: {palette.text_primary};
+            outline: none;
+        }}
         QListWidget {{
             background-color: {palette.surface};
             border: none;
+            outline: none;
         }}
         QListWidget::item {{
-            padding: 6px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            margin: 1px 4px;
             color: {palette.text_primary};
         }}
         QListWidget::item:hover {{
@@ -358,10 +408,36 @@ def build_stylesheet(
             background-color: {palette.selection};
             color: {palette.text_primary};
         }}
+        QMenu {{
+            background-color: {palette.surface};
+            border: 1px solid {palette.border};
+            border-radius: 6px;
+            padding: 4px;
+            color: {palette.text_primary};
+        }}
+        QMenu::item {{
+            padding: 5px 24px 5px 12px;
+            border-radius: 4px;
+        }}
+        QMenu::item:selected {{
+            background-color: {palette.selection};
+        }}
+        QMenu::separator {{
+            height: 1px;
+            background-color: {palette.border};
+            margin: 4px 8px;
+        }}
         QStatusBar {{
             background-color: {palette.surface};
             border-top: 1px solid {palette.border};
             color: {palette.text_secondary};
+        }}
+        QScrollArea {{
+            background-color: transparent;
+            border: none;
+        }}
+        QScrollArea > QWidget > QWidget {{
+            background-color: transparent;
         }}
         QTableWidget {{
             background-color: {palette.background};
@@ -371,18 +447,47 @@ def build_stylesheet(
         QHeaderView::section {{
             background-color: {palette.surface};
             border: 1px solid {palette.border};
-            padding: 4px;
+            padding: 6px;
             color: {palette.text_primary};
         }}
-        QScrollBar:vertical, QScrollBar:horizontal {{
-            background-color: {palette.surface};
+        QSplitter::handle {{
+            background-color: transparent;
         }}
-        QScrollBar::handle {{
+        QSplitter::handle:hover {{
+            background-color: {palette.border};
+        }}
+        QScrollBar:vertical {{
+            background-color: transparent;
+            width: 10px;
+            margin: 2px;
+        }}
+        QScrollBar::handle:vertical {{
             background-color: {palette.border};
             border-radius: 3px;
+            min-height: 24px;
         }}
-        QScrollBar::handle:hover {{
+        QScrollBar::handle:vertical:hover {{
             background-color: {palette.accent};
+        }}
+        QScrollBar:horizontal {{
+            background-color: transparent;
+            height: 10px;
+            margin: 2px;
+        }}
+        QScrollBar::handle:horizontal {{
+            background-color: {palette.border};
+            border-radius: 3px;
+            min-width: 24px;
+        }}
+        QScrollBar::handle:horizontal:hover {{
+            background-color: {palette.accent};
+        }}
+        QScrollBar::add-line, QScrollBar::sub-line {{
+            width: 0;
+            height: 0;
+        }}
+        QScrollBar::add-page, QScrollBar::sub-page {{
+            background-color: transparent;
         }}
     """
 
@@ -486,8 +591,8 @@ class Theme:
     )
 
     # Единая шкала отступов для layout.setContentsMargins()/setSpacing().
-    MARGIN = 4
-    SPACING = 6
+    MARGIN = 6
+    SPACING = 8
 
     @classmethod
     def color(cls, tone: str) -> str:

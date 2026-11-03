@@ -20,11 +20,21 @@ from tests.unit.gui.test_main_window import _build_window
 
 
 class _FakeGeom:
-    """Геометрия экрана/окна с целочисленными размерами."""
+    """Геометрия экрана/окна с целочисленными размерами и позицией."""
 
-    def __init__(self, width: int, height: int) -> None:
+    def __init__(
+        self, width: int, height: int, x: int = 0, y: int = 0
+    ) -> None:
         self._width = width
         self._height = height
+        self._x = x
+        self._y = y
+
+    def x(self) -> int:
+        return self._x
+
+    def y(self) -> int:
+        return self._y
 
     def width(self) -> int:
         return self._width
@@ -39,47 +49,64 @@ class _FakeScreen:
     def geometry(self) -> _FakeGeom:
         return _FakeGeom(1920, 1080)
 
+    def availableGeometry(self) -> _FakeGeom:
+        return _FakeGeom(1920, 1080)
+
 
 class _FakeGuiApp:
-    """QGuiApplication-подобная заглушка."""
+    """QGuiApplication-подобная заглушка с экраном."""
 
     @staticmethod
     def primaryScreen() -> _FakeScreen:
         return _FakeScreen()
 
 
+class _FakeNoScreenGuiApp:
+    """QGuiApplication без экранов (headless-окружение)."""
+
+    @staticmethod
+    def primaryScreen() -> None:
+        return None
+
+
 class TestUiBuilderSetupWindow:
     """Позиционирование и размер главного окна."""
 
-    def test_setup_window_sizes_and_centers(self, monkeypatch) -> None:
+    @staticmethod
+    def _make_window() -> MainWindow:
+        """Окно без __init__ с заглушками геометрии и контроллера."""
         window = MainWindow.__new__(MainWindow)
         window.setMinimumSize = MagicMock()
         window.resize = MagicMock()
         window.move = MagicMock()
         window.geometry = lambda: _FakeGeom(1000, 750)
+        window._settings_controller = MagicMock()
+        window._settings_controller.get_window_geometry.return_value = None
+        return window
 
-        gui_module = sys.modules["PyQt6.QtGui"]
-        monkeypatch.setattr(gui_module, "QGuiApplication", _FakeGuiApp)
+    def test_setup_window_sizes_and_centers(self, monkeypatch) -> None:
+        window = self._make_window()
+
+        import gui.views.main_ui_builder as builder_module
+
+        monkeypatch.setattr(builder_module, "QGuiApplication", _FakeGuiApp)
 
         MainWindow._setup_window(window)
 
         window.setMinimumSize.assert_called_once_with(900, 650)
         window.resize.assert_called_once_with(1000, 750)
-        # Центрирование: (1920-1000)//2, (1080-750)//2
+        # Центрирование в available: (1920-1000)//2, (1080-750)//2
         window.move.assert_called_once_with(460, 165)
 
     def test_setup_window_without_screen_uses_default_geometry(
         self, monkeypatch
     ) -> None:
-        window = MainWindow.__new__(MainWindow)
-        window.setMinimumSize = MagicMock()
-        window.resize = MagicMock()
-        window.move = MagicMock()
-        window.geometry = lambda: _FakeGeom(1000, 750)
+        window = self._make_window()
 
-        gui_module = sys.modules["PyQt6.QtGui"]
+        import gui.views.main_ui_builder as builder_module
+
         monkeypatch.setattr(
-            gui_module.QGuiApplication, "primaryScreen", lambda: None
+            builder_module, "QGuiApplication", _FakeNoScreenGuiApp
         )
         monkeypatch.setattr(
             MainWindow,
@@ -91,6 +118,49 @@ class TestUiBuilderSetupWindow:
 
         # (800-1000)//2 = -100 → окно прижато влево, но без падения
         window.move.assert_called_once_with(-100, -75)
+
+    def test_setup_window_restores_saved_geometry(self, monkeypatch) -> None:
+        """Сохранённая геометрия восстанавливается вместо центрирования."""
+        window = self._make_window()
+        window.setGeometry = MagicMock()
+        window._settings_controller.get_window_geometry.return_value = [
+            120,
+            80,
+            1100,
+            700,
+        ]
+
+        import gui.views.main_ui_builder as builder_module
+
+        monkeypatch.setattr(builder_module, "QGuiApplication", _FakeGuiApp)
+
+        MainWindow._setup_window(window)
+
+        window.setGeometry.assert_called_once_with(120, 80, 1100, 700)
+        window.move.assert_not_called()
+
+    def test_setup_window_ignores_offscreen_geometry(
+        self, monkeypatch
+    ) -> None:
+        """Геометрия вне экрана отбрасывается — окно центрируется."""
+        window = self._make_window()
+        window.setGeometry = MagicMock()
+        # Прямоугольник целиком правее и ниже доступной области
+        window._settings_controller.get_window_geometry.return_value = [
+            5000,
+            5000,
+            1100,
+            700,
+        ]
+
+        import gui.views.main_ui_builder as builder_module
+
+        monkeypatch.setattr(builder_module, "QGuiApplication", _FakeGuiApp)
+
+        MainWindow._setup_window(window)
+
+        window.setGeometry.assert_not_called()
+        window.move.assert_called_once_with(460, 165)
 
 
 class TestUiBuilderGetDefaultGeometry:
@@ -105,7 +175,7 @@ class TestUiBuilderGetDefaultGeometry:
 
 
 class TestUiBuilderSetupUi:
-    """Полная сборка каркаса окна (сайдбар + 5 страниц + статус-бар)."""
+    """Полная сборка каркаса окна (сайдбар + 6 страниц + статус-бар)."""
 
     _PATCHED_WIDGETS = (
         "QSplitter",
@@ -115,6 +185,9 @@ class TestUiBuilderSetupUi:
         "QWidget",
         "QVBoxLayout",
         "QHBoxLayout",
+        # QStackedWidget патчится обязательно: без этого общий auto-mock
+        # из conftest копит addWidget-вызовы от других тестов сессии
+        "QStackedWidget",
         "QLineEdit",
         "QLabel",
         "QComboBox",
@@ -132,9 +205,10 @@ class TestUiBuilderSetupUi:
         "RecordingTunablesView",
         "ReadinessCenterView",
         "RecordingsListWidget",
+        "SettingsPage",
     )
 
-    def test_setup_ui_builds_five_pages(self) -> None:
+    def test_setup_ui_builds_six_pages(self) -> None:
         window = MainWindow.__new__(MainWindow)
         window.setCentralWidget = MagicMock()
         window.setStatusBar = MagicMock()
@@ -146,8 +220,8 @@ class TestUiBuilderSetupUi:
         ):
             self._run_setup_ui(window)
 
-        assert window._sidebar.addItem.call_count == 5
-        assert window._content_stack.addWidget.call_count == 5
+        assert window._sidebar.addItem.call_count == 6
+        assert window._content_stack.addWidget.call_count == 6
         window._sidebar.setCurrentRow.assert_called_once_with(0)
         window._content_stack.setCurrentIndex.assert_called_once_with(0)
         window.setCentralWidget.assert_called_once_with(
@@ -535,7 +609,7 @@ class TestMainWindowReadinessRouting:
 
         MainWindow._show_readiness_details(window)
 
-        window._sidebar.setCurrentRow.assert_called_once_with(3)
+        window._sidebar.setCurrentRow.assert_called_once_with(4)
         window._run_diagnostics.assert_called_once()
 
     def test_diagnostics_fix_routes_to_readiness_action(self) -> None:

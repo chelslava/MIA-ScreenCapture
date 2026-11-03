@@ -385,3 +385,52 @@ class TestMinimizeToTray:
         controller.set_minimize_to_tray(1)  # type: ignore[arg-type]
 
         assert config.settings.minimize_to_tray is True
+
+
+class TestWindowGeometry:
+    """Тесты сохранения геометрии главного окна (window_geometry)."""
+
+    @pytest.fixture
+    def config(self) -> MagicMock:
+        """Мок ConfigManager с window_geometry по умолчанию."""
+        cfg = MagicMock(spec=ConfigManager)
+        cfg.settings.window_geometry = None
+        cfg.save = MagicMock(return_value=True)
+        return cfg
+
+    @pytest.fixture
+    def controller(self, config: MagicMock) -> SettingsController:
+        """Контроллер поверх мока конфигурации."""
+        return SettingsController(config=config)
+
+    def test_get_window_geometry_default_none(
+        self, controller: SettingsController
+    ) -> None:
+        """Без сохранённой геометрии контроллер возвращает None."""
+        assert controller.get_window_geometry() is None
+
+    def test_get_window_geometry_returns_saved(
+        self, config: MagicMock
+    ) -> None:
+        """Сохранённая геометрия читается из конфигурации."""
+        config.settings.window_geometry = [100, 50, 1200, 800]
+        controller = SettingsController(config=config)
+
+        assert controller.get_window_geometry() == [100, 50, 1200, 800]
+
+    def test_set_window_geometry_persists(
+        self, controller: SettingsController, config: MagicMock
+    ) -> None:
+        """set_window_geometry записывает [x, y, w, h] и сохраняет конфиг."""
+        controller.set_window_geometry([10, 20, 1100, 700])
+
+        assert config.settings.window_geometry == [10, 20, 1100, 700]
+        config.save.assert_called()
+
+    def test_set_window_geometry_coerces_to_int(
+        self, controller: SettingsController, config: MagicMock
+    ) -> None:
+        """Значения приводятся к int при записи."""
+        controller.set_window_geometry([1.0, 2.0, 3.0, 4.0])  # type: ignore[list-item]
+
+        assert config.settings.window_geometry == [1, 2, 3, 4]

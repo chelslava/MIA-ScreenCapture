@@ -26,7 +26,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
     QPushButton,
-    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -52,13 +51,10 @@ class PostProcessingView(QWidget):
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        container = QWidget()
-        layout = QVBoxLayout(container)
+        # Прокрутку обеспечивает страница настроек (SettingsPage оборачивает
+        # категорию в QScrollArea) — вложенная прокрутка здесь не нужна
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # Главный тумблер
         self._main_enabled_cb = QCheckBox(
@@ -195,9 +191,6 @@ class PostProcessingView(QWidget):
 
         layout.addWidget(integration_group)
         layout.addStretch()
-
-        scroll.setWidget(container)
-        main_layout.addWidget(scroll)
 
         # Accessibility
         apply_accessible_metadata(
