@@ -36,7 +36,10 @@ if TYPE_CHECKING:
 from api.auth import API_KEY_HEADER
 from api.websocket import WebSocketManager
 from app_runtime.api_coordinator import ApiRuntimeCoordinator
-from app_runtime.constants import GUI_DEFAULT_TIMEOUT_SECONDS
+from app_runtime.constants import (
+    GUI_DEFAULT_TIMEOUT_SECONDS,
+    GUI_START_TIMEOUT_SECONDS,
+)
 from app_runtime.gui_coordinator import GuiRuntimeCoordinator
 from app_runtime.recording_coordinator import RecordingRuntimeCoordinator
 from app_runtime.thread_executor import MainThreadExecutor
@@ -950,9 +953,17 @@ class VideoRecorderApp:
         logger.info("Горячие клавиши активированы")
 
     def _toggle_draw_overlay_hotkey(self) -> None:
-        """Режим рисования поверх экрана по горячей клавише (#159)."""
+        """Режим рисования поверх экрана по горячей клавише (#159).
+
+        Колбек хоткея выполняется в потоке слушателя: любые операции
+        Qt обязаны идти в GUI-поток, иначе виджеты создаются в чужом
+        потоке и приложение зависает (живая проверка #159).
+        """
         if self._main_window:
-            self._main_window.toggle_draw_overlay_mode()
+            self._run_on_gui_thread(
+                self._main_window.toggle_draw_overlay_mode,
+                timeout=GUI_START_TIMEOUT_SECONDS,
+            )
 
     def _toggle_recording_hotkey(self) -> None:
         """Переключение записи по горячей клавише."""

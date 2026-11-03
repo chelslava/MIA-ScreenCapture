@@ -1299,11 +1299,23 @@ class TestStartStopHotkeys:
     def test_draw_overlay_hotkey_toggles_main_window(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Хоткей рисования вызывает toggle у главного окна (#159)."""
+        """Хоткей рисования вызывает toggle в GUI-потоке (#159).
+
+        Колбек хоткея выполняется в потоке слушателя: прямой вызов
+        Qt-методов из него зависал приложение (живая проверка).
+        """
         app, _ = _build_app(monkeypatch, api_key="config-token")
         app._main_window = MagicMock()
+        dispatched: list = []
+        app._run_on_gui_thread = MagicMock(
+            side_effect=lambda fn, timeout=None: dispatched.append(fn)
+        )
+
         app._toggle_draw_overlay_hotkey()
-        app._main_window.toggle_draw_overlay_mode.assert_called_once_with()
+
+        app._run_on_gui_thread.assert_called_once()
+        # В очередь ушёл именно метод toggle главного окна
+        assert dispatched == [app._main_window.toggle_draw_overlay_mode]
 
     def test_draw_overlay_hotkey_without_window_is_noop(
         self, monkeypatch: pytest.MonkeyPatch
