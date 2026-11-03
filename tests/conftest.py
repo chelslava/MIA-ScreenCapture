@@ -278,9 +278,33 @@ class MockQWidgetBase:
     def setWindowFlags(self, *args, **kwargs):
         """Для fullscreen-оверлеев и диалогов."""
 
+    def setAutoFillBackground(self, enabled: bool):
+        """Colorkey-фон оверлея рисования (#159)."""
+        self._auto_fill = enabled
+
+    def setPalette(self, palette):
+        """Палитра виджета (colorkey-фон #159)."""
+        self._palette = palette
+
+    def autoFillBackground(self) -> bool:
+        """Заполнение фона из палитры."""
+        return getattr(self, "_auto_fill", False)
+
+    def setWindowOpacity(self, opacity: float):
+        """Uniform-прозрачность окна (input-ловушка #159)."""
+        self._window_opacity = opacity
+
+    def move(self, x: int, y: int | None = None):
+        """Позиция окна (тулбар-окно #159)."""
+        self._pos = (x, y)
+
     def installEventFilter(self, obj):
         """Для оверлея-щита, ловящего мышь (#159)."""
         self._event_filter = obj
+
+    def setMask(self, mask):
+        """Hit-маска окна (оверлей рисования #159)."""
+        self._mask = mask
 
     def size(self):
         """Текущий размер виджета как QSize-подобный объект."""

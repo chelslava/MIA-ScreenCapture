@@ -19,8 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from PyQt6.QtCore import QEvent, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QPainter, QPalette, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -59,6 +59,17 @@ _TOOLBAR_WIDTH = 660
 _TOOLBAR_HEIGHT = 48
 _TOOLBAR_MARGIN = 8
 
+# Двухслойная схема оверлея (#159): окно с per-pixel альфой на
+# Windows Qt hit-тестит по альфе пикселей, и клики по прозрачным
+# областям уходят насквозь (как и colorkey в LWA_COLORKEY). Поэтому
+# рисование разделено на три топ-левел окна:
+# 1) DrawInputWindow — почти невидимое (uniform alpha 1/255) окно,
+#    ловящее всю мышь/клавиатуру и переадресующее события;
+# 2) визуальный DrawOverlayWidget (translucent, WS_EX_TRANSPARENT);
+# 3) DrawToolbar — отдельное непрозрачное окно поверх, чтобы кнопки
+#    кликались, а не рисовались.
+_INPUT_OPACITY = 1.0 / 255.0
+
 
 class DrawToolbar(QWidget):
     """Панель инструментов оверлея рисования.
@@ -93,11 +104,20 @@ class DrawToolbar(QWidget):
         ("✕", "close"),
     )
 
-    def __init__(self, parent: QWidget | None = None) -> None:
-        """Создать тулбар с кнопками инструментов и действий."""
-        super().__init__(parent)
+    def __init__(self) -> None:
+        """Создать тулбар как отдельное окно поверх оверлея."""
+        super().__init__(None)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
         self.setFixedSize(_TOOLBAR_WIDTH, _TOOLBAR_HEIGHT)
         self._tool_buttons: dict[DrawTool, QPushButton] = {}
+        self.setAutoFillBackground(True)
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(32, 32, 36))
+        self.setPalette(palette)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -182,6 +202,63 @@ class DrawToolbar(QWidget):
             btn.setChecked(known_tool is tool)
 
 
+class DrawInputWindow(QWidget):
+    """Невидимое окно-ловушка ввода оверлея (#159).
+
+    Uniform alpha 1/255: hit-test по всей геометрии (в отличие от
+    per-pixel альфы), визуально не виден. Все события мыши и
+    клавиатуры переадресуются визуальному оверлею.
+    """
+
+    def __init__(self, forward: DrawOverlayWidget) -> None:
+        """Создать ловушку, переадресующую события в оверлей."""
+        super().__init__(None)
+        self._forward = forward
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self.setAutoFillBackground(True)
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(0, 0, 0))
+        self.setPalette(palette)
+        self.setWindowOpacity(_INPUT_OPACITY)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def _sync_geometry(self) -> None:
+        """Растянуть ловушку на геометрию визуального оверлея."""
+        if not hasattr(self, "setGeometry") or not hasattr(
+            self._forward, "geometry"
+        ):
+            return
+        geometry = self._forward.geometry()
+        self.setGeometry(
+            geometry.x(),
+            geometry.y(),
+            geometry.width(),
+            geometry.height(),
+        )
+
+    def mousePressEvent(self, event: Any) -> None:
+        """Переадресовать нажатие в оверлей."""
+        self._forward._on_press(event)
+
+    def mouseMoveEvent(self, event: Any) -> None:
+        """Переадресовать движение в оверлей."""
+        self._forward._on_move(event)
+
+    def mouseReleaseEvent(self, event: Any) -> None:
+        """Переадресовать отпускание в оверлей."""
+        self._forward._on_release(event)
+
+    def keyPressEvent(self, event: Any) -> None:
+        """Переадресовать клавиши (Esc/Ctrl+Z/Ctrl+Y) в оверлей."""
+        self._forward.keyPressEvent(event)
+
+
 class DrawOverlayWidget(QWidget):
     """Fullscreen-оверлей с аннотациями поверх экрана.
 
@@ -211,30 +288,29 @@ class DrawOverlayWidget(QWidget):
         self._color = DEFAULT_DRAW_COLOR
         self._width = DEFAULT_DRAW_WIDTH
         self._active_shape: DrawShape | None = None
-        # Прозрачный щит на весь экран: top-level layered-окно hit-тестит
-        # по альфе и пропускает клики сквозь прозрачные пиксели; child
-        # виджет ловит мышь по геометрии (#159, живая проверка).
-        self._input_shield = QWidget(self)
-        self._input_shield.setMouseTracking(True)
-        self._input_shield.installEventFilter(self)
-        self._toolbar = DrawToolbar(self)
+        self._input_window = DrawInputWindow(self)
+        self._toolbar = DrawToolbar()
         self._setup_window()
         self._connect_toolbar()
 
     # === Настройка окна ===
 
     def _setup_window(self) -> None:
-        """Флаги поверх всех окон, прозрачность, курсор-крестик."""
+        """Флаги визуального слоя: прозрачно и только для рисования.
+
+        WindowTransparentForInput (WS_EX_TRANSPARENT) отдает все
+        события мыши нижележащему input-окну (#159).
+        """
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
+            | Qt.WindowType.WindowTransparentForInput
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setMouseTracking(True)
-        self.setCursor(Qt.CursorShape.CrossCursor)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
     def _connect_toolbar(self) -> None:
         """Подключить сигналы тулбара к оверлею."""
@@ -298,12 +374,7 @@ class DrawOverlayWidget(QWidget):
     # === Управление режимом ===
 
     def open_overlay(self) -> None:
-        """Показать оверлей на весь экран и передать ему фокус.
-
-        setGeometry + show (как в area_selector): showFullScreen на
-        Windows с WA_TranslucentBackground не доставляет события мыши
-        по прозрачным областям.
-        """
+        """Показать все три окна на весь экран; фокус — у ловушки."""
         try:
             from PyQt6.QtGui import QGuiApplication
 
@@ -318,19 +389,41 @@ class DrawOverlayWidget(QWidget):
                 )
         except Exception as e:
             logger.warning("Геометрия оверлея не установлена: %s", e)
-        if hasattr(self, "_input_shield") and hasattr(self, "size"):
-            size = self.size()
-            self._input_shield.resize(size.width(), size.height())
+        self._input_window._sync_geometry()
+        self._position_toolbar()
+        if hasattr(self._input_window, "show"):
+            self._input_window.show()
+        if hasattr(self._input_window, "activateWindow"):
+            self._input_window.activateWindow()
         if hasattr(self, "show"):
             self.show()
+        if hasattr(self._toolbar, "show"):
+            self._toolbar.show()
         if hasattr(self, "raise_"):
             self.raise_()
-        if hasattr(self, "activateWindow"):
-            self.activateWindow()
+        if hasattr(self._toolbar, "raise_"):
+            self._toolbar.raise_()
+
+    def _position_toolbar(self) -> None:
+        """Центрировать тулбар по верхней кромке основного экрана."""
+        if not hasattr(self._toolbar, "move") or not hasattr(self, "width"):
+            return
+        toolbar_width = self._toolbar.width()
+        if not isinstance(toolbar_width, int):
+            return
+        geometry_x = self.x() if hasattr(self, "x") else 0
+        self._toolbar.move(
+            geometry_x + max((self.width() - toolbar_width) // 2, 0),
+            _TOOLBAR_MARGIN,
+        )
 
     def close_overlay(self) -> None:
-        """Скрыть оверлей, сохранив аннотации в документе."""
+        """Скрыть оверлей, тулбар и ловушку (аннотации сохраняются)."""
         self._active_shape = None
+        if hasattr(self._input_window, "hide"):
+            self._input_window.hide()
+        if hasattr(self._toolbar, "hide"):
+            self._toolbar.hide()
         if hasattr(self, "hide"):
             self.hide()
         self.closed.emit()
@@ -400,6 +493,11 @@ class DrawOverlayWidget(QWidget):
         if screen is None:
             return None
         was_visible = bool(self.isVisible())
+        toolbar_was_visible = bool(
+            getattr(self._toolbar, "isVisible", lambda: False)()
+        )
+        if toolbar_was_visible and hasattr(self._toolbar, "hide"):
+            self._toolbar.hide()
         if was_visible and hasattr(self, "hide"):
             self.hide()
         try:
@@ -425,39 +523,22 @@ class DrawOverlayWidget(QWidget):
         finally:
             if was_visible and hasattr(self, "show"):
                 self.show()
+            if toolbar_was_visible and hasattr(self._toolbar, "show"):
+                self._toolbar.show()
         return cast(QPixmap, base)
 
     # === События мыши ===
 
-    def eventFilter(self, obj: Any, event: Any) -> bool:
-        """Маршрут мышиных событий щита в рисование (#159)."""
-        if obj is getattr(self, "_input_shield", None):
-            event_type = getattr(event, "type", lambda: None)()
-            if event_type == QEvent.Type.MouseButtonPress:
-                self._on_press(event)
-                return True
-            if event_type == QEvent.Type.MouseMove:
-                self._on_move(event)
-                return True
-            if event_type == QEvent.Type.MouseButtonRelease:
-                self._on_release(event)
-                return True
-        return (
-            bool(super().eventFilter(obj, event))
-            if hasattr(super(), "eventFilter")
-            else False
-        )
-
     def mousePressEvent(self, event: Any) -> None:
-        """Начать фигуру (прямые события окна, кроме щита)."""
+        """Начать фигуру в точке нажатия."""
         self._on_press(event)
 
     def mouseMoveEvent(self, event: Any) -> None:
-        """Продлить штрих (прямые события окна, кроме щита)."""
+        """Продлить активный штрих (коалесцированная перерисовка)."""
         self._on_move(event)
 
     def mouseReleaseEvent(self, event: Any) -> None:
-        """Зафиксировать фигуру (прямые события окна, кроме щита)."""
+        """Завершить фигуру и зафиксировать её в документе."""
         self._on_release(event)
 
     def _on_press(self, event: Any) -> None:
@@ -558,17 +639,19 @@ class DrawOverlayWidget(QWidget):
             painter.end()
 
     def _draw_shape(self, painter: QPainter, shape: DrawShape) -> None:
-        """Отрисовать одну фигуру с параметрами её инструмента."""
+        """Отрисовать одну фигуру с параметрами её инструмента.
+
+        Ластик рисуется цветом colorkey: пиксели штриха становятся
+        невидимыми и кликабельными — на colorkey-окне это и есть
+        «стирание» (CompositionMode_Clear здесь не работает).
+        """
+        painter.setCompositionMode(
+            QPainter.CompositionMode.CompositionMode_SourceOver
+        )
         if shape.tool is DrawTool.ERASER:
-            painter.setCompositionMode(
-                QPainter.CompositionMode.CompositionMode_Clear
-            )
             pen_width = shape.width * _ERASER_WIDTH_SCALE
-            pen_color = QColor("#000000")
+            pen_color = QColor(0xFF, 0x00, 0xFF)
         else:
-            painter.setCompositionMode(
-                QPainter.CompositionMode.CompositionMode_SourceOver
-            )
             pen_width = shape.width
             pen_color = QColor(shape.color)
 
@@ -641,19 +724,8 @@ class DrawOverlayWidget(QWidget):
             )
 
     def resizeEvent(self, event: Any) -> None:
-        """Держать тулбар по центру верхней кромки, щит — на весь экран."""
-        if (
-            hasattr(self, "_input_shield")
-            and hasattr(self._input_shield, "resize")
-            and hasattr(self, "size")
-        ):
-            size = self.size()
-            self._input_shield.resize(size.width(), size.height())
-        toolbar_width = self._toolbar.width()
-        if isinstance(toolbar_width, int):
-            self._toolbar.move(
-                int(max((self.width() - toolbar_width) // 2, 0)),
-                _TOOLBAR_MARGIN,
-            )
+        """Синхронизировать геометрию ловушки и тулбара."""
+        self._input_window._sync_geometry()
+        self._position_toolbar()
         if hasattr(super(), "resizeEvent"):
             super().resizeEvent(event)

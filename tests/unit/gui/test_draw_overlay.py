@@ -263,55 +263,73 @@ class TestDrawOverlayDrawing:
         assert overlay.document.is_empty()
 
 
-class TestDrawOverlayInputShield:
-    """Щит: child-виджет, ловящий мышь по геометрии (#159)."""
+class TestDrawOverlayThreeWindows:
+    """Схема трёх окон: ловушка ввода + визуальный слой + тулбар (#159)."""
 
-    def test_shield_created_before_toolbar(self) -> None:
+    def test_visual_layer_is_transparent_for_input(self) -> None:
         overlay = DrawOverlayWidget()
 
-        assert overlay._input_shield is not None
+        assert overlay.autoFillBackground() is False
+
+    def test_input_window_created_and_linked(self) -> None:
+        overlay = DrawOverlayWidget()
+
+        assert overlay._input_window is not None
+        assert overlay._input_window._forward is overlay
+
+    def test_toolbar_is_separate_window(self) -> None:
+        overlay = DrawOverlayWidget()
+
+        # Тулбар без родителя — самостоятельное топ-левел окно
         assert overlay._toolbar is not None
 
-    def test_event_filter_routes_mouse_press(self) -> None:
+    def test_open_shows_input_visual_and_toolbar(self) -> None:
         overlay = DrawOverlayWidget()
-        overlay._request_repaint = MagicMock()
-        fake_qt = SimpleNamespace(
-            Type=SimpleNamespace(
-                MouseButtonPress="press",
-                MouseMove="move",
-                MouseButtonRelease="release",
-            ),
-            KeyboardModifier=SimpleNamespace(ControlModifier=MagicMock()),
-            Key=SimpleNamespace(Key_Z="z", Key_Y="y", Key_Escape="esc"),
-            Key_Escape="esc",
-        )
-        event = SimpleNamespace(
-            type=lambda: "press",
-            position=lambda: _FakePoint(30, 40),
-        )
+        overlay.show = MagicMock()
+        overlay.raise_ = MagicMock()
+        overlay.showFullScreen = MagicMock()
+        overlay._input_window = MagicMock()
+        overlay._toolbar = MagicMock()
 
-        with (
-            patch("gui.views.draw_overlay.Qt", fake_qt),
-            patch(
-                "gui.views.draw_overlay.QEvent",
-                SimpleNamespace(Type=fake_qt.Type),
-            ),
-        ):
-            handled = overlay.eventFilter(overlay._input_shield, event)
+        overlay.open_overlay()
 
-        assert handled is True
-        assert overlay._active_shape is not None
-        assert overlay._active_shape.points[0] == (30.0, 40.0)
+        overlay.show.assert_called_once()
+        overlay._input_window.show.assert_called_once()
+        overlay._input_window.activateWindow.assert_called_once()
+        overlay._toolbar.show.assert_called_once()
+        overlay._toolbar.raise_.assert_called_once()
 
-    def test_event_filter_ignores_other_objects(self) -> None:
+    def test_close_hides_all_three_windows(self) -> None:
         overlay = DrawOverlayWidget()
-        event = SimpleNamespace(type=lambda: "press")
+        overlay.hide = MagicMock()
+        overlay.closed = MagicMock()
+        overlay._input_window = MagicMock()
+        overlay._toolbar = MagicMock()
 
-        with patch("gui.views.draw_overlay.Qt", SimpleNamespace()):
-            handled = overlay.eventFilter(MagicMock(), event)
+        overlay.close_overlay()
 
-        assert handled is False
-        assert overlay._active_shape is None
+        overlay.hide.assert_called_once()
+        overlay._input_window.hide.assert_called_once()
+        overlay._toolbar.hide.assert_called_once()
+        overlay.closed.emit.assert_called_once()
+
+    def test_input_forwards_press_to_overlay(self) -> None:
+        overlay = DrawOverlayWidget()
+        overlay._on_press = MagicMock()
+        event = SimpleNamespace(position=lambda: _FakePoint(11, 22))
+
+        overlay._input_window.mousePressEvent(event)
+
+        overlay._on_press.assert_called_once_with(event)
+
+    def test_input_forwards_keys_to_overlay(self) -> None:
+        overlay = DrawOverlayWidget()
+        overlay.keyPressEvent = MagicMock()
+        event = SimpleNamespace()
+
+        overlay._input_window.keyPressEvent(event)
+
+        overlay.keyPressEvent.assert_called_once_with(event)
 
 
 class TestDrawOverlayLifecycle:
@@ -322,19 +340,21 @@ class TestDrawOverlayLifecycle:
         overlay = DrawOverlayWidget()
         overlay.show = MagicMock()
         overlay.raise_ = MagicMock()
-        overlay.activateWindow = MagicMock()
         overlay.hide = MagicMock()
         overlay.closed = MagicMock()
         return overlay
 
-    def test_open_overlay_shows_fullscreen(self) -> None:
+    def test_open_overlay_shows_all_windows(self) -> None:
         overlay = self._make_overlay()
+        overlay._input_window = MagicMock()
+        overlay._toolbar = MagicMock()
 
         overlay.open_overlay()
 
         overlay.show.assert_called_once()
         overlay.raise_.assert_called_once()
-        overlay.activateWindow.assert_called_once()
+        overlay._input_window.show.assert_called_once()
+        overlay._toolbar.show.assert_called_once()
 
     def test_close_overlay_hides_and_emits(self) -> None:
         overlay = self._make_overlay()
@@ -471,6 +491,8 @@ class TestDrawOverlayScreenshot:
         overlay.hide = MagicMock()
         overlay.show = MagicMock()
         overlay.render = MagicMock()
+        overlay._toolbar = MagicMock()
+        overlay._toolbar.isVisible = MagicMock(return_value=True)
         base_pixmap = MagicMock()
         annotations_pixmap = MagicMock()
         screen = MagicMock()
@@ -493,6 +515,8 @@ class TestDrawOverlayScreenshot:
         assert result is base_pixmap
         overlay.hide.assert_called_once()
         overlay.show.assert_called_once()
+        overlay._toolbar.hide.assert_called_once()
+        overlay._toolbar.show.assert_called_once()
         app_mock.processEvents.assert_called_once()
         annotations_pixmap.fill.assert_called_once()
         overlay.render.assert_called_once_with(annotations_pixmap)
