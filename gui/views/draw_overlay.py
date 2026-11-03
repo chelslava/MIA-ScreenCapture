@@ -104,9 +104,15 @@ class DrawToolbar(QWidget):
         ("✕", "close"),
     )
 
-    def __init__(self) -> None:
-        """Создать тулбар как отдельное окно поверх оверлея."""
+    def __init__(self, forward: DrawOverlayWidget | None = None) -> None:
+        """Создать тулбар как отдельное окно поверх оверлея.
+
+        Args:
+            forward: Оверлей для переадресации клавиш (Esc, Ctrl+Z/Y),
+                когда фокус находится на тулбаре.
+        """
         super().__init__(None)
+        self._forward = forward
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -201,6 +207,11 @@ class DrawToolbar(QWidget):
         for known_tool, btn in self._tool_buttons.items():
             btn.setChecked(known_tool is tool)
 
+    def keyPressEvent(self, event: Any) -> None:
+        """Клавиши при фокусе на тулбаре — в оверлей (Esc, Ctrl+Z)."""
+        if self._forward is not None:
+            self._forward.keyPressEvent(event)
+
 
 class DrawInputWindow(QWidget):
     """Невидимое окно-ловушка ввода оверлея (#159).
@@ -218,6 +229,9 @@ class DrawInputWindow(QWidget):
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
+            # Без активации по клику: иначе ловушка поднимается над
+            # тулбаром и перехватывает его кнопки (#159, живая проверка)
+            | Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAutoFillBackground(True)
         palette = QPalette()
@@ -289,7 +303,7 @@ class DrawOverlayWidget(QWidget):
         self._width = DEFAULT_DRAW_WIDTH
         self._active_shape: DrawShape | None = None
         self._input_window = DrawInputWindow(self)
-        self._toolbar = DrawToolbar()
+        self._toolbar = DrawToolbar(self)
         self._setup_window()
         self._connect_toolbar()
 
@@ -418,8 +432,15 @@ class DrawOverlayWidget(QWidget):
         )
 
     def close_overlay(self) -> None:
-        """Скрыть оверлей, тулбар и ловушку (аннотации сохраняются)."""
+        """Скрыть все окна и очистить аннотации (#159).
+
+        Аннотации — черновик поверх экрана: при выходе из режима они
+        не переживают закрытие (в клип они всё равно не попадают).
+        """
         self._active_shape = None
+        removed = self._document.clear()
+        if removed:
+            logger.info("Аннотаций удалено при выходе: %d", removed)
         if hasattr(self._input_window, "hide"):
             self._input_window.hide()
         if hasattr(self._toolbar, "hide"):

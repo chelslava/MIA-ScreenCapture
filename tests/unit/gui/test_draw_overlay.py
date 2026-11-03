@@ -332,6 +332,49 @@ class TestDrawOverlayThreeWindows:
         overlay.keyPressEvent.assert_called_once_with(event)
 
 
+class TestDrawToolbarKeys:
+    """Клавиатура тулбара и флаг ловушки (#159)."""
+
+    def test_toolbar_forwards_keys_to_overlay(self) -> None:
+        overlay = DrawOverlayWidget()
+        overlay.keyPressEvent = MagicMock()
+        event = SimpleNamespace()
+
+        overlay._toolbar.keyPressEvent(event)
+
+        overlay.keyPressEvent.assert_called_once_with(event)
+
+    def test_toolbar_without_forward_is_noop(self) -> None:
+        toolbar = DrawToolbar(None)
+
+        toolbar.keyPressEvent(SimpleNamespace())  # не должно упасть
+
+    def test_input_window_does_not_accept_focus(self) -> None:
+        # Реальные int-значения Qt.WindowType: под моками conftest
+        # setWindowFlags запоминает аргумент
+        fake_wt = SimpleNamespace(
+            FramelessWindowHint=1,
+            WindowStaysOnTopHint=2,
+            Tool=4,
+            WindowDoesNotAcceptFocus=8,
+            WindowTransparentForInput=16,
+        )
+        # Остальные обращения (CursorShape, FocusPolicy, WidgetAttribute)
+        # под моками conftest безразличны — добиваем их MagicMock
+        fake_qt = MagicMock()
+        fake_qt.WindowType = fake_wt
+
+        with patch("gui.views.draw_overlay.Qt", fake_qt):
+            overlay = DrawOverlayWidget()
+
+        flags = overlay._input_window.windowFlags()
+
+        # Ловушка не активируется кликами: иначе поднимается над
+        # тулбаром и перехватывает кнопки
+        assert flags & 8  # WindowDoesNotAcceptFocus
+        assert flags == 1 | 2 | 4 | 8
+
+
 class TestDrawOverlayLifecycle:
     """Показ/скрытие оверлея и клавиатура."""
 
@@ -364,13 +407,16 @@ class TestDrawOverlayLifecycle:
         overlay.hide.assert_called_once()
         overlay.closed.emit.assert_called_once()
 
-    def test_close_overlay_drops_active_shape(self) -> None:
+    def test_close_overlay_drops_active_shape_and_clears(self) -> None:
         overlay = self._make_overlay()
         overlay._request_repaint = MagicMock()
         overlay.mousePressEvent(_FakeEvent(1, 1))
+        overlay.mouseReleaseEvent(_FakeEvent(9, 9))
+        assert len(overlay.document) == 1
 
         overlay.close_overlay()
 
+        # Аннотации не переживают выход (черновик поверх экрана)
         assert overlay._active_shape is None
         assert overlay.document.is_empty()
 

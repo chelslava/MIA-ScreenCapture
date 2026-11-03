@@ -212,6 +212,13 @@ class RecordingFlowControllerMixin(_QWindowBase):
 
     def _on_recording_stopped(self, output_path: Path) -> None:
         """Обработка остановки записи."""
+        # Режим рисования привязан к записи: закрыть оверлей (#159)
+        draw_overlay = getattr(self, "_draw_overlay", None)
+        if (
+            draw_overlay is not None
+            and getattr(draw_overlay, "isVisible", lambda: False)()
+        ):
+            draw_overlay.close_overlay()
         self._set_status_updates_enabled(False)
         self._update_ui_state(RecordingStatus.IDLE)
         self._recording_indicator.hide_indicator()

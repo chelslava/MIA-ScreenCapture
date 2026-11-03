@@ -276,7 +276,13 @@ class MockQWidgetBase:
         self._fixed_height = height
 
     def setWindowFlags(self, *args, **kwargs):
-        """Для fullscreen-оверлеев и диалогов."""
+        """Для fullscreen-оверлеев и диалогов (флаги запоминаются)."""
+        if args:
+            self._window_flags = args[0]
+
+    def windowFlags(self):
+        """Сохранённые флаги окна (проверка NOACTIVATE #159)."""
+        return getattr(self, "_window_flags", 0)
 
     def setAutoFillBackground(self, enabled: bool):
         """Colorkey-фон оверлея рисования (#159)."""
