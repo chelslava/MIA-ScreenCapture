@@ -959,7 +959,15 @@ class VideoRecorderApp:
         facade = self.get_application_facade()
         if self._main_window:
             if facade.get_status().get("is_recording", False):
-                facade.request_stop_recording()
+                result = facade.request_stop_recording()
+                logger.info("Хоткей стопа: %s", result)
+                if not result.get("success"):
+                    error = str(
+                        result.get("error", "Не удалось остановить запись")
+                    )
+                    self._run_on_gui_thread(
+                        lambda: self._main_window._show_non_modal_error(error)
+                    )
             else:
                 facade.request_start_recording()
 
@@ -972,18 +980,34 @@ class VideoRecorderApp:
     def _start_recording_hotkey(self) -> None:
         """Старт записи по горячей клавише (no-op, если запись идёт)."""
         facade = self.get_application_facade()
-        if self._main_window and not facade.get_status().get(
-            "is_recording", False
-        ):
-            facade.request_start_recording()
+        if not self._main_window:
+            return
+        if facade.get_status().get("is_recording", False):
+            logger.info("Хоткей старта: запись уже идёт")
+            return
+        result = facade.request_start_recording()
+        logger.info("Хоткей старта: %s", result)
+        if not result.get("success"):
+            error = str(result.get("error", "Не удалось запустить запись"))
+            self._run_on_gui_thread(
+                lambda: self._main_window._show_non_modal_error(error)
+            )
 
     def _stop_recording_hotkey(self) -> None:
         """Стоп записи по горячей клавише (no-op, если записи нет)."""
         facade = self.get_application_facade()
-        if self._main_window and facade.get_status().get(
-            "is_recording", False
-        ):
-            facade.request_stop_recording()
+        if not self._main_window:
+            return
+        if not facade.get_status().get("is_recording", False):
+            logger.info("Хоткей стопа: запись не активна")
+            return
+        result = facade.request_stop_recording()
+        logger.info("Хоткей стопа: %s", result)
+        if not result.get("success"):
+            error = str(result.get("error", "Не удалось остановить запись"))
+            self._run_on_gui_thread(
+                lambda: self._main_window._show_non_modal_error(error)
+            )
 
     def _start_scheduler(self) -> None:
         """Запуск планировщика задач."""

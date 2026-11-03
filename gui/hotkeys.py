@@ -126,6 +126,7 @@ class GlobalHotkeys:
 
                 def on_activate(hotkey: str) -> None:
                     if hotkey in hotkey_map:
+                        logger.info("Хоткей сработал: %s", hotkey)
                         try:
                             hotkey_map[hotkey]()
                         except Exception as e:

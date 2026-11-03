@@ -55,7 +55,7 @@ _ARROWHEAD_BASE_LEN: float = 14.0
 # Угол наконечника стрелки (радианы)
 _ARROWHEAD_ANGLE: float = 0.45  # ~26°
 
-_TOOLBAR_WIDTH = 660
+_TOOLBAR_WIDTH = 700
 _TOOLBAR_HEIGHT = 48
 _TOOLBAR_MARGIN = 8
 
@@ -86,6 +86,7 @@ class DrawToolbar(QWidget):
     redo_requested = pyqtSignal()
     clear_requested = pyqtSignal()
     screenshot_requested = pyqtSignal()
+    stop_requested = pyqtSignal()
     close_requested = pyqtSignal()
 
     _TOOL_LABELS: tuple[tuple[DrawTool, str], ...] = (
@@ -101,6 +102,7 @@ class DrawToolbar(QWidget):
         ("↪", "redo"),
         ("🗑", "clear"),
         ("📷", "screenshot"),
+        ("⏹", "stop"),
         ("✕", "close"),
     )
 
@@ -189,6 +191,8 @@ class DrawToolbar(QWidget):
             self.clear_requested.emit()
         elif action == "screenshot":
             self.screenshot_requested.emit()
+        elif action == "stop":
+            self.stop_requested.emit()
         elif action == "close":
             self.close_requested.emit()
 
@@ -284,6 +288,7 @@ class DrawOverlayWidget(QWidget):
 
     closed = pyqtSignal()
     screenshot_taken = pyqtSignal(str)
+    stop_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -335,6 +340,7 @@ class DrawOverlayWidget(QWidget):
         self._toolbar.redo_requested.connect(self.redo)
         self._toolbar.clear_requested.connect(self.clear_annotations)
         self._toolbar.screenshot_requested.connect(self._on_screenshot)
+        self._toolbar.stop_requested.connect(self.stop_requested.emit)
         self._toolbar.close_requested.connect(self.close_overlay)
 
     # === Публичное состояние ===

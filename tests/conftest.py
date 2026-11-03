@@ -206,6 +206,19 @@ class MockQWidgetBase:
         self._value = 0
         if args and isinstance(args[0], str):
             self._text = args[0]
+        # Инстансные копии class-level MockSignal: без этого все
+        # экземпляры делят один сигнал, и emit на одном объекте
+        # зажигает подписки всех (#159). Имя класса — единственный
+        # общий признак: pyqtSignal-мок и виджет-моки создают разные
+        # классы с одинаковым именем.
+        for klass in type(self).__mro__:
+            for name, value in vars(klass).items():
+                if (
+                    type(value).__name__ == "MockSignal"
+                    and hasattr(value, "connect")
+                    and hasattr(value, "emit")
+                ):
+                    setattr(self, name, type(value)())
 
     def setValue(self, value: int):
         """Для QProgressBar, QSpinBox, QSlider."""

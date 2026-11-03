@@ -1250,6 +1250,7 @@ class MainWindow(
             self._draw_overlay.screenshot_taken.connect(
                 self._on_draw_screenshot_taken
             )
+            self._draw_overlay.stop_requested.connect(self._stop_recording)
         return self._draw_overlay
 
     def toggle_draw_overlay_mode(self) -> None:

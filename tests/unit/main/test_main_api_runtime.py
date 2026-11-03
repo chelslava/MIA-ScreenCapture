@@ -1346,6 +1346,46 @@ class TestStartStopHotkeys:
 
         app.request_stop_recording.assert_called_once_with()
 
+    def test_start_hotkey_error_shows_non_modal_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ошибка хоткей-старта видна пользователю, а не тихая (#159)."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app.get_status = MagicMock(return_value={"is_recording": False})
+        app.request_start_recording = MagicMock(
+            return_value={"success": False, "error": "нет микрофона"}
+        )
+        app._run_on_gui_thread = MagicMock(
+            side_effect=lambda fn, timeout=None: fn()
+        )
+        app._main_window = SimpleNamespace(_show_non_modal_error=MagicMock())
+
+        app._start_recording_hotkey()
+
+        app._main_window._show_non_modal_error.assert_called_once_with(
+            "нет микрофона"
+        )
+
+    def test_stop_hotkey_error_shows_non_modal_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ошибка хоткей-стопа видна пользователю (#159)."""
+        app, _ = _build_app(monkeypatch, api_key="config-token")
+        app.get_status = MagicMock(return_value={"is_recording": True})
+        app.request_stop_recording = MagicMock(
+            return_value={"success": False, "error": "финализация не идёт"}
+        )
+        app._run_on_gui_thread = MagicMock(
+            side_effect=lambda fn, timeout=None: fn()
+        )
+        app._main_window = SimpleNamespace(_show_non_modal_error=MagicMock())
+
+        app._stop_recording_hotkey()
+
+        app._main_window._show_non_modal_error.assert_called_once_with(
+            "финализация не идёт"
+        )
+
 
 class TestMassScheduleOps:
     """Массовое удаление/переключение задач планировщика (#160)."""

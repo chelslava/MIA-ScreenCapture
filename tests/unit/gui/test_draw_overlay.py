@@ -350,6 +350,16 @@ class TestDrawToolbarKeys:
 
         toolbar.keyPressEvent(SimpleNamespace())  # не должно упасть
 
+    def test_stop_button_signal_chain(self) -> None:
+        """Кнопка ⏹ в тулбаре доходит до оверлея (#159)."""
+        overlay = DrawOverlayWidget()
+        received: list[bool] = []
+        overlay.stop_requested.connect(lambda: received.append(True))
+
+        overlay._toolbar._emit_action("stop")
+
+        assert received == [True]
+
     def test_input_window_does_not_accept_focus(self) -> None:
         # Реальные int-значения Qt.WindowType: под моками conftest
         # setWindowFlags запоминает аргумент
@@ -665,6 +675,9 @@ class TestDrawOverlayHotkeyIntegration:
         overlay_cls.assert_called_once()
         overlay.open_overlay.assert_called_once()
         overlay.screenshot_taken.connect.assert_called_once()
+        overlay.stop_requested.connect.assert_called_once_with(
+            window._stop_recording
+        )
         window.status_bar.showMessage.assert_called_once()
 
     def test_main_window_draw_overlay_requires_recording(self) -> None:
