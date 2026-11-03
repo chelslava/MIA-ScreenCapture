@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -654,6 +655,7 @@ class TestDrawOverlayHotkeyIntegration:
         window._draw_overlay = None
         window.status_bar = MagicMock()
         window._show_toast = MagicMock()
+        window._state.start_recording(Path("D:/clip.mp4"))
 
         with patch("gui.main_window.DrawOverlayWidget") as overlay_cls:
             overlay = overlay_cls.return_value
@@ -664,6 +666,43 @@ class TestDrawOverlayHotkeyIntegration:
         overlay.open_overlay.assert_called_once()
         overlay.screenshot_taken.connect.assert_called_once()
         window.status_bar.showMessage.assert_called_once()
+
+    def test_main_window_draw_overlay_requires_recording(self) -> None:
+        """Без активной записи режим не открывается — только тост."""
+        from tests.unit.gui.test_main_window import _build_window
+
+        window = _build_window()
+        window._draw_overlay = None
+        window._show_toast = MagicMock()
+
+        with patch("gui.main_window.DrawOverlayWidget") as overlay_cls:
+            window.toggle_draw_overlay_mode()
+
+        overlay_cls.assert_not_called()
+        window._show_toast.assert_called_once()
+
+    def test_stop_recording_closes_overlay(self, tmp_path) -> None:
+        """Остановка записи автоматически закрывает оверлей (#159)."""
+        from tests.unit.gui.test_main_window import _build_window
+
+        window = _build_window()
+        overlay = MagicMock()
+        overlay.isVisible = MagicMock(return_value=True)
+        window._draw_overlay = overlay
+        window._set_status_updates_enabled = MagicMock()
+        window._update_ui_state = MagicMock()
+        window._recording_indicator = MagicMock()
+        window._refresh_recent_recordings = MagicMock()
+        window._settings_controller = MagicMock()
+        window._recordings_controller = MagicMock()
+        window.recording_stopped = MagicMock()
+
+        clip = tmp_path / "clip.mp4"
+        clip.write_bytes(b"x")
+
+        window._on_recording_stopped(clip)
+
+        overlay.close_overlay.assert_called_once()
 
     def test_main_window_toggles_visible_overlay_closed(self) -> None:
         from tests.unit.gui.test_main_window import _build_window

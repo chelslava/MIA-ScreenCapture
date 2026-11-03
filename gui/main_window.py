@@ -1253,13 +1253,23 @@ class MainWindow(
         return self._draw_overlay
 
     def toggle_draw_overlay_mode(self) -> None:
-        """Показать или скрыть оверлей быстрых аннотаций (#159)."""
+        """Показать или скрыть оверлей быстрых аннотаций (#159).
+
+        Режим доступен только во время активной записи: аннотации —
+        вспомогательный инструмент кадра, а не самостоятельный режим.
+        """
         overlay = getattr(self, "_draw_overlay", None)
         if (
             overlay is not None
             and getattr(overlay, "isVisible", lambda: False)()
         ):
             overlay.close_overlay()
+            return
+        if not self._state.is_recording():
+            self._show_toast(
+                "Режим рисования доступен только во время записи",
+                duration_ms=4000,
+            )
             return
         overlay = self._get_draw_overlay()
         if overlay is None:
