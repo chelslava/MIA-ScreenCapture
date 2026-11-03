@@ -263,6 +263,57 @@ class TestDrawOverlayDrawing:
         assert overlay.document.is_empty()
 
 
+class TestDrawOverlayInputShield:
+    """Щит: child-виджет, ловящий мышь по геометрии (#159)."""
+
+    def test_shield_created_before_toolbar(self) -> None:
+        overlay = DrawOverlayWidget()
+
+        assert overlay._input_shield is not None
+        assert overlay._toolbar is not None
+
+    def test_event_filter_routes_mouse_press(self) -> None:
+        overlay = DrawOverlayWidget()
+        overlay._request_repaint = MagicMock()
+        fake_qt = SimpleNamespace(
+            Type=SimpleNamespace(
+                MouseButtonPress="press",
+                MouseMove="move",
+                MouseButtonRelease="release",
+            ),
+            KeyboardModifier=SimpleNamespace(ControlModifier=MagicMock()),
+            Key=SimpleNamespace(Key_Z="z", Key_Y="y", Key_Escape="esc"),
+            Key_Escape="esc",
+        )
+        event = SimpleNamespace(
+            type=lambda: "press",
+            position=lambda: _FakePoint(30, 40),
+        )
+
+        with (
+            patch("gui.views.draw_overlay.Qt", fake_qt),
+            patch(
+                "gui.views.draw_overlay.QEvent",
+                SimpleNamespace(Type=fake_qt.Type),
+            ),
+        ):
+            handled = overlay.eventFilter(overlay._input_shield, event)
+
+        assert handled is True
+        assert overlay._active_shape is not None
+        assert overlay._active_shape.points[0] == (30.0, 40.0)
+
+    def test_event_filter_ignores_other_objects(self) -> None:
+        overlay = DrawOverlayWidget()
+        event = SimpleNamespace(type=lambda: "press")
+
+        with patch("gui.views.draw_overlay.Qt", SimpleNamespace()):
+            handled = overlay.eventFilter(MagicMock(), event)
+
+        assert handled is False
+        assert overlay._active_shape is None
+
+
 class TestDrawOverlayLifecycle:
     """Показ/скрытие оверлея и клавиатура."""
 

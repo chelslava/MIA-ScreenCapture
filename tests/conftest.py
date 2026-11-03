@@ -278,6 +278,27 @@ class MockQWidgetBase:
     def setWindowFlags(self, *args, **kwargs):
         """Для fullscreen-оверлеев и диалогов."""
 
+    def installEventFilter(self, obj):
+        """Для оверлея-щита, ловящего мышь (#159)."""
+        self._event_filter = obj
+
+    def size(self):
+        """Текущий размер виджета как QSize-подобный объект."""
+
+        class _MockQSize:
+            def __init__(sz, w: int, h: int):
+                sz._w, sz._h = w, h
+
+            def width(sz) -> int:
+                return sz._w
+
+            def height(sz) -> int:
+                return sz._h
+
+        return _MockQSize(
+            getattr(self, "_width", 0), getattr(self, "_height", 0)
+        )
+
     def render(self, target, flags=None, region=None):
         """Отрисовка виджета в QPixmap (композит скриншота #159)."""
         self._render_target = target

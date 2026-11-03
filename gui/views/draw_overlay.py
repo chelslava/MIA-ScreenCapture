@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -211,6 +211,12 @@ class DrawOverlayWidget(QWidget):
         self._color = DEFAULT_DRAW_COLOR
         self._width = DEFAULT_DRAW_WIDTH
         self._active_shape: DrawShape | None = None
+        # Прозрачный щит на весь экран: top-level layered-окно hit-тестит
+        # по альфе и пропускает клики сквозь прозрачные пиксели; child
+        # виджет ловит мышь по геометрии (#159, живая проверка).
+        self._input_shield = QWidget(self)
+        self._input_shield.setMouseTracking(True)
+        self._input_shield.installEventFilter(self)
         self._toolbar = DrawToolbar(self)
         self._setup_window()
         self._connect_toolbar()
@@ -312,6 +318,9 @@ class DrawOverlayWidget(QWidget):
                 )
         except Exception as e:
             logger.warning("Геометрия оверлея не установлена: %s", e)
+        if hasattr(self, "_input_shield") and hasattr(self, "size"):
+            size = self.size()
+            self._input_shield.resize(size.width(), size.height())
         if hasattr(self, "show"):
             self.show()
         if hasattr(self, "raise_"):
@@ -420,13 +429,44 @@ class DrawOverlayWidget(QWidget):
 
     # === События мыши ===
 
+    def eventFilter(self, obj: Any, event: Any) -> bool:
+        """Маршрут мышиных событий щита в рисование (#159)."""
+        if obj is getattr(self, "_input_shield", None):
+            event_type = getattr(event, "type", lambda: None)()
+            if event_type == QEvent.Type.MouseButtonPress:
+                self._on_press(event)
+                return True
+            if event_type == QEvent.Type.MouseMove:
+                self._on_move(event)
+                return True
+            if event_type == QEvent.Type.MouseButtonRelease:
+                self._on_release(event)
+                return True
+        return (
+            bool(super().eventFilter(obj, event))
+            if hasattr(super(), "eventFilter")
+            else False
+        )
+
     def mousePressEvent(self, event: Any) -> None:
+        """Начать фигуру (прямые события окна, кроме щита)."""
+        self._on_press(event)
+
+    def mouseMoveEvent(self, event: Any) -> None:
+        """Продлить штрих (прямые события окна, кроме щита)."""
+        self._on_move(event)
+
+    def mouseReleaseEvent(self, event: Any) -> None:
+        """Зафиксировать фигуру (прямые события окна, кроме щита)."""
+        self._on_release(event)
+
+    def _on_press(self, event: Any) -> None:
         """Начать фигуру в точке нажатия."""
         pos = event.position()
         logger.info("Штрих начат: (%.0f, %.0f)", pos.x(), pos.y())
         self._start_shape(float(pos.x()), float(pos.y()))
 
-    def mouseMoveEvent(self, event: Any) -> None:
+    def _on_move(self, event: Any) -> None:
         """Продлить активный штрих (коалесцированная перерисовка)."""
         if self._active_shape is None:
             return
@@ -438,7 +478,7 @@ class DrawOverlayWidget(QWidget):
             self._active_shape.points.append((x, y))
         self._request_repaint()
 
-    def mouseReleaseEvent(self, event: Any) -> None:
+    def _on_release(self, event: Any) -> None:
         """Завершить фигуру и зафиксировать её в документе."""
         if self._active_shape is None:
             return
@@ -601,7 +641,14 @@ class DrawOverlayWidget(QWidget):
             )
 
     def resizeEvent(self, event: Any) -> None:
-        """Держать тулбар по центру верхней кромки экрана."""
+        """Держать тулбар по центру верхней кромки, щит — на весь экран."""
+        if (
+            hasattr(self, "_input_shield")
+            and hasattr(self._input_shield, "resize")
+            and hasattr(self, "size")
+        ):
+            size = self.size()
+            self._input_shield.resize(size.width(), size.height())
         toolbar_width = self._toolbar.width()
         if isinstance(toolbar_width, int):
             self._toolbar.move(
