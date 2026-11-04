@@ -212,6 +212,16 @@ ffmpeg -version
 
 If it's missing, install it from the [official site](https://ffmpeg.org/download.html) and add it to `PATH`.
 
+### Verify Release Artifacts (SBOM & Provenance)
+
+Every release publishes a CycloneDX SBOM (`sbom-*.json`) and SLSA build
+provenance attestations (sigstore) for the wheel, sdist, EXE and installer.
+To verify that a downloaded artifact was built by this repository's CI:
+
+```bash
+gh attestation verify MIA-ScreenCapture.exe -R chelslava/MIA-ScreenCapture
+```
+
 ## Quick Start
 
 ### Your First Recording in 60 Seconds

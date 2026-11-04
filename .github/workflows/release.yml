@@ -28,8 +28,24 @@ jobs:
       - name: Install build tooling
         run: python -m pip install --upgrade pip build
 
+      - name: Install package with dependencies
+        # Нужна для SBOM: pip-audit описывает окружение с рантайм-зависимостями
+        run: python -m pip install -e . --quiet
+
       - name: Build sdist and wheel
         run: python -m build
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          python -m pip install --upgrade pip-audit
+          pip-audit --format cyclonedx --output dist/sbom-python.json --skip-editable
+
+      - name: Attest build provenance (sdist and wheel)
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
 
       - name: Upload Python artifacts
         uses: actions/upload-artifact@v7
@@ -168,6 +184,28 @@ jobs:
           name: windows-installer
           path: dist/MIA-ScreenCapture-Setup.exe
 
+      - name: Generate SBOM (CycloneDX)
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip-audit
+          pip-audit --format cyclonedx --output dist/sbom-windows.json --skip-editable
+
+      - name: Upload Windows SBOM
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-sbom
+          path: dist/sbom-windows.json
+
+      - name: Attest build provenance (EXE)
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/MIA-ScreenCapture.exe
+
+      - name: Attest build provenance (Installer)
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/MIA-ScreenCapture-Setup.exe
+
   release:
     name: Publish Release
     runs-on: ubuntu-latest
@@ -195,6 +233,12 @@ jobs:
           name: windows-installer
           path: dist/windows
 
+      - name: Download Windows SBOM
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-sbom
+          path: dist/sbom
+
       - name: Generate SHA256 checksums
         run: |
           cd dist
@@ -207,5 +251,6 @@ jobs:
           files: |
             dist/python/*
             dist/windows/*
+            dist/sbom/*
             dist/SHA256SUMS
           generate_release_notes: true
