@@ -167,3 +167,10 @@ config/*.json
 
 # Sisyphus agent state
 .sisyphus/
+
+# ZCode workspace state
+.zcode/
+
+# Прочие локальные артефакты агентов и smoke-тестов
+.continue/
+.test-api-logs/

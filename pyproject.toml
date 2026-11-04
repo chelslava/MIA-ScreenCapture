@@ -51,9 +51,9 @@ dependencies = [
     "pywin32>=305; sys_platform == 'win32'",
     # Configuration
     "python-dotenv>=1.0.0",
-    # Window Management (platform-specific)
-    "pygetwindow>=0.0.9; sys_platform == 'win32' or sys_platform == 'darwin'",
-    "python-xlib>=0.33; sys_platform == 'linux'",
+    # Window Management (fallback перечисления окон в recorder/utils.py;
+    # проект Windows-only — кроссплатформенные маркеры удалены)
+    "pygetwindow>=0.0.9; sys_platform == 'win32'",
     # Audio System Control (Windows)
     "pycaw>=20230407; sys_platform == 'win32'",
     # Global Hotkeys (Windows-only)
