@@ -1,7 +1,7 @@
 """Тесты оверлея эффектов курсора (#166)."""
 
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from gui.views.cursor_effects_overlay import (
     RIPPLE_END_RADIUS,
@@ -137,3 +137,100 @@ class TestCursorEffectsOverlay:
         overlay._on_native_click(150, 250, button, True)
 
         overlay.click_registered.emit.assert_not_called()
+
+
+class TestCursorEffectsPaintAndTick:
+    """Отрисовка и тик оверлея эффектов курсора (#166)."""
+
+    def test_tick_moves_to_cursor_and_purges(self) -> None:
+        """Тик центрирует окно на курсоре и удаляет старые кольца."""
+        from types import SimpleNamespace as NS
+
+        overlay = CursorEffectsOverlay()
+        overlay.apply_settings(
+            MagicMock(highlight_enabled=True, click_effects_enabled=True)
+        )
+        overlay.move = MagicMock()
+        overlay.update = MagicMock()
+        overlay._timer = MagicMock()
+
+        fake_cursor = NS(x=lambda: 500, y=lambda: 400)
+        fake_time = MagicMock()
+        fake_time.monotonic.side_effect = [10.0, 10.0]
+
+        with (
+            patch("gui.views.cursor_effects_overlay.QCursor") as mock_cursor,
+            patch("gui.views.cursor_effects_overlay.time", fake_time),
+        ):
+            mock_cursor.pos.return_value = fake_cursor
+            overlay.register_click("left", 500, 400)
+            overlay._tick()
+
+        overlay.move.assert_called_once_with(500 - 80, 400 - 80)
+        overlay.update.assert_called_once()
+
+    def test_tick_purges_expired_ripples(self) -> None:
+        """Кольца старше длительности анимации удаляются тиком."""
+        overlay = CursorEffectsOverlay()
+        overlay.apply_settings(
+            MagicMock(highlight_enabled=False, click_effects_enabled=True)
+        )
+        overlay.move = MagicMock()
+        overlay.update = MagicMock()
+
+        now = time.monotonic()
+        overlay.register_click("left", 100, 100)
+        # Сдвигаем registered время в прошлое за пределы duration
+        overlay._clicks[0] = overlay._clicks[0].__class__(
+            x=100, y=100, button="left", started_at=now - 10.0
+        )
+        overlay.move = MagicMock()
+        overlay.update = MagicMock()
+
+        with patch("gui.views.cursor_effects_overlay.QCursor"):
+            overlay._tick()
+
+        assert overlay._clicks == []
+
+    def test_paint_event_draws_highlight_and_ripples(self) -> None:
+        """paintEvent рисует подсветку и кольца без исключений."""
+        overlay = CursorEffectsOverlay()
+        overlay.apply_settings(
+            MagicMock(highlight_enabled=True, click_effects_enabled=True)
+        )
+        overlay._highlight_enabled = True
+        overlay.register_click("left", 200, 200)
+
+        with (
+            patch(
+                "gui.views.cursor_effects_overlay.QPainter"
+            ) as mock_painter_cls,
+            patch("gui.views.cursor_effects_overlay.QColor"),
+        ):
+            painter = mock_painter_cls.return_value
+            overlay.paintEvent(MagicMock())
+
+        assert painter.setRenderHint.called
+        assert painter.drawEllipse.called
+
+    def test_start_mouse_listener_with_pynput(self) -> None:
+        """Доступный pynput запускает слушатель мыши."""
+        import sys
+
+        overlay = CursorEffectsOverlay()
+        overlay.apply_settings(
+            MagicMock(highlight_enabled=False, click_effects_enabled=True)
+        )
+
+        fake_listener = MagicMock()
+        fake_pynput = MagicMock()
+        fake_pynput.mouse.Listener.return_value = fake_listener
+
+        with patch.dict(
+            sys.modules,
+            {"pynput": fake_pynput, "pynput.mouse": fake_pynput.mouse},
+        ):
+            overlay._start_mouse_listener()
+
+        assert overlay._mouse_listener is fake_listener
+        fake_listener.start.assert_called_once()
