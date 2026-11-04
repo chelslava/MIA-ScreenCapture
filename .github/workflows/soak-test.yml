@@ -1,0 +1,93 @@
+name: Soak Test
+
+# Soak-тест длинной записи (#174): стабильность FFmpeg-пайплайна
+# на протяжении часов — утечки RSS, дрейф длительности, потеря кадров.
+# В CI питается синтетическими кадрами (WGC-захват на раннере
+# недетерминирован), поэтому проверяется именно writer-конвейер.
+
+on:
+  schedule:
+    # Понедельник 03:00 UTC — еженедельный прогон 2 часа
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Длительность записи в секундах"
+        default: "7200"
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PYTHONIOENCODING: "utf-8"
+  PYTHONUTF8: "1"
+
+jobs:
+  soak:
+    name: Soak Recording (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 200
+    env:
+      UV_LINK_MODE: copy
+      UV_CACHE_DIR: ${{ github.workspace }}\\.uv-cache
+      TEMP: ${{ github.workspace }}\\tests\\.local_tmp\\system
+      TMP: ${{ github.workspace }}\\tests\\.local_tmp\\system
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: python -m pip install --upgrade pip uv
+
+      - name: Sync dependencies
+        run: uv sync --extra dev --group dev
+
+      - name: Prepare soak directory
+        run: New-Item -ItemType Directory -Force -Path soak | Out-Null
+
+      - name: Run soak recording
+        run: |
+          uv run python scripts/soak_test.py `
+            --duration "${{ inputs.duration || '7200' }}" `
+            --output soak/soak-output.mp4 `
+            --report soak/soak-report.json
+
+      - name: Upload soak artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: soak-report
+          path: |
+            soak/soak-report.json
+            soak/soak-output.mp4
+          retention-days: 14
+          if-no-files-found: warn
+
+  soak-failure-issue:
+    name: Create Issue on Soak Failure
+    needs: [soak]
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Create issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Stability: soak-тест выявил деградацию длинной записи" \
+            --label "stability,P2,devops" \
+            --body "Автоматический soak-тест (#174) завершился с нарушениями на коммите ${{ github.sha }}.
+
+          Лог: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Артефакт с отчётом: \`soak-report\` (soak-report.json — секция \`failures\`)."
