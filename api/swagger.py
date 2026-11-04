@@ -340,6 +340,42 @@ SWAGGER_SPEC: dict[str, Any] = {
                             "записи (0-10); 0 — стартовать сразу"
                         ),
                     },
+                    "pip_enabled": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "Наложить видео веб-камеры (PiP) поверх "
+                            "записи (#165)"
+                        ),
+                    },
+                    "pip_device": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": (
+                            "Имя устройства DirectShow; null — первая "
+                            "найденная камера"
+                        ),
+                    },
+                    "pip_position": {
+                        "type": "string",
+                        "enum": [
+                            "bottom-right",
+                            "bottom-left",
+                            "top-right",
+                            "top-left",
+                        ],
+                        "default": "bottom-right",
+                        "description": "Угол PiP-оверлея",
+                    },
+                    "pip_size_percent": {
+                        "type": "integer",
+                        "minimum": 10,
+                        "maximum": 50,
+                        "default": 20,
+                        "description": (
+                            "Ширина окна камеры, % от ширины основного видео"
+                        ),
+                    },
                 },
             },
             "ScheduleTask": {

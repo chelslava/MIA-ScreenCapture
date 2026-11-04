@@ -1554,3 +1554,67 @@ class TestVideoRecorderErrorHandling:
         _, kwargs = mock_writer_class.call_args
         assert kwargs["enable_frame_skip"] is True
         assert kwargs["health_check_interval_s"] == 2.5
+
+
+class TestCameraPip:
+    """Интеграция веб-камеры PiP (#165)."""
+
+    def test_no_pip_by_default(self) -> None:
+        """Без явных настроек камера не запускается."""
+        recorder = VideoRecorder()
+        assert recorder._pip_settings is None
+
+    def test_camera_failure_does_not_block_recording(self) -> None:
+        """Отказ камеры не мешает записи экрана (#165)."""
+        from core.recording_types import PiPSettings
+
+        recorder = VideoRecorder(pip_settings=PiPSettings(enabled=True))
+        recorder._output_path = Path("out.mp4")
+        with patch("recorder.video_recorder.CameraRecorder") as mock_cls:
+            mock_cls.return_value.start.return_value = False
+            recorder._start_camera_recording()
+
+        assert recorder._camera_recorder is None
+
+    def test_camera_started_with_sibling_path(self) -> None:
+        """Камера пишется в файл рядом с основным видео."""
+        from core.recording_types import PiPSettings
+
+        recorder = VideoRecorder(
+            pip_settings=PiPSettings(enabled=True, device_name="Cam")
+        )
+        recorder._output_path = Path("D:/rec/out.mp4")
+        with patch("recorder.video_recorder.CameraRecorder") as mock_cls:
+            mock_cls.return_value.start.return_value = True
+            recorder._start_camera_recording()
+
+        mock_cls.assert_called_once_with(device_name="Cam", fps=recorder.fps)
+        assert recorder._camera_recorder is mock_cls.return_value
+        assert recorder._camera_output_path == Path("D:/rec/out_pipcam.mp4")
+
+    def test_finalize_composites_and_clears_camera(self) -> None:
+        """После остановки камера останавливается и вкомпозитируется."""
+        from core.recording_types import PiPSettings
+
+        recorder = VideoRecorder(pip_settings=PiPSettings(enabled=True))
+        recorder._pip_settings = PiPSettings(enabled=True)
+        recorder._camera_recorder = MagicMock()
+        recorder._camera_output_path = Path("out_pipcam.mp4")
+        recorder._output_path = Path("out.mp4")
+
+        with (
+            patch(
+                "recorder.video_recorder.compose_pip_overlay"
+            ) as mock_compose,
+            patch.object(Path, "exists", return_value=True),
+        ):
+            mock_compose.return_value = (True, None)
+            recorder._finalize_camera_pip()
+
+        mock_compose.assert_called_once()
+        assert recorder._camera_recorder is None
+
+    def test_finalize_without_camera_is_noop(self) -> None:
+        """Финализация без камеры ничего не делает."""
+        recorder = VideoRecorder()
+        recorder._finalize_camera_pip()

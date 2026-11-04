@@ -26,6 +26,8 @@ from core.recording_types import (
     AudioRequest,
     CaptureMode,
     CaptureRequest,
+    PiPPosition,
+    PiPSettings,
     VideoRequest,
 )
 from exceptions import RecordingError
@@ -623,6 +625,47 @@ class RecordingService:
             codec=str(params.get("codec", config.codec)),
             bitrate=str(params.get("bitrate", config.bitrate)),
             format=str(params.get("format", config.format)),
+            pip=self._build_pip_settings(params),
+        )
+
+    @staticmethod
+    def _build_pip_settings(params: dict[str, Any]) -> PiPSettings | None:
+        """Собрать настройки PiP-оверлея из параметров запроса (#165).
+
+        Args:
+            params: Параметры старта записи (API/планировщик).
+
+        Returns:
+            `PiPSettings` при `pip_enabled=True`, иначе `None`.
+            Некорректные значения полей заменяются значениями по
+            умолчанию — старт записи не блокируется.
+        """
+        if not params.get("pip_enabled"):
+            return None
+
+        try:
+            position = PiPPosition(
+                str(params.get("pip_position", "bottom-right"))
+            )
+        except ValueError:
+            logger.warning(
+                "Некорректная позиция PiP %r — используется bottom-right",
+                params.get("pip_position"),
+            )
+            position = PiPPosition.BOTTOM_RIGHT
+
+        try:
+            size_percent = int(params.get("pip_size_percent", 20))
+        except (TypeError, ValueError):
+            size_percent = 20
+        size_percent = max(10, min(50, size_percent))
+
+        device = params.get("pip_device")
+        return PiPSettings(
+            enabled=True,
+            device_name=str(device) if device else "",
+            position=position,
+            size_percent=size_percent,
         )
 
     def _build_output_path(self, params: dict[str, Any]) -> Path:

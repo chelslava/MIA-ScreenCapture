@@ -644,3 +644,42 @@ class TestStartRecordingCountdown:
         """Отрицательные значения отклоняются."""
         with pytest.raises(ValidationError):
             StartRecordingRequest(countdown=-1)
+
+
+class TestStartRecordingPip:
+    """Параметры PiP-оверлея в схеме StartRecordingRequest (#165)."""
+
+    def test_pip_defaults(self) -> None:
+        """По умолчанию наложение выключено."""
+        request = StartRecordingRequest()
+
+        assert request.pip_enabled is False
+        assert request.pip_device is None
+        assert request.pip_position == "bottom-right"
+        assert request.pip_size_percent == 20
+
+    def test_pip_position_invalid_rejected(self) -> None:
+        """Недопустимая позиция отклоняется."""
+        with pytest.raises(ValidationError):
+            StartRecordingRequest(pip_position="center")
+
+    def test_pip_size_percent_bounds(self) -> None:
+        """Ширина окна ограничена диапазоном 10-50%."""
+        with pytest.raises(ValidationError):
+            StartRecordingRequest(pip_size_percent=51)
+        with pytest.raises(ValidationError):
+            StartRecordingRequest(pip_size_percent=9)
+
+    def test_pip_valid_request(self) -> None:
+        """Корректный PiP-запрос принимается."""
+        request = StartRecordingRequest(
+            pip_enabled=True,
+            pip_device="USB Camera",
+            pip_position="top-left",
+            pip_size_percent=30,
+        )
+
+        assert request.pip_enabled is True
+        assert request.pip_device == "USB Camera"
+        assert request.pip_position == "top-left"
+        assert request.pip_size_percent == 30

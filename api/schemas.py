@@ -168,6 +168,28 @@ class StartRecordingRequest(BaseModel):
             "0 — стартовать сразу"
         ),
     )
+    pip_enabled: bool = Field(
+        default=False,
+        description="Наложить видео веб-камеры (PiP) поверх записи (#165)",
+    )
+    pip_device: str | None = Field(
+        default=None,
+        description=(
+            "Имя устройства DirectShow; None — первая найденная камера"
+        ),
+    )
+    pip_position: Literal[
+        "bottom-right",
+        "bottom-left",
+        "top-right",
+        "top-left",
+    ] = Field(default="bottom-right", description="Угол PiP-оверлея")
+    pip_size_percent: int = Field(
+        default=20,
+        ge=10,
+        le=50,
+        description="Ширина окна камеры, % от ширины основного видео",
+    )
 
     @field_validator("rect")
     @classmethod

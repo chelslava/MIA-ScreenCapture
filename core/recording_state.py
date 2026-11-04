@@ -11,7 +11,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-from core.recording_types import AudioMode, CaptureMode
+from core.recording_types import AudioMode, CaptureMode, PiPSettings
 
 
 class RecordingStatus(Enum):
@@ -56,6 +56,8 @@ class VideoSettings:
     bitrate: str = "2M"
     format: str = "mp4"
     preset: str = "medium"
+    # PiP-оверлей веб-камеры (#165); None — без наложения
+    pip: PiPSettings | None = None
 
 
 @dataclass

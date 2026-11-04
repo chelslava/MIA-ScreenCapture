@@ -8,6 +8,8 @@ from core.recording_types import (
     AudioRequest,
     CaptureMode,
     CaptureRequest,
+    PiPPosition,
+    PiPSettings,
     VideoRequest,
 )
 from gui.backends.recording_backend import GUIRecordingBackend
@@ -300,6 +302,23 @@ def test_map_video_preserves_all_params() -> None:
     assert result.codec == "libx265"
     assert result.bitrate == "10M"
     assert result.format == "mkv"
+
+
+def test_map_video_carries_pip_settings() -> None:
+    """Маппинг VideoRequest переносит настройки PiP (#165)."""
+    from gui.backends.recording_backend import _map_video
+
+    pip = PiPSettings(enabled=True, position=PiPPosition.TOP_LEFT)
+    video = VideoRequest(
+        fps=30,
+        codec="libx264",
+        bitrate="2M",
+        format="mp4",
+        pip=pip,
+    )
+    result = _map_video(video)
+
+    assert result.pip is pip
 
 
 # ====================

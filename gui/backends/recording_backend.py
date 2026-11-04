@@ -47,6 +47,7 @@ def _map_video(video: VideoRequest) -> VideoSettings:
         codec=video.codec,
         bitrate=video.bitrate,
         format=video.format,
+        pip=video.pip,
     )
 
 

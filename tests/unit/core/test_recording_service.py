@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 from core.event_bus import InMemoryEventBus, RecordingEventType
 from core.recording_backend import RecordingStatusSnapshot
 from core.recording_service import RecordingService
-from core.recording_types import AudioMode
+from core.recording_types import AudioMode, PiPPosition
 from exceptions import RecordingError
 
 
@@ -872,3 +872,79 @@ class TestCountdown:
         assert RecordingService._extract_countdown({"countdown": -5}) == 0
         assert RecordingService._extract_countdown({"countdown": 99}) == 10
         assert RecordingService._extract_countdown({"countdown": 2}) == 2
+
+
+class TestPipSettings:
+    """Настройки PiP-оверлея в RecordingService (#165)."""
+
+    def test_disabled_returns_none(self) -> None:
+        """Без pip_enabled наложение не включается."""
+        assert RecordingService._build_pip_settings({}) is None
+        assert (
+            RecordingService._build_pip_settings({"pip_enabled": False})
+            is None
+        )
+
+    def test_enabled_defaults(self) -> None:
+        """Включённое наложение получает значения по умолчанию."""
+        pip = RecordingService._build_pip_settings({"pip_enabled": True})
+
+        assert pip is not None
+        assert pip.enabled is True
+        assert pip.device_name == ""
+        assert pip.position == PiPPosition.BOTTOM_RIGHT
+        assert pip.size_percent == 20
+
+    def test_invalid_position_falls_back(self) -> None:
+        """Некорректная позиция заменяется на bottom-right."""
+        pip = RecordingService._build_pip_settings(
+            {"pip_enabled": True, "pip_position": "center"}
+        )
+
+        assert pip is not None
+        assert pip.position == PiPPosition.BOTTOM_RIGHT
+
+    def test_size_percent_clamped(self) -> None:
+        """Ширина окна ограничивается диапазоном 10-50%."""
+        pip = RecordingService._build_pip_settings(
+            {"pip_enabled": True, "pip_size_percent": 99}
+        )
+        assert pip is not None and pip.size_percent == 50
+
+        pip = RecordingService._build_pip_settings(
+            {"pip_enabled": True, "pip_size_percent": 1}
+        )
+        assert pip is not None and pip.size_percent == 10
+
+    def test_device_name_passed(self) -> None:
+        """Имя устройства камеры переносится в настройки."""
+        pip = RecordingService._build_pip_settings(
+            {"pip_enabled": True, "pip_device": "USB Camera"}
+        )
+
+        assert pip is not None
+        assert pip.device_name == "USB Camera"
+
+    def test_start_recording_passes_pip_to_backend(self) -> None:
+        """video.pip доходит до backend.start."""
+        from typing import Any
+
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+        captured: dict[str, Any] = {}
+        original_start = backend.start
+
+        def capturing_start(**kwargs: Any) -> tuple[bool, str | None]:
+            captured.update(kwargs)
+            return original_start(**kwargs)
+
+        backend.start = capturing_start  # type: ignore[method-assign]
+
+        result = service.start_recording(
+            {"area": "full", "pip_enabled": True, "pip_position": "top-left"}
+        )
+
+        assert result["success"] is True
+        video = captured["video"]
+        assert video.pip is not None
+        assert video.pip.position == PiPPosition.TOP_LEFT

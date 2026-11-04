@@ -293,6 +293,7 @@ class RecordingController:
                 bitrate=video.bitrate,
                 use_ffmpeg=True,
                 preset=preset,
+                pip_settings=getattr(video, "pip", None),
                 max_recovery_attempts=tunables.max_recovery_attempts,
                 disk_warning_mb=tunables.disk_warning_mb,
                 disk_critical_mb=tunables.disk_critical_mb,

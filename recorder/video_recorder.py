@@ -17,9 +17,12 @@ import cv2
 import numpy as np
 
 from core.recording_state import RecordingStatus
+from core.recording_types import PiPSettings
 from exceptions import RecordingError, ScreenCaptureError
 from logger_config import get_module_logger
+from recorder.camera_capture import CameraRecorder
 from recorder.frame_metrics import FrameMetrics
+from recorder.pip_compositor import compose_pip_overlay
 from recorder.utils import (
     get_available_monitors,
     get_available_windows,
@@ -342,6 +345,7 @@ class VideoRecorder:
         enable_frame_skip: bool = False,
         health_check_interval_s: float = 1.0,
         event_bus: Any | None = None,
+        pip_settings: PiPSettings | None = None,
     ):
         """
         Инициализация видеозаписи.
@@ -388,6 +392,11 @@ class VideoRecorder:
         self.health_check_interval_s = health_check_interval_s
         self.max_segment_duration_s = max_segment_duration_s
         self._event_bus = event_bus
+        # PiP-оверлей веб-камеры (#165): камера пишется отдельным
+        # FFmpeg-процессом, наложение выполняется при остановке.
+        self._pip_settings = pip_settings
+        self._camera_recorder: CameraRecorder | None = None
+        self._camera_output_path: Path | None = None
 
         # Состояние
         self._state: VideoRecorderState = VideoRecorderState.IDLE
@@ -821,6 +830,13 @@ class VideoRecorder:
                 )
                 self._capture_thread.start()
 
+                # Веб-камера PiP (#165): отказ камеры не блокирует запись.
+                if (
+                    self._pip_settings is not None
+                    and self._pip_settings.enabled
+                ):
+                    self._start_camera_recording()
+
                 logger.info(f"Запись начата: {output_path}")
                 return True
 
@@ -1054,10 +1070,83 @@ class VideoRecorder:
             )
             return False
 
+        self._finalize_camera_pip()
+
         logger.info(
             f"Запись остановлена: {self._output_path}, кадров: {self._frame_count}"
         )
         return True
+
+    def _start_camera_recording(self) -> None:
+        """Запустить параллельную запись веб-камеры для PiP (#165).
+
+        Отказ камеры не блокирует запись экрана: ошибка логируется,
+        итоговое видео останется без PiP-оверлея.
+        """
+        if self._pip_settings is None or self._output_path is None:
+            return
+
+        camera_path = self._output_path.with_name(
+            f"{self._output_path.stem}_pipcam{self._output_path.suffix}"
+        )
+        recorder = CameraRecorder(
+            device_name=self._pip_settings.device_name, fps=self.fps
+        )
+        if not recorder.start(camera_path):
+            logger.warning(
+                "Не удалось запустить запись веб-камеры — "
+                "PiP-оверлей не будет добавлен"
+            )
+            return
+        self._camera_recorder = recorder
+        self._camera_output_path = camera_path
+
+    def _finalize_camera_pip(self) -> None:
+        """Остановить камеру и наложить PiP-оверлей на итоговое видео (#165).
+
+        Ошибка композитинга не делает stop() неуспешным: базовое видео
+        сохраняется, файл камеры остаётся рядом для ручной обработки.
+        """
+        if self._camera_recorder is None:
+            return
+
+        camera_path = self._camera_output_path
+        try:
+            self._camera_recorder.stop()
+        except (OSError, RuntimeError) as e:
+            logger.warning("Ошибка остановки записи камеры: %s", e)
+        self._camera_recorder = None
+
+        if (
+            camera_path is None
+            or self._output_path is None
+            or self._pip_settings is None
+            or not camera_path.exists()
+        ):
+            return
+
+        success, error = compose_pip_overlay(
+            base_video=self._output_path,
+            camera_video=camera_path,
+            output_path=self._output_path,
+            settings=self._pip_settings,
+            codec=self.codec,
+            bitrate=self.bitrate,
+        )
+        if success:
+            try:
+                camera_path.unlink()
+            except OSError as e:
+                logger.warning(
+                    "Не удалось удалить файл камеры после PiP: %s", e
+                )
+        else:
+            logger.warning(
+                "Ошибка наложения PiP: %s. Базовое видео сохранено "
+                "без изменений, файл камеры: %s",
+                error,
+                camera_path,
+            )
 
     def _capture_loop(self) -> None:
         """Основной цикл захвата в отдельном потоке."""
