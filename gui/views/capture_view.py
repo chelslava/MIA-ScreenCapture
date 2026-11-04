@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from config import get_config
+from core.recording_types import PiPSettings
 from gui.accessibility import apply_accessible_metadata
 from gui.models.recording_state import CaptureType
 from gui.styles.theme import Theme
@@ -30,6 +31,7 @@ from gui.views.area_selector import (
     format_rect_coords,
 )
 from gui.views.loading_overlay import LoadingOverlay
+from gui.views.pip_settings_view import PipSettingsView
 from recorder.utils import get_available_windows, get_screen_size
 
 _WINDOWS_LOADING_TEXT = "Загрузка списка окон..."
@@ -162,6 +164,10 @@ class CaptureView(QWidget):
             "0 — стартовать сразу.",
         )
         layout.addWidget(countdown_group)
+
+        # Веб-камера PiP (#165): отдельная группа настроек наложения
+        self._pip_view = PipSettingsView()
+        layout.addWidget(self._pip_view)
 
     def _apply_accessibility_metadata(self) -> None:
         """Назначение accessibility metadata для controls захвата."""
@@ -426,6 +432,15 @@ class CaptureView(QWidget):
         """
         get_config().settings.countdown_seconds = int(value)
         get_config().save()
+
+    def get_pip_settings(self) -> PiPSettings | None:
+        """
+        Получить настройки PiP-оверлея из вложенного представления (#165).
+
+        Returns:
+            `PiPSettings` при включённом наложении, иначе `None`.
+        """
+        return self._pip_view.get_pip_settings()
 
     def set_capture_type(self, capture_type: CaptureType) -> None:
         """

@@ -822,6 +822,9 @@ class MainWindow(
 
         audio = self._build_audio_settings_from_state()
         video = self._video_view.get_settings()
+        # PiP-оверлей веб-камеры (#165): настройки со страницы записи;
+        # отсутствие/отказ камеры обрабатывается в рекордере.
+        video.pip = self._capture_view.get_pip_settings()
         output_path = self._settings_controller.get_output_path()
         readiness = self._readiness_service.evaluate(
             capture=capture,

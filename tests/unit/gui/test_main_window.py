@@ -2765,3 +2765,32 @@ class TestCountdownBeforeStart:
 
         window._recording_controller.start_recording.assert_not_called()
         assert window._pending_recording_start is None
+
+
+class TestCameraPipAttach:
+    """Прикрепление настроек PiP к VideoSettings при старте (#165)."""
+
+    def test_start_recording_attaches_pip_settings(self) -> None:
+        """Настройки PiP со страницы записи попадают в VideoSettings."""
+        from core.recording_state import VideoSettings
+        from core.recording_types import PiPSettings
+
+        window = _build_window()
+        window._countdown_overlay = None
+        window._pending_recording_start = None
+        pip = PiPSettings(enabled=True, device_name="Cam")
+        window._capture_view.get_pip_settings.return_value = pip
+        video = VideoSettings()
+        window._video_view.get_settings.return_value = video
+        window._recording_controller.start_recording.return_value = (
+            True,
+            None,
+        )
+        window._on_recording_started = MagicMock()
+
+        with patch("gui.main_window.get_config") as mocked_config:
+            mocked_config.return_value.settings.countdown_seconds = 0
+            window._start_recording()
+
+        call = window._recording_controller.start_recording.call_args.kwargs
+        assert call["video"].pip is pip
