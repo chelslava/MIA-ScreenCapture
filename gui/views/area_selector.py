@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QGuiApplication, QPainter, QPen
@@ -21,6 +21,11 @@ PointCoords = tuple[int, int]
 MIN_SELECTION_SIZE = 8
 RESIZE_HANDLE_SIZE = 12
 PREVIEW_MARGIN = 10
+MAGNIFIER_SIZE = 120
+MAGNIFIER_ZOOM = 4
+MAGNIFIER_MARGIN = 16
+NUDGE_STEP = 1
+NUDGE_STEP_FAST = 10
 
 
 def normalize_rect_coords(start: PointCoords, end: PointCoords) -> RectCoords:
@@ -215,6 +220,144 @@ def is_valid_selection(rect: RectCoords | None) -> bool:
     return width >= MIN_SELECTION_SIZE and height >= MIN_SELECTION_SIZE
 
 
+def nudge_rect_move(
+    rect: RectCoords,
+    direction: PointCoords,
+    bounds: RectCoords,
+    step: int = NUDGE_STEP,
+) -> RectCoords:
+    """
+    Сдвинуть выделение стрелками, не выходя за границы экрана (#171).
+
+    Args:
+        rect: Исходный прямоугольник.
+        direction: Направление `(dx, dy)` — обычно (-1/0/1, -1/0/1).
+        bounds: Границы экрана.
+        step: Сдвиг в пикселях за нажатие.
+
+    Returns:
+        Сдвинутый прямоугольник того же размера.
+    """
+    dx, dy = direction
+    width, height = rect_size(rect)
+    min_x, min_y, max_x, max_y = bounds
+
+    max_left = max(min_x, max_x - width)
+    max_top = max(min_y, max_y - height)
+    left = max(min_x, min(rect[0] + dx * step, max_left))
+    top = max(min_y, min(rect[1] + dy * step, max_top))
+    return (left, top, left + width, top + height)
+
+
+def nudge_rect_edge(
+    rect: RectCoords,
+    direction: PointCoords,
+    bounds: RectCoords,
+    step: int = NUDGE_STEP,
+) -> RectCoords:
+    """
+    Изменить правый/нижний край выделения стрелками с Shift (#171).
+
+    Левый верхний угол сохраняется; правый и нижний края двигаются
+    стрелками Left/Right и Up/Down соответственно, не выходя за границы
+    экрана и не делая область меньше `MIN_SELECTION_SIZE`.
+
+    Args:
+        rect: Исходный прямоугольник.
+        direction: Направление `(dx, dy)`.
+        bounds: Границы экрана.
+        step: Сдвиг в пикселях за нажатие.
+
+    Returns:
+        Прямоугольник с новым правым/нижним краем.
+    """
+    dx, dy = direction
+    min_x, min_y, max_x, max_y = bounds
+
+    min_right = rect[0] + MIN_SELECTION_SIZE
+    min_bottom = rect[1] + MIN_SELECTION_SIZE
+    right = max(min_right, min(rect[2] + dx * step, max_x))
+    bottom = max(min_bottom, min(rect[3] + dy * step, max_y))
+    right = max(right, min_x)
+    bottom = max(bottom, min_y)
+    return normalize_rect_coords((rect[0], rect[1]), (right, bottom))
+
+
+def magnifier_target_position(
+    cursor: PointCoords,
+    bounds: RectCoords,
+    size: int = MAGNIFIER_SIZE,
+    margin: int = MAGNIFIER_MARGIN,
+) -> PointCoords:
+    """
+    Вычислить позицию окна лупы относительно курсора (#171).
+
+    По умолчанию лупа размещается справа-снизу от курсора; у правого
+    или нижнего края экрана окно переворачивается на другую сторону,
+    чтобы не выйти за границы.
+
+    Args:
+        cursor: Координаты курсора.
+        bounds: Границы экрана.
+        size: Размер окна лупы.
+        margin: Отступ от курсора.
+
+    Returns:
+        Верхняя левая точка окна лупы.
+    """
+    x, y = cursor
+    min_x, min_y, max_x, max_y = bounds
+
+    pos_x = x + margin
+    if pos_x + size > max_x:
+        pos_x = x - margin - size
+    pos_y = y + margin
+    if pos_y + size > max_y:
+        pos_y = y - margin - size
+    return (max(min_x, pos_x), max(min_y, pos_y))
+
+
+def _arrow_direction(key: Any) -> PointCoords | None:
+    """
+    Сопоставить клавишу-стрелку с направлением сдвига (#171).
+
+    Args:
+        key: Код клавиши из Qt-события.
+
+    Returns:
+        Направление `(dx, dy)` или `None` для нестрелочных клавиш.
+    """
+    # Словарь собирается на каждый вызов, чтобы тесты могли подменять
+    # модуль Qt целиком (см. тесты keyPressEvent).
+    mapping: dict[Any, PointCoords] = {
+        Qt.Key.Key_Left: (-1, 0),
+        Qt.Key.Key_Right: (1, 0),
+        Qt.Key.Key_Up: (0, -1),
+        Qt.Key.Key_Down: (0, 1),
+    }
+    return mapping.get(key)
+
+
+def _shift_pressed(event: Any) -> bool:
+    """
+    Определить, зажат ли Shift в событии клавиатуры.
+
+    Args:
+        event: Qt key event.
+
+    Returns:
+        `True`, если Shift зажат; для событий без информации о
+        модификаторах — `False`.
+    """
+    modifiers = getattr(event, "modifiers", None)
+    if not callable(modifiers):
+        return False
+    try:
+        return bool(modifiers() & Qt.KeyboardModifier.ShiftModifier)
+    except (AttributeError, TypeError):
+        return False
+
+
 @dataclass(frozen=True)
 class ScreenSize:
     """Размер экрана для превью."""
@@ -336,6 +479,9 @@ class AreaSelectorDialog(QDialog):
         self._drag_origin: PointCoords | None = None
         self._move_offset: PointCoords = (0, 0)
         self._resize_anchor: PointCoords | None = None
+        # Лупа (#171): снимок экрана берётся один раз за сессию выбора.
+        self._last_cursor: PointCoords | None = None
+        self._background_pixmap: Any = None
 
         self._setup_window()
 
@@ -385,6 +531,24 @@ class AreaSelectorDialog(QDialog):
 
         left, top, right, bottom = self._bounds
         self.setGeometry(left, top, right - left, bottom - top)
+        self._grab_background()
+
+    def _grab_background(self) -> None:
+        """Снять копию экрана для лупы (#171).
+
+        Захват выполняется один раз; при недоступности QScreen лупа
+        просто не рисуется — выбор области продолжает работать.
+        """
+        if self._background_pixmap is not None:
+            return
+        try:
+            screen = QGuiApplication.primaryScreen()
+            if screen is None or not hasattr(screen, "grabWindow"):
+                return
+            # PyQt6 типизирует windowId как voidptr, в рантайме принимает 0
+            self._background_pixmap = screen.grabWindow(cast(Any, 0))
+        except Exception as e:  # noqa: BLE001 — захват не критичен для выбора
+            logger.debug("Не удалось снять экран для лупы: %s", e)
 
     def _get_screen_bounds(self) -> RectCoords:
         """
@@ -447,6 +611,8 @@ class AreaSelectorDialog(QDialog):
             return
 
         point = self._event_point(event)
+        self._last_cursor = point
+        self._grab_background()
         selection = self.get_selected_rect()
 
         if selection is not None and point_in_resize_handle(point, selection):
@@ -470,10 +636,11 @@ class AreaSelectorDialog(QDialog):
 
     def mouseMoveEvent(self, event: Any) -> None:  # noqa: N802
         """Обновить текущую область по движению мыши."""
+        point = self._event_point(event)
+        self._last_cursor = point
+
         if self._drag_mode is None:
             return
-
-        point = self._event_point(event)
 
         if self._drag_mode == "new" and self._drag_origin is not None:
             self._selection = resize_rect(
@@ -539,7 +706,43 @@ class AreaSelectorDialog(QDialog):
                 self.accept()
             return
 
+        direction = _arrow_direction(key)
+        if direction is not None:
+            self._nudge_selection(direction, event)
+            return
+
         super().keyPressEvent(event)
+
+    def _nudge_selection(
+        self,
+        direction: PointCoords,
+        event: Any,
+    ) -> None:
+        """Подстроить выделение стрелками (#171).
+
+        Стрелки сдвигают область на 1px, Shift+стрелки — растягивают
+        правый/нижний край на 10px.
+
+        Args:
+            direction: Направление `(dx, dy)`.
+            event: Qt key event.
+        """
+        selection = self.get_selected_rect()
+        if selection is None:
+            return
+
+        shift = _shift_pressed(event)
+        step = NUDGE_STEP_FAST if shift else NUDGE_STEP
+        if shift:
+            self._selection = nudge_rect_edge(
+                selection, direction, self._bounds, step
+            )
+        else:
+            self._selection = nudge_rect_move(
+                selection, direction, self._bounds, step
+            )
+        if hasattr(self, "update"):
+            self.update()
 
     def paintEvent(self, _event: Any) -> None:  # noqa: N802
         """Отрисовать затемнение, рамку выделения и подсказку."""
@@ -549,12 +752,13 @@ class AreaSelectorDialog(QDialog):
 
         painter.setPen(QPen(QColor("#ffffff"), 1))
         painter.drawText(
-            QRect(24, 12, self.width() - 48, 90),
+            QRect(24, 12, self.width() - 48, 110),
             int(Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap),
             (
                 "Потяните мышью для выбора области. "
                 "Перетащите внутри рамки для перемещения, "
                 "тяните правый нижний маркер для изменения размера, "
+                "стрелки — сдвиг на 1px (Shift+стрелки — край на 10px), "
                 "Enter — подтвердить, Esc — отменить."
             ),
         )
@@ -588,3 +792,46 @@ class AreaSelectorDialog(QDialog):
             max(selection[1] - 10, 20),
             f"{width} × {height} px",
         )
+
+        if self._drag_mode is not None and self._last_cursor is not None:
+            self._draw_magnifier(painter, self._last_cursor)
+
+    def _draw_magnifier(
+        self,
+        painter: QPainter,
+        cursor: PointCoords,
+    ) -> None:
+        """Отрисовать лупу с увеличенным фрагментом экрана (#171).
+
+        Рядом с курсором показывается окно 120×120 с 4x-увеличением
+        области вокруг курсора, перекрестием и рамкой. Без снимка
+        экрана (см. `_grab_background`) лупа не рисуется.
+
+        Args:
+            painter: Активный painter из paintEvent.
+            cursor: Текущие координаты курсора.
+        """
+        if self._background_pixmap is None:
+            return
+
+        pos_x, pos_y = magnifier_target_position(cursor, self._bounds)
+        source_size = max(MAGNIFIER_SIZE // MAGNIFIER_ZOOM, 1)
+        source = QRect(
+            cursor[0] - source_size // 2,
+            cursor[1] - source_size // 2,
+            source_size,
+            source_size,
+        )
+        target = QRect(pos_x, pos_y, MAGNIFIER_SIZE, MAGNIFIER_SIZE)
+
+        painter.drawPixmap(target, self._background_pixmap, source)
+
+        center_x = pos_x + MAGNIFIER_SIZE // 2
+        center_y = pos_y + MAGNIFIER_SIZE // 2
+        painter.setPen(QPen(QColor("#ef4444"), 1))
+        painter.drawLine(center_x - 8, center_y, center_x + 8, center_y)
+        painter.drawLine(center_x, center_y - 8, center_x, center_y + 8)
+
+        painter.setPen(QPen(QColor("#ffffff"), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(target)

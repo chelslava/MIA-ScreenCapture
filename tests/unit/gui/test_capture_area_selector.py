@@ -14,8 +14,11 @@ from gui.views.area_selector import (
     describe_rect,
     format_rect_coords,
     is_valid_selection,
+    magnifier_target_position,
     move_rect,
     normalize_rect_coords,
+    nudge_rect_edge,
+    nudge_rect_move,
     point_in_rect,
     point_in_resize_handle,
     resize_rect,
@@ -67,6 +70,48 @@ class TestAreaSelectorHelpers:
         assert not is_valid_selection((0, 0, 3, 3))
         assert is_valid_selection((0, 0, 10, 10))
 
+    def test_nudge_rect_move_keeps_size(self) -> None:
+        """Стрелочный сдвиг сохраняет размер области (#171)."""
+        result = nudge_rect_move(
+            (100, 100, 300, 300), (-1, 0), (0, 0, 1920, 1080), 1
+        )
+        assert result == (99, 100, 299, 300)
+
+    def test_nudge_rect_move_clamps_to_bounds(self) -> None:
+        """Сдвиг не выпускает область за границы экрана (#171)."""
+        result = nudge_rect_move(
+            (0, 0, 100, 100), (-1, -1), (0, 0, 1920, 1080), 10
+        )
+        assert result == (0, 0, 100, 100)
+
+    def test_nudge_rect_edge_resizes_bottom_right(self) -> None:
+        """Shift+стрелки растягивают правый/нижний край (#171)."""
+        result = nudge_rect_edge(
+            (100, 100, 300, 300), (1, 1), (0, 0, 1920, 1080), 10
+        )
+        assert result == (100, 100, 310, 310)
+
+    def test_nudge_rect_edge_respects_min_size(self) -> None:
+        """Край нельзя растянуть внутрь меньше минимального размера (#171)."""
+        result = nudge_rect_edge(
+            (100, 100, 104, 104), (-1, -1), (0, 0, 1920, 1080), 10
+        )
+        assert result == (100, 100, 108, 108)
+
+    def test_magnifier_position_default_offset(self) -> None:
+        """Лупа размещается справа-снизу от курсора (#171)."""
+        assert magnifier_target_position((500, 400), (0, 0, 1920, 1080)) == (
+            516,
+            416,
+        )
+
+    def test_magnifier_position_flips_near_edges(self) -> None:
+        """У правого нижнего края лупа переворачивается влево-вверх (#171)."""
+        assert magnifier_target_position((1900, 1060), (0, 0, 1920, 1080)) == (
+            1764,
+            924,
+        )
+
 
 class _FakeMouseEvent:
     """Упрощённое mouse event для тестов selector-а."""
@@ -99,12 +144,17 @@ class _FakeMouseEvent:
 class _FakeKeyEvent:
     """Упрощённое key event для тестов selector-а."""
 
-    def __init__(self, key: object) -> None:
+    def __init__(self, key: object, modifiers: object = None) -> None:
         self._key = key
+        self._modifiers = modifiers
 
     def key(self) -> object:
         """Вернуть код клавиши."""
         return self._key
+
+    def modifiers(self) -> object:
+        """Вернуть модификаторы (None — без информации о них)."""
+        return self._modifiers
 
 
 class TestAreaSelectorDialog:
@@ -226,6 +276,82 @@ class TestAreaSelectorDialog:
             (10, 20, 110, 220)
         )
         dialog.accept.assert_called_once()
+
+    def test_arrow_key_moves_selection_by_one_pixel(self) -> None:
+        """Стрелка сдвигает выделение на 1px без изменения размера (#171)."""
+        dialog = self._create_dialog()
+        dialog._selection = (100, 100, 300, 300)
+        qt_patch = SimpleNamespace(
+            Key=SimpleNamespace(
+                Key_Escape="esc",
+                Key_Return="ret",
+                Key_Enter="ent",
+                Key_Left="left",
+                Key_Right="right",
+                Key_Up="up",
+                Key_Down="down",
+            ),
+            KeyboardModifier=SimpleNamespace(ShiftModifier=1),
+        )
+
+        with patch("gui.views.area_selector.Qt", qt_patch):
+            dialog.keyPressEvent(_FakeKeyEvent("left"))
+
+        assert dialog._selection == (99, 100, 299, 300)
+
+    def test_shift_arrow_key_resizes_selection_edge(self) -> None:
+        """Shift+стрелка растягивает правый край на 10px (#171)."""
+        dialog = self._create_dialog()
+        dialog._selection = (100, 100, 300, 300)
+        qt_patch = SimpleNamespace(
+            Key=SimpleNamespace(
+                Key_Escape="esc",
+                Key_Return="ret",
+                Key_Enter="ent",
+                Key_Left="left",
+                Key_Right="right",
+                Key_Up="up",
+                Key_Down="down",
+            ),
+            KeyboardModifier=SimpleNamespace(ShiftModifier=1),
+        )
+
+        with patch("gui.views.area_selector.Qt", qt_patch):
+            dialog.keyPressEvent(_FakeKeyEvent("right", modifiers=1))
+
+        assert dialog._selection == (100, 100, 310, 300)
+
+    def test_mouse_press_grabs_background_for_magnifier(self) -> None:
+        """Первое нажатие мыши снимает копию экрана для лупы (#171)."""
+        dialog = self._create_dialog()
+        dialog._grab_background = MagicMock()
+        left_button = object()
+        qt_patch = SimpleNamespace(
+            Key=SimpleNamespace(
+                Key_Escape="esc",
+                Key_Return="ret",
+                Key_Enter="ent",
+            ),
+            MouseButton=SimpleNamespace(LeftButton=left_button),
+        )
+
+        with patch("gui.views.area_selector.Qt", qt_patch):
+            dialog.mousePressEvent(_FakeMouseEvent(50, 60, left_button))
+
+        dialog._grab_background.assert_called_once()
+        assert dialog._last_cursor == (50, 60)
+
+    def test_magnifier_skipped_without_background_pixmap(self) -> None:
+        """Без снимка экрана лупа не рисуется и не падает (#171)."""
+        dialog = self._create_dialog()
+        dialog._background_pixmap = None
+        dialog._drag_mode = "new"
+        dialog._last_cursor = (100, 100)
+        painter = MagicMock()
+
+        dialog._draw_magnifier(painter, (100, 100))
+
+        painter.drawPixmap.assert_not_called()
 
 
 class TestCaptureViewGraphicSelection:
