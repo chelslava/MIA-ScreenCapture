@@ -842,6 +842,84 @@ MockQSplitter = _create_mock_class("QSplitter", (MockQWidgetBase,))
 MockQFrame = _create_mock_class("QFrame", (MockQWidgetBase,))
 
 
+class _MockQMessageBoxStandardButton:
+    """Значения кнопок QMessageBox (int, как в Qt) — статичные."""
+
+    Ok = 0x00000400
+    Open = 0x00002000
+    Save = 0x00000800
+    Yes = 0x00004000
+    No = 0x00010000
+    Cancel = 0x00400000
+    Close = 0x00200000
+    Abort = 0x04000000
+    Retry = 0x08000000
+    Ignore = 0x10000000
+
+
+class _MockQMessageBoxButtonRole:
+    """Значения ролей кнопок (int, как в Qt.ButtonRole)."""
+
+    InvalidRole = -1
+    AcceptRole = 0
+    RejectRole = 1
+    DestructiveRole = 2
+    ActionRole = 3
+    HelpRole = 4
+    YesRole = 5
+    NoRole = 6
+    ResetRole = 7
+    ApplyRole = 8
+
+
+class _MockQMessageBoxIcon:
+    """Значения иконок (int, как в Qt.Icon)."""
+
+    NoIcon = 0
+    Information = 1
+    Warning = 2
+    Critical = 3
+    Question = 4
+
+
+class MockQMessageBoxBase(MockQWidgetBase):
+    """
+    Курированный mock для QMessageBox.
+
+    pytest >= 9.2 в ``monkeypatch.setattr`` проверяет существование
+    атрибута через ``getattr_static`` и не видит auto-vivified
+    атрибуты MagicMock: тесты подтверждения действий (выход из трея,
+    удаление профиля/задач) патчат ``question`` через setattr и падали
+    с ``AttributeError``. Поэтому ``question``/``information``/``warning``/
+    ``critical`` и namespace-классы ``StandardButton``/``ButtonRole``/
+    ``Icon`` объявлены статично — их можно патчить и восстанавливать.
+    По умолчанию вопрос возвращает «No» — безопасный отказ.
+    """
+
+    StandardButton = _MockQMessageBoxStandardButton
+    ButtonRole = _MockQMessageBoxButtonRole
+    Icon = _MockQMessageBoxIcon
+
+    @staticmethod
+    def question(*args: Any, **kwargs: Any) -> int:
+        return _MockQMessageBoxStandardButton.No
+
+    @staticmethod
+    def information(*args: Any, **kwargs: Any) -> int:
+        return _MockQMessageBoxStandardButton.Ok
+
+    @staticmethod
+    def warning(*args: Any, **kwargs: Any) -> int:
+        return _MockQMessageBoxStandardButton.Ok
+
+    @staticmethod
+    def critical(*args: Any, **kwargs: Any) -> int:
+        return _MockQMessageBoxStandardButton.Ok
+
+
+MockQMessageBox = _create_mock_class("QMessageBox", (MockQMessageBoxBase,))
+
+
 class MockQSystemTrayIconBase(MockQWidgetBase):
     """
     Базовый mock для QSystemTrayIcon (нужен только gui/tray_icon.py).
@@ -1051,6 +1129,7 @@ qt_widgets_mock.QScrollArea = MockQScrollArea
 qt_widgets_mock.QSplitter = MockQSplitter
 qt_widgets_mock.QFrame = MockQFrame
 qt_widgets_mock.QSystemTrayIcon = MockQSystemTrayIcon
+qt_widgets_mock.QMessageBox = MockQMessageBox
 qt_widgets_mock.QApplication = MockQApplication
 
 qt_core_mock = MagicMock()
