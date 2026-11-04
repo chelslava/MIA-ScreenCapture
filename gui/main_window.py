@@ -66,6 +66,7 @@ from gui.styles.backdrop import (
 )
 from gui.styles.theme import Theme, apply_theme, set_backdrop_active
 from gui.views.countdown_overlay import CountdownOverlay
+from gui.views.cursor_effects_overlay import CursorEffectsOverlay
 from gui.views.draw_overlay import DrawOverlayWidget
 from gui.views.finalization_progress_dialog import (
     FinalizationProgressDialog,
@@ -187,6 +188,8 @@ class MainWindow(
         self._pending_recording_start: (
             tuple[Path, CaptureSettings, AudioSettings, VideoSettings] | None
         ) = None
+        # Эффекты курсора (#166): оверлей живёт во время записи.
+        self._cursor_effects_overlay: CursorEffectsOverlay | None = None
         self._recording_controller.set_audio_chunks_dropped_callback(
             self.audio_chunks_dropped.emit
         )
@@ -871,11 +874,27 @@ class MainWindow(
         )
 
         if success:
+            self._show_cursor_effects()
             self._on_recording_started(output_path, capture)
         else:
             self._show_non_modal_error(
                 error_msg or "Не удалось запустить запись"
             )
+
+    def _show_cursor_effects(self) -> None:
+        """Показать оверлей эффектов курсора, если включён (#166)."""
+        settings = self._capture_view.get_cursor_effect_settings()
+        if not (settings.highlight_enabled or settings.click_effects_enabled):
+            return
+        if self._cursor_effects_overlay is None:
+            self._cursor_effects_overlay = CursorEffectsOverlay()
+        self._cursor_effects_overlay.apply_settings(settings)
+        self._cursor_effects_overlay.start()
+
+    def _hide_cursor_effects(self) -> None:
+        """Скрыть оверлей эффектов курсора (#166)."""
+        if self._cursor_effects_overlay is not None:
+            self._cursor_effects_overlay.stop()
 
     def _begin_countdown(
         self,

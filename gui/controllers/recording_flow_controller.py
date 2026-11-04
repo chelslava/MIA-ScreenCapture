@@ -231,6 +231,10 @@ class RecordingFlowControllerMixin(_QWindowBase):
             and getattr(draw_overlay, "isVisible", lambda: False)()
         ):
             draw_overlay.close_overlay()
+        # Эффекты курсора привязаны к записи: скрыть оверлей (#166)
+        hide_cursor_effects = getattr(self, "_hide_cursor_effects", None)
+        if callable(hide_cursor_effects):
+            hide_cursor_effects()
         self._set_status_updates_enabled(False)
         self._update_ui_state(RecordingStatus.IDLE)
         self._recording_indicator.hide_indicator()

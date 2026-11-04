@@ -65,6 +65,9 @@ def _build_window():
     window._settings_controller = MagicMock()
     window._audio_drop_warning_shown = False
     window._floating_widget = None
+    window._countdown_overlay = None
+    window._pending_recording_start = None
+    window._cursor_effects_overlay = None
     window._recording_controller = MagicMock(
         get_recoveries_count=MagicMock(return_value=0),
         dropped_audio_chunks=0,
@@ -75,6 +78,10 @@ def _build_window():
         get_recoveries_count=MagicMock(return_value=0),
     )
     window._capture_view = MagicMock()
+    # По умолчанию эффекты курсора выключены (#166)
+    window._capture_view.get_cursor_effect_settings.return_value = (
+        SimpleNamespace(highlight_enabled=False, click_effects_enabled=False)
+    )
     window._audio_view = MagicMock()
     window._video_view = MagicMock()
     window._output_view = MagicMock()
@@ -2794,3 +2801,75 @@ class TestCameraPipAttach:
 
         call = window._recording_controller.start_recording.call_args.kwargs
         assert call["video"].pip is pip
+
+
+class TestCursorEffectsHooks:
+    """Хуки эффектов курсора при старте/остановке записи (#166)."""
+
+    def test_start_recording_shows_cursor_effects_when_enabled(self) -> None:
+        """При включённых эффектах оверлей показывается на старте."""
+        window = _build_window()
+        window._cursor_effects_overlay = None
+        window._recording_controller.start_recording.return_value = (
+            True,
+            None,
+        )
+        window._on_recording_started = MagicMock()
+        window._capture_view.get_cursor_effect_settings.return_value = (
+            SimpleNamespace(
+                highlight_enabled=True, click_effects_enabled=False
+            )
+        )
+
+        with (
+            patch("gui.main_window.get_config") as mocked_config,
+            patch("gui.main_window.CursorEffectsOverlay") as overlay_cls,
+        ):
+            mocked_config.return_value.settings.countdown_seconds = 0
+            window._start_recording()
+
+        overlay_cls.return_value.apply_settings.assert_called_once()
+        overlay_cls.return_value.start.assert_called_once()
+
+    def test_start_recording_skips_cursor_effects_when_disabled(self) -> None:
+        """Выключенные эффекты не создают оверлей."""
+        window = _build_window()
+        window._cursor_effects_overlay = None
+        window._recording_controller.start_recording.return_value = (
+            True,
+            None,
+        )
+        window._on_recording_started = MagicMock()
+        window._capture_view.get_cursor_effect_settings.return_value = (
+            SimpleNamespace(
+                highlight_enabled=False, click_effects_enabled=False
+            )
+        )
+
+        with (
+            patch("gui.main_window.get_config") as mocked_config,
+            patch("gui.main_window.CursorEffectsOverlay") as overlay_cls,
+        ):
+            mocked_config.return_value.settings.countdown_seconds = 0
+            window._start_recording()
+
+        overlay_cls.assert_not_called()
+
+    def test_stop_recording_hides_cursor_effects(self) -> None:
+        """При остановке записи оверлей эффектов скрывается."""
+        from pathlib import Path as PathLib
+
+        window = _build_window()
+        window._cursor_effects_overlay = MagicMock()
+        window._recordings_controller = MagicMock()
+        window._refresh_recent_recordings = MagicMock()
+        window._set_status_updates_enabled = MagicMock()
+        window._update_ui_state = MagicMock()
+        window._recording_indicator = MagicMock()
+        window._settings_controller.add_recent_recording = MagicMock()
+        window._generate_thumbnail_for_recording = MagicMock()
+        window._draw_overlay = None
+
+        window._on_recording_stopped(PathLib("C:/videos/out.mp4"))
+
+        window._cursor_effects_overlay.stop.assert_called_once()

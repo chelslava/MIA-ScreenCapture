@@ -298,3 +298,30 @@ class TestCountdownSetting:
 
         assert mocked_config.return_value.settings.countdown_seconds == 3
         mocked_config.return_value.save.assert_called_once()
+
+
+class TestCursorEffectSettings:
+    """Настройки эффектов курсора на странице записи (#166)."""
+
+    def test_get_cursor_effect_settings(
+        self,
+        qapp: QApplication,
+        monkeypatch,
+    ) -> None:
+        """Чекбоксы эффектов переносятся в CursorEffectSettings."""
+        from core.recording_types import CursorEffectSettings
+
+        monkeypatch.setattr(
+            "gui.views.capture_view.threading.Thread",
+            _NoopThread,
+        )
+        from unittest.mock import MagicMock
+
+        view = _patch_view_runtime(CaptureView())
+        view._cursor_highlight_check.isChecked = MagicMock(return_value=False)
+        view._click_effects_check.isChecked = MagicMock(return_value=False)
+
+        settings = view.get_cursor_effect_settings()
+        assert isinstance(settings, CursorEffectSettings)
+        assert settings.highlight_enabled is False
+        assert settings.click_effects_enabled is False

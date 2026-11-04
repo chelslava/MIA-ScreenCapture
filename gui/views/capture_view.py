@@ -7,6 +7,7 @@ import threading
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -20,7 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from config import get_config
-from core.recording_types import PiPSettings
+from core.recording_types import CursorEffectSettings, PiPSettings
 from gui.accessibility import apply_accessible_metadata
 from gui.models.recording_state import CaptureType
 from gui.styles.theme import Theme
@@ -168,6 +169,39 @@ class CaptureView(QWidget):
         # Веб-камера PiP (#165): отдельная группа настроек наложения
         self._pip_view = PipSettingsView()
         layout.addWidget(self._pip_view)
+
+        # Эффекты курсора (#166): подсветка и кольца кликов
+        self._setup_cursor_effects_group(layout)
+
+    def _setup_cursor_effects_group(self, layout: QVBoxLayout) -> None:
+        """Добавить группу настроек эффектов курсора (#166).
+
+        Args:
+            layout: Родительский layout страницы записи.
+        """
+        group = QGroupBox("Эффекты курсора")
+        group_layout = QVBoxLayout(group)
+
+        self._cursor_highlight_check = QCheckBox(
+            "Подсвечивать курсор во время записи"
+        )
+        apply_accessible_metadata(
+            self._cursor_highlight_check,
+            "Подсветка курсора",
+            "Полупрозрачный круг, следующий за курсором в записи.",
+        )
+        group_layout.addWidget(self._cursor_highlight_check)
+
+        self._click_effects_check = QCheckBox("Показывать клики (ЛКМ/ПКМ)")
+        apply_accessible_metadata(
+            self._click_effects_check,
+            "Эффекты кликов",
+            "Расходящееся кольцо при клике: жёлтое для левой кнопки, "
+            "красное для правой.",
+        )
+        group_layout.addWidget(self._click_effects_check)
+
+        layout.addWidget(group)
 
     def _apply_accessibility_metadata(self) -> None:
         """Назначение accessibility metadata для controls захвата."""
@@ -441,6 +475,18 @@ class CaptureView(QWidget):
             `PiPSettings` при включённом наложении, иначе `None`.
         """
         return self._pip_view.get_pip_settings()
+
+    def get_cursor_effect_settings(self) -> CursorEffectSettings:
+        """
+        Получить настройки эффектов курсора (#166).
+
+        Returns:
+            Флаги подсветки и эффектов кликов из чекбоксов.
+        """
+        return CursorEffectSettings(
+            highlight_enabled=self._cursor_highlight_check.isChecked(),
+            click_effects_enabled=self._click_effects_check.isChecked(),
+        )
 
     def set_capture_type(self, capture_type: CaptureType) -> None:
         """

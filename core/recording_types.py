@@ -73,6 +73,20 @@ class PiPSettings:
 
 
 @dataclass(frozen=True)
+class CursorEffectSettings:
+    """Настройки эффектов курсора при записи (#166).
+
+    Атрибуты:
+        highlight_enabled: Полупрозрачный круг, следующий за курсором.
+        click_effects_enabled: Расходящееся кольцо при клике
+            (ЛКМ/ПКМ разными цветами).
+    """
+
+    highlight_enabled: bool = False
+    click_effects_enabled: bool = False
+
+
+@dataclass(frozen=True)
 class CaptureRequest:
     """Screen capture parameters at core level."""
 

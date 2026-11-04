@@ -50,6 +50,18 @@ def register_recording_routes(
                     return handle_validation_error(e)
 
                 callback_data = validated.model_dump(exclude_none=True)
+                # Не засорять колбэк выключенными фичами (#165, #167):
+                # legacy-запросы получают прежний контракт payload.
+                if not callback_data.get("countdown"):
+                    callback_data.pop("countdown", None)
+                if not callback_data.get("pip_enabled"):
+                    for pip_key in (
+                        "pip_device",
+                        "pip_position",
+                        "pip_size_percent",
+                        "pip_enabled",
+                    ):
+                        callback_data.pop(pip_key, None)
 
                 if validated.profile_id:
                     get_profile_cb = server.get_callback("get_profile")
