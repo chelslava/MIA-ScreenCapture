@@ -188,6 +188,60 @@ def check_ffmpeg() -> FFmpegStatus:
         return FFmpegStatus(available=False, path=ffmpeg_path, error=msg)
 
 
+def list_ffmpeg_encoders(ffmpeg_path: str | None = None) -> set[str] | None:
+    """Перечислить энкодеры, собранные в текущем FFmpeg (#168).
+
+    Args:
+        ffmpeg_path: Путь к FFmpeg; `None` — взять из PATH.
+
+    Returns:
+        Множество имён энкодеров (например, ``{"av1_nvenc", ...}``);
+        `None`, если FFmpeg недоступен — вызывающий код должен
+        показать полный список кодеков без фильтрации.
+    """
+    binary = ffmpeg_path or get_ffmpeg_path()
+    if binary is None:
+        logger.warning("FFmpeg недоступен — фильтрация кодеков пропущена")
+        return None
+
+    try:
+        creationflags = get_subprocess_creationflags()
+        run_kwargs: dict[str, Any] = {
+            "capture_output": True,
+            "text": True,
+            "timeout": 10,
+        }
+        if creationflags:
+            run_kwargs["creationflags"] = creationflags
+
+        result = subprocess.run(
+            [binary, "-hide_banner", "-encoders"], **run_kwargs
+        )
+        if result.returncode != 0:
+            logger.warning(
+                "ffmpeg -encoders вернул код %s — фильтрация пропущена",
+                result.returncode,
+            )
+            return None
+    except (OSError, subprocess.TimeoutExpired) as e:
+        logger.warning("Не удалось перечислить энкодеры FFmpeg: %s", e)
+        return None
+
+    encoders: set[str] = set()
+    for line in (result.stdout or "").splitlines():
+        stripped = line.strip()
+        # Строки энкодеров: " VFRSBD av1_nvenc  NVIDIA NVENC av1 encoder"
+        # Флаговый токен содержит 'V' только у видео-энкодеров (#168).
+        parts = stripped.split()
+        if len(parts) < 2 or not re.fullmatch(r"[A-Za-z.]{6,}", parts[0]):
+            continue
+        if "V" not in parts[0]:
+            continue
+        encoders.add(parts[1])
+    logger.debug("Доступные энкодеры FFmpeg: %s", sorted(encoders))
+    return encoders
+
+
 def generate_thumbnail(
     video_path: str | Path, cache_dir: str | Path | None = None
 ) -> Path | None:

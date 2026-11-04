@@ -208,6 +208,38 @@ class FFmpegVideoWriter:
             "-global_quality",
             "28",
         ],
+        "av1_nvenc": [
+            "-c:v",
+            "av1_nvenc",
+            "-preset",
+            "p1",
+            "-rc",
+            "vbr",
+            "-cq",
+            "33",
+        ],
+        "av1_amf": [
+            "-c:v",
+            "av1_amf",
+            "-usage",
+            "transcoding",
+            "-quality",
+            "speed",
+            "-rc",
+            "cqp",
+            "-qp_p",
+            "33",
+            "-qp_i",
+            "33",
+        ],
+        "av1_qsv": [
+            "-c:v",
+            "av1_qsv",
+            "-preset",
+            "fast",
+            "-global_quality",
+            "33",
+        ],
     }
 
     def __init__(

@@ -1174,3 +1174,46 @@ class TestCleanupOrphanedThumbnails:
         )
 
         assert removed == 0
+
+
+class TestListFfmpegEncoders:
+    """Перечисление энкодеров FFmpeg (#168)."""
+
+    def test_parses_encoder_lines(self) -> None:
+        """Имена энкодеров извлекаются из вывода ffmpeg -encoders."""
+        from recorder.utils import list_ffmpeg_encoders
+
+        sample = (
+            "Encoders:\n"
+            " V.....D av1_nvenc           NVIDIA NVENC av1 encoder\n"
+            " V....D libx264              libx264 H.264\n"
+            " A.....D aac                 AAC encoder\n"
+            " ------                      \n"
+        )
+        result = MagicMock(returncode=0, stdout=sample, stderr="")
+
+        with patch("recorder.utils.subprocess.run", return_value=result):
+            encoders = list_ffmpeg_encoders("ffmpeg")
+
+        assert encoders is not None
+        assert "av1_nvenc" in encoders
+        assert "libx264" in encoders
+        assert "aac" not in encoders
+
+    def test_ffmpeg_unavailable_returns_none(self) -> None:
+        """Недоступный FFmpeg — None (без фильтрации)."""
+        from recorder.utils import list_ffmpeg_encoders
+
+        with patch("recorder.utils.get_ffmpeg_path", return_value=None):
+            assert list_ffmpeg_encoders() is None
+
+    def test_nonzero_exit_returns_none(self) -> None:
+        """Ненулевой код возврата — None без исключения."""
+        from recorder.utils import list_ffmpeg_encoders
+
+        result = MagicMock(returncode=1, stdout="", stderr="err")
+        with (
+            patch("recorder.utils.get_ffmpeg_path", return_value="ffmpeg"),
+            patch("recorder.utils.subprocess.run", return_value=result),
+        ):
+            assert list_ffmpeg_encoders() is None

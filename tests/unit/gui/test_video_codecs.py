@@ -27,6 +27,9 @@ class TestVideoCodecsCatalog:
             "hevc_nvenc",
             "hevc_amf",
             "hevc_qsv",
+            "av1_nvenc",
+            "av1_amf",
+            "av1_qsv",
             "mp4v",
         ]
 
@@ -41,6 +44,9 @@ class TestVideoCodecsCatalog:
             "hevc_nvenc (NVIDIA HEVC)",
             "hevc_amf (AMD HEVC)",
             "hevc_qsv (Intel HEVC)",
+            "av1_nvenc (NVIDIA AV1)",
+            "av1_amf (AMD AV1)",
+            "av1_qsv (Intel AV1)",
             "mp4v",
         ]
 
@@ -100,3 +106,43 @@ class TestVideoCodecsCatalog:
         assert get_software_fallback_codec("hevc_qsv") == "libx265"
         assert get_software_fallback_codec("libx264") == "libx264"
         assert get_software_fallback_codec("libx265") == "libx265"
+
+
+class TestAv1Codecs:
+    """Аппаратные AV1-кодеки в реестре (#168)."""
+
+    def test_av1_codecs_registered(self) -> None:
+        """av1_nvenc/av1_amf/av1_qsv присутствуют и помечены GPU."""
+        from gui.models.video_codecs import get_codec_info_by_id
+
+        for codec_id in ("av1_nvenc", "av1_amf", "av1_qsv"):
+            info = get_codec_info_by_id(codec_id)
+            assert info is not None, codec_id
+            assert info.hardware_acceleration is True
+
+    def test_av1_fallback_to_software(self) -> None:
+        """Fallback для AV1 — безопасный программный libx264."""
+        from gui.models.video_codecs import get_software_fallback_codec
+
+        for codec_id in ("av1_nvenc", "av1_amf", "av1_qsv"):
+            assert get_software_fallback_codec(codec_id) == "libx264"
+
+    def test_filter_without_probe_returns_all(self) -> None:
+        """Неудачная проверка энкодеров — полный список (#168)."""
+        from gui.models.video_codecs import filter_codec_display_names
+
+        names = filter_codec_display_names(None)
+        assert "av1_nvenc (NVIDIA AV1)" in names
+        assert len(names) == len(get_available_codec_display_names())
+
+    def test_filter_hides_unsupported_hardware(self) -> None:
+        """Аппаратные кодеки скрываются, программные остаются (#168)."""
+        from gui.models.video_codecs import filter_codec_display_names
+
+        names = filter_codec_display_names({"h264_nvenc"})
+
+        assert "h264_nvenc (NVIDIA GPU)" in names
+        assert "av1_nvenc (NVIDIA AV1)" not in names
+        assert "libx264 (CPU)" in names
+        assert "libx265 (HEVC CPU)" in names
+        assert "mp4v" in names

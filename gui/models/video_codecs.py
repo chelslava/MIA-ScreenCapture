@@ -63,6 +63,24 @@ AVAILABLE_VIDEO_CODECS: tuple[CodecInfo, ...] = (
         hardware_acceleration=True,
     ),
     CodecInfo(
+        codec_id="av1_nvenc",
+        display_name="av1_nvenc (NVIDIA AV1)",
+        description="Аппаратное кодирование NVIDIA AV1 (RTX 40xx+).",
+        hardware_acceleration=True,
+    ),
+    CodecInfo(
+        codec_id="av1_amf",
+        display_name="av1_amf (AMD AV1)",
+        description="Аппаратное кодирование AMD AV1 (RX 7000+).",
+        hardware_acceleration=True,
+    ),
+    CodecInfo(
+        codec_id="av1_qsv",
+        display_name="av1_qsv (Intel AV1)",
+        description="Аппаратное кодирование Intel Quick Sync AV1 (Arc+).",
+        hardware_acceleration=True,
+    ),
+    CodecInfo(
         codec_id="mp4v",
         display_name="mp4v",
         description="MPEG-4 Visual.",
@@ -124,3 +142,33 @@ def get_software_fallback_codec(codec_id: str) -> str:
     if "hevc" in codec_id or "265" in codec_id:
         return "libx265"
     return "libx264"
+
+
+# Программные кодеки, доступные без проверки железа (#168)
+SOFTWARE_CODEC_IDS: frozenset[str] = frozenset({"libx264", "libx265", "mp4v"})
+
+
+def filter_codec_display_names(
+    supported_codec_ids: set[str] | None,
+) -> list[str]:
+    """Отфильтровать display-имена по реально доступным энкодерам (#168).
+
+    Args:
+        supported_codec_ids: Множество энкодеров из `ffmpeg -encoders`;
+            `None` — проверка не удалась, вернуть полный список.
+
+    Returns:
+        Display-имена для UI: программные кодеки всегда, аппаратные —
+        только при наличии в проверке.
+    """
+    names = get_available_codec_display_names()
+    if supported_codec_ids is None:
+        return names
+
+    filtered = [
+        codec.display_name
+        for codec in AVAILABLE_VIDEO_CODECS
+        if codec.codec_id in supported_codec_ids
+        or codec.codec_id in SOFTWARE_CODEC_IDS
+    ]
+    return filtered or names

@@ -21,9 +21,10 @@ from gui.models.recording_state import VideoSettings
 from gui.models.video_codecs import (
     codec_id_from_display_name,
     display_name_from_codec_id,
-    get_available_codec_display_names,
+    filter_codec_display_names,
 )
 from logger_config import get_module_logger
+from recorder.utils import list_ffmpeg_encoders
 
 logger = get_module_logger(__name__)
 
@@ -73,10 +74,12 @@ class VideoView(QWidget):
         self._fps_spin.setValue(30)
         group_layout.addWidget(self._fps_spin, 0, 1)
 
-        # Кодек
+        # Кодек (#168): аппаратные кодеки фильтруются по ffmpeg -encoders
         group_layout.addWidget(QLabel("Кодек:"), 0, 2)
         self._codec_combo = QComboBox()
-        self._codec_combo.addItems(get_available_codec_display_names())
+        self._codec_combo.addItems(
+            filter_codec_display_names(list_ffmpeg_encoders())
+        )
         group_layout.addWidget(self._codec_combo, 0, 3)
 
         # Битрейт

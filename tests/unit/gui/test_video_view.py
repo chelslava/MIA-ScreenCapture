@@ -1,11 +1,18 @@
 """Тесты VideoView на моках PyQt6."""
 
 from typing import Any
+from unittest.mock import patch
 
 from PyQt6.QtWidgets import QApplication
 
 from gui.models.recording_state import VideoSettings
 from gui.views.video_view import VideoView
+
+# Probe энкодеров не должен запускать subprocess в unit-тестах (#168)
+patch(
+    "gui.views.video_view.list_ffmpeg_encoders",
+    return_value=None,
+).start()
 
 
 def _patch_combo_runtime(combo: Any) -> None:
@@ -46,9 +53,9 @@ class TestVideoView:
         """Список кодеков заполняется при инициализации."""
         view = _patch_view_runtime(VideoView())
 
-        assert view._codec_combo.count() == 9
+        assert view._codec_combo.count() == 12
         assert view._codec_combo.itemText(0) == "libx264 (CPU)"
-        assert view._codec_combo.itemText(8) == "mp4v"
+        assert view._codec_combo.itemText(11) == "mp4v"
 
     def test_get_codec_uses_catalog_mapping(self, qapp: QApplication) -> None:
         """Геттер кодека возвращает codec id, а не display text."""
