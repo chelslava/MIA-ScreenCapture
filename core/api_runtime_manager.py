@@ -180,6 +180,9 @@ class ApiRuntimeManager:
                 trust_proxy_headers=api_config.get(
                     "trust_proxy_headers", False
                 ),
+                tls_enabled=api_config.get("tls_enabled", False),
+                tls_cert_path=api_config.get("tls_cert_path", ""),
+                tls_key_path=api_config.get("tls_key_path", ""),
                 rate_limit=api_config.get("rate_limit"),
             )
             self._host.set_api_server_instance(api_server)

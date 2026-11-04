@@ -71,12 +71,16 @@ class FakeApiServer:
         api_key: str | None = None,
         trust_proxy_headers: bool = False,
         rate_limit: object | None = None,
+        tls_enabled: bool = False,
+        tls_cert_path: str = "",
+        tls_key_path: str = "",
     ) -> None:
         self.host = host
         self.port = port
         self.server_threads = server_threads
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.trust_proxy_headers = trust_proxy_headers
+        self.tls_enabled = tls_enabled
         self.rate_limit = rate_limit
         self.app = SimpleNamespace(name="fake-app")
         self.callbacks: dict[str, object] = {}

@@ -937,3 +937,28 @@ class TestCountdownSeconds:
 
         reloaded = ConfigManager(path)
         assert reloaded.settings.countdown_seconds == 4
+
+
+class TestApiTlsSettings:
+    """Настройки HTTPS/TLS API (#175)."""
+
+    def test_tls_defaults(self) -> None:
+        """TLS выключен по умолчанию."""
+        settings = AppSettings()
+        assert settings.api.tls_enabled is False
+        assert settings.api.tls_cert_path == ""
+        assert settings.api.tls_key_path == ""
+
+    def test_tls_roundtrip_through_config_file(self, tmp_path: Path) -> None:
+        """TLS-поля переживают сохранение и перезагрузку конфига."""
+        path = tmp_path / "config.json"
+        manager = ConfigManager(path)
+        manager.settings.api.tls_enabled = True
+        manager.settings.api.tls_cert_path = "C:/certs/mia.pem"
+        manager.settings.api.tls_key_path = "C:/certs/mia.key"
+        assert manager.save() is True
+
+        reloaded = ConfigManager(path)
+        assert reloaded.settings.api.tls_enabled is True
+        assert reloaded.settings.api.tls_cert_path == "C:/certs/mia.pem"
+        assert reloaded.settings.api.tls_key_path == "C:/certs/mia.key"

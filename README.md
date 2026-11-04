@@ -332,6 +332,8 @@ Scheduler-specific flags (`--schedule-create`, `--schedule-list`, `--trigger`, `
 
 The API listens on `http://127.0.0.1:5000` by default. All endpoints (except `/health`) require an API key via the `X-API-Key` header or `Authorization: Bearer`. Versioned endpoints live under `/api/v1/*`; legacy `/api/*` aliases are kept for backward compatibility.
 
+For LAN exposure over HTTPS — either a reverse proxy (nginx/Caddy, recommended) or the built-in `api.tls_enabled` mode — see [`docs/api-tls.md`](docs/api-tls.md).
+
 Full reference with request/response schemas: [`docs/API.md`](docs/API.md). Interactive docs: `GET /api/docs` (Swagger UI) while the server is running.
 
 ### Endpoint Groups

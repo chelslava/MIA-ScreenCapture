@@ -171,6 +171,10 @@ class APISettingsSchema(BaseModel):
     trust_proxy_headers: bool = Field(default=False)
     # Использовать структурированные JSON-логи для API
     structured_logs: bool = Field(default=False)
+    # Опциональный HTTPS (#175): см. docs/api-tls.md
+    tls_enabled: bool = Field(default=False)
+    tls_cert_path: str = Field(default="")
+    tls_key_path: str = Field(default="")
     rate_limit: RateLimitSettingsSchema = Field(
         default_factory=RateLimitSettingsSchema
     )
@@ -415,6 +419,12 @@ class APISettings:
     webhook_enabled: bool = False
     trust_proxy_headers: bool = False
     structured_logs: bool = False
+    # Опциональный HTTPS (#175): waitress без TLS, поэтому при включении
+    # сервер работает на werkzeug (threaded) с указанными сертификатом
+    # и ключом; альтернатива — reverse-proxy (см. docs/api-tls.md)
+    tls_enabled: bool = False
+    tls_cert_path: str = ""
+    tls_key_path: str = ""
     rate_limit: RateLimitSettings = field(default_factory=RateLimitSettings)
 
 

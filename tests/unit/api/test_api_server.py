@@ -7,6 +7,8 @@ Unit тесты для API сервера
 
 import threading
 import time
+from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1348,3 +1350,114 @@ class TestAPIServerRateLimitFromConfig:
         server = APIServer(rate_limit=RateLimitSettings(enabled=False))
 
         assert server._rate_limiter.config.enabled is False
+
+
+class TestTlsSupport:
+    """Опциональный HTTPS/TLS для REST API (#175)."""
+
+    def _make_server(self, **kwargs: Any) -> APIServer:
+        """Создать сервер с настройками TLS по умолчанию."""
+        return APIServer(**kwargs)
+
+    def test_tls_disabled_by_default(self) -> None:
+        """По умолчанию TLS выключен, URL http."""
+        server = self._make_server()
+        assert server.tls_enabled is False
+        assert server.get_url().startswith("http://")
+
+    def test_get_url_https_when_enabled(self) -> None:
+        """При включённом TLS URL https."""
+        server = self._make_server(tls_enabled=True)
+        assert server.get_url().startswith("https://")
+
+    def test_validate_tls_files_disabled_is_noop(self, tmp_path: Path) -> None:
+        """Выключенный TLS не требует файлов."""
+        server = self._make_server(tls_enabled=False)
+        server._validate_tls_files()  # не бросает
+
+    def test_validate_tls_files_missing_paths(self, tmp_path: Path) -> None:
+        """TLS без путей к сертификату/ключу — RuntimeError."""
+        server = self._make_server(tls_enabled=True)
+
+        with pytest.raises(RuntimeError, match="не заданы пути"):
+            server._validate_tls_files()
+
+    def test_validate_tls_files_missing_files(self, tmp_path: Path) -> None:
+        """Несуществующие файлы сертификата — RuntimeError."""
+        server = self._make_server(
+            tls_enabled=True,
+            tls_cert_path=str(tmp_path / "no.pem"),
+            tls_key_path=str(tmp_path / "no.key"),
+        )
+
+        with pytest.raises(RuntimeError, match="не найден"):
+            server._validate_tls_files()
+
+    def test_validate_tls_files_ok(self, tmp_path: Path) -> None:
+        """Существующие файлы проходят проверку."""
+        cert = tmp_path / "mia.pem"
+        key = tmp_path / "mia.key"
+        cert.write_text("cert")
+        key.write_text("key")
+        server = self._make_server(
+            tls_enabled=True,
+            tls_cert_path=str(cert),
+            tls_key_path=str(key),
+        )
+
+        server._validate_tls_files()  # не бросает
+
+    def test_run_server_uses_werkzeug_when_tls(self, tmp_path: Path) -> None:
+        """TLS-ветка поднимает werkzeug с ssl_context, не waitress."""
+        cert = tmp_path / "mia.pem"
+        key = tmp_path / "mia.key"
+        cert.write_text("cert")
+        key.write_text("key")
+        server = self._make_server(
+            host="127.0.0.1",
+            port=5099,
+            tls_enabled=True,
+            tls_cert_path=str(cert),
+            tls_key_path=str(key),
+        )
+        fake_wsgi = MagicMock()
+
+        with patch(
+            "werkzeug.serving.make_server", return_value=fake_wsgi
+        ) as mock_make:
+            # serve_forever блокирует — прерываем сразу после запуска
+            # RuntimeError ловится _run_server — корректный выход из блокировки
+            fake_wsgi.serve_forever.side_effect = RuntimeError("stop")
+            server._run_server()
+
+        mock_make.assert_called_once()
+        call_kwargs = mock_make.call_args.kwargs
+        assert call_kwargs["ssl_context"] == (str(cert), str(key))
+        assert call_kwargs["threaded"] is True
+
+    def test_run_server_waitress_without_tls(self) -> None:
+        """Без TLS используется waitress create_server."""
+        server = self._make_server(host="127.0.0.1", port=5098)
+        fake_wsgi = MagicMock()
+
+        with patch(
+            "api.server.create_server", return_value=fake_wsgi
+        ) as mock_create:
+            fake_wsgi.run.side_effect = RuntimeError("stop")
+            server._run_server()
+
+        mock_create.assert_called_once()
+
+    def test_stop_calls_shutdown_for_tls_server(self) -> None:
+        """TLS-сервер останавливается через shutdown()."""
+        server = self._make_server(tls_enabled=True)
+        fake_wsgi = MagicMock()
+        server._wsgi_server = fake_wsgi
+        server._running = True
+        server._idempotency = MagicMock()
+        server._operations = MagicMock()
+
+        server.stop()
+
+        fake_wsgi.shutdown.assert_called_once()
+        fake_wsgi.close.assert_not_called()

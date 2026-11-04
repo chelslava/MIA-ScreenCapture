@@ -17,7 +17,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -129,6 +129,9 @@ class APIServer:
         structured_logs: bool = False,
         state_persistence: Any | None = None,
         rate_limit: RateLimitSettings | None = None,
+        tls_enabled: bool = False,
+        tls_cert_path: str = "",
+        tls_key_path: str = "",
     ):
         """
         Инициализация API сервера.
@@ -160,6 +163,11 @@ class APIServer:
         self.api_key = api_key.strip() if api_key and api_key.strip() else None
         self.trust_proxy_headers = trust_proxy_headers
         self.structured_logs = structured_logs
+        # Опциональный HTTPS (#175): waitress не поддерживает TLS, поэтому
+        # при включении используется werkzeug (threaded) с сертификатом.
+        self.tls_enabled = bool(tls_enabled)
+        self.tls_cert_path = tls_cert_path.strip()
+        self.tls_key_path = tls_key_path.strip()
         self.state_persistence = state_persistence
         self.rate_limit_settings = (
             rate_limit
@@ -595,6 +603,7 @@ class APIServer:
 
             try:
                 self._validate_bind_address()
+                self._validate_tls_files()
                 self._running = True
                 self._server_thread = threading.Thread(
                     target=self._run_server, daemon=True
@@ -637,6 +646,25 @@ class APIServer:
     def _run_server(self) -> None:
         """Запуск WSGI сервера."""
         try:
+            if self.tls_enabled:
+                # HTTPS (#175): waitress не поддерживает TLS, поэтому
+                # используется werkzeug (threaded) с сертификатом.
+                from werkzeug.serving import make_server
+
+                self._wsgi_server = make_server(
+                    self.host,
+                    self.port,
+                    cast(Any, self.app),
+                    threaded=True,
+                    ssl_context=(self.tls_cert_path, self.tls_key_path),
+                )
+                logger.info(
+                    "API сервер (HTTPS/werkzeug) запущен на "
+                    f"https://{self.host}:{self.port}"
+                )
+                self._wsgi_server.serve_forever()
+                return
+
             # Создаём управляемый waitress сервер, который начинает
             # принимать соединения сразу после запуска run().
             self._wsgi_server = create_server(
@@ -652,6 +680,31 @@ class APIServer:
         finally:
             self._running = False
             self._wsgi_server = None
+
+    def _validate_tls_files(self) -> None:
+        """Проверить пути сертификата/ключа при включённом HTTPS (#175).
+
+        Raises:
+            RuntimeError: если TLS включён, но пути не заданы или файлы
+                не существуют.
+        """
+        if not self.tls_enabled:
+            return
+        if not self.tls_cert_path or not self.tls_key_path:
+            raise RuntimeError(
+                "TLS включён (api.tls_enabled), но не заданы пути к "
+                "сертификату и ключу (api.tls_cert_path, api.tls_key_path). "
+                "См. docs/api-tls.md"
+            )
+        for label, path_str in (
+            ("сертификата", self.tls_cert_path),
+            ("ключа", self.tls_key_path),
+        ):
+            if not Path(path_str).is_file():
+                raise RuntimeError(
+                    f"Файл {label} TLS не найден: {path_str}. "
+                    "См. docs/api-tls.md"
+                )
 
     def stop(self) -> None:
         """
@@ -674,7 +727,11 @@ class APIServer:
 
         if wsgi_server is not None:
             try:
-                wsgi_server.close()
+                if self.tls_enabled and hasattr(wsgi_server, "shutdown"):
+                    # werkzeug-сервер (HTTPS) останавливается через shutdown
+                    wsgi_server.shutdown()
+                else:
+                    wsgi_server.close()
             except (OSError, RuntimeError) as e:
                 logger.warning(f"Ошибка закрытия API сервера: {e}")
 
@@ -704,9 +761,10 @@ class APIServer:
         Получение URL сервера.
 
         Raises:
-            Не выбрасывает исключений.
+            Не выбрасывает исключения.
         """
-        return f"http://{self.host}:{self.port}"
+        scheme = "https" if self.tls_enabled else "http"
+        return f"{scheme}://{self.host}:{self.port}"
 
     def get_status(self) -> dict[str, Any]:
         """
