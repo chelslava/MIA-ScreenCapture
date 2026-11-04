@@ -824,3 +824,51 @@ class TestFinalizationStatus:
         result = service.get_finalization_status()
 
         assert result == backend.finalization_status
+
+
+class TestCountdown:
+    """Обратный отсчёт перед стартом записи (#167)."""
+
+    def test_countdown_sleeps_before_backend_start(self) -> None:
+        """При countdown > 0 пауза выполняется до реального старта."""
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+
+        with patch("core.recording_service.time.sleep") as mock_sleep:
+            result = service.start_recording({"area": "full", "countdown": 3})
+
+        assert result["success"] is True
+        mock_sleep.assert_called_once_with(3)
+        assert backend.status.is_recording is True
+
+    def test_zero_countdown_does_not_sleep(self) -> None:
+        """Без countdown паузы нет."""
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+
+        with patch("core.recording_service.time.sleep") as mock_sleep:
+            result = service.start_recording({"area": "full"})
+
+        assert result["success"] is True
+        mock_sleep.assert_not_called()
+
+    def test_invalid_countdown_is_ignored(self) -> None:
+        """Некорректное значение отсчёта игнорируется без ошибки."""
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+
+        with patch("core.recording_service.time.sleep") as mock_sleep:
+            result = service.start_recording(
+                {"area": "full", "countdown": "abc"}
+            )
+
+        assert result["success"] is True
+        mock_sleep.assert_not_called()
+
+    def test_extract_countdown_clamps_range(self) -> None:
+        """Значения нормализуются в диапазон 0-10."""
+        assert RecordingService._extract_countdown({}) == 0
+        assert RecordingService._extract_countdown({"countdown": None}) == 0
+        assert RecordingService._extract_countdown({"countdown": -5}) == 0
+        assert RecordingService._extract_countdown({"countdown": 99}) == 10
+        assert RecordingService._extract_countdown({"countdown": 2}) == 2

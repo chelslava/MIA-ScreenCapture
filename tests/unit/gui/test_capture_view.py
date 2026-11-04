@@ -236,3 +236,65 @@ class TestCaptureViewAsyncLoading:
 
         view.focus_window_combo()
         view._window_combo.setFocus.assert_called_once_with()
+
+
+class TestCountdownSetting:
+    """Спиннер обратного отсчёта на странице записи (#167)."""
+
+    def test_setter_getter_roundtrip(
+        self,
+        qapp: QApplication,
+        monkeypatch,
+    ) -> None:
+        """Сеттер и геттер согласованы."""
+        from unittest.mock import MagicMock
+
+        monkeypatch.setattr(
+            "gui.views.capture_view.threading.Thread",
+            _NoopThread,
+        )
+        view = _patch_view_runtime(CaptureView())
+        view._countdown_spin.value = MagicMock(return_value=5)
+
+        view.set_countdown_seconds(5)
+
+        assert view.get_countdown_seconds() == 5
+
+    def test_setter_clamps_out_of_range(
+        self,
+        qapp: QApplication,
+        monkeypatch,
+    ) -> None:
+        """Сеттер ограничивает значения диапазоном 0-10."""
+        from unittest.mock import MagicMock
+
+        monkeypatch.setattr(
+            "gui.views.capture_view.threading.Thread",
+            _NoopThread,
+        )
+        view = _patch_view_runtime(CaptureView())
+        view._countdown_spin.setValue = MagicMock()
+
+        view.set_countdown_seconds(42)
+
+        view._countdown_spin.setValue.assert_called_with(10)
+
+    def test_change_persists_to_config(
+        self,
+        qapp: QApplication,
+        monkeypatch,
+    ) -> None:
+        """Изменение спиннера сохраняется в конфигурацию."""
+        from unittest.mock import patch
+
+        monkeypatch.setattr(
+            "gui.views.capture_view.threading.Thread",
+            _NoopThread,
+        )
+        view = _patch_view_runtime(CaptureView())
+
+        with patch("gui.views.capture_view.get_config") as mocked_config:
+            view._on_countdown_changed(3)
+
+        assert mocked_config.return_value.settings.countdown_seconds == 3
+        mocked_config.return_value.save.assert_called_once()

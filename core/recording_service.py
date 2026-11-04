@@ -8,6 +8,7 @@ for start/stop/pause and status retrieval.
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 from typing import Any, Final
 
@@ -151,6 +152,28 @@ class RecordingService:
         """
         return self._backend.get_finalization_status()
 
+    @staticmethod
+    def _extract_countdown(params: dict[str, Any]) -> int:
+        """Извлечь и нормализовать обратный отсчёт из параметров (#167).
+
+        Args:
+            params: Параметры старта записи.
+
+        Returns:
+            Отсчёт в секундах, ограниченный диапазоном 0-10; при
+            некорректном значении — 0 (отсчёт пропускается).
+        """
+        raw = params.get("countdown")
+        if raw is None:
+            return 0
+        try:
+            return max(0, min(10, int(raw)))
+        except (TypeError, ValueError):
+            logger.warning(
+                "Некорректное значение countdown=%r — отсчёт пропущен", raw
+            )
+            return 0
+
     def start_recording(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         Start recording from API/scheduler parameters.
@@ -166,6 +189,17 @@ class RecordingService:
             перехватываются внутри и сообщаются через
             `result["success"] = False` / `result["error"]`.
         """
+        # Обратный отсчёт (#167): пауза ДО захвата блокировки, чтобы
+        # stop/status оставались отзывчивыми во время отсчёта. Некорректные
+        # значения игнорируются с предупреждением — API-схема уже валидирует
+        # диапазон 0-10, здесь защита для прямых вызовов (планировщик и др.).
+        countdown_seconds = self._extract_countdown(params)
+        if countdown_seconds > 0:
+            logger.info(
+                "Отсчёт перед стартом записи: %s сек", countdown_seconds
+            )
+            time.sleep(countdown_seconds)
+
         with self._lock:
             backend_status = self._backend.get_status()
             if backend_status.is_recording or backend_status.is_paused:

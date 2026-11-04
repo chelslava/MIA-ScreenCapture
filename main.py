@@ -652,6 +652,7 @@ class VideoRecorderApp:
                             "codec": params["codec"],
                             "bitrate": params["bitrate"],
                             "duration": params["duration"],
+                            "countdown": params.get("countdown", 0),
                         },
                         headers=headers,
                         timeout=10,

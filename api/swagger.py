@@ -330,6 +330,16 @@ SWAGGER_SPEC: dict[str, Any] = {
                         "minimum": 1,
                         "description": "Максимальная длительность в секундах",
                     },
+                    "countdown": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10,
+                        "default": 0,
+                        "description": (
+                            "Обратный отсчёт в секундах перед стартом "
+                            "записи (0-10); 0 — стартовать сразу"
+                        ),
+                    },
                 },
             },
             "ScheduleTask": {

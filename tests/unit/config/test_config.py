@@ -904,3 +904,36 @@ def test_win11_backdrop_default_and_parsing(temp_config_file: Path):
 
     assert defaults.win11_backdrop is False
     assert parsed.win11_backdrop is True
+
+
+class TestCountdownSeconds:
+    """Обратный отсчёт перед стартом записи (#167)."""
+
+    def test_default_zero(self) -> None:
+        """По умолчанию отсчёт отсутствует."""
+        assert AppSettings().countdown_seconds == 0
+
+    def test_schema_bounds(self) -> None:
+        """Значения вне 0-10 отклоняются схемой."""
+        with pytest.raises(ValidationError):
+            AppSettingsSchema.model_validate({"countdown_seconds": 11})
+        with pytest.raises(ValidationError):
+            AppSettingsSchema.model_validate({"countdown_seconds": -1})
+
+    def test_schema_accepts_valid_range(self) -> None:
+        """Диапазон 0-10 принимается схемой."""
+        for value in (0, 5, 10):
+            validated = AppSettingsSchema.model_validate(
+                {"countdown_seconds": value}
+            )
+            assert validated.countdown_seconds == value
+
+    def test_roundtrip_through_config_file(self, tmp_path: Path) -> None:
+        """Значение переживает сохранение и перезагрузку конфига."""
+        path = tmp_path / "config.json"
+        manager = ConfigManager(path)
+        manager.settings.countdown_seconds = 4
+        assert manager.save() is True
+
+        reloaded = ConfigManager(path)
+        assert reloaded.settings.countdown_seconds == 4

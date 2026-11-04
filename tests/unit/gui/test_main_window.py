@@ -2680,3 +2680,88 @@ class TestMicaBackdropWiring:
         window._appearance_view.set_win11_backdrop.assert_called_once_with(
             get_config().settings.win11_backdrop
         )
+
+
+class TestCountdownBeforeStart:
+    """Обратный отсчёт перед стартом записи (#167)."""
+
+    def test_start_with_countdown_shows_overlay_and_defers_start(
+        self,
+    ) -> None:
+        """При countdown > 0 старт откладывается до завершения отсчёта."""
+        window = _build_window()
+        window._countdown_overlay = None
+        window._pending_recording_start = None
+
+        with (
+            patch("gui.main_window.get_config") as mocked_config,
+            patch("gui.main_window.CountdownOverlay") as overlay_cls,
+        ):
+            mocked_config.return_value.settings.countdown_seconds = 3
+            window._start_recording()
+
+        overlay_cls.return_value.start.assert_called_once_with(3)
+        window._recording_controller.start_recording.assert_not_called()
+        assert window._pending_recording_start is not None
+
+    def test_zero_countdown_starts_immediately(self) -> None:
+        """При countdown = 0 запись стартует без оверлея."""
+        window = _build_window()
+        window._countdown_overlay = None
+        window._pending_recording_start = None
+        window._recording_controller.start_recording.return_value = (
+            True,
+            None,
+        )
+        window._on_recording_started = MagicMock()
+
+        with patch("gui.main_window.get_config") as mocked_config:
+            mocked_config.return_value.settings.countdown_seconds = 0
+            window._start_recording()
+
+        window._recording_controller.start_recording.assert_called_once()
+
+    def test_countdown_finished_starts_recording(self) -> None:
+        """Завершение отсчёта запускает отложенную запись."""
+        window = _build_window()
+        pending = (Path("out.mp4"), MagicMock(), MagicMock(), MagicMock())
+        window._pending_recording_start = pending
+        window._recording_controller.start_recording.return_value = (
+            True,
+            None,
+        )
+        window._on_recording_started = MagicMock()
+
+        window._on_countdown_finished()
+
+        window._recording_controller.start_recording.assert_called_once_with(
+            output_path=pending[0],
+            capture=pending[1],
+            audio=pending[2],
+            video=pending[3],
+        )
+        assert window._pending_recording_start is None
+
+    def test_countdown_finished_without_pending_is_noop(self) -> None:
+        """Завершение отсчёта без отложенного старта ничего не делает."""
+        window = _build_window()
+        window._pending_recording_start = None
+
+        window._on_countdown_finished()
+
+        window._recording_controller.start_recording.assert_not_called()
+
+    def test_countdown_cancelled_discards_pending_start(self) -> None:
+        """Отмена отсчёта сбрасывает отложенный старт."""
+        window = _build_window()
+        window._pending_recording_start = (
+            Path("out.mp4"),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+        )
+
+        window._on_countdown_cancelled()
+
+        window._recording_controller.start_recording.assert_not_called()
+        assert window._pending_recording_start is None

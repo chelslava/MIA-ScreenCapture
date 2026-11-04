@@ -620,3 +620,27 @@ class TestFilePathRequest:
         assert "field required" in str(exc_info.value) or "file_path" in str(
             exc_info.value
         )
+
+
+class TestStartRecordingCountdown:
+    """Обратный отсчёт в схеме StartRecordingRequest (#167)."""
+
+    def test_default_zero(self) -> None:
+        """По умолчанию отсчёт отсутствует."""
+        assert StartRecordingRequest().countdown == 0
+
+    def test_valid_range(self) -> None:
+        """Диапазон 0-10 принимается."""
+        for value in (0, 1, 10):
+            request = StartRecordingRequest(countdown=value)
+            assert request.countdown == value
+
+    def test_above_maximum_rejected(self) -> None:
+        """Значения больше 10 отклоняются."""
+        with pytest.raises(ValidationError):
+            StartRecordingRequest(countdown=11)
+
+    def test_negative_rejected(self) -> None:
+        """Отрицательные значения отклоняются."""
+        with pytest.raises(ValidationError):
+            StartRecordingRequest(countdown=-1)

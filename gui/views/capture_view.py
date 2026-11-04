@@ -14,10 +14,12 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QRadioButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
+from config import get_config
 from gui.accessibility import apply_accessible_metadata
 from gui.models.recording_state import CaptureType
 from gui.styles.theme import Theme
@@ -140,6 +142,26 @@ class CaptureView(QWidget):
         self._update_enabled_state()
         self._refresh_windows()
         layout.addWidget(group)
+
+        countdown_group = QGroupBox("Запуск")
+        countdown_layout = QHBoxLayout(countdown_group)
+        self._countdown_spin = QSpinBox()
+        self._countdown_spin.setRange(0, 10)
+        self._countdown_spin.setValue(get_config().settings.countdown_seconds)
+        self._countdown_spin.setToolTip(
+            "Пауза с крупными цифрами перед стартом записи; Esc отменяет старт"
+        )
+        self._countdown_spin.valueChanged.connect(self._on_countdown_changed)
+        countdown_layout.addWidget(QLabel("Обратный отсчёт (сек):"))
+        countdown_layout.addWidget(self._countdown_spin)
+        countdown_layout.addStretch(1)
+        apply_accessible_metadata(
+            self._countdown_spin,
+            "Обратный отсчёт перед записью",
+            "Количество секунд паузы с крупными цифрами перед стартом; "
+            "0 — стартовать сразу.",
+        )
+        layout.addWidget(countdown_group)
 
     def _apply_accessibility_metadata(self) -> None:
         """Назначение accessibility metadata для controls захвата."""
@@ -376,6 +398,34 @@ class CaptureView(QWidget):
             Кортеж `(x1, y1, x2, y2)` или `None`.
         """
         return self._rect_coords
+
+    def get_countdown_seconds(self) -> int:
+        """
+        Получить значение обратного отсчёта (#167).
+
+        Returns:
+            Секунды отсчёта (0-10).
+        """
+        return int(self._countdown_spin.value())
+
+    def set_countdown_seconds(self, seconds: int) -> None:
+        """
+        Установить значение обратного отсчёта (#167).
+
+        Args:
+            seconds: Секунды отсчёта; значения вне 0-10 ограничиваются.
+        """
+        self._countdown_spin.setValue(max(0, min(10, int(seconds))))
+
+    def _on_countdown_changed(self, value: int) -> None:
+        """
+        Сохранить обратный отсчёт в конфигурации (#167).
+
+        Args:
+            value: Новое значение спиннера.
+        """
+        get_config().settings.countdown_seconds = int(value)
+        get_config().save()
 
     def set_capture_type(self, capture_type: CaptureType) -> None:
         """

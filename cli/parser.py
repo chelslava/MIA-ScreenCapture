@@ -189,6 +189,15 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     record_group.add_argument(
+        "--countdown",
+        type=int,
+        default=0,
+        metavar="SECONDS",
+        help="Обратный отсчёт перед стартом записи в секундах, 0-10 "
+        "(по умолчанию: 0 — стартовать сразу)",
+    )
+
+    record_group.add_argument(
         "--codec",
         type=str,
         default="libx264",
@@ -428,6 +437,7 @@ def process_args(args: argparse.Namespace) -> dict[str, Any]:
         "codec": args.codec,
         "bitrate": args.bitrate,
         "duration": args.duration,
+        "countdown": getattr(args, "countdown", 0),
         "monitor_index": args.monitor,
         "include_cursor": args.cursor,
     }

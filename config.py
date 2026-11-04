@@ -287,6 +287,8 @@ class AppSettingsSchema(BaseModel):
     window_geometry: list[int] | None = Field(default=None)
     # Материал Windows 11 (Mica) под главным окном (#157); на Win10 игнорируется
     win11_backdrop: bool = Field(default=False)
+    # Обратный отсчёт перед стартом записи (#167); 0 — стартовать сразу
+    countdown_seconds: int = Field(default=0, ge=0, le=10)
     language: str = Field(default="en")
     theme: str = Field(default="system")
     sidebar_width: int = Field(default=110, ge=44, le=400)
@@ -490,6 +492,8 @@ class AppSettings:
     floating_widget_pos: list[int] | None = None
     window_geometry: list[int] | None = None
     win11_backdrop: bool = False
+    # Обратный отсчёт перед стартом записи (#167)
+    countdown_seconds: int = 0
     language: str = "en"
     theme: str = "system"
     sidebar_width: int = 110
@@ -650,6 +654,7 @@ class ConfigManager:
                     data.get("window_geometry")
                 ),
                 win11_backdrop=data.get("win11_backdrop", False),
+                countdown_seconds=data.get("countdown_seconds", 0),
                 language=data.get("language", "en"),
                 theme=data.get("theme", "system"),
                 sidebar_width=data.get("sidebar_width", 110),

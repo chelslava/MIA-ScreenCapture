@@ -159,6 +159,15 @@ class StartRecordingRequest(BaseModel):
     profile_id: str | None = Field(
         default=None, description="ID профиля для применения настроек"
     )
+    countdown: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description=(
+            "Обратный отсчёт в секундах перед стартом записи (0-10); "
+            "0 — стартовать сразу"
+        ),
+    )
 
     @field_validator("rect")
     @classmethod

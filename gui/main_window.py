@@ -58,12 +58,14 @@ from gui.models.recording_state import (
     AudioSettings,
     CaptureSettings,
     RecordingState,
+    VideoSettings,
 )
 from gui.styles.backdrop import (
     apply_mica_backdrop,
     resolve_backdrop_active,
 )
 from gui.styles.theme import Theme, apply_theme, set_backdrop_active
+from gui.views.countdown_overlay import CountdownOverlay
 from gui.views.draw_overlay import DrawOverlayWidget
 from gui.views.finalization_progress_dialog import (
     FinalizationProgressDialog,
@@ -179,6 +181,12 @@ class MainWindow(
         # Потеря аудио-чанков (#154): callback приходит из потока
         # sounddevice — в GUI уходим через queued-сигнал.
         self._audio_drop_warning_shown = False
+        # Обратный отсчёт перед стартом (#167): оверлей создаётся лениво,
+        # отложенные параметры старта живут до завершения/отмены отсчёта.
+        self._countdown_overlay: CountdownOverlay | None = None
+        self._pending_recording_start: (
+            tuple[Path, CaptureSettings, AudioSettings, VideoSettings] | None
+        ) = None
         self._recording_controller.set_audio_chunks_dropped_callback(
             self.audio_chunks_dropped.emit
         )
@@ -823,7 +831,35 @@ class MainWindow(
         if not self._apply_readiness_snapshot(readiness):
             return
 
-        # Запуск записи через контроллер
+        # Обратный отсчёт (#167): при включённой настройке старт откладывается
+        # до завершения отсчёта; Esc в оверлее отменяет запись.
+        countdown_seconds = get_config().settings.countdown_seconds
+        if countdown_seconds > 0:
+            self._begin_countdown(
+                countdown_seconds, output_path, capture, audio, video
+            )
+            return
+
+        self._perform_recording_start(output_path, capture, audio, video)
+
+    def _perform_recording_start(
+        self,
+        output_path: Path,
+        capture: CaptureSettings,
+        audio: AudioSettings,
+        video: VideoSettings,
+    ) -> None:
+        """Фактический запуск записи через контроллер.
+
+        Выделен из `_start_recording`, чтобы старт можно было отложить
+        до завершения обратного отсчёта (#167).
+
+        Args:
+            output_path: Путь к выходному файлу.
+            capture: Настройки области захвата.
+            audio: Настройки аудио.
+            video: Настройки видео.
+        """
         success, error_msg = self._recording_controller.start_recording(
             output_path=output_path,
             capture=capture,
@@ -837,6 +873,53 @@ class MainWindow(
             self._show_non_modal_error(
                 error_msg or "Не удалось запустить запись"
             )
+
+    def _begin_countdown(
+        self,
+        seconds: int,
+        output_path: Path,
+        capture: CaptureSettings,
+        audio: AudioSettings,
+        video: VideoSettings,
+    ) -> None:
+        """Показать оверлей обратного отсчёта и отложить старт (#167).
+
+        Args:
+            seconds: Длительность отсчёта в секундах (> 0).
+            output_path: Путь к выходному файлу.
+            capture: Настройки области захвата.
+            audio: Настройки аудио.
+            video: Настройки видео.
+        """
+        if self._countdown_overlay is None:
+            self._countdown_overlay = CountdownOverlay()
+            self._countdown_overlay.countdown_finished.connect(
+                self._on_countdown_finished
+            )
+            self._countdown_overlay.countdown_cancelled.connect(
+                self._on_countdown_cancelled
+            )
+        self._pending_recording_start = (
+            output_path,
+            capture,
+            audio,
+            video,
+        )
+        self._countdown_overlay.start(seconds)
+
+    def _on_countdown_finished(self) -> None:
+        """Завершение отсчёта: запустить отложенную запись."""
+        pending = self._pending_recording_start
+        self._pending_recording_start = None
+        if pending is None:
+            return
+        output_path, capture, audio, video = pending
+        self._perform_recording_start(output_path, capture, audio, video)
+
+    def _on_countdown_cancelled(self) -> None:
+        """Отмена отсчёта: сбросить отложенный старт без записи."""
+        self._pending_recording_start = None
+        self.status_bar.showMessage("Запись отменена: отсчёт прерван", 5000)
 
     def _apply_readiness_snapshot(self, snapshot: Any) -> bool:
         """
