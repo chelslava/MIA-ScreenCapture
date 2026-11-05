@@ -911,6 +911,9 @@ class TestMergeAudioFilters:
         video.write_bytes(b"v")
         audio.write_bytes(b"a")
         encoder = Encoder(EncodingSettings())
+        # CI без FFmpeg: путь задаётся на экземпляре — __init__ перебивает
+        # классовый патч, поэтому классовый не подходит (issue CI #169)
+        encoder._ffmpeg_path = "ffmpeg"
 
         captured: dict[str, list[str]] = {}
 
@@ -922,12 +925,8 @@ class TestMergeAudioFilters:
                 returncode=0, stderr="", stdout="", cancelled=False
             )
 
-        with (
-            patch.object(Encoder, "is_available", True),
-            patch.object(Encoder, "_ffmpeg_path", "ffmpeg", create=True),
-            patch.object(
-                Encoder, "_run_ffmpeg_long_process", side_effect=fake_run
-            ),
+        with patch.object(
+            Encoder, "_run_ffmpeg_long_process", side_effect=fake_run
         ):
             ok, error = encoder.merge_video_audio(
                 video,
@@ -951,6 +950,9 @@ class TestMergeAudioFilters:
         video.write_bytes(b"v")
         audio.write_bytes(b"a")
         encoder = Encoder(EncodingSettings())
+        # CI без FFmpeg: путь задаётся на экземпляре — __init__ перебивает
+        # классовый патч, поэтому классовый не подходит (issue CI #169)
+        encoder._ffmpeg_path = "ffmpeg"
 
         captured: dict[str, list[str]] = {}
 
@@ -962,12 +964,8 @@ class TestMergeAudioFilters:
                 returncode=0, stderr="", stdout="", cancelled=False
             )
 
-        with (
-            patch.object(Encoder, "is_available", True),
-            patch.object(Encoder, "_ffmpeg_path", "ffmpeg", create=True),
-            patch.object(
-                Encoder, "_run_ffmpeg_long_process", side_effect=fake_run
-            ),
+        with patch.object(
+            Encoder, "_run_ffmpeg_long_process", side_effect=fake_run
         ):
             ok, _ = encoder.merge_video_audio(
                 video, audio, tmp_path / "out.mp4"
