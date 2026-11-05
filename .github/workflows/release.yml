@@ -8,8 +8,9 @@ on:
 permissions:
   contents: write
   # sigstore attestations (#177): attest-build-provenance требует
-  # OIDC id-token
+  # OIDC id-token и attestations: write для персиста
   id-token: write
+  attestations: write
 
 jobs:
   build-python:
