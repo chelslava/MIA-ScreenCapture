@@ -141,6 +141,10 @@ class TranscriptionStep(PostProcessingStep):
             # 2. Транскрибация
             if self.mode == "api":
                 transcript_content = self._transcribe_api(temp_audio)
+            elif self.mode == "faster-whisper":
+                transcript_content = self._transcribe_faster_whisper(
+                    temp_audio
+                )
             else:
                 transcript_content = self._transcribe_local(temp_audio)
 
@@ -250,12 +254,14 @@ class TranscriptionStep(PostProcessingStep):
                 "Установите её командой: pip install openai-whisper"
             ) from e
 
-        logger.info("Загрузка модели Whisper '%s'...", self.model)
-        model = whisper.load_model(self.model)
+        model = _load_whisper_model(whisper, self.model)
 
         options: dict[str, Any] = {}
         if self.language:
             options["language"] = self.language
+        # Явный fp16=False на CPU: без него openai-whisper предупреждает
+        # на каждом вызове и всё равно откатывается на FP32 (#182)
+        options["fp16"] = False
 
         result = model.transcribe(str(audio_path), **options)
         segments = result.get("segments", [])
@@ -266,6 +272,44 @@ class TranscriptionStep(PostProcessingStep):
             return segments_to_txt(segments)
         else:
             return segments_to_srt(segments)
+
+    def _transcribe_faster_whisper(self, audio_path: Path) -> str:
+        """Транскрибация через faster-whisper (CTranslate2) (#182).
+
+        ~4x быстрее openai-whisper на CPU (int8-квантование, CTranslate2).
+        Пакет не входит в обязательные зависимости — импортируется по
+        требованию с понятной ошибкой установки.
+
+        Args:
+            audio_path: Путь к извлечённому WAV-файлу.
+
+        Returns:
+            Содержимое файла субтитров/текста.
+
+        Raises:
+            RuntimeError: если пакет faster-whisper не установлен.
+        """
+        try:
+            import importlib
+
+            fw = importlib.import_module("faster_whisper")
+        except ImportError as e:
+            raise RuntimeError(
+                "Пакет faster-whisper не установлен. "
+                "Установите его командой: pip install faster-whisper"
+            ) from e
+
+        model = _load_faster_whisper_model(fw, self.model)
+        segments, _info = model.transcribe(str(audio_path))
+        segment_list = [
+            {"start": s.start, "end": s.end, "text": s.text} for s in segments
+        ]
+
+        if self.output_format == "vtt":
+            return segments_to_vtt(segment_list)
+        elif self.output_format == "txt":
+            return segments_to_txt(segment_list)
+        return segments_to_srt(segment_list)
 
     def _transcribe_api(self, audio_path: Path) -> str:
         """Транскрибация через OpenAI Whisper API."""
@@ -308,3 +352,45 @@ class TranscriptionStep(PostProcessingStep):
             response = client.audio.transcriptions.create(**kwargs)
 
         return str(response)
+
+
+# Кэш загруженных моделей (#182): веса грузятся с диска один раз
+# на процесс; повторные шаги транскрибации используют готовую модель.
+_WHISPER_MODEL_CACHE: dict[str, Any] = {}
+_FASTER_WHISPER_MODEL_CACHE: dict[str, Any] = {}
+
+
+def _load_whisper_model(whisper: Any, model_name: str) -> Any:
+    """Загрузить модель openai-whisper с кэшированием (#182).
+
+    Args:
+        whisper: Модуль openai-whisper.
+        model_name: Имя модели ("base", "small", ...).
+
+    Returns:
+        Загруженная модель (из кэша при повторном вызове).
+    """
+    if model_name not in _WHISPER_MODEL_CACHE:
+        logger.info("Загрузка модели Whisper '%s'...", model_name)
+        _WHISPER_MODEL_CACHE[model_name] = whisper.load_model(model_name)
+    return _WHISPER_MODEL_CACHE[model_name]
+
+
+def _load_faster_whisper_model(fw: Any, model_name: str) -> Any:
+    """Загрузить модель faster-whisper с кэшированием (#182).
+
+    Аргументы: int8 на CPU (быстрее и меньше RAM), автодетект device.
+
+    Args:
+        fw: Модуль faster_whisper.
+        model_name: Имя модели ("base", "small", ...).
+
+    Returns:
+        Загруженная модель (из кэша при повторном вызове).
+    """
+    if model_name not in _FASTER_WHISPER_MODEL_CACHE:
+        logger.info("Загрузка модели faster-whisper '%s'...", model_name)
+        _FASTER_WHISPER_MODEL_CACHE[model_name] = fw.WhisperModel(
+            model_name, device="auto", compute_type="int8"
+        )
+    return _FASTER_WHISPER_MODEL_CACHE[model_name]

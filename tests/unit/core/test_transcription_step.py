@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from config import PostProcessingSettings
 from core.post_processing.manager import PostProcessingManager
@@ -188,3 +191,96 @@ def test_post_processing_manager_builds_transcription_step() -> None:
     assert t_step.model == "tiny"
     assert t_step.output_format == "vtt"
     assert t_step.language == "ru"
+
+
+class TestWhisperModelCache:
+    """Кэш моделей Whisper и faster-whisper режим (#182)."""
+
+    def test_model_loaded_once_per_name(self) -> None:
+        """Повторный вызов _load_whisper_model не грузит веса."""
+        from core.post_processing.transcription import (
+            _WHISPER_MODEL_CACHE,
+            _load_whisper_model,
+        )
+
+        _WHISPER_MODEL_CACHE.pop("base", None)
+        mock_whisper = MagicMock()
+        mock_whisper.load_model.return_value = MagicMock(name="model")
+
+        first = _load_whisper_model(mock_whisper, "base")
+        second = _load_whisper_model(mock_whisper, "base")
+
+        assert first is second
+        mock_whisper.load_model.assert_called_once_with("base")
+        _WHISPER_MODEL_CACHE.pop("base", None)
+
+    def test_local_transcribe_passes_fp16_false(self, tmp_path: Path) -> None:
+        """На CPU явно передаётся fp16=False (#182)."""
+        from core.post_processing.transcription import (
+            _WHISPER_MODEL_CACHE,
+            TranscriptionStep,
+        )
+
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"a")
+        mock_model = MagicMock()
+        mock_model.transcribe.return_value = {"segments": []}
+        mock_whisper = MagicMock()
+        mock_whisper.load_model.return_value = mock_model
+        _WHISPER_MODEL_CACHE.pop("base", None)
+
+        with (
+            patch.dict(sys.modules, {"whisper": mock_whisper}),
+            patch(
+                "core.post_processing.transcription.get_ffmpeg_path",
+                return_value="ffmpeg",
+            ),
+            patch(
+                "core.post_processing.transcription.subprocess.run",
+                return_value=MagicMock(returncode=0),
+            ),
+        ):
+            step = TranscriptionStep(mode="local", model="base")
+            step._transcribe_local(audio)
+
+        kwargs = mock_model.transcribe.call_args.kwargs
+        assert kwargs["fp16"] is False
+        _WHISPER_MODEL_CACHE.pop("base", None)
+
+    def test_faster_whisper_missing_package_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Без пакета faster-whisper — понятная ошибка установки."""
+        from core.post_processing.transcription import TranscriptionStep
+
+        step = TranscriptionStep(mode="faster-whisper")
+        with patch.dict(sys.modules, {"faster_whisper": None}):
+            with pytest.raises(RuntimeError, match="faster-whisper"):
+                step._transcribe_faster_whisper(tmp_path / "a.wav")
+
+    def test_faster_whisper_success_srt(self, tmp_path: Path) -> None:
+        """faster-whisper сегменты конвертируются в SRT."""
+
+        from core.post_processing.transcription import (
+            _FASTER_WHISPER_MODEL_CACHE,
+            TranscriptionStep,
+        )
+
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"a")
+        segment = SimpleNamespace(start=0.0, end=2.0, text=" Привет ")
+        fake_model = MagicMock()
+        fake_model.transcribe.return_value = (iter([segment]), None)
+        fake_fw = SimpleNamespace(
+            WhisperModel=lambda name, device, compute_type: fake_model
+        )
+        _FASTER_WHISPER_MODEL_CACHE.pop("base", None)
+
+        with patch.dict(sys.modules, {"faster_whisper": fake_fw}):
+            result = TranscriptionStep(
+                mode="faster-whisper", model="base"
+            )._transcribe_faster_whisper(audio)
+
+        assert "Привет" in result
+        assert "00:00:00" in result
+        _FASTER_WHISPER_MODEL_CACHE.pop("base", None)
