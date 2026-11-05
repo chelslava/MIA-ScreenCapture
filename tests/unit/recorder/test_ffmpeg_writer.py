@@ -1797,6 +1797,8 @@ class TestAutoPreset:
             codec="libx264",
             preset="auto",
         )
+        # CI без FFmpeg: путь задаётся на экземпляре после __init__ (#169)
+        writer._ffmpeg_path = "ffmpeg"
         captured: dict[str, list[str]] = {}
 
         def fake_popen(cmd: list[str], **kwargs: object) -> MagicMock:
