@@ -93,3 +93,11 @@
 - [GUI](GUI)
 - [API](API)
 - [Logs and Diagnostics](Logs-and-Diagnostics)
+
+
+## HTTPS/TLS для API (#175)
+
+Для доступа к API из локальной сети: reverse-proxy (nginx/Caddy —
+рекомендуется) или встроенный режим `api.tls_enabled` (сервер
+переключается на werkzeug с указанным сертификатом). Полный гайд:
+[docs/api-tls.md](https://github.com/chelslava/MIA-ScreenCapture/blob/main/docs/api-tls.md).
