@@ -226,9 +226,7 @@ class RecordingTunablesView(QWidget):
         # Значение всегдаremembered: мок-среда не хранит check-state
         self._frame_skip_fallback = value
         if not hasattr(self._frame_skip_cb, "setCheckState"):
-            self._frame_skip_cb.setChecked(
-                bool(value) and value != "auto"
-            )
+            self._frame_skip_cb.setChecked(bool(value) and value != "auto")
             return
         if value == "auto":
             self._frame_skip_cb.setCheckState(Qt.CheckState.PartiallyChecked)
