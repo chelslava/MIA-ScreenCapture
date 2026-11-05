@@ -74,6 +74,7 @@ from gui.views.finalization_progress_dialog import (
 from gui.views.floating_widget import FloatingRecordingWidget
 from gui.views.main_ui_builder import MainWindowUIBuilderMixin
 from gui.views.menu_builder import MainWindowMenuActionsMixin
+from gui.views.onboarding_wizard import OnboardingWizard
 from gui.views.recording_indicator import RecordingIndicatorOverlay
 from gui.views.settings_page import SettingsCategory
 from logger_config import get_module_logger, open_logs_folder
@@ -979,6 +980,70 @@ class MainWindow(
             self._show_page(SidebarPage.DIAGNOSTICS)
             self._run_diagnostics()
         return False
+
+    def _build_onboarding_summary(self) -> dict[str, str]:
+        """Собрать сводку настроек для мастера первого запуска (#172).
+
+        Returns:
+            Пары «настройка → значение» для страницы сводки.
+        """
+        capture = (
+            self._build_capture_settings_from_views() or CaptureSettings()
+        )
+        mode_names = {
+            CaptureMode.FULL: "Весь экран",
+            CaptureMode.WINDOW: "Окно",
+            CaptureMode.RECT: "Прямоугольник",
+        }
+        audio = self._build_audio_settings_from_state()
+        audio_names = {
+            AudioMode.NONE: "Без аудио",
+            AudioMode.MIC: "Микрофон",
+            AudioMode.SYSTEM: "Системное аудио",
+            AudioMode.BOTH: "Микрофон + системное",
+        }
+        video = self._video_view.get_settings()
+        return {
+            "Область захвата": mode_names.get(
+                capture.capture_type, str(capture.capture_type)
+            ),
+            "Аудио": audio_names.get(audio.audio_type, str(audio.audio_type)),
+            "FPS": str(video.fps),
+            "Кодек": video.codec,
+        }
+
+    def show_onboarding(self) -> None:
+        """Показать мастер первого запуска (#172)."""
+        try:
+            from core.readiness import RecordingReadinessService
+
+            readiness = RecordingReadinessService().evaluate(
+                capture=self._build_capture_settings_from_views()
+                or CaptureSettings(),
+                audio=self._build_audio_settings_from_state(),
+                output_path=self._settings_controller.get_output_path(),
+            )
+        except (OSError, RuntimeError, ValueError) as e:
+            logger.warning("Readiness для онбординга недоступен: %s", e)
+            readiness = None
+
+        wizard = OnboardingWizard(
+            self._build_onboarding_summary(),
+            readiness,
+            parent=self,
+        )
+        wizard.exec()
+
+        # Мастер считается пройденным при любом способе закрытия
+        get_config().settings.onboarding_completed = True
+        get_config().save()
+
+    def _maybe_show_onboarding(self) -> None:
+        """Показать мастер однократно при первом GUI-запуске (#172)."""
+        if get_config().settings.onboarding_completed:
+            return
+        logger.info("Первый запуск: показ мастера первичной настройки")
+        self.show_onboarding()
 
     def _build_capture_settings_from_views(self) -> CaptureSettings | None:
         """Собрать текущие настройки захвата из GUI."""

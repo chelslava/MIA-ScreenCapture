@@ -313,6 +313,8 @@ class AppSettingsSchema(BaseModel):
     win11_backdrop: bool = Field(default=False)
     # Обратный отсчёт перед стартом записи (#167); 0 — стартовать сразу
     countdown_seconds: int = Field(default=0, ge=0, le=10)
+    # Онбординг первого запуска (#172); True — мастер больше не показывать
+    onboarding_completed: bool = Field(default=False)
     language: str = Field(default="en")
     theme: str = Field(default="system")
     sidebar_width: int = Field(default=110, ge=44, le=400)
@@ -531,6 +533,8 @@ class AppSettings:
     win11_backdrop: bool = False
     # Обратный отсчёт перед стартом записи (#167)
     countdown_seconds: int = 0
+    # Онбординг первого запуска (#172)
+    onboarding_completed: bool = False
     language: str = "en"
     theme: str = "system"
     sidebar_width: int = 110
@@ -692,6 +696,7 @@ class ConfigManager:
                 ),
                 win11_backdrop=data.get("win11_backdrop", False),
                 countdown_seconds=data.get("countdown_seconds", 0),
+                onboarding_completed=data.get("onboarding_completed", False),
                 language=data.get("language", "en"),
                 theme=data.get("theme", "system"),
                 sidebar_width=data.get("sidebar_width", 110),

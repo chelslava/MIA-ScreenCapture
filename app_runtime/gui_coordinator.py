@@ -51,6 +51,10 @@ class GuiRuntimeCoordinator:
         assert self._app._main_window is not None
         self._app._main_window.show()
         self._app._running = True
+
+        # Мастер первого запуска (#172): однократно, после показа окна
+        self._app._main_window._maybe_show_onboarding()
+
         return self._app._app.exec()
 
     def _apply_theme_and_backdrop(self) -> None:
@@ -111,6 +115,9 @@ class GuiRuntimeCoordinator:
         self._app._tray_icon.settings_requested.connect(
             self._open_settings_from_tray
         )
+        self._app._tray_icon.onboarding_requested.connect(
+            self._show_onboarding_from_tray
+        )
         self._app._tray_icon.exit_requested.connect(self._app._quit_app)
 
     def _open_settings_from_tray(self) -> None:
@@ -118,6 +125,12 @@ class GuiRuntimeCoordinator:
         self._app._show_window()
         assert self._app._main_window is not None
         self._app._main_window.show_settings_page()
+
+    def _show_onboarding_from_tray(self) -> None:
+        """Показать окно и мастер первого запуска по запросу трея."""
+        self._app._show_window()
+        assert self._app._main_window is not None
+        self._app._main_window.show_onboarding()
 
     def _bind_window_and_tray_signals(self) -> None:
         """Связывает сигналы главного окна и трея."""

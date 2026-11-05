@@ -106,6 +106,16 @@ class SettingsPage(QWidget):
         layout.setSpacing(0)
         self.setLayout(layout)
 
+        # Поиск по настройкам (#172): ru/en подписи виджетов категорий
+        from PyQt6.QtWidgets import QLineEdit
+
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("Поиск по настройкам (ru/en)…")
+        if hasattr(self._search_input, "setClearButtonEnabled"):
+            self._search_input.setClearButtonEnabled(True)
+        self._search_input.textChanged.connect(self._on_search_changed)
+        layout.addWidget(self._search_input)
+
         self._category_list = QListWidget()
         self._category_list.setFixedWidth(_CATEGORY_LIST_WIDTH)
         self._category_list.setObjectName("settingsCategories")
@@ -181,6 +191,39 @@ class SettingsPage(QWidget):
     # ------------------------------------------------------------------
     # Публичный API
     # ------------------------------------------------------------------
+
+    def _on_search_changed(self, query: str) -> None:
+        """Перейти к первой категории, содержащей совпадение (#172).
+
+        Поиск — по заголовкам категорий и подписям виджетов
+        (QLabel/QCheckBox/QRadioButton/QPushButton) внутри каждой
+        страницы, регистронезависимо (ru/en).
+
+        Args:
+            query: Поисковый запрос.
+        """
+        from PyQt6.QtWidgets import (
+            QCheckBox,
+            QLabel,
+            QPushButton,
+            QRadioButton,
+        )
+
+        query = query.strip().lower()
+        if not query:
+            return
+        for index, view in enumerate(self._views):
+            haystacks = [CATEGORY_TITLES[SettingsCategory(index)].lower()]
+            for widget in view.findChildren(
+                (QLabel, QCheckBox, QRadioButton, QPushButton)
+            ):
+                text_getter = getattr(widget, "text", None)
+                text = text_getter() if callable(text_getter) else ""
+                if text:
+                    haystacks.append(str(text).lower())
+            if any(query in haystack for haystack in haystacks):
+                self.show_category(index)
+                return
 
     def show_category(self, index: int) -> None:
         """Выбрать категорию по индексу.

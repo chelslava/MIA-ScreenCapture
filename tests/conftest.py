@@ -764,6 +764,53 @@ def _create_widget_mock_class(name: str):
 MockQWidget = _create_mock_class("QWidget", (MockQWidgetBase,))
 MockQMainWindow = _create_mock_class("QMainWindow", (MockQWidgetBase,))
 MockQDialog = _create_mock_class("QDialog", (MockQWidgetBase,))
+
+
+class MockQWizardBase:
+    """Базовое поведение QWizard для моков."""
+
+    class WizardStyle:
+        """Перечисление стилей мастера."""
+
+        ModernStyle = 3
+
+    class WizardOption:
+        """Перечисление опций мастера."""
+
+        NoBackButtonOnStartPage = 4
+
+    def __init__(self, *args, **kwargs):
+        self._pages: list = []
+
+    def addPage(self, page):
+        self._pages.append(page)
+        return len(self._pages)
+
+    def setPage(self, index, page):
+        pass
+
+    def setWindowTitle(self, title):
+        pass
+
+    def setWizardStyle(self, style):
+        pass
+
+    def setOption(self, option, value=True):
+        pass
+
+
+class MockQWizardPageBase:
+    """Базовое поведение QWizardPage для моков."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def setTitle(self, title):
+        pass
+
+
+MockQWizard = _create_mock_class("QWizard", (MockQWizardBase,))
+MockQWizardPage = _create_mock_class("QWizardPage", (MockQWizardPageBase,))
 MockQGroupBox = _create_widget_mock_class("QGroupBox")
 MockQLabel = _create_mock_class("QLabel", (MockQWidgetBase,))
 MockQPushButton = _create_widget_mock_class("QPushButton")
@@ -1100,6 +1147,8 @@ qt_widgets_mock = MagicMock()
 qt_widgets_mock.QWidget = MockQWidget
 qt_widgets_mock.QMainWindow = MockQMainWindow
 qt_widgets_mock.QDialog = MockQDialog
+qt_widgets_mock.QWizard = MockQWizard
+qt_widgets_mock.QWizardPage = MockQWizardPage
 qt_widgets_mock.QGroupBox = MockQGroupBox
 qt_widgets_mock.QVBoxLayout = MockQVBoxLayout
 qt_widgets_mock.QHBoxLayout = MockQHBoxLayout

@@ -37,6 +37,7 @@ class TrayIcon(QSystemTrayIcon):
     pause_requested = pyqtSignal()
     show_window_requested = pyqtSignal()
     settings_requested = pyqtSignal()
+    onboarding_requested = pyqtSignal()
     exit_requested = pyqtSignal()
 
     def __init__(
@@ -131,6 +132,11 @@ class TrayIcon(QSystemTrayIcon):
         self._settings_action = QAction(_("Настройки"), self)
         self._settings_action.triggered.connect(self.settings_requested)
         menu.addAction(self._settings_action)
+
+        # Мастер первого запуска (#172): повторный запуск по запросу
+        self._onboarding_action = QAction(_("Мастер первого запуска"), self)
+        self._onboarding_action.triggered.connect(self.onboarding_requested)
+        menu.addAction(self._onboarding_action)
 
         menu.addSeparator()
 
