@@ -25,6 +25,7 @@ from pathlib import Path
 from core.post_processing.types import PostProcessingStepType, StepResult
 from core.webhook import WebhookSender, WebhookSigner
 from logger_config import get_module_logger
+from recorder.mouse_events import parse_mouse_events
 from recorder.utils import get_ffmpeg_path
 
 logger = get_module_logger(__name__)
@@ -451,6 +452,239 @@ class GenerateGifPreviewStep(PostProcessingStep):
                 input_path=input_path,
                 duration_seconds=time.monotonic() - start_time,
                 error_message=f"Таймаут генерации GIF ({self.timeout_seconds}с)",
+                is_fatal=self.is_fatal,
+            )
+        except Exception as e:
+            return StepResult(
+                step_type=self.step_type,
+                success=False,
+                input_path=input_path,
+                duration_seconds=time.monotonic() - start_time,
+                error_message=str(e),
+                is_fatal=self.is_fatal,
+            )
+
+
+def build_auto_zoom_filter_complex(
+    segments: list[tuple[float, float]],
+    zoom_level: float = 1.5,
+) -> str | None:
+    """Построить filter_complex наложения зума на сегменты (#170).
+
+    Таймлайн разбивается на куски (активные — с плавным zoompan,
+    промежутки — без изменения), затем склеиваются concat'ом —
+    длительность итогового видео сохраняется.
+
+    Args:
+        segments: Непересекающиеся сегменты (start_s, end_s).
+        zoom_level: Целевой множитель зума (> 1.0).
+
+    Returns:
+        Строка filter_complex или None без сегментов.
+    """
+    if not segments or zoom_level <= 1.0:
+        return None
+
+    labels: list[str] = []
+    chains: list[str] = []
+    cursor = 0.0
+    for seg_start, seg_end in segments:
+        if seg_start > cursor:
+            gap_dur = round(seg_start - cursor, 3)
+            label = f"z{len(labels)}"
+            chains.append(
+                f"[0:v]trim=start={round(cursor, 3)}:duration={gap_dur},"
+                f"setpts=PTS-STARTPTS[{label}]"
+            )
+            labels.append(label)
+        seg_dur = round(seg_end - seg_start, 3)
+        label = f"z{len(labels)}"
+        # Плавный нарастающий зум: 0.0015/кадр (~11с до 1.5x при 30fps)
+        chains.append(
+            f"[0:v]trim=start={round(seg_start, 3)}:duration={seg_dur},"
+            f"setpts=PTS-STARTPTS,"
+            f"zoompan=z='min(zoom+0.0015,{zoom_level})':d=1:s=hd1080,"
+            f"setsar=1[{label}]"
+        )
+        labels.append(label)
+        cursor = seg_end
+
+    concat_inputs = "".join(f"[{label}]" for label in labels)
+    return (
+        f"{''.join(chains)};{concat_inputs}concat=n={len(labels)}:v=1:a=0[zc]"
+    )
+
+
+class AutoZoomStep(PostProcessingStep):
+    """Шаг авто-zoom по активности мыши из sidecar-файла (#170).
+
+    Таймлайн разбивается на куски по сегментам активности и
+    склеивается обратно (включая хвост после последнего сегмента) —
+    длительность видео сохраняется. На активных кусках применяется
+    плавный нарастающий zoompan.
+    """
+
+    def __init__(
+        self,
+        sidecar_path: Path | None = None,
+        zoom_level: float = 1.5,
+        activity_window_s: float = 1.0,
+        min_segment_s: float = 0.5,
+        is_fatal: bool = False,
+        timeout_seconds: int = 1800,
+    ) -> None:
+        super().__init__(
+            step_type=PostProcessingStepType.AUTO_ZOOM,
+            is_fatal=is_fatal,
+            timeout_seconds=timeout_seconds,
+        )
+        self.sidecar_path = sidecar_path
+        self.zoom_level = zoom_level
+        self.activity_window_s = activity_window_s
+        self.min_segment_s = min_segment_s
+
+    def execute(self, input_path: Path) -> StepResult:
+        start_time = time.monotonic()
+        if not input_path.exists():
+            return StepResult(
+                step_type=self.step_type,
+                success=False,
+                input_path=input_path,
+                error_message=f"Файл {input_path} не существует",
+                is_fatal=self.is_fatal,
+            )
+        sidecar = self.sidecar_path or input_path.with_name(
+            f"{input_path.stem}_mouse.jsonl"
+        )
+        if not sidecar.exists():
+            return StepResult(
+                step_type=self.step_type,
+                success=True,
+                input_path=input_path,
+                output_path=input_path,
+                details={"skipped": "sidecar событий мыши отсутствует"},
+            )
+
+        raw_lines = sidecar.read_text(encoding="utf-8").splitlines()
+        events = parse_mouse_events(raw_lines)
+
+        from recorder.encoder import Encoder, EncodingSettings
+        from recorder.mouse_events import build_zoom_segments
+
+        encoder = Encoder(EncodingSettings())
+        video_duration = encoder.get_duration(input_path) or 0.0
+        segments = build_zoom_segments(
+            events,
+            video_duration_s=video_duration,
+            activity_window_s=self.activity_window_s,
+            min_segment_s=self.min_segment_s,
+        )
+        if not segments:
+            return StepResult(
+                step_type=self.step_type,
+                success=True,
+                input_path=input_path,
+                output_path=input_path,
+                details={"skipped": "сегменты активности не найдены"},
+            )
+
+        filter_complex = build_auto_zoom_filter_complex(
+            [(s.start_s, s.end_s) for s in segments],
+            zoom_level=self.zoom_level,
+        )
+        if not filter_complex:
+            return StepResult(
+                step_type=self.step_type,
+                success=True,
+                input_path=input_path,
+                output_path=input_path,
+            )
+
+        # Замыкаем таймлайн хвостом после последнего сегмента
+        tail_start = segments[-1].end_s
+        filter_complex += (
+            f";[0:v]trim=start={tail_start},setpts=PTS-STARTPTS[ztail];"
+            f"[zc][ztail]concat=n=2:v=1:a=0[out]"
+        )
+
+        output_path = input_path.with_name(
+            f"{input_path.stem}_zoom{input_path.suffix}"
+        )
+        ffmpeg_bin = get_ffmpeg_path() or "ffmpeg"
+        cmd = [
+            ffmpeg_bin,
+            "-y",
+            "-i",
+            str(input_path),
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            "[out]",
+            "-map",
+            "0:a?",
+            "-c:v",
+            "libx264",
+            "-b:v",
+            "8M",
+            "-c:a",
+            "copy",
+            str(output_path),
+        ]
+
+        try:
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+            duration = time.monotonic() - start_time
+            if res.returncode == 0 and output_path.exists():
+                try:
+                    input_path.unlink()
+                    output_path.rename(input_path)
+                except OSError as e:
+                    logger.warning(
+                        "Не удалось заменить файл после auto-zoom: %s", e
+                    )
+                    return StepResult(
+                        step_type=self.step_type,
+                        success=False,
+                        input_path=input_path,
+                        duration_seconds=duration,
+                        error_message=f"Ошибка замены файла: {e}",
+                        is_fatal=self.is_fatal,
+                    )
+                return StepResult(
+                    step_type=self.step_type,
+                    success=True,
+                    input_path=input_path,
+                    output_path=input_path,
+                    duration_seconds=duration,
+                    details={
+                        "segments": len(segments),
+                        "zoom_level": self.zoom_level,
+                    },
+                )
+            error_msg = res.stderr[-500:] if res.stderr else "FFmpeg error"
+            return StepResult(
+                step_type=self.step_type,
+                success=False,
+                input_path=input_path,
+                duration_seconds=duration,
+                error_message=(
+                    f"Ошибка auto-zoom (code {res.returncode}): {error_msg}"
+                ),
+                is_fatal=self.is_fatal,
+            )
+        except subprocess.TimeoutExpired:
+            return StepResult(
+                step_type=self.step_type,
+                success=False,
+                input_path=input_path,
+                duration_seconds=time.monotonic() - start_time,
+                error_message=f"Таймаут auto-zoom ({self.timeout_seconds}с)",
                 is_fatal=self.is_fatal,
             )
         except Exception as e:

@@ -29,6 +29,7 @@ from recorder.encoder import (
     FinalizationProgressTracker,
     RecordingEncoder,
 )
+from recorder.mouse_events import MouseEventsRecorder
 from recorder.utils import check_disk_space, check_ffmpeg
 from recorder.video_recorder import CaptureArea, VideoRecorder
 
@@ -65,6 +66,8 @@ class RecordingController:
         self._temp_audio: Path | None = None
         # Настройки аудио активной записи (#169): нужны на finalize
         self._active_audio_settings: AudioSettings | None = None
+        # Sidecar-сборщик событий мыши для авто-zoom (#170)
+        self._mouse_recorder: MouseEventsRecorder | None = None
         self._ffmpeg_check_cache: tuple[float, bool, str | None] | None = None
         self._on_error: Callable[[str], None] | None = None
         # Callback потери аудио-чанков (#154) — вызывается из потока
@@ -362,6 +365,15 @@ class RecordingController:
             # Настройки аудио для финализации (шумоподавление #169)
             self._active_audio_settings = audio
 
+            # Sidecar событий мыши для авто-zoom (#170): только при
+            # явном включении; отказ не блокирует запись
+            if get_config().settings.post_processing.mouse_events_recording:
+                self._mouse_recorder = MouseEventsRecorder(
+                    output_path.with_name(f"{output_path.stem}_mouse.jsonl")
+                )
+                if not self._mouse_recorder.start():
+                    self._mouse_recorder = None
+
             # Обновление состояния
             self._state.start_recording(output_path)
             logger.info(f"Запись запущена: {output_path}")
@@ -609,6 +621,12 @@ class RecordingController:
     def _cleanup(self) -> None:
         """Очистка ресурсов."""
         self._active_audio_settings = None
+        if self._mouse_recorder is not None:
+            try:
+                self._mouse_recorder.stop()
+            except (OSError, RuntimeError) as e:
+                logger.warning("Ошибка остановки сбора мыши: %s", e)
+            self._mouse_recorder = None
         if self._video_recorder:
             try:
                 self._video_recorder.stop()

@@ -28,6 +28,7 @@ class PostProcessingStepType(StrEnum):
     WEBHOOK = "webhook"
     PLUGIN = "plugin"
     TRANSCRIPTION = "transcription"
+    AUTO_ZOOM = "auto_zoom"
 
 
 class PostProcessingStatus(StrEnum):

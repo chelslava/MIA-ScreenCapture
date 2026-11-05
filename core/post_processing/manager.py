@@ -168,6 +168,20 @@ class PostProcessingManager:
                 )
             )
 
+        # 8.5. Авто-zoom по активности мыши (#170): sidecar ищется
+        # рядом с видео по конвенции <stem>_mouse.jsonl
+        if getattr(settings, "auto_zoom_enabled", False):
+            from core.post_processing.steps import AutoZoomStep
+
+            steps.append(
+                AutoZoomStep(
+                    zoom_level=settings.auto_zoom_level,
+                    activity_window_s=settings.auto_zoom_activity_window_s,
+                    is_fatal=False,
+                    timeout_seconds=timeout,
+                )
+            )
+
         # 9. Плагины постобработки (#124)
         if self._plugin_manager is not None:
             try:

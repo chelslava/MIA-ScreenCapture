@@ -20,10 +20,12 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QSpinBox,
@@ -175,6 +177,26 @@ class PostProcessingView(QWidget):
         self._open_explorer_cb.toggled.connect(self._emit_change)
         int_layout.addWidget(self._open_explorer_cb)
 
+        # Авто-zoom по активности мыши (#170): включение силы требует
+        # и включения сбора событий мыши (записывается sidecar рядом
+        # с видео — <имя>_mouse.jsonl)
+        self._auto_zoom_cb = QCheckBox(
+            "Авто-zoom на активность мыши (записывает события мыши)"
+        )
+        self._auto_zoom_cb.toggled.connect(self._emit_change)
+        int_layout.addWidget(self._auto_zoom_cb)
+
+        zoom_layout = QHBoxLayout()
+        zoom_layout.addWidget(QLabel("Сила зума:"))
+        self._auto_zoom_spin = QDoubleSpinBox()
+        self._auto_zoom_spin.setRange(1.1, 3.0)
+        self._auto_zoom_spin.setSingleStep(0.1)
+        self._auto_zoom_spin.setValue(1.5)
+        self._auto_zoom_spin.valueChanged.connect(self._emit_change)
+        zoom_layout.addWidget(self._auto_zoom_spin)
+        zoom_layout.addStretch(1)
+        int_layout.addLayout(zoom_layout)
+
         self._webhook_subgroup = QGroupBox("Отправка Webhook уведомления")
         self._webhook_subgroup.setCheckable(True)
         self._webhook_subgroup.setChecked(False)
@@ -238,6 +260,9 @@ class PostProcessingView(QWidget):
             copy_enabled=self._copy_group.isChecked(),
             copy_target_folder=self._copy_path_input.text().strip(),
             open_explorer_on_finish=self._open_explorer_cb.isChecked(),
+            auto_zoom_enabled=self._auto_zoom_cb.isChecked(),
+            auto_zoom_level=round(self._auto_zoom_spin.value(), 2),
+            mouse_events_recording=self._auto_zoom_cb.isChecked(),
             webhook_enabled=self._webhook_subgroup.isChecked(),
             webhook_url=self._webhook_url_input.text().strip() or None,
         )
@@ -271,6 +296,12 @@ class PostProcessingView(QWidget):
         self._copy_path_input.setText(settings.copy_target_folder)
 
         self._open_explorer_cb.setChecked(settings.open_explorer_on_finish)
+        self._auto_zoom_cb.setChecked(
+            getattr(settings, "auto_zoom_enabled", False)
+        )
+        self._auto_zoom_spin.setValue(
+            float(getattr(settings, "auto_zoom_level", 1.5))
+        )
 
         self._webhook_subgroup.setChecked(settings.webhook_enabled)
         self._webhook_url_input.setText(settings.webhook_url or "")

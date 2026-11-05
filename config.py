@@ -248,6 +248,12 @@ class PostProcessingSettingsSchema(BaseModel):
     transcription_language: str | None = Field(default=None)
     transcription_api_key: str | None = Field(default=None)
     transcription_api_base: str | None = Field(default=None)
+    # Авто-zoom по активности мыши (#170); sidecar собирается только
+    # при включённой записи событий
+    auto_zoom_enabled: bool = Field(default=False)
+    auto_zoom_level: float = Field(default=1.5, ge=1.1, le=3.0)
+    auto_zoom_activity_window_s: float = Field(default=1.0, ge=0.2, le=5.0)
+    mouse_events_recording: bool = Field(default=False)
     step_timeout_seconds: int = Field(default=300, ge=10, le=3600)
 
     @field_validator("webhook_url", mode="before")
@@ -480,6 +486,11 @@ class PostProcessingSettings:
     transcription_language: str | None = None
     transcription_api_key: str | None = None
     transcription_api_base: str | None = None
+    # Авто-zoom по активности мыши (#170)
+    auto_zoom_enabled: bool = False
+    auto_zoom_level: float = 1.5
+    auto_zoom_activity_window_s: float = 1.0
+    mouse_events_recording: bool = False
     step_timeout_seconds: int = 300
 
 
