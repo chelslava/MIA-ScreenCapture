@@ -101,18 +101,19 @@ class VideoView(QWidget):
         self._preset_combo = QComboBox()
         self._preset_combo.addItems(
             [
+                "auto (рекомендуется)",
                 "ultrafast (максимальная скорость)",
                 "superfast",
                 "veryfast",
                 "faster",
                 "fast",
-                "medium (по умолчанию)",
+                "medium",
                 "slow",
                 "slower",
                 "veryslow (максимальное качество)",
             ]
         )
-        self._preset_combo.setCurrentIndex(5)  # medium
+        self._preset_combo.setCurrentIndex(0)  # auto (#181)
         group_layout.addWidget(self._preset_combo, 2, 1, 1, 3)
 
         # Подключение сигналов
@@ -189,6 +190,7 @@ class VideoView(QWidget):
     def _get_preset_value(self) -> str:
         """Получение значения preset из выпадающего списка."""
         presets = [
+            "auto",
             "ultrafast",
             "superfast",
             "veryfast",
@@ -330,6 +332,7 @@ class VideoView(QWidget):
             preset: Значение preset
         """
         presets = [
+            "auto",
             "ultrafast",
             "superfast",
             "veryfast",

@@ -4,7 +4,7 @@ import io
 import logging
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -1748,3 +1748,73 @@ class TestFFmpegVideoWriterSegmentRotation:
         assert writer.switch_resolution(800, 600) is False
         assert writer.segment_paths == []
         assert writer.is_corrupted is False
+
+
+class TestAutoPreset:
+    """Разрешение preset "auto" для CPU-only записи (#181)."""
+
+    def test_resolve_auto_libx264_veryfast(self) -> None:
+        from recorder.ffmpeg_writer import FFmpegVideoWriter
+
+        assert (
+            FFmpegVideoWriter._resolve_preset("libx264", "auto") == "veryfast"
+        )
+
+    def test_resolve_auto_libx265_superfast(self) -> None:
+        from recorder.ffmpeg_writer import FFmpegVideoWriter
+
+        assert (
+            FFmpegVideoWriter._resolve_preset("libx265", "auto") == "superfast"
+        )
+
+    def test_resolve_auto_hardware_codec_medium(self) -> None:
+        """Аппаратные кодеки игнорируют auto (свои CODEC_ARGS)."""
+        from recorder.ffmpeg_writer import FFmpegVideoWriter
+
+        for codec in ("h264_nvenc", "hevc_amf", "av1_qsv"):
+            assert FFmpegVideoWriter._resolve_preset(codec, "auto") == "medium"
+
+    def test_resolve_explicit_preset_preserved(self) -> None:
+        """Ручной выбор пользователя имеет приоритет над auto."""
+        from recorder.ffmpeg_writer import FFmpegVideoWriter
+
+        assert FFmpegVideoWriter._resolve_preset("libx264", "slow") == "slow"
+        assert (
+            FFmpegVideoWriter._resolve_preset("libx264", "veryslow")
+            == "veryslow"
+        )
+
+    def test_cmd_contains_resolved_preset(self, tmp_path: Path) -> None:
+        """libx264 + auto -> -preset veryfast в команде FFmpeg."""
+        from recorder.ffmpeg_writer import FFmpegVideoWriter
+
+        writer = FFmpegVideoWriter(
+            output_path=tmp_path / "out.mp4",
+            width=640,
+            height=480,
+            fps=30,
+            codec="libx264",
+            preset="auto",
+        )
+        captured: dict[str, list[str]] = {}
+
+        def fake_popen(cmd: list[str], **kwargs: object) -> MagicMock:
+            captured["cmd"] = cmd
+            process = MagicMock()
+            process.poll.return_value = None
+            return process
+
+        with (
+            patch.object(FFmpegVideoWriter, "_start_stderr_reader"),
+            patch("recorder.ffmpeg_writer.subprocess.Popen", fake_popen),
+            patch(
+                "recorder.ffmpeg_writer.get_ffmpeg_path",
+                return_value="ffmpeg",
+            ),
+        ):
+            assert writer.open() is True
+
+        cmd = captured["cmd"]
+        preset_index = cmd.index("-preset")
+        assert cmd[preset_index + 1] == "veryfast"
+        writer._terminate_process_safely()

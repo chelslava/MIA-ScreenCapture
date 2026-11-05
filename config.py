@@ -36,7 +36,8 @@ class VideoSettingsSchema(BaseModel):
     bitrate: str = Field(default="2M")
     format: str = Field(default="mp4")
     compression: bool = Field(default=True)
-    preset: str = Field(default="medium")
+    # "auto" (#181): очень быстрый preset для программных кодеков
+    preset: str = Field(default="auto")
     verify_on_complete: bool = Field(default=True)
     auto_repair_corrupted: bool = Field(default=False)
 
@@ -44,6 +45,7 @@ class VideoSettingsSchema(BaseModel):
     @classmethod
     def validate_preset(cls, v: str) -> str:
         valid_presets = (
+            "auto",
             "ultrafast",
             "superfast",
             "veryfast",
@@ -379,7 +381,7 @@ class VideoSettings:
     bitrate: str = "2M"
     format: str = "mp4"
     compression: bool = True
-    preset: str = "medium"
+    preset: str = "auto"
     verify_on_complete: bool = True
     auto_repair_corrupted: bool = False
 

@@ -1,5 +1,7 @@
 """Тесты авто-zoom по активности мыши (#170)."""
 
+from pathlib import Path
+
 from core.post_processing.steps import build_auto_zoom_filter_complex
 from recorder.mouse_events import (
     MouseEvent,
@@ -105,3 +107,69 @@ class TestBuildAutoZoomFilterComplex:
         assert result is not None
         assert "trim=start=0.0:duration=5.0" in result  # зазор
         assert "trim=start=5.0:duration=3.0" in result  # зум
+
+
+class TestVpxSpeedArgs:
+    """Аргументы скорости libvpx при транскодировании (#180)."""
+
+    def test_vp9_gets_row_mt_and_cpu_used(self) -> None:
+        """libvpx-vp9: row-mt, cpu-used, deadline, threads."""
+        from core.post_processing.steps import build_vpx_speed_args
+
+        args = build_vpx_speed_args("libvpx-vp9")
+        assert args == [
+            "-row-mt",
+            "1",
+            "-cpu-used",
+            "4",
+            "-deadline",
+            "good",
+            "-threads",
+            "0",
+        ]
+
+    def test_vp8_gets_cpu_used_without_row_mt(self) -> None:
+        """libvpx (VP8): cpu-used и threads, без row-mt."""
+        from core.post_processing.steps import build_vpx_speed_args
+
+        args = build_vpx_speed_args("libvpx")
+        assert "-cpu-used" in args
+        assert "-row-mt" not in args
+
+    def test_non_vpx_gets_no_args(self) -> None:
+        """Не-vpx кодеки не получают скоростных аргументов."""
+        from core.post_processing.steps import build_vpx_speed_args
+
+        assert build_vpx_speed_args("libx264") == []
+        assert build_vpx_speed_args("hevc_nvenc") == []
+
+    def test_transcode_cmd_contains_vpx_args(self, tmp_path: Path) -> None:
+        """cmd транскодирования включает vpx-аргументы после -c:v."""
+        from unittest.mock import MagicMock, patch
+
+        from core.post_processing.steps import TranscodeStep
+
+        video = tmp_path / "v.mp4"
+        video.write_bytes(b"v")
+        captured: dict[str, list[str]] = {}
+
+        def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            captured["cmd"] = cmd
+            Path(cmd[-1]).write_bytes(b"out")
+            return MagicMock(returncode=0, stderr="")
+
+        step = TranscodeStep(target_format="webm", target_codec="libvpx-vp9")
+        with (
+            patch(
+                "core.post_processing.steps.get_ffmpeg_path",
+                return_value="ffmpeg",
+            ),
+            patch("subprocess.run", side_effect=fake_run),
+        ):
+            step.execute(video)
+
+        cmd = captured["cmd"]
+        codec_index = cmd.index("-c:v")
+        assert cmd[codec_index + 1] == "libvpx-vp9"
+        assert "-row-mt" in cmd[codec_index + 2 : codec_index + 12]
+        assert "-cpu-used" in cmd[codec_index + 2 : codec_index + 12]

@@ -58,6 +58,35 @@ class PostProcessingStep(abc.ABC):
         raise NotImplementedError
 
 
+def build_vpx_speed_args(target_codec: str) -> list[str]:
+    """Аргументы скорости для libvpx-кодеков (#180).
+
+    VP9 в libvpx по умолчанию: row-mt выключен, cpu-used 0 — на CPU
+    это единицы fps при 1080p. Аргументы ниже дают кратное ускорение
+    с сопоставимым качеством (crf-режим сохраняется вызывающим кодом).
+
+    Args:
+        target_codec: Имя кодека FFmpeg.
+
+    Returns:
+        Список аргументов; пустой для не-vpx кодеков.
+    """
+    if target_codec == "libvpx-vp9":
+        return [
+            "-row-mt",
+            "1",
+            "-cpu-used",
+            "4",
+            "-deadline",
+            "good",
+            "-threads",
+            "0",
+        ]
+    if target_codec == "libvpx":
+        return ["-cpu-used", "4", "-threads", "0"]
+    return []
+
+
 class TranscodeStep(PostProcessingStep):
     """Шаг перекодирования / конвертации контейнера (например, MP4 -> WebM/MKV)."""
 
@@ -100,6 +129,8 @@ class TranscodeStep(PostProcessingStep):
             str(input_path),
             "-c:v",
             self.target_codec,
+            # Скоростные аргументы только для VP8/VP9 (#180)
+            *build_vpx_speed_args(self.target_codec),
             "-b:v",
             "0",
             "-crf",

@@ -57,7 +57,7 @@ class VideoSettings:
     codec: str = "libx264"
     bitrate: str = "2M"
     format: str = "mp4"
-    preset: str = "medium"
+    preset: str = "auto"
     # PiP-оверлей веб-камеры (#165); None — без наложения
     pip: PiPSettings | None = None
 

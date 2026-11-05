@@ -622,6 +622,27 @@ class FFmpegVideoWriter:
         )
         return True
 
+    @staticmethod
+    def _resolve_preset(codec: str, preset: str) -> str:
+        """Разрешить preset "auto" в конкретный для кодека (#181).
+
+        Args:
+            codec: Фактический кодек записи.
+            preset: Выбранный пользователем preset ("auto" или имя).
+
+        Returns:
+            Конкретный preset для cmd: software-кодеки получают
+            realtime-безопасные значения, аппаратные — "medium"
+            (игнорируется их CODEC_ARGS).
+        """
+        if preset != "auto":
+            return preset
+        if codec == "libx264":
+            return "veryfast"
+        if codec == "libx265":
+            return "superfast"
+        return "medium"
+
     def _open_process(self, output_path: Path) -> bool:
         """
         Запускает FFmpeg-процесс для записи в указанный файл.
@@ -640,8 +661,15 @@ class FFmpegVideoWriter:
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
+            # "auto" (#181): безопасный realtime-preset для программных
+            # кодеков на слабых CPU; аппаратные кодеки используют
+            # собственные фиксированные аргументы.
+            resolved_preset = self._resolve_preset(
+                self._actual_codec, self._preset
+            )
+
             codec_key = self._actual_codec
-            if self._actual_codec == "libx264" and self._preset in (
+            if self._actual_codec == "libx264" and resolved_preset in (
                 "ultrafast",
                 "superfast",
                 "veryfast",
@@ -654,12 +682,12 @@ class FFmpegVideoWriter:
                 self.CODEC_ARGS.get(codec_key, self.CODEC_ARGS["libx264"])
             )
 
-            if self._preset != "medium" and self._actual_codec.startswith(
+            if resolved_preset != "medium" and self._actual_codec.startswith(
                 "libx"
             ):
                 for i, arg in enumerate(codec_args):
                     if arg == "-preset" and i + 1 < len(codec_args):
-                        codec_args[i + 1] = self._preset
+                        codec_args[i + 1] = resolved_preset
 
             cmd = [
                 ffmpeg_bin,
