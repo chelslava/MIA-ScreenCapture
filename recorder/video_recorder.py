@@ -205,8 +205,6 @@ class _WindowsCaptureSession:
             if frame_buffer is None:
                 return
 
-            is_bgra = frame_buffer.ndim == 3 and frame_buffer.shape[2] == 4
-
             if capture_area.type == "rect":
                 x1 = max(capture_area.x, 0)
                 y1 = max(capture_area.y, 0)
