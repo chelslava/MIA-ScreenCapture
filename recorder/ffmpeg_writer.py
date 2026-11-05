@@ -251,7 +251,7 @@ class FFmpegVideoWriter:
         codec: str = "libx264",
         bitrate: str = "2M",
         preset: str = "medium",
-        pixel_format: str = "bgr24",
+        pixel_format: str = "bgra",
         retry_policy: RetryPolicy | None = None,
         max_recovery_attempts: int = 3,
         disk_warning_mb: float = 1024.0,
@@ -274,7 +274,7 @@ class FFmpegVideoWriter:
             codec: Кодек (libx264, h264_nvenc, h264_amf, h264_qsv, libx265, hevc_nvenc, hevc_amf, hevc_qsv)
             bitrate: Битрейт (2M, 4M, etc.)
             preset: Preset кодирования
-            pixel_format: Формат пикселей (bgr24 для OpenCV)
+            pixel_format: Формат пикселей входа (bgra — WGC-кадр)
             retry_policy: Политика повторных попыток при ошибках записи.
             max_recovery_attempts: Сколько раз пытаться перезапустить
                 FFmpeg-процесс при его аварийном завершении, прежде чем

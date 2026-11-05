@@ -17,17 +17,22 @@ from recorder.ffmpeg_writer import FFmpegVideoWriter, RetryPolicy
 from recorder.video_recorder import VideoRecorder
 
 
-class TestNeedsColorConversionFlag:
-    """Проверка флага _needs_color_conversion в VideoRecorder."""
+class TestBgraPassthrough:
+    """BGRA passthrough: цветовая конвертация уехала в FFmpeg (#183)."""
 
-    def test_flag_exists_and_default_true(self) -> None:
+    def test_color_conversion_flag_removed(self) -> None:
+        """Флаг _needs_color_conversion больше не нужен."""
         recorder = VideoRecorder()
-        assert hasattr(recorder, "_needs_color_conversion")
-        assert recorder._needs_color_conversion is True
+        assert not hasattr(recorder, "_needs_color_conversion")
 
-    def test_flag_preserved_after_init(self) -> None:
-        recorder = VideoRecorder(fps=60, codec="libx264")
-        assert recorder._needs_color_conversion is True
+    def test_writer_default_pixel_format_is_bgra(self) -> None:
+        """FFmpeg-вход — BGRA кадр WGC без промежуточной конвертации."""
+        import inspect
+
+        from recorder.ffmpeg_writer import FFmpegVideoWriter
+
+        signature = inspect.signature(FFmpegVideoWriter.__init__)
+        assert signature.parameters["pixel_format"].default == "bgra"
 
 
 class TestZeroCopyWrite:

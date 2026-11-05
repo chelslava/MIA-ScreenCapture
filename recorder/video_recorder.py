@@ -216,18 +216,13 @@ class _WindowsCaptureSession:
                     h, w = frame_buffer.shape[:2]
                     x2 = min(x2, w)
                     y2 = min(y2, h)
-                # Обрезаем до конвертации — меньше данных для обработки.
+                # Обрезаем без цветовой конвертации: BGRA уходит в
+                # FFmpeg как есть (#183), swscale делает bgra->yuv420p
+                # одним SIMD-проходом — минус полная копия кадра.
                 region = frame_buffer[y1:y2, x1:x2]
-                if is_bgra:
-                    frame_copy = cv2.cvtColor(region, cv2.COLOR_BGRA2BGR)
-                else:
-                    frame_copy = np.ascontiguousarray(region)
+                frame_copy = np.ascontiguousarray(region)
             else:
-                # SIMD-ускоренная конвертация BGRA→BGR (быстрее strided np.array copy).
-                if is_bgra:
-                    frame_copy = cv2.cvtColor(frame_buffer, cv2.COLOR_BGRA2BGR)
-                else:
-                    frame_copy = frame_buffer.copy()
+                frame_copy = frame_buffer.copy()
 
             with self._lock:
                 self._last_frame = frame_copy
@@ -427,9 +422,6 @@ class VideoRecorder:
 
         # Кэшированный флаг: нужна ли конвертация цвета при записи кадров.
         # False — кадры уже в целевом формате (zero-copy путь).
-        # True  — требуется cv2.cvtColor (устанавливается при первом кадре).
-        self._needs_color_conversion: bool = True
-
         # Статистика
         self._start_time: float = 0
         self._paused_time: float = 0

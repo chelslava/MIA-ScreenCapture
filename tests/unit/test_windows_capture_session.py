@@ -202,8 +202,8 @@ class TestWindowsCaptureSessionFrameHandling:
         session._frame_event.clear()
         return session, handlers
 
-    def test_on_frame_arrived_converts_bgra_to_bgr(self) -> None:
-        """BGRA-кадр (4 канала) должен конвертироваться в BGR (3 канала)."""
+    def test_on_frame_arrived_passes_bgra_through(self) -> None:
+        """BGRA-кадр проходит без цветовой конвертации (#183)."""
         session, handlers = self._start_session(
             CaptureArea(type="full", width=16, height=16)
         )
@@ -213,7 +213,8 @@ class TestWindowsCaptureSessionFrameHandling:
 
         frame = session.read_frame(timeout=1.0)
         assert frame is not None
-        assert frame.shape == (16, 16, 3)
+        assert frame.shape == (16, 16, 4)
+        assert frame is bgra or frame.tobytes() == bgra.tobytes()
 
     def test_on_frame_arrived_crops_to_rect_area(self) -> None:
         """Для типа 'rect' кадр должен обрезаться до заданной области."""
@@ -221,12 +222,12 @@ class TestWindowsCaptureSessionFrameHandling:
             CaptureArea(type="rect", x=10, y=5, width=20, height=15)
         )
 
-        full_frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        full_frame = np.zeros((100, 100, 4), dtype=np.uint8)
         handlers["on_frame_arrived"](_fake_frame(full_frame), MagicMock())
 
         frame = session.read_frame(timeout=1.0)
         assert frame is not None
-        assert frame.shape == (15, 20, 3)
+        assert frame.shape == (15, 20, 4)
 
     def test_on_frame_arrived_ignored_after_close(self) -> None:
         """После stop() новые кадры не должны обновлять последний кадр."""
