@@ -54,6 +54,8 @@ def register_recording_routes(
                 # legacy-запросы получают прежний контракт payload.
                 if not callback_data.get("countdown"):
                     callback_data.pop("countdown", None)
+                if not callback_data.get("noise_suppression"):
+                    callback_data.pop("noise_suppression", None)
                 if not callback_data.get("pip_enabled"):
                     for pip_key in (
                         "pip_device",

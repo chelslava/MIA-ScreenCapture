@@ -45,6 +45,8 @@ class AudioSettings:
     audio_type: AudioMode = AudioMode.NONE
     mic_device_index: int | None = None
     mic_device_name: str = ""
+    # Шумоподавление микрофона (#169); None — взять из конфига
+    noise_suppression: str | None = None
 
 
 @dataclass

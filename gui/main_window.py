@@ -1010,6 +1010,9 @@ class MainWindow(
             audio_type=self._state.audio.audio_type,
             mic_device_index=self._state.audio.mic_device_index,
             mic_device_name=self._state.audio.mic_device_name,
+            # Шумоподавление микрофона (#169): явный выбор view имеет
+            # приоритет; None — контроллер возьмёт уровень из конфига
+            noise_suppression=self._audio_view.get_noise_suppression_level(),
         )
 
     def start_recording(self) -> dict[str, Any]:

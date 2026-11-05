@@ -168,6 +168,13 @@ class StartRecordingRequest(BaseModel):
             "0 — стартовать сразу"
         ),
     )
+    noise_suppression: Literal["off", "light", "strong"] | None = Field(
+        default=None,
+        description=(
+            "Шумоподавление микрофона (#169); null — настройка из "
+            "config.json. Системный звук не обрабатывается"
+        ),
+    )
     pip_enabled: bool = Field(
         default=False,
         description="Наложить видео веб-камеры (PiP) поверх записи (#165)",

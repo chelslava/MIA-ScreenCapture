@@ -613,9 +613,13 @@ class RecordingService:
         audio_mode = audio_map.get(
             str(params.get("audio", "none")), AudioMode.NONE
         )
+        noise_level = params.get("noise_suppression")
+        if noise_level is None:
+            noise_level = get_config().settings.audio.noise_suppression
         return AudioRequest(
             mode=audio_mode,
             mic_device_index=params.get("mic_device_index"),
+            noise_suppression=noise_level,
         )
 
     def _build_video_settings(self, params: dict[str, Any]) -> VideoRequest:

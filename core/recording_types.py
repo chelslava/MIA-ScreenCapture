@@ -101,6 +101,8 @@ class AudioRequest:
 
     mode: AudioMode
     mic_device_index: int | None = None
+    # Шумоподавление микрофона (#169); None — из конфига
+    noise_suppression: str | None = None
 
 
 @dataclass(frozen=True)

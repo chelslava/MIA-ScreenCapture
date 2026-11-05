@@ -807,6 +807,7 @@ class TestRecordingEncoder:
             keep_originals=False,
             progress_callback=None,
             cancel_event=ANY,
+            audio_filters=ANY,
         )
         mock_move.assert_called_once_with(temp_dir / "final_temp.mp4")
         assert not temp_dir.exists()
@@ -896,3 +897,81 @@ class TestRecordingEncoder:
 
         assert recording_encoder._cancel_requested.is_set() is True
         mock_cleanup.assert_not_called()
+
+
+class TestMergeAudioFilters:
+    """-af вставка при объединении аудио (#169)."""
+
+    def test_merge_accepts_audio_filters(self, tmp_path: Path) -> None:
+        """audio_filters попадает в команду FFmpeg после -map."""
+        from recorder.encoder import Encoder, EncodingSettings
+
+        video = tmp_path / "v.mp4"
+        audio = tmp_path / "a.wav"
+        video.write_bytes(b"v")
+        audio.write_bytes(b"a")
+        encoder = Encoder(EncodingSettings())
+
+        captured: dict[str, list[str]] = {}
+
+        def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            captured["cmd"] = cmd
+            # FFmpeg «создаёт» выходной файл — иначе merge вернет ошибку
+            Path(cmd[-1]).write_bytes(b"out")
+            return MagicMock(
+                returncode=0, stderr="", stdout="", cancelled=False
+            )
+
+        with (
+            patch.object(Encoder, "is_available", True),
+            patch.object(Encoder, "_ffmpeg_path", "ffmpeg", create=True),
+            patch.object(
+                Encoder, "_run_ffmpeg_long_process", side_effect=fake_run
+            ),
+        ):
+            ok, error = encoder.merge_video_audio(
+                video,
+                audio,
+                tmp_path / "out.mp4",
+                audio_filters="highpass=f=80,afftdn=nr=10",
+            )
+
+        assert ok is True
+        assert error is None
+        cmd = captured["cmd"]
+        af_index = cmd.index("-af")
+        assert cmd[af_index + 1] == "highpass=f=80,afftdn=nr=10"
+
+    def test_merge_without_filters_omits_af(self, tmp_path: Path) -> None:
+        """Без audio_filters флага -af в команде нет."""
+        from recorder.encoder import Encoder, EncodingSettings
+
+        video = tmp_path / "v.mp4"
+        audio = tmp_path / "a.wav"
+        video.write_bytes(b"v")
+        audio.write_bytes(b"a")
+        encoder = Encoder(EncodingSettings())
+
+        captured: dict[str, list[str]] = {}
+
+        def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            captured["cmd"] = cmd
+            # FFmpeg «создаёт» выходной файл — иначе merge вернет ошибку
+            Path(cmd[-1]).write_bytes(b"out")
+            return MagicMock(
+                returncode=0, stderr="", stdout="", cancelled=False
+            )
+
+        with (
+            patch.object(Encoder, "is_available", True),
+            patch.object(Encoder, "_ffmpeg_path", "ffmpeg", create=True),
+            patch.object(
+                Encoder, "_run_ffmpeg_long_process", side_effect=fake_run
+            ),
+        ):
+            ok, _ = encoder.merge_video_audio(
+                video, audio, tmp_path / "out.mp4"
+            )
+
+        assert ok is True
+        assert "-af" not in captured["cmd"]

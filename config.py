@@ -78,6 +78,20 @@ class AudioSettingsSchema(BaseModel):
     system_device: str | None = Field(default=None)
     sample_rate: int = Field(default=44100, ge=8000, le=192000)
     channels: int = Field(default=2, ge=1, le=8)
+    # Шумоподавление микрофона (#169): off/light/strong; системный
+    # звук не обрабатывается
+    noise_suppression: str = Field(default="off")
+
+    @field_validator("noise_suppression")
+    @classmethod
+    def validate_noise_suppression(cls, value: str) -> str:
+        """Уровень шумоподавления ограничен известными значениями."""
+        normalized = str(value).strip().lower()
+        if normalized not in ("off", "light", "strong"):
+            raise ValueError(
+                "noise_suppression должен быть off, light или strong"
+            )
+        return normalized
 
 
 class CaptureSettingsSchema(BaseModel):
@@ -372,6 +386,8 @@ class AudioSettings:
     system_device: str | None = None
     sample_rate: int = 44100
     channels: int = 2
+    # Шумоподавление микрофона (#169); применяется при merge
+    noise_suppression: str = "off"
 
 
 @dataclass

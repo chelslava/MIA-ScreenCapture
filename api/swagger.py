@@ -340,6 +340,17 @@ SWAGGER_SPEC: dict[str, Any] = {
                             "записи (0-10); 0 — стартовать сразу"
                         ),
                     },
+                    "noise_suppression": {
+                        "type": "string",
+                        "enum": ["off", "light", "strong"],
+                        "nullable": True,
+                        "default": None,
+                        "description": (
+                            "Шумоподавление микрофона (#169); null — "
+                            "настройка из config.json. Системный звук "
+                            "не обрабатывается"
+                        ),
+                    },
                     "pip_enabled": {
                         "type": "boolean",
                         "default": False,

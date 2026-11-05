@@ -38,6 +38,7 @@ def _map_audio(audio: AudioRequest) -> AudioSettings:
     return AudioSettings(
         audio_type=audio.mode,
         mic_device_index=audio.mic_device_index,
+        noise_suppression=audio.noise_suppression,
     )
 
 

@@ -1217,3 +1217,45 @@ class TestListFfmpegEncoders:
             patch("recorder.utils.subprocess.run", return_value=result),
         ):
             assert list_ffmpeg_encoders() is None
+
+
+class TestNoiseSuppressionFilters:
+    """Цепочки шумоподавления микрофона (#169)."""
+
+    def test_normalize_levels(self) -> None:
+        """Уровни нормализуются; неизвестные — off."""
+        from recorder.audio_filters import (
+            DEFAULT_NOISE_SUPPRESSION_LEVEL,
+            normalize_noise_suppression_level,
+        )
+
+        assert normalize_noise_suppression_level("light") == "light"
+        assert normalize_noise_suppression_level(" STRONG ") == "strong"
+        assert normalize_noise_suppression_level(None) == "off"
+        assert normalize_noise_suppression_level("") == "off"
+        assert (
+            normalize_noise_suppression_level("magic")
+            == DEFAULT_NOISE_SUPPRESSION_LEVEL
+        )
+
+    def test_chain_off_is_none(self) -> None:
+        """Выключенное подавление не даёт фильтров."""
+        from recorder.audio_filters import build_noise_filter_chain
+
+        assert build_noise_filter_chain("off") is None
+        assert build_noise_filter_chain(None) is None
+        assert build_noise_filter_chain("unknown") is None
+
+    def test_chain_light_and_strong(self) -> None:
+        """Light/strong дают полосовой фильтр и afftdn."""
+        from recorder.audio_filters import build_noise_filter_chain
+
+        light = build_noise_filter_chain("light")
+        assert light is not None
+        assert "highpass=f=80" in light
+        assert "afftdn" in light
+
+        strong = build_noise_filter_chain("strong")
+        assert strong is not None
+        assert "nr=24" in strong
+        assert strong != light

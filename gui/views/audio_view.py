@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from config import get_config
 from gui.accessibility import apply_accessible_metadata
 from gui.models.recording_state import AudioType
 from gui.styles.theme import Theme
@@ -106,6 +107,25 @@ class AudioView(QWidget):
         self._mic_status_label.setStyleSheet(Theme.secondary_text_style())
         group_layout.addWidget(self._mic_status_label)
 
+        # Шумоподавление микрофона (#169)
+        noise_layout = QHBoxLayout()
+        noise_layout.addWidget(QLabel("Шумоподавление:"))
+        self._noise_combo = QComboBox()
+        self._noise_combo.addItem("Выключено", "off")
+        self._noise_combo.addItem("Лёгкое", "light")
+        self._noise_combo.addItem("Сильное", "strong")
+        current_level = get_config().settings.audio.noise_suppression
+        for i in range(self._noise_combo.count()):
+            if self._noise_combo.itemData(i) == current_level:
+                self._noise_combo.setCurrentIndex(i)
+                break
+        self._noise_combo.currentIndexChanged.connect(
+            self._on_noise_level_changed
+        )
+        noise_layout.addWidget(self._noise_combo)
+        noise_layout.addStretch(1)
+        group_layout.addLayout(noise_layout)
+
         # Подключение сигналов
         self._button_group.buttonClicked.connect(self._on_button_clicked)
         self._mic_combo.currentIndexChanged.connect(
@@ -115,6 +135,37 @@ class AudioView(QWidget):
         self._apply_accessibility_metadata()
         self._refresh_audio_devices()
         layout.addWidget(group)
+
+    def _on_noise_level_changed(self, index: int) -> None:
+        """Сохранить уровень шумоподавления в конфигурации (#169).
+
+        Args:
+            index: Индекс выбранного элемента комбобокса.
+        """
+        level = self._noise_combo.itemData(index)
+        if level:
+            get_config().settings.audio.noise_suppression = str(level)
+            get_config().save()
+
+    def get_noise_suppression_level(self) -> str:
+        """Текущий уровень шумоподавления из комбобокса (#169).
+
+        Returns:
+            Один из уровней: "off", "light", "strong".
+        """
+        data = self._noise_combo.currentData()
+        return str(data) if data else "off"
+
+    def set_noise_suppression_level(self, level: str) -> None:
+        """Установить уровень шумоподавления (#169).
+
+        Args:
+            level: Одно из значений "off", "light", "strong".
+        """
+        for i in range(self._noise_combo.count()):
+            if self._noise_combo.itemData(i) == str(level):
+                self._noise_combo.setCurrentIndex(i)
+                break
 
     def _apply_accessibility_metadata(self) -> None:
         """Назначение accessibility metadata для controls аудио."""

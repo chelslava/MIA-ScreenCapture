@@ -683,3 +683,22 @@ class TestStartRecordingPip:
         assert request.pip_device == "USB Camera"
         assert request.pip_position == "top-left"
         assert request.pip_size_percent == 30
+
+
+class TestStartRecordingNoiseSuppression:
+    """Шумоподавление микрофона в схеме StartRecordingRequest (#169)."""
+
+    def test_default_none(self) -> None:
+        """По умолчанию уровень из конфига (null)."""
+        assert StartRecordingRequest().noise_suppression is None
+
+    def test_valid_levels(self) -> None:
+        """off/light/strong принимаются."""
+        for level in ("off", "light", "strong"):
+            request = StartRecordingRequest(noise_suppression=level)
+            assert request.noise_suppression == level
+
+    def test_invalid_level_rejected(self) -> None:
+        """Неизвестный уровень отклоняется."""
+        with pytest.raises(ValidationError):
+            StartRecordingRequest(noise_suppression="aggressive")

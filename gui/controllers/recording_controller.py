@@ -22,6 +22,7 @@ from core.recording_state import (
 )
 from core.recording_types import AudioMode, CaptureMode
 from logger_config import get_module_logger
+from recorder.audio_filters import build_noise_filter_chain
 from recorder.audio_recorder import AudioRecorder, SystemAudioRecorder
 from recorder.encoder import (
     EncodingSettings,
@@ -62,6 +63,8 @@ class RecordingController:
         self._encoder: RecordingEncoder | None = None
         self._temp_video: Path | None = None
         self._temp_audio: Path | None = None
+        # Настройки аудио активной записи (#169): нужны на finalize
+        self._active_audio_settings: AudioSettings | None = None
         self._ffmpeg_check_cache: tuple[float, bool, str | None] | None = None
         self._on_error: Callable[[str], None] | None = None
         # Callback потери аудио-чанков (#154) — вызывается из потока
@@ -356,6 +359,9 @@ class RecordingController:
                     logger.warning(f"Системное аудио недоступно: {e}")
                     self._audio_recorder = None
 
+            # Настройки аудио для финализации (шумоподавление #169)
+            self._active_audio_settings = audio
+
             # Обновление состояния
             self._state.start_recording(output_path)
             logger.info(f"Запись запущена: {output_path}")
@@ -508,7 +514,23 @@ class RecordingController:
             self._progress_tracker.update(
                 percent=0.0, stage="Инициализация финализации"
             )
-            success, error = self._encoder.finalize(has_audio=has_audio)
+            # Шумоподавление микрофона (#169): фильтры только для
+            # микрофонной дорожки (MIC/BOTH); системный звук не трогаем.
+            audio_filters = None
+            active_audio = self._active_audio_settings
+            if (
+                has_audio
+                and active_audio is not None
+                and active_audio.audio_type in (AudioMode.MIC, AudioMode.BOTH)
+            ):
+                level = (
+                    active_audio.noise_suppression
+                    or get_config().settings.audio.noise_suppression
+                )
+                audio_filters = build_noise_filter_chain(level)
+            success, error = self._encoder.finalize(
+                has_audio=has_audio, audio_filters=audio_filters
+            )
             if success:
                 output_path = self._encoder.output_path
                 self._state.current_output = output_path
@@ -586,6 +608,7 @@ class RecordingController:
 
     def _cleanup(self) -> None:
         """Очистка ресурсов."""
+        self._active_audio_settings = None
         if self._video_recorder:
             try:
                 self._video_recorder.stop()

@@ -278,6 +278,7 @@ class Encoder:
         progress_callback: Callable[[float], None] | None = None,
         cancel_event: threading.Event | None = None,
         progress_stage: str = "Объединение видео и аудио",
+        audio_filters: str | None = None,
     ) -> tuple[bool, str | None]:
         """
         Объединение видеофайла и аудиофайла в один выходной файл.
@@ -291,6 +292,9 @@ class Encoder:
             cancel_event: Опциональное событие отмены операции
             progress_stage: Текст этапа для внутреннего трекера прогресса
                 (используется только если задан progress_callback).
+            audio_filters: Опциональная цепочка FFmpeg аудио-фильтров для
+                ``-af`` (шумоподавление микрофона, #169); применяется
+                только к аудиопотоку второго входа.
 
         Returns:
             Кортеж (успех, сообщение_об_ошибке)
@@ -338,6 +342,11 @@ class Encoder:
                 "0:v:0",  # Использовать видео из первого входа
                 "-map",
                 "1:a:0",  # Использовать аудио из второго входа
+                *(
+                    ["-af", audio_filters]
+                    if audio_filters
+                    else []  # Шумоподавление микрофона (#169)
+                ),
                 "-shortest",  # Завершить когда заканчивается короткий поток
                 str(output_path),
             ]
@@ -943,6 +952,7 @@ class RecordingEncoder:
     def finalize(
         self,
         has_audio: bool = True,
+        audio_filters: str | None = None,
         progress_callback: Callable[[float], None] | None = None,
     ) -> tuple[bool, str | None]:
         """
@@ -986,6 +996,7 @@ class RecordingEncoder:
                     keep_originals=False,
                     progress_callback=progress_callback,
                     cancel_event=self._cancel_requested,
+                    audio_filters=audio_filters,
                 )
             else:
                 # Просто копирование видео в вывод

@@ -3,6 +3,7 @@ Unit тесты для RecordingService.
 """
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from core.event_bus import InMemoryEventBus, RecordingEventType
@@ -948,3 +949,39 @@ class TestPipSettings:
         video = captured["video"]
         assert video.pip is not None
         assert video.pip.position == PiPPosition.TOP_LEFT
+
+
+class TestNoiseSuppressionAudio:
+    """Проброс шумоподавления микрофона (#169)."""
+
+    def test_request_level_passed_through(self) -> None:
+        """Явный уровень из запроса попадает в AudioRequest."""
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+
+        captured: dict[str, Any] = {}
+        original = backend.start
+
+        def capturing_start(**kwargs: Any) -> tuple[bool, str | None]:
+            captured.update(kwargs)
+            return original(**kwargs)
+
+        backend.start = capturing_start  # type: ignore[method-assign]
+        result = service.start_recording(
+            {"audio": "mic", "noise_suppression": "strong"}
+        )
+
+        assert result["success"] is True
+        assert captured["audio"].noise_suppression == "strong"
+
+    def test_level_from_config_when_absent(self) -> None:
+        """Без явного уровня берётся значение из config.json."""
+        backend = FakeBackend()
+        service = RecordingService(backend=backend)
+        service._build_audio_settings.__self__  # noqa: B018
+
+        with patch("core.recording_service.get_config") as mock_cfg:
+            mock_cfg.return_value.settings.audio.noise_suppression = "light"
+            request = service._build_audio_settings({"audio": "mic"})
+
+        assert request.noise_suppression == "light"
