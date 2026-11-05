@@ -136,7 +136,8 @@ class RecordingTunablesSchema(BaseModel):
     параметры были доступны только через конструкторы writer'ов.
     """
 
-    enable_frame_skip: bool = Field(default=False)
+    # "auto" (#185): включать скип динамически при перегрузке
+    enable_frame_skip: bool | str = Field(default="auto")
     max_recovery_attempts: int = Field(default=3, ge=1, le=10)
     disk_warning_mb: float = Field(default=1024.0, ge=0, le=2_000_000)
     disk_critical_mb: float = Field(default=100.0, ge=0, le=2_000_000)
@@ -244,6 +245,8 @@ class PostProcessingSettingsSchema(BaseModel):
     webhook_enabled: bool = Field(default=False)
     webhook_url: str | None = Field(default=None)
     transcription_enabled: bool = Field(default=False)
+    # Режимы: local (openai-whisper), faster-whisper (CTranslate2,
+    # ~4x быстрее на CPU, #182), api (OpenAI API)
     transcription_mode: str = Field(default="local")
     transcription_model: str = Field(default="base")
     transcription_output_format: str = Field(default="srt")
@@ -361,7 +364,8 @@ class RecordingTunables:
     конструкторов рекордеров.
     """
 
-    enable_frame_skip: bool = False
+    # "auto" (#185): динамический скип при перегрузке
+    enable_frame_skip: bool | str = "auto"
     max_recovery_attempts: int = 3
     disk_warning_mb: float = 1024.0
     disk_critical_mb: float = 100.0

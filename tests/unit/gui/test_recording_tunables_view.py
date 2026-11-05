@@ -13,7 +13,7 @@ class TestRecordingTunablesView:
         """set_settings → get_settings возвращает те же значения."""
         view = RecordingTunablesView()
         settings = RecordingTunables(
-            enable_frame_skip=True,
+            enable_frame_skip="auto",
             max_recovery_attempts=6,
             audio_max_recovery_attempts=8,
             disk_warning_mb=4096.0,

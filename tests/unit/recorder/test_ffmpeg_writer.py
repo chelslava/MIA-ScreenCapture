@@ -3,6 +3,7 @@
 import io
 import logging
 import subprocess
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1818,3 +1819,127 @@ class TestAutoPreset:
         preset_index = cmd.index("-preset")
         assert cmd[preset_index + 1] == "veryfast"
         writer._terminate_process_safely()
+
+
+class TestAdaptiveFrameSkip:
+    """Динамический frame-skip по перегрузке (#185)."""
+
+    def _make_writer(
+        self,
+        preset_value: object,
+        stdin_delay_s: float = 0.0,
+    ) -> FFmpegVideoWriter:
+        writer = FFmpegVideoWriter(
+            output_path=Path("t.mp4"),
+            width=640,
+            height=480,
+            fps=30,
+            enable_frame_skip=preset_value,  # type: ignore[arg-type]
+        )
+        process = MagicMock()
+        process.poll.return_value = None
+
+        def slow_write(data: object) -> None:
+            time.sleep(stdin_delay_s)
+
+        process.stdin = MagicMock()
+        process.stdin.write.side_effect = slow_write
+        writer._process = process
+        writer._is_opened = True
+        return writer
+
+    def test_manual_true_always_skips_on_late(self) -> None:
+        """Ручной True: скип по счётчику, как раньше (#87)."""
+        # 30мс/кадр > 2*0.01с интервала — все записи поздние
+        writer = self._make_writer(True, stdin_delay_s=0.03)
+        writer._expected_frame_interval_s = 0.01
+        slow_frame = MagicMock()
+        slow_frame.nbytes = 100
+        slow_frame.flags.c_contiguous = True
+
+        with patch(
+            "recorder.ffmpeg_writer.retry_with_backoff",
+            lambda fn, policy: fn(),
+        ):
+            for _ in range(10):
+                writer.write(slow_frame)
+
+        assert writer.skipped_frames > 0
+
+    def test_auto_disabled_while_healthy(self) -> None:
+        """Auto: быстрые записи — скип не включается."""
+        writer = self._make_writer("auto")
+        writer._expected_frame_interval_s = 10.0
+        fast_frame = MagicMock()
+        fast_frame.nbytes = 100
+        fast_frame.flags.c_contiguous = True
+
+        with patch(
+            "recorder.ffmpeg_writer.retry_with_backoff",
+            lambda fn, policy: fn(),
+        ):
+            for _ in range(40):
+                writer.write(fast_frame)
+
+        assert writer._adaptive_skip_enabled is False
+        assert writer.skipped_frames == 0
+
+    def test_auto_enables_on_sustained_overload(self) -> None:
+        """Auto: >=50% поздних записей в окне — скип включается."""
+        # 30мс/кадр > 2*0.01с — поздние записи для auto-гистерезиса
+        writer = self._make_writer("auto", stdin_delay_s=0.03)
+        writer._expected_frame_interval_s = 0.01
+        slow_frame = MagicMock()
+        slow_frame.nbytes = 100
+        slow_frame.flags.c_contiguous = True
+
+        with (
+            patch(
+                "recorder.ffmpeg_writer.retry_with_backoff",
+                lambda fn, policy: fn(),
+            ),
+            patch.object(writer, "_publish_error_event") as mock_publish,
+        ):
+            for _ in range(40):
+                writer.write(slow_frame)
+
+        assert writer._adaptive_skip_enabled is True
+        mock_publish.assert_called_once()
+        assert mock_publish.call_args.kwargs["error_type"] == (
+            "adaptive_frame_skip_enabled"
+        )
+
+    def test_auto_disables_when_recovered(self) -> None:
+        """Auto: после восстановления скип выключается (гистерезис)."""
+        writer = self._make_writer("auto")
+        writer._adaptive_skip_enabled = True
+        writer._expected_frame_interval_s = 10.0
+        fast_frame = MagicMock()
+        fast_frame.nbytes = 100
+        fast_frame.flags.c_contiguous = True
+
+        with patch(
+            "recorder.ffmpeg_writer.retry_with_backoff",
+            lambda fn, policy: fn(),
+        ):
+            for _ in range(40):
+                writer.write(fast_frame)
+
+        assert writer._adaptive_skip_enabled is False
+
+    def test_manual_false_never_skips(self) -> None:
+        """Ручной False: прежнее поведение — все кадры."""
+        writer = self._make_writer(False, stdin_delay_s=0.03)
+        writer._expected_frame_interval_s = 0.01
+        slow_frame = MagicMock()
+        slow_frame.nbytes = 100
+        slow_frame.flags.c_contiguous = True
+
+        with patch(
+            "recorder.ffmpeg_writer.retry_with_backoff",
+            lambda fn, policy: fn(),
+        ):
+            for _ in range(10):
+                writer.write(slow_frame)
+
+        assert writer.skipped_frames == 0

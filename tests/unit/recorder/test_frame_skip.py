@@ -62,15 +62,19 @@ class TestFrameSkip:
     def _make_frame(self) -> np.ndarray:
         return np.zeros((360, 640, 3), dtype=np.uint8)
 
-    def test_skip_disabled_by_default(self, tmp_path: Path) -> None:
-        """frame-skip выключен по умолчанию (обратная совместимость)."""
+    def test_skip_auto_by_default(self, tmp_path: Path) -> None:
+        """frame-skip по умолчанию — "auto" (#185): динамический режим.
+
+        В здоровой записи скип не применяется (adaptive не включается).
+        """
         writer = FFmpegVideoWriter(
             output_path=tmp_path / "out.mp4",
             width=640,
             height=360,
             fps=30,
         )
-        assert writer._enable_frame_skip is False
+        assert writer._enable_frame_skip == "auto"
+        assert writer._skip_active() is False
 
     def test_no_skip_when_frame_on_time(self, tmp_path: Path) -> None:
         """Кадры вовремя — не скипаются."""

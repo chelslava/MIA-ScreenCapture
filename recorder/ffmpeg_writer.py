@@ -261,7 +261,7 @@ class FFmpegVideoWriter:
         max_segment_duration_s: float | None = None,
         event_bus: "EventBus | None" = None,
         health_check_interval_s: float = 1.0,
-        enable_frame_skip: bool = False,
+        enable_frame_skip: bool | str = "auto",
     ):
         """
         Инициализация FFmpeg видеозаписи.
@@ -351,16 +351,79 @@ class FFmpegVideoWriter:
         self._health_stop = threading.Event()
         self._health_fail_logged = False
 
-        # Frame-skip при перегрузке (#87): при превышении целевого
+        # Frame-skip при перегрузке (#87, #185): при превышении целевого
         # интервала кадра на 2× подряд — раз в max_consecutive_late_frames
-        # кадр скипнуть, чтобы не буферизировать. Пользовательский
-        # opt-in — по умолчанию совместимость (все кадры пишутся).
+        # кадр скипнуть, чтобы не буферизировать. Режимы: False (все кадры),
+        # True (всегда), "auto" (#185) — включается динамически при
+        # устойчивом отставании и выключается при восстановлении.
         self._enable_frame_skip = enable_frame_skip
         self._expected_frame_interval_s = 1.0 / max(fps, 1)
         self._last_frame_write_end = 0.0
         self._consecutive_late_frames = 0
         self._max_consecutive_late_frames = 5
         self._skipped_frames = 0
+        # auto-режим (#185): скользящее окно доли поздних записей
+        self._adaptive_skip_enabled = False
+        self._late_window: deque[bool] = deque(maxlen=60)
+        self._adaptive_skip_active_logged = False
+
+    def _skip_enabled_or_auto(self) -> bool:
+        """True, если режим skip — ручной True или auto (#185)."""
+        return bool(self._enable_frame_skip) or (
+            self._enable_frame_skip == "auto"
+        )
+
+    def _skip_active(self) -> bool:
+        """Применять ли скип прямо сейчас (#185).
+
+        Ручной True — всегда; auto — только после того, как доля
+        поздних записей в скользящем окне превысила порог.
+        """
+        if self._enable_frame_skip is True:
+            return True
+        if self._enable_frame_skip == "auto":
+            return self._adaptive_skip_enabled
+        return False
+
+    def _update_adaptive_skip(self, is_late: bool) -> None:
+        """Гистерезис auto-режима по скользящему окну (#185).
+
+        Включение: >= 50% поздних записей в окне 60 кадров.
+        Выключение: <= 10% — кодирование снова успевает.
+        Переключения публикуются одним WARNING-событием.
+
+        Args:
+            is_late: Была ли последняя запись поздней.
+        """
+        if self._enable_frame_skip != "auto":
+            return
+        self._late_window.append(is_late)
+        if len(self._late_window) < 30:
+            return
+        late_ratio = sum(self._late_window) / len(self._late_window)
+        if not self._adaptive_skip_enabled and late_ratio >= 0.5:
+            self._adaptive_skip_enabled = True
+            self._late_window.clear()
+            if not self._adaptive_skip_active_logged:
+                logger.warning(
+                    "Кодирование не успевает (%.0f%% поздних кадров) — "
+                    "включён пропуск кадров. Снизьте FPS, разрешение "
+                    "или выберите быстрый preset.",
+                    late_ratio * 100,
+                )
+                self._adaptive_skip_active_logged = True
+                self._publish_error_event(
+                    message=(
+                        "Кодирование не успевает — включён пропуск "
+                        "кадров. Снизьте FPS или выберите быстрый preset."
+                    ),
+                    error_type="adaptive_frame_skip_enabled",
+                    extra_payload={"late_ratio": round(late_ratio, 2)},
+                )
+        elif self._adaptive_skip_enabled and late_ratio <= 0.1:
+            self._adaptive_skip_enabled = False
+            self._adaptive_skip_active_logged = False
+            logger.info("Кодирование снова успевает — скип выключен")
 
     @property
     def skipped_frames(self) -> int:
@@ -927,7 +990,7 @@ class FFmpegVideoWriter:
 
         # Frame skip при перегрузке (#87): если запись стабильно отстаёт —
         # скипаем каждый N-й кадр, чтобы не буферизировать.
-        if self._enable_frame_skip and self._consecutive_late_frames >= (
+        if self._skip_active() and self._consecutive_late_frames >= (
             self._max_consecutive_late_frames
         ):
             self._skipped_frames += 1
@@ -994,15 +1057,18 @@ class FFmpegVideoWriter:
                 write_start = time.time()
                 retry_with_backoff(_do_write, self._retry_policy)
                 write_end = time.time()
-                if self._enable_frame_skip:
+                is_late = False
+                if self._skip_enabled_or_auto():
                     # Измеряем время записи кадра — основа для skip-решения
-                    # на следующих вызовах (#87). Late когда > 2× target.
+                    # на следующих вызовах (#87, #185). Late когда > 2× target.
                     write_dt = write_end - write_start
-                    if write_dt > 2.0 * self._expected_frame_interval_s:
+                    is_late = write_dt > 2.0 * self._expected_frame_interval_s
+                    if is_late:
                         self._consecutive_late_frames += 1
                     else:
                         self._consecutive_late_frames = 0
                     self._last_frame_write_end = write_end
+                self._update_adaptive_skip(is_late)
                 with self._lock:
                     self._frame_count += 1
                 self._current_segment_bytes += frame.nbytes

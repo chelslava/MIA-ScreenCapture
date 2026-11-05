@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -52,7 +52,17 @@ class RecordingTunablesView(QWidget):
         self._frame_skip_cb = QCheckBox(
             "Пропускать кадры при отставании записи"
         )
-        self._frame_skip_cb.toggled.connect(self._emit_change)
+        # Три состояния (#185): checked=True, unchecked=False,
+        # partially checked="auto" (динамический скип по перегрузке)
+        # Три состояния доступны в реальном Qt; в мок-среде — бинарный
+        # чекбокс с дефолтом True (hasattr-guard, #185)
+        # Fallback значения для мок-среды без check-state API (#185)
+        self._frame_skip_fallback: bool | str = "auto"
+        if hasattr(self._frame_skip_cb, "setTristate"):
+            self._frame_skip_cb.setTristate(True)
+        if hasattr(self._frame_skip_cb, "setCheckState"):
+            self._frame_skip_cb.setCheckState(Qt.CheckState.PartiallyChecked)
+        self._frame_skip_cb.clicked.connect(self._emit_change)
         form.addRow(self._frame_skip_cb)
 
         self._recovery_spin = QSpinBox()
@@ -161,7 +171,7 @@ class RecordingTunablesView(QWidget):
         segment_duration = self._segment_duration_spin.value()
         disk_warning = self._disk_warning_spin.value()
         return RecordingTunables(
-            enable_frame_skip=self._frame_skip_cb.isChecked(),
+            enable_frame_skip=self._get_frame_skip_value(),
             max_recovery_attempts=self._recovery_spin.value(),
             audio_max_recovery_attempts=self._audio_recovery_spin.value(),
             disk_warning_mb=disk_warning,
@@ -182,7 +192,7 @@ class RecordingTunablesView(QWidget):
 
     def set_settings(self, settings: RecordingTunables) -> None:
         """Заполнение формы переданными настройками."""
-        self._frame_skip_cb.setChecked(settings.enable_frame_skip)
+        self._set_frame_skip_value(settings.enable_frame_skip)
         self._recovery_spin.setValue(settings.max_recovery_attempts)
         self._audio_recovery_spin.setValue(
             settings.audio_max_recovery_attempts
@@ -197,3 +207,32 @@ class RecordingTunablesView(QWidget):
             settings.max_segment_duration_s or _NO_SEGMENT_LIMIT
         )
         self._health_check_spin.setValue(settings.health_check_interval_s)
+
+    def _get_frame_skip_value(self) -> bool | str:
+        """Значение frame-skip из трёх состояний чекбокса (#185)."""
+        if not hasattr(self._frame_skip_cb, "checkState"):
+            return self._frame_skip_fallback
+        state = self._frame_skip_cb.checkState()
+        if state == Qt.CheckState.PartiallyChecked:
+            return "auto"
+        return state == Qt.CheckState.Checked
+
+    def _set_frame_skip_value(self, value: bool | str) -> None:
+        """Установить frame-skip из конфигурации (#185).
+
+        Args:
+            value: True/False или "auto".
+        """
+        # Значение всегдаremembered: мок-среда не хранит check-state
+        self._frame_skip_fallback = value
+        if not hasattr(self._frame_skip_cb, "setCheckState"):
+            self._frame_skip_cb.setChecked(
+                bool(value) and value != "auto"
+            )
+            return
+        if value == "auto":
+            self._frame_skip_cb.setCheckState(Qt.CheckState.PartiallyChecked)
+        else:
+            self._frame_skip_cb.setCheckState(
+                Qt.CheckState.Checked if value else Qt.CheckState.Unchecked
+            )

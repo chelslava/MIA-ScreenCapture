@@ -686,7 +686,7 @@ class TestRecordingTunables:
         """Дефолты идентичны прежнему поведению конструкторов."""
         tunables = RecordingTunables()
 
-        assert tunables.enable_frame_skip is False
+        assert tunables.enable_frame_skip == "auto"
         assert tunables.max_recovery_attempts == 3
         assert tunables.disk_warning_mb == 1024.0
         assert tunables.disk_critical_mb == 100.0
@@ -776,7 +776,7 @@ class TestRecordingTunables:
         settings = manager._dict_to_settings({})
 
         assert isinstance(settings.recording_tunables, RecordingTunables)
-        assert settings.recording_tunables.enable_frame_skip is False
+        assert settings.recording_tunables.enable_frame_skip == "auto"
 
 
 class TestRemoveRecentRecordings:

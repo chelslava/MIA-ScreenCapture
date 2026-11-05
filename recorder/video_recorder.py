@@ -337,7 +337,7 @@ class VideoRecorder:
         disk_check_interval_s: float = 30.0,
         max_segment_size_mb: float | None = None,
         max_segment_duration_s: float | None = None,
-        enable_frame_skip: bool = False,
+        enable_frame_skip: bool | str = "auto",
         health_check_interval_s: float = 1.0,
         event_bus: Any | None = None,
         pip_settings: PiPSettings | None = None,
