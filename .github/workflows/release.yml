@@ -36,6 +36,10 @@ jobs:
         run: python -m build
 
       - name: Generate SBOM (CycloneDX)
+        # pip-audit возвращает non-zero при найденных уязвимостях —
+        # здесь задача только сгенерировать манифест; аудит делает
+        # отдельный Security Audit job в CI (#177)
+        continue-on-error: true
         run: |
           # cyclonedx-extra обязателен для --format cyclonedx-json (#177)
           python -m pip install --upgrade "pip-audit[cyclonedx]"
@@ -186,6 +190,8 @@ jobs:
           path: dist/MIA-ScreenCapture-Setup.exe
 
       - name: Generate SBOM (CycloneDX)
+        # см. комментарий в build-python: аудит — не задача этого шага
+        continue-on-error: true
         shell: pwsh
         run: |
           # cyclonedx-extra обязателен для --format cyclonedx-json (#177)
