@@ -146,3 +146,84 @@ class TestEvaluateSoakChecks:
         failures = soak_module.evaluate_soak_checks(report)
 
         assert any("длительность" in f for f in failures)
+
+
+class TestBenchmarkPercentile:
+    """Персентили и пороги бенчмарка hot-path (#173)."""
+
+    def test_percentile_basic(self, soak_module: Any) -> None:
+        """Персентиль отсортированного списка."""
+        import importlib.util
+        from pathlib import Path as PathLib
+
+        spec = importlib.util.spec_from_file_location(
+            "benchmark_hot_path", PathLib("scripts") / "benchmark_hot_path.py"
+        )
+        assert spec is not None and spec.loader is not None
+        bench = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bench)
+
+        assert bench.percentile([], 0.99) == 0.0
+        assert bench.percentile([1.0, 2.0, 3.0], 0.5) == 2.0
+        assert bench.percentile([1.0, 2.0, 3.0, 4.0], 0.99) == 4.0
+
+    def test_evaluate_clean_report_passes(self, soak_module: Any) -> None:
+        """Отчёт в пределах порогов не даёт нарушений."""
+        import importlib.util
+        from pathlib import Path as PathLib
+
+        spec = importlib.util.spec_from_file_location(
+            "benchmark_hot_path", PathLib("scripts") / "benchmark_hot_path.py"
+        )
+        assert spec is not None and spec.loader is not None
+        bench = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bench)
+
+        report = {
+            "fps": 30,
+            "elapsed_s": 60.0,
+            "frames_written": 1800,
+            "write_p99_ms": 12.0,
+            "slow_write_ratio": 0.01,
+            "rss_peak_mb": 300.0,
+        }
+        assert bench.evaluate_benchmark(report) == []
+
+    def test_evaluate_fps_regression_detected(self, soak_module: Any) -> None:
+        """Просадка FPS обнаруживается."""
+        import importlib.util
+        from pathlib import Path as PathLib
+
+        spec = importlib.util.spec_from_file_location(
+            "benchmark_hot_path", PathLib("scripts") / "benchmark_hot_path.py"
+        )
+        assert spec is not None and spec.loader is not None
+        bench = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bench)
+
+        report = {"fps": 30, "elapsed_s": 60.0, "frames_written": 1500}
+        failures = bench.evaluate_benchmark(report)
+        assert any("FPS" in f for f in failures)
+
+    def test_evaluate_p99_and_rss_detected(self, soak_module: Any) -> None:
+        """Превышение p99 и RSS обнаруживается."""
+        import importlib.util
+        from pathlib import Path as PathLib
+
+        spec = importlib.util.spec_from_file_location(
+            "benchmark_hot_path", PathLib("scripts") / "benchmark_hot_path.py"
+        )
+        assert spec is not None and spec.loader is not None
+        bench = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bench)
+
+        report = {
+            "fps": 30,
+            "elapsed_s": 60.0,
+            "frames_written": 1800,
+            "write_p99_ms": 40.0,
+            "slow_write_ratio": 0.10,
+            "rss_peak_mb": 900.0,
+        }
+        failures = bench.evaluate_benchmark(report)
+        assert len(failures) == 3

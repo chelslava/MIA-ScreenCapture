@@ -1,0 +1,88 @@
+name: Performance Benchmark
+
+# Регрессионный бенчмарк hot-path записи (#173): еженедельный замер
+# writer-конвейера (синтетические кадры) с порогами FPS/p99/RSS.
+# Абсолютные пороги вместо дельта-сравнения с бейслайном: шум
+# runner'ов GitHub делает дельту ненадёжной.
+
+on:
+  schedule:
+    # Понедельник 05:00 UTC (после soak-прогона 03:00)
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Длительность замера в секундах"
+        default: "60"
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PYTHONIOENCODING: "utf-8"
+  PYTHONUTF8: "1"
+
+jobs:
+  benchmark:
+    name: Hot Path Benchmark (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      UV_LINK_MODE: copy
+      UV_CACHE_DIR: ${{ github.workspace }}\\.uv-cache
+      TEMP: ${{ github.workspace }}\\tests\\.local_tmp\\system
+      TMP: ${{ github.workspace }}\\tests\\.local_tmp\\system
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: python -m pip install --upgrade pip uv
+
+      - name: Sync dependencies
+        run: uv sync --extra dev --group dev
+
+      - name: Run benchmark
+        run: |
+          uv run python scripts/benchmark_hot_path.py `
+            --duration "${{ inputs.duration || '60' }}" `
+            --output benchmark/benchmark-output.mp4 `
+            --report benchmark/benchmark-report.json
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-report
+          path: benchmark/benchmark-report.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  benchmark-failure-issue:
+    name: Create Issue on Regression
+    needs: [benchmark]
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Create issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "Performance: бенчмарк hot-path выявил регресс" \
+            --label "performance,P2,devops" \
+            --body "Регрессионный бенчмарк (#173) превысил пороги на коммите ${{ github.sha }}.
+
+          Лог: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Артефакт: \`benchmark-report\` (benchmark-report.json — секция \`failures\`)."
