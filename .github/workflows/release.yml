@@ -37,9 +37,9 @@ jobs:
 
       - name: Generate SBOM (CycloneDX)
         run: |
-          # cyclonedx-extra обязателен для --format cyclonedx (#177)
+          # cyclonedx-extra обязателен для --format cyclonedx-json (#177)
           python -m pip install --upgrade "pip-audit[cyclonedx]"
-          pip-audit --format cyclonedx --output dist/sbom-python.json --skip-editable
+          pip-audit --format cyclonedx-json --output dist/sbom-python.json --skip-editable
 
       - name: Attest build provenance (sdist and wheel)
         uses: actions/attest-build-provenance@v3
@@ -188,9 +188,9 @@ jobs:
       - name: Generate SBOM (CycloneDX)
         shell: pwsh
         run: |
-          # cyclonedx-extra обязателен для --format cyclonedx (#177)
+          # cyclonedx-extra обязателен для --format cyclonedx-json (#177)
           python -m pip install --upgrade "pip-audit[cyclonedx]"
-          pip-audit --format cyclonedx --output dist/sbom-windows.json --skip-editable
+          pip-audit --format cyclonedx-json --output dist/sbom-windows.json --skip-editable
 
       - name: Upload Windows SBOM
         uses: actions/upload-artifact@v7
