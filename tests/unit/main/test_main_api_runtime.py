@@ -192,10 +192,14 @@ def _build_app(
         settings_ops_mod,
     ):
         monkeypatch.setattr(runtime_mod, "get_config", lambda: fake_config)
-    monkeypatch.setattr(vra, "RecordingService", FakeRecordingService)
-    monkeypatch.setattr(vra, "GUIRecordingBackend", lambda: object())
-    monkeypatch.setattr(vra, "WebSocketManager", FakeWebSocketManager)
-    monkeypatch.setattr(vra, "WebhookNotifier", FakeWebhookNotifier)
+    # После #184 сервисы импортируются в _init_runtime_services из
+    # исходных модулей — патчим источники, а не vra
+    monkeypatch.setattr(
+        "core.recording_service.RecordingService", FakeRecordingService
+    )
+    monkeypatch.setattr("gui.backends.GUIRecordingBackend", lambda: object())
+    monkeypatch.setattr("api.websocket.WebSocketManager", FakeWebSocketManager)
+    monkeypatch.setattr("core.webhook.WebhookNotifier", FakeWebhookNotifier)
     stored_key: dict[str, str | None] = {"value": None}
 
     def _get_stored_key() -> str | None:

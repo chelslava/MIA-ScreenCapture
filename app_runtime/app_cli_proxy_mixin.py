@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
-from api.auth import API_KEY_HEADER
 from cli.parser import (
     print_schedule_list,
     print_status,
@@ -29,6 +28,8 @@ class CliProxyMixin(AppSharedState):
     """Миксин VideoRecorderApp: см. docstring модуля."""
 
     def _get_api_headers(self) -> dict:
+        from api.auth import API_KEY_HEADER  # лениво: flask-цепочка (#184)
+
         """
         Получение заголовков для API запросов с аутентификацией.
 

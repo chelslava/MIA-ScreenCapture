@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from core.api_runtime_manager import ApiRuntimeManager
+if TYPE_CHECKING:
+    from core.api_runtime_manager import ApiRuntimeManager
 
 
 class ApiRuntimeCoordinator:

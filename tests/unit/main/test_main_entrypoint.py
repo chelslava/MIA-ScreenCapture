@@ -216,3 +216,47 @@ class TestMainEntrypoint:
 
         assert result == 0
         assert focus_calls == []
+
+
+class TestLazyImports:
+    """CLI-прокси не платит за Flask/GUI импорты (#184)."""
+
+    def test_cli_mode_skips_heavy_imports(self) -> None:
+        """--start без запущенного экземпляра не импортирует flask/gui."""
+        import subprocess
+        import sys
+
+        code = (
+            "import main, sys\n"
+            "app = main.VideoRecorderApp({'mode': 'start'})\n"
+            "assert 'flask' not in sys.modules, 'flask imported'\n"
+            "assert 'PyQt6' not in sys.modules, 'PyQt6 imported'\n"
+            "assert 'gui.backends' not in sys.modules, 'gui imported'\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_headless_runtime_initializes_services(self) -> None:
+        """headless после _init_runtime_services имеет полный набор."""
+        import subprocess
+        import sys
+
+        code = (
+            "import main, sys\n"
+            "app = main.VideoRecorderApp({'mode': 'headless'})\n"
+            "app._init_runtime_services()\n"
+            "assert app._recording_service is not None\n"
+            "assert 'flask' in sys.modules, 'flask expected'\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr

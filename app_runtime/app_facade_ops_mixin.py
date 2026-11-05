@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from api.server import APIServer
-from api.websocket import WebSocketManager
+    from api.websocket import WebSocketManager
 from app_runtime.constants import (
     GUI_DEFAULT_TIMEOUT_SECONDS,
 )

@@ -9,24 +9,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol
 
-from api.websocket import WebSocketManager
 from app_runtime.constants import GUI_DEFAULT_TIMEOUT_SECONDS
 from app_runtime.thread_executor import MainThreadExecutor
-from core.api_runtime_manager import ApiRuntimeManager
-from core.application_facade import ApplicationFacade
-from core.cloud.manager import CloudSyncManager
-from core.command_queue import CommandQueue
-from core.library.manager import LibraryManager
 from core.lifecycle import GracefulShutdown
-from core.multi_recording_service import MultiRecordingService
-from core.plugins.manager import PluginManager
-from core.post_processing.manager import PostProcessingManager
-from core.recording_service import RecordingService
-from core.updater.updater import AppUpdater
-from core.webhook import WebhookNotifier
 
 if TYPE_CHECKING:
     from api.server import APIServer
+    from api.websocket import WebSocketManager
+    from core.api_runtime_manager import ApiRuntimeManager
+    from core.application_facade import ApplicationFacade
+    from core.cloud.manager import CloudSyncManager
+    from core.command_queue import CommandQueue
+    from core.library.manager import LibraryManager
+    from core.lifecycle import GracefulShutdown
+    from core.multi_recording_service import MultiRecordingService
+    from core.plugins.manager import PluginManager
+    from core.post_processing.manager import PostProcessingManager
+    from core.recording_service import RecordingService
+    from core.updater.updater import AppUpdater
+    from core.webhook import WebhookNotifier
     from gui.main_window import MainWindow
     from gui.tray_icon import TrayIcon
     from scheduler.task_scheduler import TaskScheduler

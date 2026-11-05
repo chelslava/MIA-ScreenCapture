@@ -15,8 +15,6 @@ if TYPE_CHECKING:
     from gui.main_window import MainWindow
     from gui.tray_icon import TrayIcon
     from scheduler.task_scheduler import TaskScheduler
-from api.websocket import WebSocketManager
-from app_runtime.api_coordinator import ApiRuntimeCoordinator
 from app_runtime.app_api_callbacks_mixin import ApiCallbacksMixin
 from app_runtime.app_cli_proxy_mixin import CliProxyMixin
 from app_runtime.app_facade_ops_mixin import FacadeOpsMixin
@@ -24,37 +22,22 @@ from app_runtime.app_hotkeys_mixin import HotkeysMixin
 from app_runtime.app_platform_ops_mixin import PlatformOpsMixin
 from app_runtime.app_scheduler_mixin import SchedulerOpsMixin
 from app_runtime.app_settings_ops_mixin import SettingsOpsMixin
-from app_runtime.app_shared_state import (
-    _ApiRuntimeCoordinatorProtocol,
-    _GuiRuntimeCoordinatorProtocol,
-    _RecordingRuntimeCoordinatorProtocol,
-)
-from app_runtime.gui_coordinator import GuiRuntimeCoordinator
-from app_runtime.recording_coordinator import RecordingRuntimeCoordinator
-from app_runtime.thread_executor import MainThreadExecutor
 from config import get_config
-from core.api_runtime_manager import ApiRuntimeManager
-from core.application_facade import ApplicationFacade
-from core.application_service import ApplicationService
-from core.command_queue import CommandQueue
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
-from core.multi_recording_service import MultiRecordingService
-from core.recording_service import RecordingService
-from core.webhook import (
-    WebhookNotifier,
-)
 from exceptions import (
     ConfigValidationError,
     RecordingError,
     SchedulerError,
 )
-from gui.backends import GUIRecordingBackend
 from logger_config import get_module_logger
 from recorder.utils import (
     check_ffmpeg,
 )
 
 logger = get_module_logger(__name__)
+
+# Режимы, требующие полного рантайма и single-instance guard (#176/#184)
+_SINGLE_INSTANCE_MODES = ("gui", "headless")
 
 
 class VideoRecorderApp(
@@ -100,7 +83,60 @@ class VideoRecorderApp(
 
         # Graceful shutdown менеджер
         self._shutdown_manager: GracefulShutdown | None = None
-        # Headless-friendly сервис записи (используется как fallback без GUI)
+        if self._mode in _SINGLE_INSTANCE_MODES:
+            # Полный рантайм: GUI и headless используют все сервисы.
+            # CLI-прокси-режимы (--start/--stop/--status/...) создают
+            # сервисы лениво — им нужен только REST-прокси (#184).
+            self._init_runtime_services()
+        else:
+            # Сентинелы: ленивая инициализация при первом обращении
+            # (см. _init_runtime_services / _ensure_runtime_services).
+            for attr in (
+                "_recording_service",
+                "_websocket_manager",
+                "_webhook_notifier",
+                "_multi_recording_service",
+                "_plugin_manager",
+                "_library_manager",
+                "_cloud_sync_manager",
+                "_post_processing_manager",
+                "_updater",
+                "_command_queue",
+                "_gui_executor",
+                "_gui_thread_id",
+                "_gui_runtime_coordinator",
+                "_recording_runtime_coordinator",
+                "_application_service",
+                "_api_runtime_manager",
+                "_api_runtime_coordinator",
+            ):
+                setattr(self, attr, None)
+
+    def _init_runtime_services(self) -> None:
+        """Инициализация полного набора runtime-сервисов (#184).
+
+        Тяжёлые импорты (Flask через api.*, PyQt6 через gui.*) выполняются
+        только для режимов gui/headless — CLI-прокси их не платит.
+        """
+        from api.websocket import WebSocketManager
+        from app_runtime.api_coordinator import ApiRuntimeCoordinator
+        from app_runtime.gui_coordinator import GuiRuntimeCoordinator
+        from app_runtime.recording_coordinator import (
+            RecordingRuntimeCoordinator,
+        )
+        from core.api_runtime_manager import ApiRuntimeManager
+        from core.application_service import ApplicationService
+        from core.cloud.manager import CloudSyncManager
+        from core.command_queue import CommandQueue
+        from core.library.manager import LibraryManager
+        from core.multi_recording_service import MultiRecordingService
+        from core.plugins.manager import PluginManager
+        from core.post_processing.manager import PostProcessingManager
+        from core.recording_service import RecordingService
+        from core.updater.updater import AppUpdater
+        from core.webhook import WebhookNotifier
+        from gui.backends import GUIRecordingBackend
+
         self._recording_service = RecordingService(
             backend=GUIRecordingBackend()
         )
@@ -112,59 +148,46 @@ class VideoRecorderApp(
         self._webhook_notifier.attach_event_bus(
             self._recording_service.event_bus
         )
-        # Мультиисточниковая запись (#51) — отдельный путь, не зависящий от
-        # GUI/single-recording стека. Делит event_bus с _recording_service,
-        # чтобы события доходили до тех же WebSocket/webhook подписчиков.
+        # Мультиисточниковая запись (#51) — делит event_bus с
+        # _recording_service: события доходят до тех же подписчиков.
         self._multi_recording_service = MultiRecordingService(
             event_bus=self._recording_service.event_bus
         )
-        from core.plugins.manager import PluginManager
-
         self._plugin_manager = PluginManager(
             event_bus=self._recording_service.event_bus,
         )
         self._plugin_manager.discover_and_load()
-
-        from core.library.manager import LibraryManager
-
         self._library_manager = LibraryManager(
             event_bus=self._recording_service.event_bus,
         )
-
-        from core.cloud.manager import CloudSyncManager
-
         self._cloud_sync_manager = CloudSyncManager(
             event_bus=self._recording_service.event_bus,
         )
-
-        from core.post_processing.manager import PostProcessingManager
-
         self._post_processing_manager = PostProcessingManager(
             event_bus=self._recording_service.event_bus,
             plugin_manager=self._plugin_manager,
         )
-        from core.updater.updater import AppUpdater
-
         self._updater = AppUpdater(
             event_bus=self._recording_service.event_bus,
         )
         self._command_queue = CommandQueue(maxsize=50)
-        self._gui_executor: MainThreadExecutor | None = None
-        self._gui_thread_id: int | None = None
-        self._gui_runtime_coordinator: _GuiRuntimeCoordinatorProtocol = (
-            GuiRuntimeCoordinator(self)
-        )
-        self._recording_runtime_coordinator: _RecordingRuntimeCoordinatorProtocol = RecordingRuntimeCoordinator(
-            self
-        )
-        self._application_service: ApplicationFacade = ApplicationService(self)
+        self._gui_executor = None
+        self._gui_thread_id = None
+        self._gui_runtime_coordinator = GuiRuntimeCoordinator(self)
+        self._recording_runtime_coordinator = RecordingRuntimeCoordinator(self)
+        self._application_service = ApplicationService(self)
         self._api_runtime_manager = ApiRuntimeManager(
             self,
             self._application_service,
         )
-        self._api_runtime_coordinator: _ApiRuntimeCoordinatorProtocol = (
-            ApiRuntimeCoordinator(self._api_runtime_manager)
+        self._api_runtime_coordinator = ApiRuntimeCoordinator(
+            self._api_runtime_manager
         )
+
+    def _ensure_runtime_services(self) -> None:
+        """Ленивая инициализация сервисов для fallback-путей CLI (#184)."""
+        if self._recording_service is None:
+            self._init_runtime_services()
 
     def run(self) -> int:
         """
