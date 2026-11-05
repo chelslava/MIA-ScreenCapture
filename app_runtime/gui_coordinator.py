@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from .thread_executor import MainThreadExecutor
 
 if TYPE_CHECKING:
-    from main import VideoRecorderApp
+    from app_runtime.video_recorder_app import VideoRecorderApp
 
 
 class GuiRuntimeCoordinator:

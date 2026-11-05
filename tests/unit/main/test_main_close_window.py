@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import app_runtime.video_recorder_app as vra
 import main
 
 
@@ -37,7 +38,7 @@ def app(
     fake_config: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> main.VideoRecorderApp:
     """Экземпляр VideoRecorderApp с подменённым get_config."""
-    monkeypatch.setattr(main, "get_config", lambda: fake_config)
+    monkeypatch.setattr(vra, "get_config", lambda: fake_config)
     monkeypatch.setattr("config.get_config", lambda: fake_config)
     instance = main.VideoRecorderApp.__new__(main.VideoRecorderApp)
     instance._main_window = MagicMock()

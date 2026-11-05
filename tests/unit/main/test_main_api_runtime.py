@@ -10,6 +10,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import app_runtime.app_api_callbacks_mixin as app_callbacks_mod
+import app_runtime.app_platform_ops_mixin as app_platform_mod
+import app_runtime.app_scheduler_mixin as app_scheduler_mod
+import app_runtime.app_settings_ops_mixin as settings_ops_mod
+import app_runtime.video_recorder_app as vra
 import main
 from config import RateLimitSettings
 
@@ -176,12 +181,21 @@ def _build_app(
         save=MagicMock(return_value=True),
     )
 
-    monkeypatch.setattr(main, "get_config", lambda: fake_config)
     monkeypatch.setattr("config.get_config", lambda: fake_config)
-    monkeypatch.setattr(main, "RecordingService", FakeRecordingService)
-    monkeypatch.setattr(main, "GUIRecordingBackend", lambda: object())
-    monkeypatch.setattr(main, "WebSocketManager", FakeWebSocketManager)
-    monkeypatch.setattr(main, "WebhookNotifier", FakeWebhookNotifier)
+    # get_config потребляется несколькими модулями рантайма (#176)
+    # Патчим только модули, реально импортирующие get_config
+    for runtime_mod in (
+        vra,
+        app_scheduler_mod,
+        app_callbacks_mod,
+        app_platform_mod,
+        settings_ops_mod,
+    ):
+        monkeypatch.setattr(runtime_mod, "get_config", lambda: fake_config)
+    monkeypatch.setattr(vra, "RecordingService", FakeRecordingService)
+    monkeypatch.setattr(vra, "GUIRecordingBackend", lambda: object())
+    monkeypatch.setattr(vra, "WebSocketManager", FakeWebSocketManager)
+    monkeypatch.setattr(vra, "WebhookNotifier", FakeWebhookNotifier)
     stored_key: dict[str, str | None] = {"value": None}
 
     def _get_stored_key() -> str | None:
@@ -975,7 +989,10 @@ class TestRecordingFilePaths:
         fake_config = SimpleNamespace(
             get_output_path=lambda: output_root / "generated.mp4"
         )
-        monkeypatch.setattr(main, "get_config", lambda: fake_config)
+        # Потребитель _resolve_recording_file_path — settings_ops mixin
+        monkeypatch.setattr(
+            settings_ops_mod, "get_config", lambda: fake_config
+        )
 
     def test_verify_uses_canonical_path_under_configured_output_root(
         self,
@@ -1000,7 +1017,9 @@ class TestRecordingFilePaths:
             error=None,
         )
         verify_mock = MagicMock(return_value=check)
-        monkeypatch.setattr(main, "verify_video_integrity", verify_mock)
+        monkeypatch.setattr(
+            settings_ops_mod, "verify_video_integrity", verify_mock
+        )
 
         result = self._app()._verify_recording_file("archive/video.mp4")
 
@@ -1028,7 +1047,9 @@ class TestRecordingFilePaths:
             error=None,
         )
         repair_mock = MagicMock(return_value=repair)
-        monkeypatch.setattr(main, "attempt_repair_video", repair_mock)
+        monkeypatch.setattr(
+            settings_ops_mod, "attempt_repair_video", repair_mock
+        )
 
         result = self._app()._repair_recording_file("archive/video.mp4")
 
@@ -1045,7 +1066,9 @@ class TestRecordingFilePaths:
         output_root.mkdir()
         self._configure_output_root(monkeypatch, output_root)
         repair_mock = MagicMock()
-        monkeypatch.setattr(main, "attempt_repair_video", repair_mock)
+        monkeypatch.setattr(
+            settings_ops_mod, "attempt_repair_video", repair_mock
+        )
 
         with pytest.raises(ValueError, match="каталога вывода"):
             self._app()._repair_recording_file("../outside/video.mp4")
@@ -1070,7 +1093,9 @@ class TestRecordingFilePaths:
 
         self._configure_output_root(monkeypatch, output_root)
         repair_mock = MagicMock()
-        monkeypatch.setattr(main, "attempt_repair_video", repair_mock)
+        monkeypatch.setattr(
+            settings_ops_mod, "attempt_repair_video", repair_mock
+        )
 
         with pytest.raises(ValueError, match="каталога вывода"):
             self._app()._repair_recording_file("escape/video.mp4")
@@ -1098,7 +1123,7 @@ class TestRecordingFilePaths:
         outside_sentinel.write_bytes(b"keep")
         self._configure_output_root(monkeypatch, output_root)
         utility_mock = MagicMock(side_effect=outside_sentinel.unlink)
-        monkeypatch.setattr(main, utility_name, utility_mock)
+        monkeypatch.setattr(settings_ops_mod, utility_name, utility_mock)
 
         with pytest.raises(ValueError, match="файлом внутри каталога вывода"):
             getattr(self._app(), operation_name)(".")
@@ -1126,7 +1151,7 @@ class TestRecordingFilePaths:
         nested_directory.mkdir(parents=True)
         self._configure_output_root(monkeypatch, output_root)
         utility_mock = MagicMock()
-        monkeypatch.setattr(main, utility_name, utility_mock)
+        monkeypatch.setattr(settings_ops_mod, utility_name, utility_mock)
 
         with pytest.raises(ValueError, match="файлом внутри каталога вывода"):
             getattr(self._app(), operation_name)("archive")
@@ -1152,7 +1177,9 @@ class TestRecordingFilePaths:
             error="Файл не найден",
         )
         repair_mock = MagicMock(return_value=repair)
-        monkeypatch.setattr(main, "attempt_repair_video", repair_mock)
+        monkeypatch.setattr(
+            settings_ops_mod, "attempt_repair_video", repair_mock
+        )
 
         result = self._app()._repair_recording_file("archive/missing.mp4")
 
@@ -1171,7 +1198,7 @@ class TestShutdownDetachEventBus:
     ) -> main.GracefulShutdown:
         """Изолированный shutdown manager без глобального синглтона."""
         manager = main.GracefulShutdown()
-        monkeypatch.setattr(main, "get_shutdown_manager", lambda: manager)
+        monkeypatch.setattr(vra, "get_shutdown_manager", lambda: manager)
         # Не трогаем реальные обработчики сигналов в unit-тестах
         monkeypatch.setattr(manager, "setup_signal_handlers", lambda: None)
         return manager

@@ -12,7 +12,7 @@ from .constants import (
 )
 
 if TYPE_CHECKING:
-    from main import VideoRecorderApp
+    from app_runtime.video_recorder_app import VideoRecorderApp
 
 logger = get_module_logger(__name__)
 
