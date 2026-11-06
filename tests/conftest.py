@@ -419,26 +419,6 @@ class MockQWidgetBase:
         """Для QLabel: pixmap содержимое (no-op в моках)."""
         self._pixmap = pixmap
 
-    def setPlaceholderText(self, text: str):
-        """Для QLineEdit: текст-подсказка (no-op в моках)."""
-        self._placeholder = text
-
-    def setToolTip(self, text: str):
-        """Для QWidget: подсказка (no-op в моках)."""
-        self._tooltip = text
-
-    def setFixedWidth(self, width: int):
-        """Для QWidget: фиксация ширины (no-op в моках)."""
-        self._fixed_width = width
-
-    def setFixedHeight(self, height: int):
-        """Для QWidget: фиксация высоты (no-op в моках)."""
-        self._fixed_height = height
-
-    def setFixedSize(self, width, height=None):
-        """Для QWidget: фиксация размера (no-op в моках)."""
-        self._fixed_size = (width, height)
-
     def text(self) -> str:
         """Для QLabel, QPushButton, QLineEdit."""
         return getattr(self, "_text", "")
@@ -947,6 +927,8 @@ MockQTreeWidget = _create_mock_class("QTreeWidget", (MockQWidgetBase,))
 MockQTabWidget = _create_mock_class("QTabWidget", (MockQWidgetBase,))
 MockQScrollArea = _create_mock_class("QScrollArea", (MockQWidgetBase,))
 MockQSplitter = _create_mock_class("QSplitter", (MockQWidgetBase,))
+
+
 class _MockQFrameBase(MockQWidgetBase):
     """Базовый mock для QFrame."""
 

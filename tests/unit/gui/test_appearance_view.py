@@ -210,3 +210,30 @@ class TestWin11BackdropSetting:
 
         assert received == []
         assert not view._win11_backdrop_checkbox.isChecked()
+
+
+class TestNotificationSounds:
+    """Чекбокс звуковых сигналов записи (#199)."""
+
+    def test_set_notification_sounds_updates_checkbox(
+        self, qapp: QApplication
+    ) -> None:
+        """set_notification_sounds выставляет чекбокс без сигнала."""
+        view = AppearanceView()
+        received: list[bool] = []
+        view.notification_sounds_changed.connect(received.append)
+
+        view.set_notification_sounds(True)
+
+        assert view._notification_sounds_checkbox.isChecked() is True
+        assert received == []
+
+    def test_toggle_emits_signal(self, qapp: QApplication) -> None:
+        """Переключение эмитит notification_sounds_changed."""
+        view = AppearanceView()
+        received: list[bool] = []
+        view.notification_sounds_changed.connect(received.append)
+
+        view._on_notification_sounds_toggled(True)
+
+        assert received == [True]

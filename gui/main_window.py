@@ -58,6 +58,7 @@ from gui.models.recording_state import (
     RecordingState,
     VideoSettings,
 )
+from gui.notifications import play_event_sound, send_notification
 from gui.styles.backdrop import (
     apply_mica_backdrop,
     resolve_backdrop_active,
@@ -351,6 +352,11 @@ class MainWindow(
             get_config().settings.ui_animations
         )
 
+        # Звуковые сигналы записи (#199)
+        self._appearance_view.set_notification_sounds(
+            get_config().settings.notification_sounds
+        )
+
         # Материал Windows 11 (#157)
         self._appearance_view.set_win11_backdrop(
             get_config().settings.win11_backdrop
@@ -523,6 +529,12 @@ class MainWindow(
         """Сохранение настройки плавных переходов (#161)."""
         config = get_config()
         config.settings.ui_animations = bool(enabled)
+        config.save()
+
+    def _on_notification_sounds_changed(self, enabled: bool) -> None:
+        """Сохранение настройки звуковых сигналов записи (#199)."""
+        config = get_config()
+        config.settings.notification_sounds = bool(enabled)
         config.save()
 
     def _on_minimize_to_tray_changed(self, enabled: bool) -> None:
@@ -1187,6 +1199,9 @@ class MainWindow(
         self._appearance_view.ui_animations_changed.connect(
             self._on_ui_animations_changed
         )
+        self._appearance_view.notification_sounds_changed.connect(
+            self._on_notification_sounds_changed
+        )
         self._appearance_view.win11_backdrop_changed.connect(
             self._on_win11_backdrop_changed
         )
@@ -1423,6 +1438,36 @@ class MainWindow(
         QMessageBox.critical(self, "Ошибка", message)
         self.error_occurred.emit(message)
 
+    def _notify_recording_event(self, kind: str, message: str) -> None:
+        """Уведомление о событии записи с дедупликацией (#199).
+
+        Окно в фокусе — только ненавязчивый in-GUI toast; вне фокуса —
+        системный toast (если разрешён show_notifications). Звук —
+        отдельная опция notification_sounds, звучит независимо от фокуса.
+        Headless-режим сюда не доходит (нет MainWindow).
+
+        Args:
+            kind: Тип события ('start', 'stop', 'paused', 'resumed').
+            message: Текст уведомления.
+        """
+        settings = get_config().settings
+        if self._window_in_focus():
+            self._show_toast(message)
+        elif settings.show_notifications:
+            send_notification("MIA-ScreenCapture", message)
+        if settings.notification_sounds:
+            play_event_sound(kind)
+
+    def _window_in_focus(self) -> bool:
+        """Фокус главного окна.
+
+        В unit-моках (MainWindow через __new__) isActiveWindow
+        отсутствует — считаем окно в фокусе, чтобы тесты не порождали
+        системные toast-вызовы (PowerShell-подпроцессы и т.п.).
+        """
+        check = getattr(self, "isActiveWindow", None)
+        return bool(check()) if callable(check) else True
+
     def _show_non_modal_error(
         self,
         message: str,
@@ -1439,6 +1484,13 @@ class MainWindow(
             self.status_label, self.status_bar, message, duration_ms
         )
         self.error_occurred.emit(message)
+        # Вне фокуса ошибка заслуживает системного toast (#199);
+        # в фокусе статус-бар уже показывает ошибку
+        if (
+            not self._window_in_focus()
+            and get_config().settings.show_notifications
+        ):
+            send_notification("MIA-ScreenCapture", message)
 
     # === Режим рисования поверх экрана (#159) ===
 

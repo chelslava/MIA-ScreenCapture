@@ -85,6 +85,7 @@ class RecordingFlowControllerMixin(_QWindowBase):
         # Методы MainWindow
         _show_toast: Callable[..., None]
         _refresh_recent_recordings: Callable[[], None]
+        _notify_recording_event: Callable[[str, str], None]
 
     def _get_finalization_dialog(self) -> FinalizationProgressDialog:
         """Получить диалог прогресса финализации (создать при необходимости)."""
@@ -209,6 +210,8 @@ class RecordingFlowControllerMixin(_QWindowBase):
 
         self._show_floating_widget()
         self.recording_started.emit(str(output_path))
+        # Системный toast + звук старта (#199)
+        self._notify_recording_event("start", "Запись начата")
         logger.info(f"Запись запущена: {output_path}")
 
     def _on_audio_chunks_dropped_warning(self, total: int) -> None:
@@ -247,6 +250,10 @@ class RecordingFlowControllerMixin(_QWindowBase):
         self._refresh_recent_recordings()
 
         self.recording_stopped.emit(str(output_path))
+        # Системный toast + звук остановки (#199)
+        self._notify_recording_event(
+            "stop", f"Запись остановлена: {output_path.name}"
+        )
         logger.info(f"Запись остановлена: {output_path}")
 
     def _add_recording_to_library(self, output_path: Path) -> None:
@@ -282,6 +289,7 @@ class RecordingFlowControllerMixin(_QWindowBase):
         self._set_floating_widget_state(STATE_PAUSED)
 
         self.recording_paused.emit()
+        self._notify_recording_event("paused", "Запись приостановлена")
 
     def _on_recording_resumed(self) -> None:
         """Обработка возобновления записи."""
@@ -291,6 +299,7 @@ class RecordingFlowControllerMixin(_QWindowBase):
         self._set_floating_widget_state(STATE_RECORDING)
 
         self.recording_resumed.emit()
+        self._notify_recording_event("resumed", "Запись продолжена")
 
     # === Плавающий виджет записи (#158) ===
 

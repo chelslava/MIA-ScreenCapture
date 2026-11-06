@@ -638,6 +638,9 @@ class UpdateConfigRequest(BaseModel):
     show_notifications: bool | None = Field(
         default=None, description="Показывать уведомления"
     )
+    notification_sounds: bool | None = Field(
+        default=None, description="Звуковые сигналы записи (#199)"
+    )
     language: str | None = Field(default=None, description="Язык интерфейса")
 
     @field_validator("bitrate")
@@ -749,6 +752,9 @@ class UpdateConfigAppRequest(BaseModel):
     )
     show_notifications: bool | None = Field(
         default=None, description="Показывать уведомления"
+    )
+    notification_sounds: bool | None = Field(
+        default=None, description="Звуковые сигналы записи (#199)"
     )
     language: str | None = Field(default=None, description="Язык интерфейса")
 

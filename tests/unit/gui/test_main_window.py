@@ -122,6 +122,7 @@ def _build_window():
     window._run_diagnostics = MagicMock()
     window._refresh_readiness_summary = MagicMock()
     window._update_timer = MagicMock()
+    window._toast_timer = MagicMock()
     window.dependency_check_completed = MagicMock()
     window.readiness_refresh_completed = MagicMock()
     window._readiness_request_id = 0
@@ -1200,6 +1201,119 @@ class TestMainWindowMethods:
 
         window._add_recording_to_library(tmp_path / "x.mp4")
 
+
+class TestRecordingEventNotifications:
+    """Системные toast и звуки событий записи (#199)."""
+
+    def test_focused_window_shows_gui_toast_only(self) -> None:
+        """Окно в фокусе — только in-GUI toast, без системного."""
+        window = _build_window()
+        window.isActiveWindow = MagicMock(return_value=True)
+        window._show_toast = MagicMock()
+        settings = SimpleNamespace(
+            show_notifications=True, notification_sounds=True
+        )
+
+        with (
+            patch("gui.main_window.get_config") as config_mock,
+            patch("gui.main_window.send_notification") as send_mock,
+            patch("gui.main_window.play_event_sound") as play_mock,
+        ):
+            config_mock.return_value.settings = settings
+            window._notify_recording_event("start", "Запись начата")
+
+        window._show_toast.assert_called_once_with("Запись начата")
+        send_mock.assert_not_called()
+        play_mock.assert_called_once_with("start")
+
+    def test_unfocused_window_sends_system_toast(self) -> None:
+        """Окно вне фокуса — системный toast вместо in-GUI."""
+        window = _build_window()
+        window.isActiveWindow = MagicMock(return_value=False)
+        window._show_toast = MagicMock()
+        settings = SimpleNamespace(
+            show_notifications=True, notification_sounds=False
+        )
+
+        with (
+            patch("gui.main_window.get_config") as config_mock,
+            patch("gui.main_window.send_notification") as send_mock,
+            patch("gui.main_window.play_event_sound") as play_mock,
+        ):
+            config_mock.return_value.settings = settings
+            window._notify_recording_event("stop", "Запись остановлена")
+
+        send_mock.assert_called_once_with(
+            "MIA-ScreenCapture", "Запись остановлена"
+        )
+        window._show_toast.assert_not_called()
+        play_mock.assert_not_called()
+
+    def test_disabled_notifications_skip_system_toast(self) -> None:
+        """show_notifications=False — системный toast не отправляется."""
+        window = _build_window()
+        window.isActiveWindow = MagicMock(return_value=False)
+        window._show_toast = MagicMock()
+        settings = SimpleNamespace(
+            show_notifications=False, notification_sounds=False
+        )
+
+        with (
+            patch("gui.main_window.get_config") as config_mock,
+            patch("gui.main_window.send_notification") as send_mock,
+        ):
+            config_mock.return_value.settings = settings
+            window._notify_recording_event("start", "Запись начата")
+
+        send_mock.assert_not_called()
+
+    def test_error_out_of_focus_sends_system_notification(self) -> None:
+        """Ошибка вне фокуса дублируется системным toast (#199)."""
+        window = _build_window()
+        window.isActiveWindow = MagicMock(return_value=False)
+        window.status_label = MagicMock()
+        window.status_bar = MagicMock()
+        settings = SimpleNamespace(show_notifications=True)
+
+        with (
+            patch("gui.main_window.get_config") as config_mock,
+            patch("gui.main_window.send_notification") as send_mock,
+        ):
+            config_mock.return_value.settings = settings
+            window._show_non_modal_error("Что-то сломалось")
+
+        send_mock.assert_called_once_with(
+            "MIA-ScreenCapture", "Что-то сломалось"
+        )
+
+    def test_error_in_focus_skips_system_notification(self) -> None:
+        """Ошибка в фокусе не дублируется системным toast."""
+        window = _build_window()
+        window.isActiveWindow = MagicMock(return_value=True)
+        window.status_label = MagicMock()
+        window.status_bar = MagicMock()
+
+        with (
+            patch("gui.main_window.get_config") as config_mock,
+            patch("gui.main_window.send_notification") as send_mock,
+        ):
+            config_mock.return_value.settings = SimpleNamespace(
+                show_notifications=True
+            )
+            window._show_non_modal_error("Что-то сломалось")
+
+        send_mock.assert_not_called()
+
+    def test_notification_sounds_changed_persists(self) -> None:
+        """Переключение чекбокса звуков сохраняется в конфиг."""
+        window = _build_window()
+
+        with patch("gui.main_window.get_config") as config_mock:
+            window._on_notification_sounds_changed(True)
+
+        assert config_mock.return_value.settings.notification_sounds is True
+        config_mock.return_value.save.assert_called_once()
+
     def test_begin_stop_operation_updates_ui_and_spawns_thread(self) -> None:
         """Начало stop operation переводит UI в stopping-состояние."""
         window = _build_window()
@@ -2016,6 +2130,8 @@ class TestAudioChunksDroppedIndication:
         window._recording_indicator = MagicMock()
         window._update_ui_state = MagicMock()
         window._set_status_updates_enabled = MagicMock()
+        # Тост события «Запись начата» (#199) не мешает счётчику
+        window._notify_recording_event = MagicMock()
 
         window._on_audio_chunks_dropped_warning(5)
         window._on_recording_started(Path("D:/capture.mp4"))

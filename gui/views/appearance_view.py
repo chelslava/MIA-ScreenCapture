@@ -51,6 +51,7 @@ class AppearanceView(QWidget):
     hotkeys_requested = pyqtSignal()
     minimize_to_tray_changed = pyqtSignal(bool)
     ui_animations_changed = pyqtSignal(bool)
+    notification_sounds_changed = pyqtSignal(bool)
     win11_backdrop_changed = pyqtSignal(bool)
     check_updates_requested = pyqtSignal()
     updates_settings_changed = pyqtSignal()
@@ -123,6 +124,22 @@ class AppearanceView(QWidget):
             self._on_ui_animations_toggled
         )
         group_layout.addWidget(self._ui_animations_checkbox)
+
+        # Звуковые сигналы записи (#199)
+        self._notification_sounds_checkbox = QCheckBox(
+            _("Звуковые сигналы начала и конца записи")
+        )
+        self._notification_sounds_checkbox.setToolTip(
+            _(
+                "Короткие звуковые сигналы при старте, остановке и паузе "
+                "записи. Системные toast-уведомления управляются "
+                "настройкой «уведомления»."
+            )
+        )
+        self._notification_sounds_checkbox.toggled.connect(
+            self._on_notification_sounds_toggled
+        )
+        group_layout.addWidget(self._notification_sounds_checkbox)
 
         # Материал Windows 11 (Mica) (#157): на Win10 чекбокс не даст эффекта
         self._win11_backdrop_checkbox = QCheckBox(
@@ -236,6 +253,28 @@ class AppearanceView(QWidget):
             enabled: Текущее значение настройки ``ui_animations``.
         """
         checkbox = self._ui_animations_checkbox
+        block_signals = getattr(checkbox, "blockSignals", None)
+        if callable(block_signals):
+            checkbox.blockSignals(True)
+            try:
+                checkbox.setChecked(bool(enabled))
+            finally:
+                checkbox.blockSignals(False)
+        else:
+            checkbox.setChecked(bool(enabled))
+
+    def _on_notification_sounds_toggled(self, checked: bool) -> None:
+        """Обработка переключения чекбокса звуковых сигналов (#199)."""
+        logger.info(f"notification_sounds изменено: {checked}")
+        self.notification_sounds_changed.emit(bool(checked))
+
+    def set_notification_sounds(self, enabled: bool) -> None:
+        """Установить состояние чекбокса звуков без сигнала (#199).
+
+        Args:
+            enabled: Текущее значение настройки ``notification_sounds``.
+        """
+        checkbox = self._notification_sounds_checkbox
         block_signals = getattr(checkbox, "blockSignals", None)
         if callable(block_signals):
             checkbox.blockSignals(True)

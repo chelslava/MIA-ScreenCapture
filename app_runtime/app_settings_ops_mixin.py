@@ -239,7 +239,12 @@ class SettingsOpsMixin(AppSharedState):
             return {"success": False, "error": str(e)}
 
         # Обновление простых полей
-        simple_fields = ["minimize_to_tray", "show_notifications", "language"]
+        simple_fields = [
+            "minimize_to_tray",
+            "show_notifications",
+            "notification_sounds",
+            "language",
+        ]
         for field_name in simple_fields:
             if field_name in data:
                 original_simple[field_name] = getattr(

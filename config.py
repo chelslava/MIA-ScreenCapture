@@ -308,6 +308,8 @@ class AppSettingsSchema(BaseModel):
     updates: UpdateSettingsSchema = Field(default_factory=UpdateSettingsSchema)
     minimize_to_tray: bool = Field(default=True)
     show_notifications: bool = Field(default=True)
+    # Звуковые сигналы старта/остановки записи (#199)
+    notification_sounds: bool = Field(default=False)
     # Плавные переходы вкладок (#161); уважает reduced-motion системы
     ui_animations: bool = Field(default=True)
     # Позиция плавающего виджета записи [x, y] (#158); None — по умолчанию
@@ -533,6 +535,8 @@ class AppSettings:
     updates: UpdateSettings = field(default_factory=UpdateSettings)
     minimize_to_tray: bool = True
     show_notifications: bool = True
+    # Звуковые сигналы старта/остановки записи (#199)
+    notification_sounds: bool = False
     ui_animations: bool = True
     floating_widget_pos: list[int] | None = None
     window_geometry: list[int] | None = None
@@ -693,6 +697,7 @@ class ConfigManager:
                 updates=updates,
                 minimize_to_tray=data.get("minimize_to_tray", True),
                 show_notifications=data.get("show_notifications", True),
+                notification_sounds=data.get("notification_sounds", False),
                 ui_animations=data.get("ui_animations", True),
                 floating_widget_pos=self._parse_floating_widget_pos(
                     data.get("floating_widget_pos")

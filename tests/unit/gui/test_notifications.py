@@ -10,7 +10,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from gui.notifications import send_notification
+from gui.notifications import (
+    _beep_tones,
+    play_event_sound,
+    send_notification,
+)
 
 
 class TestSendNotification:
@@ -275,3 +279,47 @@ class TestEdgeCases:
             icon_path=Path("/nonexistent/icon.png"),
         )
         assert result is True
+
+
+class TestPlayEventSound:
+    """Звуковые сигналы событий записи (#199)."""
+
+    @pytest.mark.parametrize(
+        "kind", ["start", "stop", "paused", "resumed", "error"]
+    )
+    def test_known_kinds_accepted(self, kind: str) -> None:
+        """Все события записи имеют звуковой сигнал."""
+        assert play_event_sound(kind) is True
+
+    def test_unknown_kind_rejected(self) -> None:
+        """Неизвестный тип события не проигрывается."""
+        assert play_event_sound("unknown") is False
+
+    def test_beep_tones_sequence(self) -> None:
+        """Последовательность тонов передаётся в winsound.Beep."""
+        import sys
+
+        fake_winsound = MagicMock()
+        with patch.dict(sys.modules, {"winsound": fake_winsound}):
+            _beep_tones(((880, 120), (1175, 180)))
+
+        assert fake_winsound.Beep.call_count == 2
+        fake_winsound.Beep.assert_any_call(880, 120)
+        fake_winsound.Beep.assert_any_call(1175, 180)
+
+    def test_beep_tones_missing_winsound_is_safe(self) -> None:
+        """Отсутствие winsound (не-Windows) не роняет поток."""
+        import sys
+
+        with patch.dict(sys.modules, {"winsound": None}):
+            # import winsound -> ImportError, глотается внутри
+            _beep_tones(((440, 100),))
+
+    def test_beep_tones_os_error_is_safe(self) -> None:
+        """Нет аудио-выхода — ошибка глотается."""
+        import sys
+
+        fake_winsound = MagicMock()
+        fake_winsound.Beep.side_effect = OSError("no audio device")
+        with patch.dict(sys.modules, {"winsound": fake_winsound}):
+            _beep_tones(((440, 100),))

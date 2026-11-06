@@ -2,16 +2,61 @@
 Модуль уведомлений
 ==================
 
-Кроссплатформенные уведомления (Windows Toast, macOS, Linux).
+Кроссплатформенные уведомления (Windows Toast, macOS, Linux)
+и звуковые сигналы событий записи (Issue #199).
 """
 
 import base64
 import sys
+import threading
 from pathlib import Path
 
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
+
+# Тоны звуковых сигналов (частота Гц, длительность мс): короткие
+# мелодии из системного динамика через winsound — без внешних файлов
+_SOUND_TONES: dict[str, tuple[tuple[int, int], ...]] = {
+    "start": ((880, 120), (1175, 180)),  # восходящий
+    "stop": ((1175, 120), (880, 180)),  # нисходящий
+    "paused": ((660, 150),),
+    "resumed": ((660, 120), (880, 150)),
+    "error": ((440, 260),),
+}
+
+
+def play_event_sound(kind: str) -> bool:
+    """
+    Проигрывает короткий звуковой сигнал события записи (#199).
+
+    Звук исполняется в фоновом потоке (winsound.Beep блокирует),
+    внешние файлы не используются.
+
+    Args:
+        kind: Тип события ('start', 'stop', 'paused', 'resumed', 'error').
+
+    Returns:
+        True если сигнал поставлен на воспроизведение.
+    """
+    tones = _SOUND_TONES.get(kind)
+    if not tones:
+        return False
+    thread = threading.Thread(target=_beep_tones, args=(tones,), daemon=True)
+    thread.start()
+    return True
+
+
+def _beep_tones(tones: tuple[tuple[int, int], ...]) -> None:
+    """Проигрывает последовательность тонов; winsound — только Windows."""
+    try:
+        import winsound
+
+        for freq, duration_ms in tones:
+            winsound.Beep(freq, duration_ms)
+    except (ImportError, OSError, RuntimeError) as e:
+        # Нет аудио-выхода или не-Windows платформа — звук не критичен
+        logger.debug("Не удалось проиграть звук события: %s", e)
 
 
 def send_notification(

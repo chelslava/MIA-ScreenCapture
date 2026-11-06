@@ -962,3 +962,24 @@ class TestApiTlsSettings:
         assert reloaded.settings.api.tls_enabled is True
         assert reloaded.settings.api.tls_cert_path == "C:/certs/mia.pem"
         assert reloaded.settings.api.tls_key_path == "C:/certs/mia.key"
+
+
+class TestNotificationSounds:
+    """Настройка звуковых сигналов записи (#199)."""
+
+    def test_notification_sounds_defaults(self) -> None:
+        """Звуки выключены по умолчанию (opt-in)."""
+        settings = AppSettings()
+        assert settings.notification_sounds is False
+
+    def test_notification_sounds_roundtrip_through_config_file(
+        self, tmp_path: Path
+    ) -> None:
+        """Настройка переживает сохранение и перезагрузку конфига."""
+        path = tmp_path / "config.json"
+        manager = ConfigManager(path)
+        manager.settings.notification_sounds = True
+        assert manager.save() is True
+
+        reloaded = ConfigManager(path)
+        assert reloaded.settings.notification_sounds is True
