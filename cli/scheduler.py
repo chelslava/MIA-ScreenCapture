@@ -11,9 +11,31 @@ import sys
 from datetime import datetime
 from typing import Any
 
+from cli.exit_codes import (
+    EXIT_RUNTIME_ERROR,
+    EXIT_STATE_CONFLICT,
+    EXIT_USAGE,
+)
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
+
+
+def exit_code_for_status(status_code: int) -> int:
+    """Маппинг HTTP-статуса API в контракт exit-кодов (#206).
+
+    Args:
+        status_code: HTTP-статус ответа API (0 — сетевой сбой).
+
+    Returns:
+        2 для 409 (конфликт состояния), 1 для 400/401/404/422
+        (использование), 3 для остальных (исполнение).
+    """
+    if status_code == 409:
+        return EXIT_STATE_CONFLICT
+    if status_code in (400, 401, 404, 422):
+        return EXIT_USAGE
+    return EXIT_RUNTIME_ERROR
 
 
 def get_api_headers() -> dict[str, str]:
@@ -233,7 +255,7 @@ def create_schedule(config: dict[str, Any]) -> int:
     else:
         error = response.get("error", "Неизвестная ошибка")
         print(f"Ошибка создания задачи: {error}", file=sys.stderr)
-        return 1
+        return exit_code_for_status(status_code)
 
 
 def update_schedule(config: dict[str, Any]) -> int:
@@ -295,7 +317,7 @@ def update_schedule(config: dict[str, Any]) -> int:
     else:
         error = response.get("error", "Неизвестная ошибка")
         print(f"Ошибка обновления задачи: {error}", file=sys.stderr)
-        return 1
+        return exit_code_for_status(status_code)
 
 
 def delete_schedule(config: dict[str, Any]) -> int:
@@ -328,7 +350,7 @@ def delete_schedule(config: dict[str, Any]) -> int:
     else:
         error = response.get("error", "Неизвестная ошибка")
         print(f"Ошибка удаления задачи: {error}", file=sys.stderr)
-        return 1
+        return exit_code_for_status(status_code)
 
 
 def toggle_schedule(config: dict[str, Any]) -> int:
@@ -364,7 +386,7 @@ def toggle_schedule(config: dict[str, Any]) -> int:
     else:
         error = response.get("error", "Неизвестная ошибка")
         print(f"Ошибка переключения задачи: {error}", file=sys.stderr)
-        return 1
+        return exit_code_for_status(status_code)
 
 
 def preview_upcoming_runs(config: dict[str, Any], count: int = 5) -> int:
@@ -389,7 +411,7 @@ def preview_upcoming_runs(config: dict[str, Any], count: int = 5) -> int:
     if status_code != 200 or not response.get("success"):
         error = response.get("error", "Неизвестная ошибка")
         print(f"Ошибка получения задач: {error}", file=sys.stderr)
-        return 1
+        return exit_code_for_status(status_code)
 
     tasks = response.get("data", [])
 
@@ -401,6 +423,13 @@ def preview_upcoming_runs(config: dict[str, Any], count: int = 5) -> int:
 
     upcoming.sort(key=lambda x: x.get("next_run", ""))
     upcoming = upcoming[:count]
+
+    # Machine-readable вывод (#206)
+    if config.get("json_output"):
+        from cli.parser import print_json
+
+        print_json(upcoming)
+        return 0
 
     if not upcoming:
         print("Нет предстоящих запусков")

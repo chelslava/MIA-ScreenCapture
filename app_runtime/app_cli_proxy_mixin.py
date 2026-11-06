@@ -11,7 +11,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
+from cli.exit_codes import (
+    EXIT_RUNTIME_ERROR,
+    EXIT_STATE_CONFLICT,
+    EXIT_USAGE,
+)
 from cli.parser import (
+    print_json,
     print_schedule_list,
     print_status,
     validate_recording_params,
@@ -26,6 +32,26 @@ from app_runtime.app_shared_state import AppSharedState
 
 class CliProxyMixin(AppSharedState):
     """Миксин VideoRecorderApp: см. docstring модуля."""
+
+    def _use_json_output(self) -> bool:
+        """Включён ли machine-readable JSON-вывод (--json, #206)."""
+        return bool(self._config.get("json_output"))
+
+    def _exit_code_for_http(self, status_code: int) -> int:
+        """Маппинг HTTP-статуса API в контракт exit-кодов (#206).
+
+        Args:
+            status_code: HTTP-статус ответа API.
+
+        Returns:
+            2 для 409 (конфликт состояния), 1 для 400/401/404
+            (использование), 3 для остальных (исполнение).
+        """
+        if status_code == 409:
+            return EXIT_STATE_CONFLICT
+        if status_code in (400, 401, 404, 422):
+            return EXIT_USAGE
+        return EXIT_RUNTIME_ERROR
 
     def _get_api_headers(self) -> dict:
         from api.auth import API_KEY_HEADER  # лениво: flask-цепочка (#184)
@@ -71,7 +97,7 @@ class CliProxyMixin(AppSharedState):
         is_valid, error = validate_recording_params(params)
         if not is_valid:
             print(f"Ошибка: {error}", file=sys.stderr)
-            return 1
+            return EXIT_USAGE
 
         # Попытка подключения к запущенному экземпляру через API
         api_url = f"http://{self._config['api']['host']}:{self._config['api']['port']}"
@@ -114,7 +140,8 @@ class CliProxyMixin(AppSharedState):
                             f"Ошибка: {response.json().get('error', 'Неизвестная ошибка')}",
                             file=sys.stderr,
                         )
-                        return 1
+                        # 409 — запись уже идёт (#206)
+                        return self._exit_code_for_http(response.status_code)
             except requests.exceptions.ConnectionError:
                 pass  # API не запущен, запуск нового экземпляра
         except ImportError:
@@ -130,7 +157,7 @@ class CliProxyMixin(AppSharedState):
                 f"Ошибка: {result.get('error', 'Не удалось начать запись')}",
                 file=sys.stderr,
             )
-            return 1
+            return EXIT_RUNTIME_ERROR
 
         print("Запись начата")
         return self._run_headless()
@@ -158,14 +185,15 @@ class CliProxyMixin(AppSharedState):
                     f"Ошибка: {response.json().get('error', 'Неизвестная ошибка')}",
                     file=sys.stderr,
                 )
-                return 1
+                # 409 — запись не активна (#206)
+                return self._exit_code_for_http(response.status_code)
 
         except requests.exceptions.ConnectionError:
             print("Ошибка: Запущенный экземпляр не найден", file=sys.stderr)
-            return 1
+            return EXIT_RUNTIME_ERROR
         except ImportError:
             print("Ошибка: библиотека requests недоступна", file=sys.stderr)
-            return 1
+            return EXIT_RUNTIME_ERROR
 
     def _run_status(self) -> int:
         """Показ статуса записи через CLI."""
@@ -184,18 +212,24 @@ class CliProxyMixin(AppSharedState):
 
             if response.json().get("success"):
                 status = response.json().get("data", {})
-                print_status(status)
+                if self._use_json_output():
+                    print_json(status)
+                else:
+                    print_status(status)
                 return 0
             else:
                 print("Ошибка: Не удалось получить статус", file=sys.stderr)
-                return 1
+                return self._exit_code_for_http(response.status_code)
 
         except requests.exceptions.ConnectionError:
-            print("Статус: Не запущен (API сервер не найден)")
+            if self._use_json_output():
+                print_json({"is_recording": False, "running": False})
+            else:
+                print("Статус: Не запущен (API сервер не найден)")
             return 0
         except ImportError:
             print("Ошибка: библиотека requests недоступна", file=sys.stderr)
-            return 1
+            return EXIT_RUNTIME_ERROR
 
     def _run_schedule_list(self) -> int:
         """Список запланированных задач через CLI."""
@@ -214,20 +248,23 @@ class CliProxyMixin(AppSharedState):
 
             if response.json().get("success"):
                 tasks = response.json().get("data", [])
-                print_schedule_list(tasks)
+                if self._use_json_output():
+                    print_json(tasks)
+                else:
+                    print_schedule_list(tasks)
                 return 0
             else:
                 print(
                     "Ошибка: Не удалось получить расписание", file=sys.stderr
                 )
-                return 1
+                return self._exit_code_for_http(response.status_code)
 
         except requests.exceptions.ConnectionError:
             print("Ошибка: Запущенный экземпляр не найден", file=sys.stderr)
-            return 1
+            return EXIT_RUNTIME_ERROR
         except ImportError:
             print("Ошибка: библиотека requests недоступна", file=sys.stderr)
-            return 1
+            return EXIT_RUNTIME_ERROR
 
     def _run_schedule_create(self) -> int:
         """Создание запланированной задачи через CLI."""
@@ -261,32 +298,41 @@ class CliProxyMixin(AppSharedState):
 
     def _run_list_presets(self) -> int:
         """Показ списка preset шаблонов."""
-        from cli.templates import print_presets_help
+        from cli.templates import list_presets, print_presets_help
 
-        print_presets_help()
+        if self._use_json_output():
+            print_json(list_presets())
+        else:
+            print_presets_help()
         return 0
 
     def _run_plugins_list(self) -> int:
         """Показ списка обнаруженных плагинов через CLI."""
-        from cli.parser import print_plugins_list
+        from cli.parser import print_json, print_plugins_list
 
         plugins = [p.to_dict() for p in self._plugin_manager.get_all_plugins()]
-        print_plugins_list(plugins)
+        if self._use_json_output():
+            print_json(plugins)
+        else:
+            print_plugins_list(plugins)
         return 0
 
     def _run_plugins_info(self) -> int:
         """Показ информации о плагине через CLI."""
-        from cli.parser import print_plugin_info
+        from cli.parser import print_json, print_plugin_info
 
         name = self._config.get("plugin_name")
         if not name:
             logger.error("Не указано имя плагина")
-            return 1
+            return EXIT_USAGE
         meta = self._plugin_manager.get_plugin_metadata(name)
         if not meta:
             logger.error("Плагин '%s' не найден", name)
-            return 1
-        print_plugin_info(meta.to_dict())
+            return EXIT_USAGE
+        if self._use_json_output():
+            print_json(meta.to_dict())
+        else:
+            print_plugin_info(meta.to_dict())
         return 0
 
     def _run_plugins_enable(self) -> int:
@@ -294,28 +340,28 @@ class CliProxyMixin(AppSharedState):
         name = self._config.get("plugin_name")
         if not name:
             logger.error("Не указано имя плагина")
-            return 1
+            return EXIT_USAGE
         success = self._plugin_manager.enable_plugin(name)
         if success:
             print(f"Плагин '{name}' успешно включён.")
             return 0
         else:
             print(f"Не удалось включить плагин '{name}'.")
-            return 1
+            return EXIT_RUNTIME_ERROR
 
     def _run_plugins_disable(self) -> int:
         """Отключение плагина через CLI."""
         name = self._config.get("plugin_name")
         if not name:
             logger.error("Не указано имя плагина")
-            return 1
+            return EXIT_USAGE
         success = self._plugin_manager.disable_plugin(name)
         if success:
             print(f"Плагин '{name}' успешно отключён.")
             return 0
         else:
             print(f"Не удалось отключить плагин '{name}'.")
-            return 1
+            return EXIT_RUNTIME_ERROR
 
     def _run_service(self) -> int:
         """Управление службой Windows (#122)."""

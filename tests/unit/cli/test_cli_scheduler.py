@@ -257,7 +257,8 @@ class TestCreateSchedule:
         }
 
         result = create_schedule(config)
-        assert result == 1
+        # Контракт exit-кодов #206: 5xx — ошибка исполнения (3)
+        assert result == 3
 
     @patch("cli.scheduler._make_api_request")
     def test_create_schedule_unauthorized(self, mock_request: Mock) -> None:
@@ -462,7 +463,8 @@ class TestPreviewUpcomingRuns:
         }
 
         result = preview_upcoming_runs(config, count=5)
-        assert result == 1
+        # Контракт exit-кодов #206: 5xx — ошибка исполнения (3)
+        assert result == 3
 
 
 class TestMakeApiRequest:

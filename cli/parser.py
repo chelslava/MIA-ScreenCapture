@@ -7,6 +7,7 @@
 """
 
 import argparse
+import json
 from pathlib import Path
 from typing import Any
 
@@ -347,6 +348,14 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     other_group.add_argument(
+        "--json",
+        action="store_true",
+        help="Machine-readable JSON-вывод для статус/списковых команд "
+        "(--status, --schedule-list, --schedule-preview, --plugins-list, "
+        "--plugins-info, --list-presets) (#206)",
+    )
+
+    other_group.add_argument(
         "--language",
         "--lang",
         type=str,
@@ -490,6 +499,7 @@ def process_args(args: argparse.Namespace) -> dict[str, Any]:
     config["config_path"] = args.config
     config["verbose"] = args.verbose
     config["quiet"] = args.quiet
+    config["json_output"] = bool(getattr(args, "json", False))
 
     return config
 
@@ -577,6 +587,16 @@ def validate_recording_params(
             )
 
     return True, None
+
+
+def print_json(data: Any) -> None:
+    """
+    Печать данных в machine-readable JSON (#206).
+
+    Args:
+        data: Сериализуемые данные.
+    """
+    print(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
 
 
 def print_status(status: dict[str, Any]) -> None:

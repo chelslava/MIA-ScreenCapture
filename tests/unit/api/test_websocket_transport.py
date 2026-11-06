@@ -276,9 +276,7 @@ class TestWebsocketHandlerAuth:
         """Без X-API-Key соединение отклоняется (401-сообщение)."""
         from api.websocket_transport import create_websocket_handler
 
-        transport = self._make_transport(
-            lambda token: token == "valid-token"
-        )
+        transport = self._make_transport(lambda token: token == "valid-token")
         ws = _FakeWS()
 
         create_websocket_handler(transport)(ws)
@@ -293,9 +291,7 @@ class TestWebsocketHandlerAuth:
         """Токен в query string не принимается (#189)."""
         from api.websocket_transport import create_websocket_handler
 
-        transport = self._make_transport(
-            lambda token: token == "valid-token"
-        )
+        transport = self._make_transport(lambda token: token == "valid-token")
         ws = _FakeWS({"QUERY_STRING": "token=valid-token"})
 
         create_websocket_handler(transport)(ws)
@@ -308,9 +304,7 @@ class TestWebsocketHandlerAuth:
         """Валидный X-API-Key открывает соединение."""
         from api.websocket_transport import create_websocket_handler
 
-        transport = self._make_transport(
-            lambda token: token == "valid-token"
-        )
+        transport = self._make_transport(lambda token: token == "valid-token")
         ws = _FakeWS({"HTTP_X_API_KEY": "valid-token"})
 
         create_websocket_handler(transport)(ws)
