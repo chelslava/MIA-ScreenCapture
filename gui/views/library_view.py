@@ -1,9 +1,10 @@
 """
-Представление библиотеки записей (Issue #119).
-==============================================
+Представление библиотеки записей (Issue #119, #186).
+====================================================
 
 Компонент UI для просмотра, поиска, фильтрации и управления
-медиазаписями (Grid/List виды, теги, превью, контекстное меню).
+медиазаписями (Grid/List виды, теги, превью, контекстное меню,
+панель деталей, переименование, детект дубликатов).
 """
 
 from __future__ import annotations
@@ -41,11 +42,15 @@ from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
 
+_THUMB_WIDTH = 228
+_THUMB_HEIGHT = 128
+
 
 class LibraryCardWidget(QFrame):
     """Виджет карточки видеозаписи для режима Grid."""
 
     clicked = pyqtSignal(object)
+    selected = pyqtSignal(object)
     context_menu_requested = pyqtSignal(object, object)
 
     def __init__(
@@ -71,7 +76,7 @@ class LibraryCardWidget(QFrame):
 
         # Превью изображение
         self.thumb_label = QLabel()
-        self.thumb_label.setFixedSize(228, 128)
+        self.thumb_label.setFixedSize(_THUMB_WIDTH, _THUMB_HEIGHT)
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.thumb_label.setStyleSheet(
             "background-color: #1e1e1e; border-radius: 4px;"
@@ -79,8 +84,8 @@ class LibraryCardWidget(QFrame):
 
         if self.item.thumbnail_path and self.item.thumbnail_path.exists():
             pixmap = QPixmap(str(self.item.thumbnail_path)).scaled(
-                228,
-                128,
+                _THUMB_WIDTH,
+                _THUMB_HEIGHT,
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
             )
@@ -114,6 +119,11 @@ class LibraryCardWidget(QFrame):
             tags_label.setStyleSheet("color: #4a9eff; font-size: 10px;")
             layout.addWidget(tags_label)
 
+    def mousePressEvent(self, event: Any) -> None:
+        """Одиночный клик — показать детали записи (#186)."""
+        self.selected.emit(self.item)
+        super().mousePressEvent(event)
+
     def mouseDoubleClickEvent(self, event: Any) -> None:
         self.clicked.emit(self.item)
 
@@ -123,6 +133,8 @@ class LibraryView(QWidget):
 
     recording_opened = pyqtSignal(str)
     recording_deleted = pyqtSignal(str)
+    # Запрошена постановка записи в очередь постобработки (#186)
+    post_processing_requested = pyqtSignal(str)
 
     def __init__(
         self,
@@ -132,6 +144,9 @@ class LibraryView(QWidget):
         super().__init__(parent)
         self._manager = manager or LibraryManager()
         self._view_mode = "grid"  # 'grid' или 'list'
+        self._selected_item: RecordingMetadata | None = None
+        self._duplicates_only = False
+        self._duplicate_paths: set[str] = set()
         self._setup_ui()
         self.refresh()
 
@@ -140,10 +155,21 @@ class LibraryView(QWidget):
         self._manager = manager
         self.refresh()
 
+    @property
+    def selected_item(self) -> RecordingMetadata | None:
+        """Запись, выбранная в данный момент в библиотеке."""
+        return self._selected_item
+
     def _setup_ui(self) -> None:
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(12, 12, 12, 12)
+        root_layout = QHBoxLayout(self)
+        root_layout.setContentsMargins(12, 12, 12, 12)
+        root_layout.setSpacing(10)
+
+        content = QWidget()
+        main_layout = QVBoxLayout(content)
+        main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(10)
+        root_layout.addWidget(content, stretch=1)
 
         # Панель управления и фильтрации
         controls_group = QGroupBox("Управление библиотекой")
@@ -193,6 +219,23 @@ class LibraryView(QWidget):
 
         main_layout.addWidget(controls_group)
 
+        # Баннер дубликатов (#186): показывается, если найдены записи
+        # с одинаковым размером и длительностью
+        self._dup_banner = QFrame()
+        self._dup_banner.setStyleSheet(
+            "QFrame { background-color: #4a3b12; border-radius: 4px; }"
+        )
+        dup_layout = QHBoxLayout(self._dup_banner)
+        dup_layout.setContentsMargins(8, 4, 8, 4)
+        self._dup_label = QLabel()
+        self._dup_label.setStyleSheet("color: #ffd77a;")
+        dup_layout.addWidget(self._dup_label, stretch=1)
+        self._dup_toggle_btn = QPushButton("Показать")
+        self._dup_toggle_btn.clicked.connect(self._toggle_duplicates_only)
+        dup_layout.addWidget(self._dup_toggle_btn)
+        self._dup_banner.hide()
+        main_layout.addWidget(self._dup_banner)
+
         # Контейнер для отображения (Grid vs List)
         # 1. Grid контейнер
         self.scroll_area = QScrollArea()
@@ -231,8 +274,107 @@ class LibraryView(QWidget):
             self._on_table_context_menu
         )
         self.table_widget.doubleClicked.connect(self._on_table_double_clicked)
+        self.table_widget.itemSelectionChanged.connect(
+            self._on_table_selection_changed
+        )
         self.table_widget.hide()
         main_layout.addWidget(self.table_widget, stretch=1)
+
+        # Панель деталей выбранной записи (#186)
+        root_layout.addWidget(self._build_details_panel())
+
+    def _build_details_panel(self) -> QGroupBox:
+        """Создаёт панель деталей выбранной записи."""
+        self._details_group = QGroupBox("Детали записи")
+        self._details_group.setFixedWidth(260)
+        layout = QVBoxLayout(self._details_group)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        self._details_thumb = QLabel()
+        self._details_thumb.setFixedSize(_THUMB_WIDTH, _THUMB_HEIGHT)
+        self._details_thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._details_thumb.setStyleSheet(
+            "background-color: #1e1e1e; border-radius: 4px;"
+        )
+        layout.addWidget(self._details_thumb)
+
+        self._details_title = QLabel("Выберите запись")
+        self._details_title.setWordWrap(True)
+        self._details_title.setStyleSheet("font-weight: bold;")
+        layout.addWidget(self._details_title)
+
+        self._details_info = QLabel()
+        self._details_info.setWordWrap(True)
+        self._details_info.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self._details_info.setStyleSheet("font-size: 11px; color: #ccc;")
+        layout.addWidget(self._details_info, stretch=1)
+
+        buttons_layout = QHBoxLayout()
+        self._details_open_btn = QPushButton("▶ Открыть")
+        self._details_open_btn.setEnabled(False)
+        self._details_open_btn.clicked.connect(self._open_selected)
+        buttons_layout.addWidget(self._details_open_btn)
+        self._details_rename_btn = QPushButton("✏ Переименовать")
+        self._details_rename_btn.setEnabled(False)
+        self._details_rename_btn.clicked.connect(self._rename_selected)
+        buttons_layout.addWidget(self._details_rename_btn)
+        layout.addLayout(buttons_layout)
+
+        self._reset_details()
+        return self._details_group
+
+    def _reset_details(self) -> None:
+        """Очищает панель деталей (ничего не выбрано)."""
+        self._details_thumb.clear()
+        self._details_thumb.setText("🎬")
+        self._details_title.setText("Выберите запись")
+        self._details_info.clear()
+        self._details_open_btn.setEnabled(False)
+        self._details_rename_btn.setEnabled(False)
+
+    def _update_details(self, item: RecordingMetadata) -> None:
+        """Заполняет панель деталей данными ffprobe/файловой системы."""
+        self._selected_item = item
+        if item.thumbnail_path and item.thumbnail_path.exists():
+            pixmap = QPixmap(str(item.thumbnail_path)).scaled(
+                _THUMB_WIDTH,
+                _THUMB_HEIGHT,
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self._details_thumb.setPixmap(pixmap)
+        else:
+            self._details_thumb.clear()
+            self._details_thumb.setText("🎬 Нет превью")
+
+        self._details_title.setText(item.filename)
+        audio = item.audio_codec or "нет"
+        self._details_info.setText(
+            f"⏱ Длительность: {item.duration_str}\n"
+            f"💾 Размер: {item.size_mb_str}\n"
+            f"📐 Разрешение: {item.resolution_str}\n"
+            f"🎞 Кодек: {item.codec} (аудио: {audio})\n"
+            f"⚙ FPS: {item.fps:.0f}\n"
+            f"📅 Создана: {item.created_at[:19].replace('T', ' ')}\n"
+            f"🏷 Теги: {', '.join(item.tags) if item.tags else '—'}\n"
+            f"📁 {item.path}"
+        )
+        self._details_info.setToolTip(str(item.path))
+        self._details_open_btn.setEnabled(True)
+        self._details_rename_btn.setEnabled(True)
+
+    def _open_selected(self) -> None:
+        """Открывает выбранную в панели деталей запись."""
+        if self._selected_item is not None:
+            self._open_recording(self._selected_item)
+
+    def _rename_selected(self) -> None:
+        """Переименовывает выбранную запись через диалог."""
+        if self._selected_item is not None:
+            self._prompt_rename(self._selected_item)
 
     def _set_view_mode(self, mode: str) -> None:
         """Переключает режим отображения между сеткой и списком."""
@@ -250,7 +392,7 @@ class LibraryView(QWidget):
         self._render_items()
 
     def refresh(self) -> None:
-        """Обновляет теги и перерисовывает элементы библиотеки."""
+        """Обновляет теги, дубликаты и перерисовывает элементы библиотеки."""
         # Обновление выпадающего списка тегов
         current_tag = self.tag_combo.currentData()
         self.tag_combo.blockSignals(True)
@@ -265,6 +407,33 @@ class LibraryView(QWidget):
                 self.tag_combo.setCurrentIndex(idx)
         self.tag_combo.blockSignals(False)
 
+        self._update_duplicates_banner()
+        self._render_items()
+
+    def _update_duplicates_banner(self) -> None:
+        """Обновляет баннер дубликатов по данным менеджера (#186)."""
+        groups = self._manager.find_duplicate_groups()
+        self._duplicate_paths = {
+            str(it.path) for group in groups for it in group
+        }
+        if not self._duplicate_paths:
+            self._dup_banner.hide()
+            if self._duplicates_only:
+                self._duplicates_only = False
+            return
+        self._dup_banner.show()
+        self._dup_label.setText(
+            f"⚠ Найдены дубликаты записей: {len(self._duplicate_paths)} "
+            f"в {len(groups)} группах"
+        )
+        self._dup_toggle_btn.setText(
+            "Скрыть" if self._duplicates_only else "Показать"
+        )
+
+    def _toggle_duplicates_only(self) -> None:
+        """Переключает фильтр «только дубликаты»."""
+        self._duplicates_only = not self._duplicates_only
+        self._update_duplicates_banner()
         self._render_items()
 
     def _on_filter_changed(self) -> None:
@@ -283,6 +452,10 @@ class LibraryView(QWidget):
             sort_by=sort_by,
             sort_desc=sort_desc,
         )
+        if self._duplicates_only:
+            items = [
+                it for it in items if str(it.path) in self._duplicate_paths
+            ]
 
         if self._view_mode == "grid":
             self._render_grid(items)
@@ -303,6 +476,7 @@ class LibraryView(QWidget):
         for idx, it in enumerate(items):
             card = LibraryCardWidget(it)
             card.clicked.connect(self._open_recording)
+            card.selected.connect(self._update_details)
             card.context_menu_requested.connect(self._show_context_menu)
             row = idx // columns
             col = idx % columns
@@ -334,6 +508,17 @@ class LibraryView(QWidget):
             cell = self.table_widget.item(row, 0)
             if cell is not None:
                 cell.setData(Qt.ItemDataRole.UserRole, it)
+
+    def _on_table_selection_changed(self) -> None:
+        """Одиночный выбор в таблице — обновить панель деталей (#186)."""
+        current_row = self.table_widget.currentRow()
+        if current_row < 0:
+            return
+        cell = self.table_widget.item(current_row, 0)
+        if cell is not None:
+            item_obj = cell.data(Qt.ItemDataRole.UserRole)
+            if isinstance(item_obj, RecordingMetadata):
+                self._update_details(item_obj)
 
     def _open_recording(self, item: RecordingMetadata) -> None:
         """Открывает видеозапись в системном проигрывателе."""
@@ -375,12 +560,14 @@ class LibraryView(QWidget):
         action_open = menu.addAction("▶ Воспроизвести")
         action_explore = menu.addAction("📁 Показать в проводнике")
         action_copy_path = menu.addAction("📋 Копировать путь")
+        action_rename = menu.addAction("✏ Переименовать...")
         menu.addSeparator()
         action_add_tag = menu.addAction("🏷 Добавить тег...")
         if item.tags:
             action_remove_tag = menu.addAction("❌ Удалить тег...")
         else:
             action_remove_tag = None
+        action_post_process = menu.addAction("🧹 Добавить в постобработку")
         menu.addSeparator()
         action_delete = menu.addAction("🗑 Удалить запись...")
 
@@ -393,10 +580,14 @@ class LibraryView(QWidget):
             clipboard = QGuiApplication.clipboard()
             if clipboard:
                 clipboard.setText(str(item.path))
+        elif chosen == action_rename:
+            self._prompt_rename(item)
         elif chosen == action_add_tag:
             self._prompt_add_tag(item)
         elif action_remove_tag and chosen == action_remove_tag:
             self._prompt_remove_tag(item)
+        elif chosen == action_post_process:
+            self.post_processing_requested.emit(str(item.path))
         elif chosen == action_delete:
             self._confirm_delete(item)
 
@@ -408,6 +599,29 @@ class LibraryView(QWidget):
             subprocess.Popen(["explorer", f"/select,{path}"])
         except Exception as e:
             logger.error("Ошибка открытия проводника для %s: %s", path, e)
+
+    def _prompt_rename(self, item: RecordingMetadata) -> None:
+        """Диалог переименования записи (файл + метаданные, #186)."""
+        name, ok = QInputDialog.getText(
+            self,
+            "Переименовать запись",
+            "Новое имя файла:",
+            text=item.path.stem,
+        )
+        if not ok:
+            return
+        clean = name.strip()
+        if not clean or clean == item.path.stem:
+            return
+        new_path = self._manager.rename_recording(item.path, clean)
+        if new_path is None:
+            QMessageBox.warning(
+                self,
+                "Переименование",
+                "Не удалось переименовать запись: файл с таким именем "
+                "уже существует либо имя некорректно.",
+            )
+        self.refresh()
 
     def _prompt_add_tag(self, item: RecordingMetadata) -> None:
         """Диалог добавления тега."""

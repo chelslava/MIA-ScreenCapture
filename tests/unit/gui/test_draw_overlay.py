@@ -707,7 +707,7 @@ class TestDrawOverlayHotkeyIntegration:
         window._recording_indicator = MagicMock()
         window._refresh_recent_recordings = MagicMock()
         window._settings_controller = MagicMock()
-        window._recordings_controller = MagicMock()
+        window._library_manager = MagicMock()
         window.recording_stopped = MagicMock()
 
         clip = tmp_path / "clip.mp4"

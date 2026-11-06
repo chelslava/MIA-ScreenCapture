@@ -236,6 +236,7 @@ class TestMainApiRuntime:
         facade = app.get_application_facade()
         app._main_window = SimpleNamespace(
             bind_application_facade=MagicMock(),
+            attach_library_manager=MagicMock(),
             refresh_api_status_view=MagicMock(),
         )
         app._setup_hotkeys = MagicMock()

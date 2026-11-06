@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -38,11 +37,11 @@ from gui.styles.theme import Theme
 from gui.views.appearance_view import AppearanceView
 from gui.views.audio_view import AudioView
 from gui.views.capture_view import CaptureView
+from gui.views.library_view import LibraryView
 from gui.views.output_view import OutputView
 from gui.views.post_processing_view import PostProcessingView
 from gui.views.readiness_center_view import ReadinessCenterView
 from gui.views.recording_tunables_view import RecordingTunablesView
-from gui.views.recordings_list import RecordingsListWidget
 from gui.views.settings_page import SettingsPage
 from gui.views.video_view import VideoView
 
@@ -78,16 +77,10 @@ class MainWindowUIBuilderMixin(_QWindowBase):
         _hide_toast: Callable[[], None]
         _run_diagnostics: Callable[[], None]
         _on_diagnostics_fix: Callable[[str], None]
-        _refresh_recent_recordings: Callable[[], None]
-        _clear_recordings_filter: Callable[[], None]
         _on_profile_combo_changed: Callable[[int], None]
         _open_profile_dialog: Callable[[], None]
         _on_post_processing_changed: Callable[[], None]
         _on_recording_tunables_changed: Callable[[], None]
-        _open_recording: Callable[[QListWidgetItem], None]
-        _open_selected_recording: Callable[[], None]
-        _clear_recent_recordings: Callable[[], None]
-        _show_recordings_context_menu: Callable[[Any], None]
         _on_sidebar_selection_changed: Callable[[], None]
 
     def _setup_window(self) -> None:
@@ -482,66 +475,25 @@ class MainWindowUIBuilderMixin(_QWindowBase):
         return layout
 
     def _create_recordings_tab(self) -> QWidget:
-        """Создание страницы «Записи»: фильтр, список и действия.
+        """Создание страницы «Записи» — полноценная библиотека (#186).
 
-        Раньше это была правая панель страницы «Запись»; вынос на
-        отдельную страницу даёт списку всю ширину окна и разгружает
-        быстрый старт записи.
+        Заменяет прежний мини-список ``RecordingsListWidget`` (с его
+        дублирующим фильтром) на ``LibraryView``: поиск по имени/тегам,
+        фильтр тегов, сортировки, grid/list, панель деталей, теги,
+        переименование и детект дубликатов. ``LibraryManager``
+        подключается позже через ``MainWindow.attach_library_manager``.
         """
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        header = QLabel("Последние записи")
+        header = QLabel("Библиотека записей")
         header.setStyleSheet(Theme.title_style())
         layout.addWidget(header)
 
-        # Фильтр по имени файла
-        filter_layout = QHBoxLayout()
-        self._recordings_filter_input = QLineEdit()
-        self._recordings_filter_input.setPlaceholderText(
-            "Фильтр по имени файла"
-        )
-        self._recordings_filter_input.textChanged.connect(
-            lambda _text: self._refresh_recent_recordings()
-        )
-        filter_layout.addWidget(self._recordings_filter_input)
-
-        self._clear_filter_btn = QPushButton("Сбросить")
-        self._clear_filter_btn.clicked.connect(self._clear_recordings_filter)
-        filter_layout.addWidget(self._clear_filter_btn)
-        layout.addLayout(filter_layout)
-
-        # Список записей
-        self.recordings_list = RecordingsListWidget()
-        self.recordings_list.itemDoubleClicked.connect(self._open_recording)
-        self.recordings_list.setContextMenuPolicy(
-            Qt.ContextMenuPolicy.CustomContextMenu
-        )
-        self.recordings_list.customContextMenuRequested.connect(
-            self._show_recordings_context_menu
-        )
-        layout.addWidget(self.recordings_list, stretch=1)
-
-        # Кнопки
-        btn_layout = QHBoxLayout()
-
-        self._open_latest_btn = QPushButton("Открыть последний")
-        btn_layout.addWidget(self._open_latest_btn)
-
-        self._open_folder_btn = QPushButton("Открыть папку")
-        btn_layout.addWidget(self._open_folder_btn)
-
-        self._open_file_btn = QPushButton("Открыть файл")
-        self._open_file_btn.clicked.connect(self._open_selected_recording)
-        btn_layout.addWidget(self._open_file_btn)
-
-        self._clear_list_btn = QPushButton("Очистить список")
-        self._clear_list_btn.clicked.connect(self._clear_recent_recordings)
-        btn_layout.addWidget(self._clear_list_btn)
-
-        layout.addLayout(btn_layout)
+        self.library_view = LibraryView()
+        layout.addWidget(self.library_view, stretch=1)
 
         return widget
 

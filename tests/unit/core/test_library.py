@@ -214,3 +214,135 @@ def test_library_manager_tag_and_delete(tmp_path: Path) -> None:
     assert mgr.delete_recording(v1, delete_file=True) is True
     assert not v1.exists()
     assert mgr.get_item_by_path(v1) is None
+
+
+def test_library_manager_rename_recording(tmp_path: Path) -> None:
+    """Переименование файла записи обновляет метаданные и превью (#186)."""
+    lib_file = tmp_path / "library.json"
+    thumbs_dir = tmp_path / "thumbs"
+    thumbs_dir.mkdir()
+    mgr = LibraryManager(library_file=lib_file, thumbs_dir=thumbs_dir)
+
+    video = tmp_path / "old_name.mp4"
+    video.write_bytes(b"data")
+    thumb = thumbs_dir / "old_name_thumb.png"
+    thumb.write_bytes(b"png")
+
+    with (
+        patch(
+            "core.library.manager.extract_video_metadata",
+            return_value=RecordingMetadata(
+                path=video, duration_sec=30.0, size_bytes=4
+            ),
+        ),
+        patch(
+            "core.library.manager.generate_thumbnail",
+            return_value=thumb,
+        ),
+    ):
+        mgr.add_recording(video)
+
+    new_path = mgr.rename_recording(video, "new_name")
+
+    assert new_path is not None
+    assert new_path.name == "new_name.mp4"
+    assert new_path.exists()
+    assert not video.exists()
+    item = mgr.get_item_by_path(new_path)
+    assert item is not None
+    assert item.filename == "new_name.mp4"
+    # Превью переименовано вместе с записью
+    new_thumb = thumbs_dir / "new_name_thumb.png"
+    assert new_thumb.exists()
+    assert not thumb.exists()
+    assert item.thumbnail_path == new_thumb
+    # База перезаписана с новым путём
+    data = json.loads(lib_file.read_text(encoding="utf-8"))
+    assert any(entry["path"] == str(new_path) for entry in data)
+
+
+def test_library_manager_rename_keeps_explicit_suffix(
+    tmp_path: Path,
+) -> None:
+    """Явно указанный суффикс не дублируется."""
+    mgr = LibraryManager(library_file=tmp_path / "library.json")
+
+    video = tmp_path / "old.mkv"
+    video.write_bytes(b"data")
+
+    with (
+        patch(
+            "core.library.manager.extract_video_metadata",
+            return_value=RecordingMetadata(path=video),
+        ),
+        patch("core.library.manager.generate_thumbnail", return_value=None),
+    ):
+        mgr.add_recording(video)
+
+    new_path = mgr.rename_recording(video, "new_name.mkv")
+
+    assert new_path is not None
+    assert new_path.name == "new_name.mkv"
+
+
+def test_library_manager_rename_rejections(tmp_path: Path) -> None:
+    """Переименование отклоняет пустое имя, путь-объект и чужое имя."""
+    mgr = LibraryManager(library_file=tmp_path / "library.json")
+
+    video = tmp_path / "old.mp4"
+    video.write_bytes(b"data")
+
+    with (
+        patch(
+            "core.library.manager.extract_video_metadata",
+            return_value=RecordingMetadata(path=video),
+        ),
+        patch("core.library.manager.generate_thumbnail", return_value=None),
+    ):
+        mgr.add_recording(video)
+
+    # Пустое/некорректное имя
+    assert mgr.rename_recording(video, "  ") is None
+    assert mgr.rename_recording(video, "a/b") is None
+    assert mgr.rename_recording(video, "a\b") is None
+    # Неизвестная запись
+    assert mgr.rename_recording(tmp_path / "ghost.mp4", "x") is None
+    # Цель уже существует
+    (tmp_path / "taken.mp4").write_bytes(b"other")
+    assert mgr.rename_recording(video, "taken") is None
+    # Файл не переименован
+    assert video.exists()
+
+
+def test_library_manager_find_duplicate_groups(tmp_path: Path) -> None:
+    """Дубликаты группируются по размеру и длительности (#186)."""
+    mgr = LibraryManager(library_file=tmp_path / "library.json")
+
+    a1 = tmp_path / "a1.mp4"
+    a2 = tmp_path / "a2.mp4"
+    b1 = tmp_path / "b1.mp4"
+    for p in (a1, a2, b1):
+        p.write_bytes(b"data")
+
+    spec = {"a1.mp4": (100, 5.0), "a2.mp4": (100, 5.0), "b1.mp4": (7, 1.0)}
+
+    def _extract(path: Path) -> RecordingMetadata:
+        size, duration = spec[path.name]
+        return RecordingMetadata(
+            path=path, size_bytes=size, duration_sec=duration
+        )
+
+    with (
+        patch(
+            "core.library.manager.extract_video_metadata",
+            side_effect=_extract,
+        ),
+        patch("core.library.manager.generate_thumbnail", return_value=None),
+    ):
+        for p in (a1, a2, b1):
+            mgr.add_recording(p)
+
+    groups = mgr.find_duplicate_groups()
+
+    assert len(groups) == 1
+    assert {it.filename for it in groups[0]} == {"a1.mp4", "a2.mp4"}

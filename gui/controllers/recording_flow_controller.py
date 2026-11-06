@@ -16,7 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import QTimer
 
 from gui.controllers.status_bar_controller import StatusBarController
 from gui.models.recording_state import RecordingStatus
@@ -32,11 +32,10 @@ from logger_config import get_module_logger
 from recorder.utils import format_time
 
 if TYPE_CHECKING:
-    from PyQt6.QtCore import QTimer
     from PyQt6.QtWidgets import QLabel, QMainWindow, QPushButton, QStatusBar
 
+    from core.library.manager import LibraryManager
     from gui.controllers.recording_controller import RecordingController
-    from gui.controllers.recordings_controller import RecordingsController
     from gui.controllers.settings_controller import SettingsController
     from gui.main_window import _ThreadTracker
     from gui.models.recording_state import CaptureSettings, RecordingState
@@ -63,7 +62,7 @@ class RecordingFlowControllerMixin(_QWindowBase):
         _stop_operation_thread: threading.Thread | None
         _thread_tracker: _ThreadTracker
         _recording_controller: RecordingController
-        _recordings_controller: RecordingsController
+        _library_manager: LibraryManager | None
         _recording_indicator: RecordingIndicatorOverlay
         _finalization_dialog: FinalizationProgressDialog | None
         _floating_widget: FloatingRecordingWidget | None
@@ -243,22 +242,37 @@ class RecordingFlowControllerMixin(_QWindowBase):
         if output_path.exists():
             size = output_path.stat().st_size
             self._settings_controller.add_recent_recording(output_path, size)
-            # Запустить генерацию миниатюры в фоновом потоке
-            self._generate_thumbnail_for_recording(output_path)
+            # Регистрация записи в библиотеке в фоновом потоке (#186)
+            self._add_recording_to_library(output_path)
         self._refresh_recent_recordings()
 
         self.recording_stopped.emit(str(output_path))
         logger.info(f"Запись остановлена: {output_path}")
 
-    def _generate_thumbnail_for_recording(self, output_path: Path) -> None:
-        """Генерировать миниатюру для новой записи в фоновом потоке."""
-        self._recordings_controller.generate_thumbnail_for_recording(
-            output_path
-        )
+    def _add_recording_to_library(self, output_path: Path) -> None:
+        """Добавить новую запись в библиотеку в фоновом потоке (#186).
 
-    def _get_recorded_video_icon(self) -> QIcon:
-        """Получить placeholder иконку для записи без миниатюры."""
-        return self._recordings_controller.get_recorded_video_icon()
+        Извлечение метаданных (ffprobe) и генерация превью (ffmpeg) —
+        подпроцессы, поэтому выполняются вне GUI-потока; после
+        завершения воркера обновление библиотеки планируется
+        в GUI-поток через QTimer.singleShot.
+        """
+        library_manager = self._library_manager
+        if library_manager is None:
+            return
+
+        def _worker() -> None:
+            try:
+                library_manager.add_recording(output_path)
+            except Exception as e:
+                logger.warning(
+                    "Не удалось добавить запись в библиотеку: %s", e
+                )
+            QTimer.singleShot(0, self._refresh_recent_recordings)
+
+        thread = threading.Thread(target=_worker, daemon=True)
+        self._thread_tracker.track(thread)
+        thread.start()
 
     def _on_recording_paused(self) -> None:
         """Обработка приостановки записи."""

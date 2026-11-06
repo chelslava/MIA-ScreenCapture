@@ -163,5 +163,9 @@ class GuiRuntimeCoordinator:
         self._app._setup_hotkeys()
         facade.start_api_server()
         self._app._main_window.bind_application_facade(facade)
+        # Библиотека записей делит менеджер с runtime (#186)
+        self._app._main_window.attach_library_manager(
+            self._app._library_manager
+        )
         self._app._main_window.refresh_api_status_view()
         self._app._start_scheduler()

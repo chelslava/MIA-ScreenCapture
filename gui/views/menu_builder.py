@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 
     from PyQt6.QtWidgets import (
         QLabel,
-        QLineEdit,
         QListWidget,
         QMainWindow,
         QPushButton,
@@ -36,7 +35,7 @@ if TYPE_CHECKING:
     )
 
     from gui.models.recording_state import RecordingState
-    from gui.views.recordings_list import RecordingsListWidget
+    from gui.views.library_view import LibraryView
 
 
 if TYPE_CHECKING:
@@ -62,14 +61,11 @@ class MainWindowMenuActionsMixin(_QWindowBase):
         start_btn: QPushButton
         pause_btn: QPushButton
         stop_btn: QPushButton
-        _open_latest_btn: QPushButton
-        _open_folder_btn: QPushButton
         _sidebar: QListWidget
         status_label: QLabel
         _ws_status_label: QLabel
         time_label: QLabel
-        recordings_list: RecordingsListWidget
-        _recordings_filter_input: QLineEdit
+        library_view: LibraryView
 
         # Callback-методы MainWindow (регистрируются в desktop actions)
         _show_page: Callable[[SidebarPage], None]
@@ -203,14 +199,6 @@ class MainWindowMenuActionsMixin(_QWindowBase):
             self.stop_btn,
             DesktopActionId.STOP_RECORDING,
         )
-        self._apply_action_metadata(
-            self._open_latest_btn,
-            DesktopActionId.OPEN_LATEST_RECORDING,
-        )
-        self._apply_action_metadata(
-            self._open_folder_btn,
-            DesktopActionId.OPEN_RECORDING_FOLDER,
-        )
 
         if hasattr(self, "_sidebar"):
             self._apply_accessible_metadata(
@@ -235,14 +223,9 @@ class MainWindowMenuActionsMixin(_QWindowBase):
             "Показывает длительность текущей записи.",
         )
         self._apply_accessible_metadata(
-            self.recordings_list,
-            "Список последних записей",
-            "Содержит последние записанные файлы и позволяет открыть их.",
-        )
-        self._apply_accessible_metadata(
-            self._recordings_filter_input,
-            "Фильтр записей",
-            "Фильтрует список последних записей по имени и дате.",
+            self.library_view,
+            "Библиотека записей",
+            "Поиск, теги, сортировка и управление записанными файлами.",
         )
 
         self._configure_tab_order()
@@ -289,14 +272,10 @@ class MainWindowMenuActionsMixin(_QWindowBase):
 
     def _configure_tab_order(self) -> None:
         """Настроить логичный tab order для сценариев без мыши."""
-        tab_order = [
+        tab_order: list[QWidget] = [
             self.start_btn,
             self.pause_btn,
             self.stop_btn,
-            self._recordings_filter_input,
-            self.recordings_list,
-            self._open_latest_btn,
-            self._open_folder_btn,
         ]
         self._tab_navigation_order = tab_order
         if hasattr(self, "_desktop_actions_controller"):

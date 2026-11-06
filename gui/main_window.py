@@ -23,8 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QLabel, QListWidgetItem, QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QLabel, QMainWindow, QMessageBox
 
 from config import get_config
 from core.event_bus import RecordingEvent, RecordingEventType
@@ -49,7 +48,6 @@ from gui.controllers.recording_flow_controller import (
 from gui.controllers.recordings_actions_controller import (
     RecordingsActionsControllerMixin,
 )
-from gui.controllers.recordings_controller import RecordingsController
 from gui.controllers.settings_controller import SettingsController
 from gui.controllers.status_bar_controller import StatusBarController
 from gui.controllers.websocket_controller import WebSocketClientController
@@ -78,14 +76,11 @@ from gui.views.onboarding_wizard import OnboardingWizard
 from gui.views.recording_indicator import RecordingIndicatorOverlay
 from gui.views.settings_page import SettingsCategory
 from logger_config import get_module_logger, open_logs_folder
-from recorder.utils import (
-    FFmpegStatus,
-    format_filesize,
-    generate_thumbnail,
-)
+from recorder.utils import FFmpegStatus
 
 if TYPE_CHECKING:
     from core.application_facade import ApplicationFacade
+    from core.library.manager import LibraryManager
 
 logger = get_module_logger(__name__)
 
@@ -239,14 +234,10 @@ class MainWindow(
         # Mica требует созданный hwnd; QSS-прослойку выставляет
         # gui_coordinator до apply_theme (#157)
         self._apply_mica_backdrop()
-        self._recordings_controller = RecordingsController(
-            state=self._state,
-            settings_controller=self._settings_controller,
-            recordings_list=self.recordings_list,
-            filter_input=self._recordings_filter_input,
-            status_bar=self.status_bar,
-            track_thread=self._thread_tracker.track,
-        )
+        # Менеджер библиотеки записей подключается из runtime позже
+        # (attach_library_manager, #186); до этого вью работает
+        # с собственным пустым экземпляром.
+        self._library_manager: LibraryManager | None = None
         self._status_bar_controller = StatusBarController(
             start_btn=self.start_btn,
             stop_btn=self.stop_btn,
@@ -404,48 +395,36 @@ class MainWindow(
         config.save()
 
     def _refresh_recent_recordings(self) -> None:
-        """Обновление списка недавних записей."""
-        self.recordings_list.clear()
-        filter_text = self._normalized_recordings_filter()
-        for rec in self._state.recent_recordings:
-            if not rec.path.exists():
-                continue
-            if not self._recording_matches_filter(
-                rec.path.name, rec.date, filter_text
-            ):
-                continue
-            item_text = (
-                f"{rec.path.name} - {format_filesize(rec.size)} - {rec.date}"
+        """Обновление библиотеки записей на странице «Записи» (#186)."""
+        self.library_view.refresh()
+
+    def attach_library_manager(self, manager: "LibraryManager") -> None:
+        """
+        Подключает общий LibraryManager runtime к странице «Записи».
+
+        Args:
+            manager: Экземпляр из VideoRecorderApp (_library_manager).
+        """
+        self._library_manager = manager
+        self.library_view.set_manager(manager)
+
+    def _on_library_post_processing_requested(self, path: str) -> None:
+        """Постановка записи из библиотеки в очередь постобработки."""
+        facade = self._application_facade
+        if facade is None:
+            self._show_non_modal_error(
+                "Постобработка недоступна: фасад приложения не подключён"
             )
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.ItemDataRole.UserRole, str(rec.path))
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsDragEnabled)
-
-            thumbnail_path = generate_thumbnail(rec.path)
-            if thumbnail_path:
-                item.setIcon(QIcon(str(thumbnail_path)))
-            else:
-                item.setIcon(self._get_recorded_video_icon())
-
-            self.recordings_list.addItem(item)
-
-    def _clear_recordings_filter(self) -> None:
-        """Сброс фильтра списка недавних записей."""
-        self._recordings_filter_input.setText("")
-        self._refresh_recent_recordings()
-
-    def _normalized_recordings_filter(self) -> str:
-        """Нормализация текста фильтра для сравнения."""
-        return self._recordings_controller.normalized_recordings_filter()
-
-    @staticmethod
-    def _recording_matches_filter(
-        filename: str, date_text: str, filter_text: str
-    ) -> bool:
-        """Проверка попадания записи под фильтр."""
-        return RecordingsController.recording_matches_filter(
-            filename, date_text, filter_text
-        )
+            return
+        result = facade.run_post_processing(path)
+        if result.get("success"):
+            self.status_bar.showMessage(
+                "Запись добавлена в очередь постобработки", 5000
+            )
+        else:
+            self._show_non_modal_error(
+                "Не удалось добавить запись в постобработку"
+            )
 
     # === Обработчики сигналов от представлений ===
 
@@ -1157,15 +1136,10 @@ class MainWindow(
                 DesktopActionId.STOP_RECORDING
             )
         )
-        self._open_latest_btn.clicked.connect(
-            lambda: self._desktop_actions.execute(
-                DesktopActionId.OPEN_LATEST_RECORDING
-            )
-        )
-        self._open_folder_btn.clicked.connect(
-            lambda: self._desktop_actions.execute(
-                DesktopActionId.OPEN_RECORDING_FOLDER
-            )
+
+        # Библиотека записей (#186): постобработка выбранной записи
+        self.library_view.post_processing_requested.connect(
+            self._on_library_post_processing_requested
         )
 
         # Сигналы CaptureView

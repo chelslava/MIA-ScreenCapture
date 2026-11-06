@@ -115,8 +115,7 @@ def _build_window():
     window.recording_paused = MagicMock()
     window.recording_resumed = MagicMock()
     window.error_occurred = MagicMock()
-    window.recordings_list = MagicMock()
-    window._recordings_filter_input = MagicMock()
+    window.library_view = MagicMock()
     window._diagnostics_view = MagicMock()
     window._diagnostics_view.logs_requested = MagicMock()
     window._recording_indicator = MagicMock()
@@ -140,7 +139,6 @@ def _build_window():
     )
     from gui.controllers.profile_gui_controller import ProfileGUIController
     from gui.controllers.readiness_controller import ReadinessController
-    from gui.controllers.recordings_controller import RecordingsController
     from gui.controllers.status_bar_controller import StatusBarController
     from gui.desktop_actions import DesktopActionRegistry
 
@@ -159,14 +157,7 @@ def _build_window():
         track_thread=lambda t: None,
     )
     window._profile_gui_controller = ProfileGUIController()
-    window._recordings_controller = RecordingsController(
-        state=window._state,
-        settings_controller=window._settings_controller,
-        recordings_list=window.recordings_list,
-        filter_input=window._recordings_filter_input,
-        status_bar=window.status_bar,
-        track_thread=lambda t: None,
-    )
+    window._library_manager = MagicMock()
 
     window._status_bar_controller = StatusBarController(
         start_btn=window.start_btn,
@@ -176,47 +167,6 @@ def _build_window():
         time_label=window.time_label,
     )
     return window
-
-
-class _FakeMenuSignal:
-    """Минимальный сигнал для триггера действий контекстного меню."""
-
-    def __init__(self) -> None:
-        self._callbacks: list = []
-
-    def connect(self, callback) -> None:
-        self._callbacks.append(callback)
-
-    def emit(self, *args) -> None:
-        for callback in self._callbacks:
-            callback(*args)
-
-
-class _FakeMenuAction:
-    """Минимальное QAction-подобное действие контекстного меню."""
-
-    def __init__(self, text: str, _parent=None) -> None:
-        self.text = text
-        self.triggered = _FakeMenuSignal()
-
-
-class _FakeContextMenu:
-    """Минимальное QMenu-подобное меню, собирающее добавленные действия."""
-
-    created: list["_FakeContextMenu"] = []
-
-    def __init__(self, _parent=None) -> None:
-        self.actions: dict[str, _FakeMenuAction] = {}
-        _FakeContextMenu.created.append(self)
-
-    def addAction(self, action: _FakeMenuAction) -> None:  # noqa: N802
-        self.actions[action.text] = action
-
-    def addSeparator(self) -> None:  # noqa: N802
-        pass
-
-    def exec(self, _pos) -> None:  # noqa: A003
-        pass
 
 
 class TestSidebarIcons:
@@ -518,37 +468,6 @@ class TestMainWindowRecentRecordings:
 
         assert state.recent_recordings[0].path == Path("/tmp/second.mp4")
         assert state.recent_recordings[1].path == Path("/tmp/first.mp4")
-
-
-class TestMainWindowRecentRecordingsFilter:
-    """Тесты фильтрации списка последних записей."""
-
-    @pytest.mark.parametrize(
-        "filename,date_text,filter_text,expected",
-        [
-            ("capture_2026-03-28.mp4", "2026-03-28", "", True),
-            ("capture_2026-03-28.mp4", "2026-03-28", "capture", True),
-            ("capture_2026-03-28.mp4", "2026-03-28", "2026-03", True),
-            ("capture_2026-03-28.mp4", "2026-03-28", "CAPTURE", True),
-            ("capture_2026-03-28.mp4", "2026-03-28", "audio", False),
-        ],
-    )
-    def test_recording_matches_filter(
-        self,
-        filename: str,
-        date_text: str,
-        filter_text: str,
-        expected: bool,
-    ) -> None:
-        """Фильтр должен работать без учета регистра."""
-        from gui.main_window import MainWindow
-
-        assert (
-            MainWindow._recording_matches_filter(
-                filename, date_text, filter_text
-            )
-            is expected
-        )
 
 
 class TestMainWindowOutputPathFromApi:
@@ -887,91 +806,25 @@ class TestMainWindowMethods:
 
         assert window._sidebar_splitter.sizes()[0] == 200
 
-    def test_refresh_recent_recordings_adds_only_existing_matching_items(
-        self, tmp_path: Path
-    ) -> None:
-        """В список попадают только существующие записи, прошедшие фильтр."""
-        from core.recording_state import RecentRecording
-
-        window = _build_window()
-        existing = tmp_path / "capture.mp4"
-        existing.write_bytes(b"data")
-        missing = tmp_path / "missing.mp4"
-        window._state.recent_recordings = [
-            RecentRecording(path=existing, size=42, date="2026-04-03"),
-            RecentRecording(path=missing, size=100, date="2026-04-03"),
-        ]
-        window._recordings_filter_input.text.return_value = "capture"
-
-        class FakeListWidgetItem:
-            def __init__(self, text: str) -> None:
-                self.text = text
-                self.payload = None
-                self.flags_value = 0
-
-            def setData(self, _role, payload: str) -> None:
-                self.payload = payload
-
-            def setIcon(self, _icon) -> None:
-                pass
-
-            def flags(self) -> int:
-                return self.flags_value
-
-            def setFlags(self, flags: int) -> None:
-                self.flags_value = flags
-
-        added_items: list[FakeListWidgetItem] = []
-        window.recordings_list.addItem.side_effect = added_items.append
-
-        with (
-            patch("gui.main_window.QListWidgetItem", FakeListWidgetItem),
-            patch("gui.main_window.format_filesize", return_value="42 B"),
-        ):
-            window._refresh_recent_recordings()
-
-        window.recordings_list.clear.assert_called_once()
-        assert len(added_items) == 1
-        assert added_items[0].text == "capture.mp4 - 42 B - 2026-04-03"
-        assert added_items[0].payload == str(existing)
-
-    @pytest.mark.parametrize(
-        ("filename", "date_text", "filter_text", "expected"),
-        [
-            ("capture.mp4", "2026-04-03", "", True),
-            ("capture.mp4", "2026-04-03", "CAPTURE", True),
-            ("capture.mp4", "2026-04-03", "2026-04", True),
-            ("capture.mp4", "2026-04-03", "other", False),
-        ],
-    )
-    def test_recording_matches_filter(
+    def test_refresh_recent_recordings_delegates_to_library_view(
         self,
-        filename: str,
-        date_text: str,
-        filter_text: str,
-        expected: bool,
     ) -> None:
-        """Фильтр учитывает имя файла и дату без учёта регистра."""
-        from gui.main_window import MainWindow
-
-        assert (
-            MainWindow._recording_matches_filter(
-                filename,
-                date_text,
-                filter_text,
-            )
-            is expected
-        )
-
-    def test_clear_recordings_filter_resets_field_and_refreshes(self) -> None:
-        """Сброс фильтра очищает поле и обновляет список."""
+        """Обновление недавних записей пробрасывается в LibraryView (#186)."""
         window = _build_window()
-        window._refresh_recent_recordings = MagicMock()
 
-        window._clear_recordings_filter()
+        window._refresh_recent_recordings()
 
-        window._recordings_filter_input.setText.assert_called_once_with("")
-        window._refresh_recent_recordings.assert_called_once()
+        window.library_view.refresh.assert_called_once()
+
+    def test_attach_library_manager_sets_manager_and_refreshes(self) -> None:
+        """Подключённый менеджер уходит в LibraryView (#186)."""
+        window = _build_window()
+        manager = MagicMock()
+
+        window.attach_library_manager(manager)
+
+        assert window._library_manager is manager
+        window.library_view.set_manager.assert_called_once_with(manager)
 
     def test_on_view_signal_handlers_forward_to_settings_controller(
         self,
@@ -1136,7 +989,7 @@ class TestMainWindowMethods:
 
         assert window._tab_navigation_order[0] is window.start_btn
         assert window._tab_navigation_order[1] is window.pause_btn
-        assert window._tab_navigation_order[-1] is window._open_folder_btn
+        assert window._tab_navigation_order[-1] is window.stop_btn
 
     def test_run_diagnostics_uses_readiness_inputs(self) -> None:
         """Диагностика должна использовать те же входные данные готовности."""
@@ -1303,6 +1156,9 @@ class TestMainWindowMethods:
         window = _build_window()
         output = tmp_path / "capture.mp4"
         output.write_bytes(b"abc")
+        # Регистрация в библиотеке тестируется отдельно (#186);
+        # здесь менеджер отключён, чтобы refresh был синхронным
+        window._library_manager = None
         window._refresh_recent_recordings = MagicMock()
 
         window._on_recording_stopped(output)
@@ -1315,6 +1171,34 @@ class TestMainWindowMethods:
         window._refresh_recent_recordings.assert_called_once()
         window.recording_stopped.emit.assert_called_once_with(str(output))
         window._recording_indicator.hide_indicator.assert_called_once()
+
+    def test_on_recording_stopped_registers_recording_in_library(
+        self, tmp_path: Path
+    ) -> None:
+        """Остановка записи добавляет файл в библиотеку (#186)."""
+        from gui.main_window import _ThreadTracker
+
+        window = _build_window()
+        output = tmp_path / "capture.mp4"
+        output.write_bytes(b"abc")
+        window._refresh_recent_recordings = MagicMock()
+        library_manager = MagicMock()
+        window._library_manager = library_manager
+        window._thread_tracker = _ThreadTracker()
+
+        window._on_recording_stopped(output)
+
+        window._thread_tracker.join_all()
+        library_manager.add_recording.assert_called_once_with(output)
+
+    def test_add_recording_to_library_noop_without_manager(
+        self, tmp_path: Path
+    ) -> None:
+        """Без менеджера библиотеки хук ничего не делает."""
+        window = _build_window()
+        window._library_manager = None
+
+        window._add_recording_to_library(tmp_path / "x.mp4")
 
     def test_begin_stop_operation_updates_ui_and_spawns_thread(self) -> None:
         """Начало stop operation переводит UI в stopping-состояние."""
@@ -1706,116 +1590,50 @@ class TestMainWindowMethods:
         window.recording_resumed.emit.assert_called_once()
         window.error_occurred.emit.assert_called_once_with("boom")
 
-    def test_open_recording_helpers_use_selected_items(self) -> None:
-        """Открытие записей использует выбранный и последний элементы."""
+    def test_open_latest_recording_opens_most_recent_existing(
+        self, tmp_path: Path
+    ) -> None:
+        """«Открыть последнюю» открывает первую существующую запись."""
         window = _build_window()
         window._open_file = MagicMock()
-        fake_item = MagicMock()
-        fake_item.data.return_value = "D:/capture.mp4"
-        window.recordings_list.currentItem.return_value = fake_item
-        window.recordings_list.item.return_value = fake_item
+        existing = tmp_path / "capture.mp4"
+        existing.write_bytes(b"x")
+        window._state.recent_recordings = [
+            MagicMock(path=tmp_path / "missing.mp4"),
+            MagicMock(path=existing),
+        ]
 
-        window._open_recording(fake_item)
-        window._open_selected_recording()
         window._open_latest_recording()
 
-        assert window._open_file.call_count == 3
+        window._open_file.assert_called_once_with(str(existing))
 
-    def test_recordings_context_menu_noop_without_item(self) -> None:
-        """Без записи под курсором меню не строится и фокус не меняется."""
-        window = _build_window()
-        window.recordings_list.itemAt.return_value = None
-
-        window._show_recordings_context_menu(None)
-
-        window.recordings_list.setCurrentItem.assert_not_called()
-
-    def test_recordings_context_menu_wires_expected_actions(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_open_latest_recording_noop_without_existing(
+        self, tmp_path: Path
     ) -> None:
-        """Меню записи выбирает элемент под курсором и вызывает действия."""
-        import gui.controllers.recordings_actions_controller as main_window_module
-
+        """Если записей на диске нет — открытие не выполняется."""
         window = _build_window()
-        fake_item = MagicMock()
-        window.recordings_list.itemAt.return_value = fake_item
-        window._open_selected_recording = MagicMock()
-        window._open_recording_folder = MagicMock()
-        window._copy_selected_recording_path = MagicMock()
-        window._post_process_selected_recordings = MagicMock()
-        window._move_selected_recordings = MagicMock()
-        window._delete_selected_recordings = MagicMock()
+        window._open_file = MagicMock()
+        window._state.recent_recordings = [
+            MagicMock(path=tmp_path / "missing.mp4")
+        ]
 
-        _FakeContextMenu.created = []
-        monkeypatch.setattr(main_window_module, "QMenu", _FakeContextMenu)
-        monkeypatch.setattr(main_window_module, "QAction", _FakeMenuAction)
+        window._open_latest_recording()
 
-        window._show_recordings_context_menu(None)
+        window._open_file.assert_not_called()
 
-        window.recordings_list.setCurrentItem.assert_called_once_with(
-            fake_item
-        )
-        menu = _FakeContextMenu.created[0]
-        assert set(menu.actions) == {
-            "Открыть файл",
-            "Открыть папку",
-            "Копировать путь",
-            "Добавить в постобработку",
-            "Переместить в папку…",
-            "Удалить из списка…",
-        }
-
-        menu.actions["Открыть файл"].triggered.emit()
-        window._open_selected_recording.assert_called_once()
-
-        menu.actions["Открыть папку"].triggered.emit()
-        window._open_recording_folder.assert_called_once()
-
-        menu.actions["Копировать путь"].triggered.emit()
-        window._copy_selected_recording_path.assert_called_once()
-
-        menu.actions["Добавить в постобработку"].triggered.emit()
-        window._post_process_selected_recordings.assert_called_once()
-
-        menu.actions["Переместить в папку…"].triggered.emit()
-        window._move_selected_recordings.assert_called_once()
-
-        menu.actions["Удалить из списка…"].triggered.emit()
-        window._delete_selected_recordings.assert_called_once()
-
-    def test_copy_selected_recording_path_sets_clipboard(self) -> None:
-        """Путь выбранной записи копируется в буфер обмена."""
-        window = _build_window()
-        fake_item = MagicMock()
-        fake_item.data.return_value = "D:/Recordings/capture.mp4"
-        window.recordings_list.currentItem.return_value = fake_item
-        fake_clipboard = MagicMock()
-
-        with patch(
-            "PyQt6.QtGui.QGuiApplication.clipboard",
-            return_value=fake_clipboard,
-        ):
-            window._copy_selected_recording_path()
-
-        fake_clipboard.setText.assert_called_once_with(
-            "D:/Recordings/capture.mp4"
-        )
-        window.status_bar.showMessage.assert_called_once()
-
-    def test_copy_selected_recording_path_noop_without_selection(
-        self,
+    def test_open_recording_folder_opens_latest_folder(
+        self, tmp_path: Path
     ) -> None:
-        """Без выбранной записи буфер обмена не трогаем."""
+        """«Открыть папку» открывает каталог свежей записи."""
         window = _build_window()
-        window.recordings_list.currentItem.return_value = None
+        window._open_folder = MagicMock()
+        existing = tmp_path / "capture.mp4"
+        existing.write_bytes(b"x")
+        window._state.recent_recordings = [MagicMock(path=existing)]
 
-        with patch(
-            "PyQt6.QtGui.QGuiApplication.clipboard"
-        ) as clipboard_factory:
-            window._copy_selected_recording_path()
+        window._open_recording_folder()
 
-        clipboard_factory.assert_not_called()
-        window.status_bar.showMessage.assert_not_called()
+        window._open_folder.assert_called_once_with(str(tmp_path))
 
     @pytest.mark.parametrize(
         ("requested", "fmt", "expected"),
@@ -2289,128 +2107,6 @@ class TestRecordingTunablesSettings:
         window._on_recording_tunables_changed()  # не должно упасть
 
 
-class TestRecordingsMultiSelect:
-    """Multi-select и массовые операции списка записей (#160)."""
-
-    def test_selected_paths_via_widget(self) -> None:
-        """Пути выделенных записей берутся из RecordingsListWidget."""
-        from gui.views.recordings_list import RecordingsListWidget
-
-        window = _build_window()
-        window.recordings_list = RecordingsListWidget()
-        window.recordings_list.selectedItems = MagicMock(
-            return_value=[
-                SimpleNamespace(data=lambda role: "D:/a.mp4"),
-                SimpleNamespace(data=lambda role: "D:/b.mp4"),
-            ]
-        )
-
-        paths = window._selected_recording_paths()
-
-        assert [p.name for p in paths] == ["a.mp4", "b.mp4"]
-
-    def test_selected_paths_fallback_to_current_item(self) -> None:
-        """Без helper-метода используется currentItem (обратная совместимость)."""
-        window = _build_window()
-        window.recordings_list = MagicMock()
-        window.recordings_list.currentItem.return_value = SimpleNamespace(
-            data=lambda role: "D:/single.mp4"
-        )
-
-        paths = window._selected_recording_paths()
-
-        assert [p.name for p in paths] == ["single.mp4"]
-
-    def test_delete_selected_with_confirmation(self, monkeypatch) -> None:
-        """Удаление выделенных из списка недавних с подтверждением."""
-        from PyQt6.QtWidgets import QMessageBox
-
-        window = _build_window()
-        window._selected_recording_paths = MagicMock(
-            return_value=[Path("D:/a.mp4"), Path("D:/b.mp4")]
-        )
-        window._refresh_recent_recordings = MagicMock()
-        monkeypatch.setattr(
-            "gui.controllers.recordings_actions_controller.QMessageBox.question",
-            lambda *a, **k: QMessageBox.StandardButton.Yes,
-        )
-        config_mock = MagicMock()
-        config_mock.remove_recent_recordings.return_value = 2
-
-        with patch(
-            "gui.controllers.recordings_actions_controller.get_config",
-            return_value=config_mock,
-        ):
-            window._delete_selected_recordings()
-
-        config_mock.remove_recent_recordings.assert_called_once_with(
-            ["D:\\a.mp4", "D:\\b.mp4"]
-        )
-        window._refresh_recent_recordings.assert_called_once()
-
-    def test_delete_selected_cancelled(self, monkeypatch) -> None:
-        """Отмена подтверждения не трогает конфигурацию."""
-        from PyQt6.QtWidgets import QMessageBox
-
-        window = _build_window()
-        window._selected_recording_paths = MagicMock(
-            return_value=[Path("D:/a.mp4")]
-        )
-        monkeypatch.setattr(
-            "gui.controllers.recordings_actions_controller.QMessageBox.question",
-            lambda *a, **k: QMessageBox.StandardButton.No,
-        )
-        config_mock = MagicMock()
-
-        with patch(
-            "gui.controllers.recordings_actions_controller.get_config",
-            return_value=config_mock,
-        ):
-            window._delete_selected_recordings()
-
-        config_mock.remove_recent_recordings.assert_not_called()
-
-    def test_post_process_selected(self) -> None:
-        """Выделенные записи ставятся в очередь постобработки."""
-        window = _build_window()
-        window._selected_recording_paths = MagicMock(
-            return_value=[Path("D:/a.mp4"), Path("D:/b.mp4")]
-        )
-        window._application_facade = MagicMock()
-        window._application_facade.run_post_processing.return_value = {
-            "success": True
-        }
-
-        window._post_process_selected_recordings()
-
-        assert window._application_facade.run_post_processing.call_count == 2
-
-    def test_move_selected_records_and_refresh(self, monkeypatch) -> None:
-        """Перемещение выделенных файлов в выбранную папку."""
-
-        window = _build_window()
-        window._selected_recording_paths = MagicMock(
-            return_value=[Path("D:/a.mp4")]
-        )
-        window._refresh_recent_recordings = MagicMock()
-        monkeypatch.setattr(
-            "gui.controllers.recordings_actions_controller.QFileDialog.getExistingDirectory",
-            lambda *a, **k: "D:/dest",
-        )
-
-        with (
-            patch(
-                "gui.controllers.recordings_actions_controller.shutil.move"
-            ) as move_mock,
-            patch.object(Path, "exists", return_value=True),
-        ):
-            window._move_selected_recordings()
-
-        move_mock.assert_called_once()
-        assert move_mock.call_args.args[1].endswith("a.mp4")
-        window._refresh_recent_recordings.assert_called_once()
-
-
 class TestTabTransitionAnimations:
     """Fade-переходы вкладок с учётом настроек (#161)."""
 
@@ -2861,13 +2557,12 @@ class TestCursorEffectsHooks:
 
         window = _build_window()
         window._cursor_effects_overlay = MagicMock()
-        window._recordings_controller = MagicMock()
+        window._library_manager = MagicMock()
         window._refresh_recent_recordings = MagicMock()
         window._set_status_updates_enabled = MagicMock()
         window._update_ui_state = MagicMock()
         window._recording_indicator = MagicMock()
         window._settings_controller.add_recent_recording = MagicMock()
-        window._generate_thumbnail_for_recording = MagicMock()
         window._draw_overlay = None
 
         window._on_recording_stopped(PathLib("C:/videos/out.mp4"))

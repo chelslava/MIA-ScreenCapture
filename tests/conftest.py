@@ -253,8 +253,20 @@ class MockQWidgetBase:
     def setVisible(self, visible: bool):
         self._visible = visible
 
+    def setContextMenuPolicy(self, policy):
+        """Политика контекстного меню (no-op в моках)."""
+        self._context_menu_policy = policy
+
     def isVisible(self) -> bool:
         return self._visible
+
+    def show(self):
+        """Для QWidget: показать (совместимость с кодом, зовущим show)."""
+        self.setVisible(True)
+
+    def hide(self):
+        """Для QWidget: скрыть (совместимость с кодом, зовущим hide)."""
+        self.setVisible(False)
 
     def setWindowTitle(self, title: str):
         """Для QDialog, QMainWindow, QWidget."""
@@ -390,6 +402,42 @@ class MockQWidgetBase:
     def setText(self, text: str):
         """Для QLabel, QPushButton, QLineEdit."""
         self._text = text
+
+    def setAlignment(self, _alignment):
+        """Для QLabel: выравнивание содержимого (no-op в моках)."""
+        self._alignment = _alignment
+
+    def setWordWrap(self, wrap: bool):
+        """Для QLabel: перенос строк (no-op в моках)."""
+        self._word_wrap = wrap
+
+    def setTextInteractionFlags(self, _flags):
+        """Для QLabel: флаги взаимодействия с текстом (no-op в моках)."""
+        self._text_interaction_flags = _flags
+
+    def setPixmap(self, pixmap):
+        """Для QLabel: pixmap содержимое (no-op в моках)."""
+        self._pixmap = pixmap
+
+    def setPlaceholderText(self, text: str):
+        """Для QLineEdit: текст-подсказка (no-op в моках)."""
+        self._placeholder = text
+
+    def setToolTip(self, text: str):
+        """Для QWidget: подсказка (no-op в моках)."""
+        self._tooltip = text
+
+    def setFixedWidth(self, width: int):
+        """Для QWidget: фиксация ширины (no-op в моках)."""
+        self._fixed_width = width
+
+    def setFixedHeight(self, height: int):
+        """Для QWidget: фиксация высоты (no-op в моках)."""
+        self._fixed_height = height
+
+    def setFixedSize(self, width, height=None):
+        """Для QWidget: фиксация размера (no-op в моках)."""
+        self._fixed_size = (width, height)
 
     def text(self) -> str:
         """Для QLabel, QPushButton, QLineEdit."""
@@ -558,6 +606,19 @@ class MockQWidgetBase:
         if 0 <= index < len(data_list):
             return data_list[index]
         return None
+
+    def currentData(self, role: int = 0) -> Any:
+        """Для QComboBox: userData текущего элемента."""
+        index = self.currentIndex()
+        return self.itemData(index, role)
+
+    def findData(self, data: Any, role: int = 0) -> int:
+        """Для QComboBox: индекс элемента с заданным userData."""
+        data_list = getattr(self, "_item_data", [])
+        for i, item_data in enumerate(data_list):
+            if item_data == data:
+                return i
+        return -1
 
     def setEditable(self, editable: bool):
         """Для QComboBox."""
@@ -886,7 +947,25 @@ MockQTreeWidget = _create_mock_class("QTreeWidget", (MockQWidgetBase,))
 MockQTabWidget = _create_mock_class("QTabWidget", (MockQWidgetBase,))
 MockQScrollArea = _create_mock_class("QScrollArea", (MockQWidgetBase,))
 MockQSplitter = _create_mock_class("QSplitter", (MockQWidgetBase,))
-MockQFrame = _create_mock_class("QFrame", (MockQWidgetBase,))
+class _MockQFrameBase(MockQWidgetBase):
+    """Базовый mock для QFrame."""
+
+    # Классовый сигнал: MockQWidgetBase.__init__ делает инстансные копии
+    customContextMenuRequested = MockSignal()
+
+    def setFrameShape(self, shape):
+        """Форма рамки (no-op в моках)."""
+        self._frame_shape = shape
+
+    def setCursor(self, cursor):
+        """Курсор виджета (no-op в моках)."""
+        self._cursor = cursor
+
+
+MockQFrame = _create_mock_class("QFrame", (_MockQFrameBase,))
+# QFrame.Shape / QFrame.Shadow — enum-контейнеры на классе
+MockQFrame.Shape = MagicMock()
+MockQFrame.Shadow = MagicMock()
 
 
 class _MockQMessageBoxStandardButton:
@@ -1094,6 +1173,28 @@ class MockQGridLayoutBase:
         pass
 
     def setSpacing(self, spacing):
+        pass
+
+    def count(self) -> int:
+        """Число добавленных виджетов (для очистки layout в коде)."""
+        return len(self._widgets)
+
+    def takeAt(self, _index: int):
+        """Удаление элемента layout: возвращает объект с widget()."""
+
+        class _LayoutItem:
+            def __init__(self, widget: Any):
+                self._widget = widget
+
+            def widget(self):
+                return self._widget
+
+        if not self._widgets:
+            return None
+        (_, _), widget = self._widgets.popitem()
+        return _LayoutItem(widget)
+
+    def setRowStretch(self, _row: int, _stretch: int):
         pass
 
     def __iter__(self):

@@ -251,6 +251,86 @@ class LibraryManager:
             self._save()
             return True
 
+    def rename_recording(
+        self,
+        path: Path | str,
+        new_name: str,
+    ) -> Path | None:
+        """
+        Переименовывает файл записи и обновляет метаданные библиотеки.
+
+        Args:
+            path: Текущий путь к видеофайлу.
+            new_name: Новое имя (с суффиксом или без — суффикс сохраняется).
+
+        Returns:
+            Новый путь при успехе, None при ошибке (файл не найден,
+            имя пустое, цель уже существует).
+        """
+        clean_name = new_name.strip()
+        if not clean_name or "/" in clean_name or "\\" in clean_name:
+            logger.warning("Некорректное имя для переименования: %r", new_name)
+            return None
+
+        src = Path(path).resolve()
+        with self._lock:
+            item = self._items.get(str(src))
+            if item is None:
+                logger.warning("Запись не найдена в библиотеке: %s", src.name)
+                return None
+            if src.suffix and not clean_name.lower().endswith(
+                src.suffix.lower()
+            ):
+                clean_name = f"{clean_name}{src.suffix}"
+            dst = src.with_name(clean_name)
+            if dst.exists():
+                logger.warning("Файл с именем %s уже существует", clean_name)
+                return None
+            try:
+                src.rename(dst)
+            except OSError as e:
+                logger.error("Не удалось переименовать %s: %s", src.name, e)
+                return None
+            # Превью переименовываем вместе с записью
+            if (
+                item.thumbnail_path is not None
+                and item.thumbnail_path.exists()
+            ):
+                new_thumb = item.thumbnail_path.with_name(
+                    f"{dst.stem}_thumb.png"
+                )
+                try:
+                    item.thumbnail_path.rename(new_thumb)
+                    item.thumbnail_path = new_thumb
+                except OSError:
+                    pass
+            item.path = dst
+            del self._items[str(src)]
+            self._items[str(dst)] = item
+            self._save()
+            logger.info("Запись переименована: %s -> %s", src.name, dst.name)
+            return dst
+
+    def find_duplicate_groups(self) -> list[list[RecordingMetadata]]:
+        """
+        Находит группы записей-дубликатов по размеру и длительности.
+
+        Хэш содержимого больших видео дорог, поэтому дубликаты ищутся
+        по совпадению размера файла и длительности — практичного
+        достаточно для повторных записей одного и того же контента.
+
+        Returns:
+            Список групп (2+ записи с одинаковыми размером и длительностью).
+        """
+        groups: dict[tuple[int, float], list[RecordingMetadata]] = {}
+        with self._lock:
+            for it in self._items.values():
+                if it.size_bytes <= 0:
+                    continue
+                key = (it.size_bytes, round(it.duration_sec, 1))
+                groups.setdefault(key, []).append(it)
+        return [g for g in groups.values() if len(g) > 1]
+
     def _load(self) -> None:
         """Загрузка базы из JSON."""
         if not self._library_file.exists():

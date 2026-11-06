@@ -188,7 +188,6 @@ class TestUiBuilderSetupUi:
         # QStackedWidget патчится обязательно: без этого общий auto-mock
         # из conftest копит addWidget-вызовы от других тестов сессии
         "QStackedWidget",
-        "QLineEdit",
         "QLabel",
         "QComboBox",
         "QStatusBar",
@@ -204,7 +203,7 @@ class TestUiBuilderSetupUi:
         "PostProcessingView",
         "RecordingTunablesView",
         "ReadinessCenterView",
-        "RecordingsListWidget",
+        "LibraryView",
         "SettingsPage",
     )
 
