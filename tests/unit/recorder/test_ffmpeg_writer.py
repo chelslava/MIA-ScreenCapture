@@ -37,6 +37,28 @@ class _ImmediateThread:
         self._target(*self._args, **self._kwargs)
 
 
+class _FakeTimeModule:
+    """Изолированная заглушка time-модуля для ffmpeg_writer.
+
+    Патч ``recorder.ffmpeg_writer.time.sleep`` подменял sleep на
+    общем stdlib time-модуле: daemon-потоки соседних тестов, спящие
+    через time.sleep, попадали в счётчик того теста, что патчил
+    последним (flake на CI: 142926 вместо 1). Подмена ссылки на
+    модуль в namespace ffmpeg_writer изолирует подсчёт задержек.
+    """
+
+    def __init__(self, sleep_sink=None) -> None:
+        self._sleep_sink = sleep_sink or (lambda seconds: None)
+
+    def sleep(self, seconds: float) -> None:
+        """Запись задержки retry вместо реальной паузы."""
+        self._sleep_sink(seconds)
+
+    def time(self) -> float:
+        """Реальное время для замеров длительности в writer."""
+        return time.time()
+
+
 class _JoinTrackingThread:
     """Псевдопоток для проверки корректного join при close()."""
 
@@ -823,8 +845,9 @@ class TestRetryWithBackoff:
 
         sleep_calls: list[float] = []
         monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep",
-            lambda s: sleep_calls.append(s),
+            ffmpeg_writer_module,
+            "time",
+            _FakeTimeModule(sleep_calls.append),
         )
 
         call_count = 0
@@ -844,8 +867,9 @@ class TestRetryWithBackoff:
 
         sleep_calls: list[float] = []
         monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep",
-            lambda s: sleep_calls.append(s),
+            ffmpeg_writer_module,
+            "time",
+            _FakeTimeModule(sleep_calls.append),
         )
 
         call_count = 0
@@ -872,9 +896,7 @@ class TestRetryWithBackoff:
     def test_raises_after_all_attempts_exhausted(self, monkeypatch) -> None:
         from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
 
-        monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep", lambda s: None
-        )
+        monkeypatch.setattr(ffmpeg_writer_module, "time", _FakeTimeModule())
 
         call_count = 0
 
@@ -894,8 +916,9 @@ class TestRetryWithBackoff:
 
         sleep_calls: list[float] = []
         monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep",
-            lambda s: sleep_calls.append(s),
+            ffmpeg_writer_module,
+            "time",
+            _FakeTimeModule(sleep_calls.append),
         )
 
         call_count = 0
@@ -916,8 +939,9 @@ class TestRetryWithBackoff:
 
         sleep_calls: list[float] = []
         monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep",
-            lambda s: sleep_calls.append(s),
+            ffmpeg_writer_module,
+            "time",
+            _FakeTimeModule(sleep_calls.append),
         )
 
         call_count = 0
@@ -942,9 +966,7 @@ class TestRetryWithBackoff:
         """RuntimeError пробрасывается после исчерпания всех попыток (#84)."""
         from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
 
-        monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep", lambda s: None
-        )
+        monkeypatch.setattr(ffmpeg_writer_module, "time", _FakeTimeModule())
 
         call_count = 0
 
@@ -962,8 +984,9 @@ class TestRetryWithBackoff:
 
         sleep_calls: list[float] = []
         monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep",
-            lambda s: sleep_calls.append(s),
+            ffmpeg_writer_module,
+            "time",
+            _FakeTimeModule(sleep_calls.append),
         )
 
         call_count = 0
@@ -992,9 +1015,7 @@ class TestRetryWithBackoff:
 
         from recorder.ffmpeg_writer import RetryPolicy, retry_with_backoff
 
-        monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep", lambda s: None
-        )
+        monkeypatch.setattr(ffmpeg_writer_module, "time", _FakeTimeModule())
 
         call_count = 0
 
@@ -1025,8 +1046,9 @@ class TestRetryWithBackoff:
 
         sleep_calls: list[float] = []
         monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep",
-            lambda s: sleep_calls.append(s),
+            ffmpeg_writer_module,
+            "time",
+            _FakeTimeModule(sleep_calls.append),
         )
         monkeypatch.setattr(
             ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
@@ -1090,9 +1112,7 @@ class TestRetryWithBackoff:
 
         from recorder.ffmpeg_writer import FFmpegVideoWriter, RetryPolicy
 
-        monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep", lambda s: None
-        )
+        monkeypatch.setattr(ffmpeg_writer_module, "time", _FakeTimeModule())
         monkeypatch.setattr(
             ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
         )
@@ -1144,9 +1164,7 @@ class TestRetryWithBackoff:
 
         from recorder.ffmpeg_writer import FFmpegVideoWriter, RetryPolicy
 
-        monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep", lambda s: None
-        )
+        monkeypatch.setattr(ffmpeg_writer_module, "time", _FakeTimeModule())
         monkeypatch.setattr(
             ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
         )
@@ -1198,9 +1216,7 @@ class TestRetryWithBackoff:
 
         from recorder.ffmpeg_writer import FFmpegVideoWriter, RetryPolicy
 
-        monkeypatch.setattr(
-            "recorder.ffmpeg_writer.time.sleep", lambda s: None
-        )
+        monkeypatch.setattr(ffmpeg_writer_module, "time", _FakeTimeModule())
         monkeypatch.setattr(
             ffmpeg_writer_module, "_FFMPEG_STDERR_TAIL_LINES", 3
         )
