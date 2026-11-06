@@ -56,6 +56,7 @@
 
 ## 5. CI и публикация
 
-- [ ] Release workflow выполнен успешно на теге `v1.7.1` (после пуша тега).
-- [ ] Release опубликован, артефакты и SBOM приложены, attestations
-      проверены `gh attestation verify`.
+- [x] Release workflow выполнен успешно на теге `v1.7.1` (после пуша тега)
+      — run 42116348148, success.
+- [x] Release опубликован, артефакты и SBOM приложены, attestations
+      проверены `gh attestation verify` (wheel и sdist — exit 0).
