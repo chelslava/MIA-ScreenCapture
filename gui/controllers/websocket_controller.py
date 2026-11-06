@@ -59,7 +59,9 @@ class WebSocketWorker(QThread):
             return
 
         headers = {"X-API-Key": self._token}
-        ws_url = f"{self._url}?token={self._token}"
+        # Токен передаётся только заголовком (#189): query string
+        # оседает в access-логах серверов и прокси
+        ws_url = self._url
 
         while not self._stop_event.is_set():
             try:

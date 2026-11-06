@@ -1599,10 +1599,18 @@ Write-операции (POST, PUT, DELETE) подвергаются rate limitin
 
 API поддерживает real-time уведомления через WebSocket на адресе `/ws`.
 
-Аутентификация: передайте `?token=YOUR_API_KEY` в URL подключения:
+Аутентификация: передайте API-ключ в заголовке `X-API-Key` (#189).
+Токен в query string (`?token=`) больше не принимается — URL с токеном
+попадает в access-логи серверов и прокси. Браузерный WebSocket API не
+умеет заголовки, поэтому используйте библиотеку с их поддержкой
+(например, `websockets`):
 
 ```javascript
-const ws = new WebSocket('ws://localhost:5000/ws?token=your-api-key');
+// Node.js: npm install websockets
+const WebSocket = require('ws');
+const ws = new WebSocket('ws://localhost:5000/ws', {
+  headers: { 'X-API-Key': 'your-api-key' },
+});
 ws.onmessage = (event) => {
   const event_data = JSON.parse(event.data);
   console.log('Event:', event_data);

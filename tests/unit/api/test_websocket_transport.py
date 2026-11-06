@@ -241,3 +241,81 @@ class TestMessageEnums:
         assert ErrorCode.UNAUTHORIZED.value == "unauthorized"
         assert ErrorCode.VALIDATION_ERROR.value == "validation_error"
         assert ErrorCode.INTERNAL_ERROR.value == "internal_error"
+
+
+class _FakeWS:
+    """Минимальный ws-объект для create_websocket_handler."""
+
+    def __init__(self, headers: dict[str, str] | None = None) -> None:
+        self.environ: dict[str, str] = dict(headers or {})
+        self.sent: list[str] = []
+        self.closed = False
+
+    def send(self, message: str) -> None:
+        self.sent.append(message)
+
+    def close(self) -> None:
+        self.closed = True
+
+    def receive(self, timeout: float) -> str | None:
+        # Сразу закрываем соединение: данных от клиента нет
+        return None
+
+
+class TestWebsocketHandlerAuth:
+    """Авторизация WS-обработчика только по заголовку (#189)."""
+
+    def _make_transport(self, auth_check) -> MagicMock:
+        transport = MagicMock()
+        transport.authenticate.side_effect = auth_check
+        transport.get_initial_messages.return_value = []
+        transport.register_client.return_value = MagicMock()
+        return transport
+
+    def test_rejects_without_header(self) -> None:
+        """Без X-API-Key соединение отклоняется (401-сообщение)."""
+        from api.websocket_transport import create_websocket_handler
+
+        transport = self._make_transport(
+            lambda token: token == "valid-token"
+        )
+        ws = _FakeWS()
+
+        create_websocket_handler(transport)(ws)
+
+        assert ws.closed is True
+        assert len(ws.sent) == 1
+        payload = json.loads(ws.sent[0])
+        assert payload["type"] == "error"
+        assert payload["error"]["code"] == "unauthorized"
+
+    def test_rejects_query_string_token(self) -> None:
+        """Токен в query string не принимается (#189)."""
+        from api.websocket_transport import create_websocket_handler
+
+        transport = self._make_transport(
+            lambda token: token == "valid-token"
+        )
+        ws = _FakeWS({"QUERY_STRING": "token=valid-token"})
+
+        create_websocket_handler(transport)(ws)
+
+        assert ws.closed is True
+        payload = json.loads(ws.sent[0])
+        assert payload["type"] == "error"
+
+    def test_accepts_header_token(self) -> None:
+        """Валидный X-API-Key открывает соединение."""
+        from api.websocket_transport import create_websocket_handler
+
+        transport = self._make_transport(
+            lambda token: token == "valid-token"
+        )
+        ws = _FakeWS({"HTTP_X_API_KEY": "valid-token"})
+
+        create_websocket_handler(transport)(ws)
+
+        assert ws.closed is False
+        transport.register_client.assert_called_once()
+        # hello/snapshot не настроены: get_initial_messages пуст
+        assert ws.sent == []

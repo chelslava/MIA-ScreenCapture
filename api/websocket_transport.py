@@ -2,7 +2,8 @@
 WebSocket транспорт для real-time событий записи.
 
 Реализует протокол согласно plans/websocket-transport-v1.5.0.md:
-- Аутентификация через X-API-Key или token query parameter
+- Аутентификация через заголовок X-API-Key (токен в query string
+  убран из соображений безопасности — #189)
 - Heartbeat (ping/pong)
 - Каналы: system, recording, api, metrics
 - Единый envelope формат сообщений
@@ -309,14 +310,9 @@ def create_websocket_handler(transport: WebSocketTransport) -> Callable:
     def websocket_handler(ws: Any) -> None:
         client_id = str(uuid.uuid4())[:8]
 
+        # Авторизация только по заголовку X-API-Key (#189): токен в
+        # query string попадает в access-логи прокси/серверов
         token = ws.environ.get("HTTP_X_API_KEY")
-        if not token:
-            args = ws.environ.get("QUERY_STRING", "")
-            if "token=" in args:
-                for part in args.split("&"):
-                    if part.startswith("token="):
-                        token = part.split("=", 1)[1]
-                        break
 
         if not transport.authenticate(token):
             error_msg = create_error_message(
