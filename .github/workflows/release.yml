@@ -32,6 +32,12 @@ jobs:
       - name: Install build tooling
         run: python -m pip install --upgrade pip build
 
+      - name: Upgrade setuptools
+        # setuptools из toolcache Python (65.5.0 на windows-latest,
+        # 79.0.1 на ubuntu-latest) ловит 9/3 advisories в SBOM-шаге;
+        # последний fix — 84.1.0 (GHSA-xmj3-9gf7-h52w)
+        run: python -m pip install --upgrade "setuptools>=84.1"
+
       - name: Install package with dependencies
         # Нужна для SBOM: pip-audit описывает окружение с рантайм-зависимостями
         run: python -m pip install -e . --quiet
@@ -81,6 +87,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # setuptools из toolcache Python (65.5.0) ловит 9 advisories
+          # в SBOM-шаге; последний fix — 84.1.0 (GHSA-xmj3-9gf7-h52w)
+          python -m pip install --upgrade "setuptools>=84.1"
           pip install pyinstaller
           pip install -e .
 
