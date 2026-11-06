@@ -351,3 +351,49 @@ class TestReconnectParameters:
             RECONNECT_MAX_DELAY_MS,
         )
         assert delay == RECONNECT_MAX_DELAY_MS
+
+
+class TestWebSocketWorkerAuth:
+    """Авторизация WS-подключения заголовком без query string (#189)."""
+
+    def test_connects_with_header_not_query_string(self) -> None:
+        """Токен уходит только в X-API-Key; URL без ?token=."""
+        worker = WebSocketWorker(
+            url="ws://localhost:5000/ws", token="secret-token"
+        )
+
+        ws_client_mock = MagicMock()
+        fake_ws = MagicMock()
+        fake_ws.__iter__.return_value = iter([])
+        ws_client_mock.connect.return_value = fake_ws
+
+        # Первая проверка цикла — работаем, вторая — выходим
+        checks = {"n": 0}
+        stop_event = MagicMock()
+        stop_event.is_set.side_effect = lambda: (
+            checks.__setitem__("n", checks["n"] + 1) or checks["n"] > 1
+        )
+        worker._stop_event = stop_event
+
+        # import a.b.c as d биндит по цепочке атрибутов, а не по
+        # sys.modules — строим её вручную
+        websockets_pkg = MagicMock()
+        sync_pkg = MagicMock()
+        websockets_pkg.sync = sync_pkg
+        sync_pkg.client = ws_client_mock
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "websockets": websockets_pkg,
+                "websockets.sync": sync_pkg,
+                "websockets.sync.client": ws_client_mock,
+            },
+        ):
+            worker.run()
+
+        ws_client_mock.connect.assert_called_once_with(
+            "ws://localhost:5000/ws",
+            additional_headers={"X-API-Key": "secret-token"},
+            close_timeout=5.0,
+        )
