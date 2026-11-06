@@ -97,3 +97,59 @@ uv run python scripts/api_smoke_run.py \
 - `/api/v1/status`: ok=120, failed=0, last_status=200
 - `/api/v1/config`: ok=120, failed=0, last_status=200
 
+## Авто-отчёт smoke-run
+
+- Старт: `2026-11-04T00:24:15.623395+00:00`
+- Финиш: `2026-11-04T00:25:16.751854+00:00`
+- Base URL: `http://127.0.0.1:5000`
+- Длительность: `1` минут
+- Интервал цикла: `5` секунд
+- Всего запросов: `36`
+- Успешных (200): `11`
+- Ошибок: `25`
+
+### Детализация по endpoint
+
+- `/health`: ok=11, failed=1, last_status=200
+  last_error: `{"error": "rate_limited", "message": "Too many requests"}`
+- `/api/v1/status`: ok=0, failed=12, last_status=429
+  last_error: `{"error": {"code": "rate_limited", "details": null, "message": "Защита от перебора. Повторите через 14 сек."}, "success": false, "trace_id": "272d33322880447b863c9a76c69d1506"}`
+- `/api/v1/config`: ok=0, failed=12, last_status=429
+  last_error: `{"error": {"code": "rate_limited", "details": null, "message": "Защита от перебора. Повторите через 14 сек."}, "success": false, "trace_id": "3a6f3d72d5d04d4f8e90438f63d3038f"}`
+
+## Авто-отчёт smoke-run
+
+- Старт: `2026-11-04T00:25:59.740532+00:00`
+- Финиш: `2026-11-04T00:28:00.428029+00:00`
+- Base URL: `http://127.0.0.1:5000`
+- Длительность: `2` минут
+- Интервал цикла: `15` секунд
+- Всего запросов: `24`
+- Успешных (200): `8`
+- Ошибок: `16`
+
+### Детализация по endpoint
+
+- `/health`: ok=8, failed=0, last_status=200
+- `/api/v1/status`: ok=0, failed=8, last_status=401
+  last_error: `{"error": {"code": "unauthorized", "details": null, "message": "Неверный API ключ"}, "success": false, "trace_id": "8221355a57964e4c89e4ac3cf96f8dad"}`
+- `/api/v1/config`: ok=0, failed=8, last_status=401
+  last_error: `{"error": {"code": "unauthorized", "details": null, "message": "Неверный API ключ"}, "success": false, "trace_id": "132867b2e7a24047bf3b2a2631b6b611"}`
+
+## Авто-отчёт smoke-run
+
+- Старт: `2026-11-04T00:28:39.834264+00:00`
+- Финиш: `2026-11-04T00:30:40.442199+00:00`
+- Base URL: `http://127.0.0.1:5000`
+- Длительность: `2` минут
+- Интервал цикла: `15` секунд
+- Всего запросов: `24`
+- Успешных (200): `24`
+- Ошибок: `0`
+
+### Детализация по endpoint
+
+- `/health`: ok=8, failed=0, last_status=200
+- `/api/v1/status`: ok=8, failed=0, last_status=200
+- `/api/v1/config`: ok=8, failed=0, last_status=200
+
