@@ -56,7 +56,7 @@ jobs:
           pip-audit --format cyclonedx-json --output dist/sbom-python.json --skip-editable
 
       - name: Attest build provenance (sdist and wheel)
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             dist/*.whl
@@ -218,12 +218,12 @@ jobs:
           path: dist/sbom-windows.json
 
       - name: Attest build provenance (EXE)
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/MIA-ScreenCapture.exe
 
       - name: Attest build provenance (Installer)
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/MIA-ScreenCapture-Setup.exe
 
