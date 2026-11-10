@@ -30,9 +30,7 @@ _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 # строка — не первая и не последняя; без флага ^$ совпадают только
 # с началом/концом всего текста
 _VERSION_LINE_RE = re.compile(r'^version = "\d+\.\d+\.\d+"$', re.MULTILINE)
-_TITLE_RE = re.compile(
-    r"^(# MIA-ScreenCapture v)\d+\.\d+\.\d+$", re.MULTILINE
-)
+_TITLE_RE = re.compile(r"^(# MIA-ScreenCapture v)\d+\.\d+\.\d+$", re.MULTILINE)
 
 
 def _validate_version(new_version: str) -> None:
