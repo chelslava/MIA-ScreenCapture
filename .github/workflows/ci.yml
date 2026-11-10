@@ -219,3 +219,42 @@ jobs:
           }
           Write-Host "pip-audit completed: no known vulnerabilities were reported."
 
+  version-consistency:
+    name: Version Consistency
+    # Единая точка истины версии — [project].version в pyproject.toml
+    # (читается version.py). Заголовки README должны совпадать с ней,
+    # формат — строго SemVer X.Y.Z, в CHANGELOG — секция [Unreleased]
+    # (keep-a-changelog)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check version consistency
+        run: |
+          set -euo pipefail
+
+          if ! grep -Eq '^version = "[0-9]+\.[0-9]+\.[0-9]+"$' pyproject.toml; then
+            echo "::error::В pyproject.toml нет строки version = \"X.Y.Z\" в формате SemVer"
+            exit 1
+          fi
+
+          PYPROJECT_VERSION=$(grep -m1 '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+
+          for readme in README.md README.ru.md; do
+            README_VERSION=$(grep -m1 '^# MIA-ScreenCapture v' "$readme" | sed 's/# MIA-ScreenCapture v//')
+            if [ "$README_VERSION" != "$PYPROJECT_VERSION" ]; then
+              echo "::error::Заголовок $readme (v$README_VERSION) не совпадает с pyproject.toml (v$PYPROJECT_VERSION). Запустите scripts/bump_version.py"
+              exit 1
+            fi
+          done
+
+          if ! grep -q '^## \[Unreleased\]' CHANGELOG.md; then
+            echo "::error::В CHANGELOG.md отсутствует секция '## [Unreleased]'"
+            exit 1
+          fi
+
+          echo "Версия v$PYPROJECT_VERSION согласована в pyproject.toml, README.md и README.ru.md"
+

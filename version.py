@@ -50,3 +50,9 @@ def get_version() -> str:
             return version
 
         return _FALLBACK_VERSION
+
+
+# Стандартная константа пакета (PEP 396-style): удобна для
+# `from version import __version__` в GUI, метаданных и сторонних
+# инструментах, ожидающих именно этот атрибут.
+__version__ = get_version()

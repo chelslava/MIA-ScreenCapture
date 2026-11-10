@@ -870,3 +870,22 @@
 - CI expanded to Python matrix (`3.10`, `3.11`) on Windows.
 - Added non-blocking security audit job (`pip-audit`) in CI.
 - Added tag-based release workflow (`v*`) with build artifacts and `SHA256SUMS`.
+
+<!-- Ссылки сравнения версий (keep-a-changelog). Версии без тегов
+     (1.3.0 и ранее) не связаны — тегирование началось с v1.1.0. -->
+[Unreleased]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.7.0...v1.7.1
+[1.7.0]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.6.0...v1.7.0
+[1.6.0]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.4.9...v1.5.0
+[1.4.9]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.4.8...v1.4.9
+[1.4.8]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.4.7...v1.4.8
+[1.4.7]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.4.6...v1.4.7
+[1.4.6]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.4.5...v1.4.6
+[1.4.5]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.4.3...v1.4.5
+[1.4.3]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.4.2...v1.4.3
+[1.4.2]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.4.0...v1.4.2
+[1.4.0]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.3.2...v1.4.0
+[1.3.2]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.3.1...v1.3.2
+[1.3.1]: https://github.com/chelslava/MIA-ScreenCapture/compare/v.1.2.0...v1.3.1
+[1.3.0]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.1.0...v.1.2.0

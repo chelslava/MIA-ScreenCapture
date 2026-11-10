@@ -13,10 +13,33 @@ permissions:
   attestations: write
 
 jobs:
+  verify-version:
+    name: Verify tag matches pyproject version
+    # Страховка от рассинхрона: тег v* должен совпадать с
+    # [project].version в pyproject.toml — иначе релиз соберётся
+    # с другой версией в метаданных пакета, чем в имени релиза
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Compare tag and pyproject version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PYPROJECT_VERSION=$(grep -m1 '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "Тег: $TAG_VERSION, pyproject: $PYPROJECT_VERSION"
+          if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "::error::Тег v$TAG_VERSION не совпадает с версией pyproject.toml ($PYPROJECT_VERSION). Используйте scripts/bump_version.py перед пушем тега."
+            exit 1
+          fi
+
   build-python:
     name: Build Python Package
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: verify-version
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -72,6 +95,7 @@ jobs:
     name: Build Windows EXE
     runs-on: windows-latest
     timeout-minutes: 30
+    needs: verify-version
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
