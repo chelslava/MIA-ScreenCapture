@@ -20,8 +20,14 @@ Real-time события записи доступны через WebSocket:
 **Endpoint:** `ws://127.0.0.1:<port>/ws`
 
 **Аутентификация:**
-- Заголовок: `X-API-Key: <token>`
-- Query-параметр: `?token=<token>` (fallback)
+
+Заголовок: `X-API-Key: <token>`
+
+> **Breaking (v1.8.0):** query-параметр `?token=<token>` больше не
+> принимается — URL с токеном попадает в access-логи серверов и
+> прокси. Клиенты, подключавшиеся через `ws://...?token=...`, должны
+> передавать заголовок `X-API-Key` (в `websockets`/`socket.io`-клиентах
+> — опция `extra_headers`).
 
 **Формат сообщений:**
 ```json
