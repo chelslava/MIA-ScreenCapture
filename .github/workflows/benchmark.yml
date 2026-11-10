@@ -49,6 +49,14 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra dev --group dev
 
+      - name: Install FFmpeg
+        # На windows-latest FFmpeg больше не предустановлен: без него
+        # writer не откроется и бенчмарк выродится в отчёт об ошибке
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Verify FFmpeg
+        run: ffmpeg -version
+
       - name: Run benchmark
         run: |
           uv run python scripts/benchmark_hot_path.py `

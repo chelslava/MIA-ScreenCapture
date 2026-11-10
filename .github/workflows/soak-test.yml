@@ -49,6 +49,14 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra dev --group dev
 
+      - name: Install FFmpeg
+        # На windows-latest FFmpeg больше не предустановлен: без него
+        # writer не откроется и soak-тест выродится в отчёт об ошибке
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Verify FFmpeg
+        run: ffmpeg -version
+
       - name: Prepare soak directory
         run: New-Item -ItemType Directory -Force -Path soak | Out-Null
 

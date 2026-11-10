@@ -316,6 +316,8 @@ def main() -> int:
     )
     report["failures"] = evaluate_soak_checks(report)
 
+    # Каталог отчёта может не существовать (workflow не создаёт его)
+    args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
