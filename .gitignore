@@ -174,3 +174,5 @@ config/*.json
 # Прочие локальные артефакты агентов и smoke-тестов
 .continue/
 .test-api-logs/
+# Локальный клон wiki для публикации (scripts/publish_github_wiki.ps1)
+wiki_repo/
