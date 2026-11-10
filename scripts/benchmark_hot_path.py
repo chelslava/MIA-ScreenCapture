@@ -44,6 +44,8 @@ MAX_SLOW_WRITE_RATIO = 0.02
 SLOW_WRITE_THRESHOLD_MS = 10.0
 # RSS FFmpeg не выше 700 МБ для 720p-конвейера
 MAX_RSS_MB = 700.0
+# Допуск длительности контейнера против записанных кадров (секунды)
+DURATION_TOLERANCE_S = 5.0
 
 
 def percentile(sorted_values: list[float], q: float) -> float:
@@ -101,6 +103,17 @@ def evaluate_benchmark(report: dict[str, Any]) -> list[str]:
     rss_peak = report.get("rss_peak_mb")
     if rss_peak is not None and rss_peak > MAX_RSS_MB:
         failures.append(f"Пик RSS FFmpeg {rss_peak:.0f} МБ > {MAX_RSS_MB} МБ")
+
+    # Дрейф длительности контейнера: рассинхрон pixel_format или PTS
+    # виден как расхождение длины файла с числом записанных кадров
+    expected = report.get("expected_duration_s")
+    file_duration = report.get("file_duration_s")
+    if expected is not None and file_duration is not None:
+        if abs(float(file_duration) - float(expected)) > DURATION_TOLERANCE_S:
+            failures.append(
+                f"Дрейф длительности: файл {file_duration:.2f}s против "
+                f"ожидаемых {expected:.2f}s (допуск ±{DURATION_TOLERANCE_S}s)"
+            )
 
     return failures
 
@@ -214,9 +227,13 @@ def run_benchmark(
     )
     report["rss_peak_mb"] = round(rss_peak, 1) if rss_peak else None
 
+    # Ожидаемая длительность — из фактически записанных кадров
+    report["expected_duration_s"] = round(frames_written / fps, 3)
+
     report["closed_ok"] = bool(writer.close(finalize_segments=True))
     integrity = verify_video_integrity(output_path)
     report["integrity_valid"] = integrity.valid
+    report["file_duration_s"] = integrity.duration_s
 
     return report
 

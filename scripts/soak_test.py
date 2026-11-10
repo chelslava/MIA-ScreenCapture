@@ -44,7 +44,12 @@ GET_FFMPEG_CHILD_TIMEOUT_S = 5.0
 
 
 def build_frame(index: int, width: int, height: int) -> np.ndarray:
-    """Синтетический кадр: горизонтальный градиент со сдвигом по времени.
+    """Синтетический BGRA-кадр: горизонтальный градиент со сдвигом.
+
+    Writer принимает BGRA (формат WGC-кадра). Трёхканальный кадр
+    рассинхронизирует rawvideo-поток: ffmpeg читает байты сплошным
+    потоком, и 5400 трёхбайтовых кадров превращаются в 4050
+    четырёхбайтовых — длительность контейнера съезжает на 25%.
 
     Args:
         index: Номер кадра.
@@ -52,14 +57,15 @@ def build_frame(index: int, width: int, height: int) -> np.ndarray:
         height: Высота кадра.
 
     Returns:
-        BGR-кадр высотой `height` и шириной `width`.
+        BGRA-кадр высотой `height` и шириной `width`.
     """
     row = np.linspace(0, 255, width, dtype=np.uint8)
     frame = np.broadcast_to(row[None, :, None], (height, width, 3)).copy()
     shift = index % width
     if shift:
         frame = np.roll(frame, shift, axis=1)
-    return frame
+    alpha = np.full((height, width, 1), 255, dtype=np.uint8)
+    return np.concatenate([frame, alpha], axis=2)
 
 
 def find_ffmpeg_child_pid() -> int | None:
@@ -249,6 +255,11 @@ def run_soak(
     if rss_samples:
         report["rss_first_mb"] = round(rss_samples[0][1], 1)
         report["rss_last_mb"] = round(rss_samples[-1][1], 1)
+
+    # Ожидаемая длительность контейнера — из фактически записанных
+    # кадров: дрейф PTS/муксера проверяется отдельно от потери кадров
+    # (её ловит проверка MIN_FRAMES_RATIO)
+    report["expected_duration_s"] = round(frames_written / fps, 3)
 
     report["closed_ok"] = bool(writer.close(finalize_segments=True))
 
