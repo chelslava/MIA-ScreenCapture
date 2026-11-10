@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+- **CI-прогоны benchmark и soak** (#216, #217): FFmpeg удалён из
+  предустановки GitHub-раннеров `windows-latest`, из-за чего
+  `FFmpegVideoWriter.open()` падал до старта замеров. Workflows
+  устанавливают FFmpeg через Chocolatey и проверяют его доступность;
+  скрипты `benchmark_hot_path.py` и `soak_test.py` создают каталог
+  отчёта перед записью.
+
+### Added
+- **Скрипт единого bump версии** `scripts/bump_version.py`: обновляет
+  pyproject.toml и заголовки README, опционально создаёт git-тег.
+  CI получил джобу version-consistency (pyproject ↔ README ↔ CHANGELOG),
+  релизный workflow сверяет тег `v*` с версией pyproject.toml перед
+  сборкой. В `version.py` добавлена константа `__version__`.
+
 ### Changed
 - **WebSocket: токен в query string больше не принимается** (#189).
   Авторизация `/ws` выполняется только по заголовку `X-API-Key`.
