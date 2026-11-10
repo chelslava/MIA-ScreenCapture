@@ -2,15 +2,23 @@
 
 ## [Unreleased]
 
-### Fixed
-- **CI-прогоны benchmark и soak** (#216, #217): FFmpeg удалён из
-  предустановки GitHub-раннеров `windows-latest`, из-за чего
-  `FFmpegVideoWriter.open()` падал до старта замеров. Workflows
-  устанавливают FFmpeg через Chocolatey и проверяют его доступность;
-  скрипты `benchmark_hot_path.py` и `soak_test.py` создают каталог
-  отчёта перед записью.
+## [1.8.0] - 2026-11-10
 
 ### Added
+- **CLI `--json` и контракт exit-кодов** (#206): глобальный флаг
+  `--json` переводит `--status`, `--schedule-list`, `--schedule-preview`,
+  `--plugins-list`, `--plugins-info`, `--list-presets` на валидный JSON
+  (`ensure_ascii=False`); стабильные коды выхода для скриптов и CI.
+- **Библиотека записей на странице «Записи»** (#186): `LibraryView`
+  заменяет мини-список — поиск по имени/тегам, фильтр тегов, 5
+  сортировок, grid/list, панель деталей по данным ffprobe,
+  переименование (файл + метаданные + превью), детект дубликатов
+  по размеру/длительности с баннером-фильтром.
+- **Системные toast и звуки событий записи** (#199): события
+  start/stop/paused/resumed шлют системный toast, когда окно вне
+  фокуса; в фокусе — только in-GUI toast с дедупликацией. Опциональные
+  звуки start/stop/paused/resumed/error. Учитывается настройка
+  `show_notifications`.
 - **Скрипт единого bump версии** `scripts/bump_version.py`: обновляет
   pyproject.toml и заголовки README, опционально создаёт git-тег.
   CI получил джобу version-consistency (pyproject ↔ README ↔ CHANGELOG),
@@ -18,10 +26,23 @@
   сборкой. В `version.py` добавлена константа `__version__`.
 
 ### Changed
-- **WebSocket: токен в query string больше не принимается** (#189).
-  Авторизация `/ws` выполняется только по заголовку `X-API-Key`.
-  URL вида `/ws?token=...` оседает в access-логах серверов и прокси,
-  поэтому приём из query string убран; GUI-клиент обновлён.
+- setuptools в релизном workflow ограничен снизу `>=84.1`.
+
+### Fixed
+- **CI-прогоны benchmark и soak** (#216, #217): FFmpeg удалён из
+  предустановки GitHub-раннеров `windows-latest`, из-за чего
+  `FFmpegVideoWriter.open()` падал до старта замеров. Workflows
+  устанавливают FFmpeg через Chocolatey и проверяют его доступность;
+  скрипты `benchmark_hot_path.py` и `soak_test.py` создают каталог
+  отчёта перед записью. Заодно устранён дрейф длительности контейнера:
+  soak кормил BGR-кадры формату writer'а BGRA.
+
+### Security
+- **WebSocket: токен в query string больше не принимается** (#189) —
+  **Breaking для внешних API-клиентов**. Авторизация `/ws` выполняется
+  только по заголовку `X-API-Key`. URL вида `/ws?token=...` оседает в
+  access-логах серверов и прокси, поэтому приём из query string убран;
+  поставляемый GUI-клиент обновлён и использует заголовок.
 
 ## [1.7.1] - 2026-11-05
 
@@ -888,7 +909,8 @@
 
 <!-- Ссылки сравнения версий (keep-a-changelog). Версии без тегов
      (1.3.0 и ранее) не связаны — тегирование началось с v1.1.0. -->
-[Unreleased]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/chelslava/MIA-ScreenCapture/compare/v1.5.0...v1.6.0

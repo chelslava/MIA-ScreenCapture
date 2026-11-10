@@ -26,8 +26,13 @@ _CHANGELOG = PROJECT_ROOT / "CHANGELOG.md"
 _READMES = (PROJECT_ROOT / "README.md", PROJECT_ROOT / "README.ru.md")
 
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
-_VERSION_LINE_RE = re.compile(r'^version = "\d+\.\d+\.\d+"$')
-_TITLE_RE = re.compile(r"^(# MIA-ScreenCapture v)\d+\.\d+\.\d+$")
+# re.MULTILINE: регэкспы применяются к целому файлу, где искомая
+# строка — не первая и не последняя; без флага ^$ совпадают только
+# с началом/концом всего текста
+_VERSION_LINE_RE = re.compile(r'^version = "\d+\.\d+\.\d+"$', re.MULTILINE)
+_TITLE_RE = re.compile(
+    r"^(# MIA-ScreenCapture v)\d+\.\d+\.\d+$", re.MULTILINE
+)
 
 
 def _validate_version(new_version: str) -> None:
