@@ -24,11 +24,17 @@ class TestBuildFrame:
     """Синтетические кадры soak-записи (#174)."""
 
     def test_frame_shape_and_dtype(self, soak_module: Any) -> None:
-        """Кадр имеет форму (H, W, 3) и тип uint8."""
+        """Кадр имеет форму (H, W, 4) и тип uint8 — BGRA, как WGC."""
         frame = soak_module.build_frame(0, 320, 200)
 
-        assert frame.shape == (200, 320, 3)
+        assert frame.shape == (200, 320, 4)
         assert frame.dtype == np.uint8
+
+    def test_frame_alpha_is_opaque(self, soak_module: Any) -> None:
+        """Альфа-канал полностью непрозрачный (255) у всех пикселей."""
+        frame = soak_module.build_frame(7, 320, 200)
+
+        assert (frame[:, :, 3] == 255).all()
 
     def test_frames_differ_over_time(self, soak_module: Any) -> None:
         """Кадры со временем сдвигаются — поток не «застревает»."""
