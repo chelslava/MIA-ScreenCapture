@@ -1,0 +1,2211 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "MIA-ScreenCapture API",
+  "description": "REST API для управления записью экрана.\n\n**Rate limiting (#152):** write-операции ограничиваются лимитами из `api.rate_limit` в config.json. Заголовки ответа: `Retry-After` (секунды до снятия блокировки) и `X-RateLimit-Limit` (применённый лимит окна). При превышении возвращается 429 с кодом `rate_limited`.",
+  "version": "1.8.0",
+  "contact": {
+   "name": "MIA Development Team"
+  },
+  "license": {
+   "name": "MIT"
+  }
+ },
+ "servers": [
+  {
+   "url": "http://localhost:5000",
+   "description": "Локальный сервер"
+  }
+ ],
+ "security": [
+  {
+   "ApiKeyAuth": []
+  }
+ ],
+ "components": {
+  "securitySchemes": {
+   "ApiKeyAuth": {
+    "type": "apiKey",
+    "in": "header",
+    "name": "X-API-Key",
+    "description": "API ключ для аутентификации"
+   }
+  },
+  "headers": {
+   "X-Trace-ID": {
+    "description": "Идентификатор сквозной трассировки запроса",
+    "schema": {
+     "type": "string"
+    }
+   },
+   "X-Request-ID": {
+    "description": "Уникальный идентификатор HTTP-запроса",
+    "schema": {
+     "type": "string"
+    }
+   }
+  },
+  "schemas": {
+   "Error": {
+    "description": "Конверт ошибки: success=False + тело ошибки + trace_id.",
+    "properties": {
+     "success": {
+      "example": false,
+      "type": "boolean"
+     },
+     "error": {
+      "description": "Тело ошибки: код, сообщение и произвольные детали.",
+      "properties": {
+       "code": {
+        "example": "bad_request",
+        "type": "string"
+       },
+       "message": {
+        "example": "Ошибка запроса",
+        "type": "string"
+       },
+       "details": {
+        "anyOf": [
+         {
+          "items": {},
+          "type": "array"
+         },
+         {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         {
+          "type": "string"
+         },
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         },
+         {
+          "type": "boolean"
+         }
+        ],
+        "example": []
+       }
+      },
+      "required": [
+       "code",
+       "message",
+       "details"
+      ],
+      "type": "object"
+     },
+     "trace_id": {
+      "example": "req_1234567890abcdef",
+      "type": "string"
+     }
+    },
+    "required": [
+     "success",
+     "error",
+     "trace_id"
+    ],
+    "type": "object"
+   },
+   "ValidationError": {
+    "description": "Конверт ошибки валидации: details — массив FieldErrorItem.",
+    "properties": {
+     "success": {
+      "example": false,
+      "type": "boolean"
+     },
+     "error": {
+      "description": "Тело ошибки валидации с массивом details.",
+      "properties": {
+       "code": {
+        "example": "validation_error",
+        "type": "string"
+       },
+       "message": {
+        "example": "Ошибка валидации данных",
+        "type": "string"
+       },
+       "details": {
+        "items": {
+         "description": "Один элемент детализации ошибки валидации.",
+         "properties": {
+          "field": {
+           "example": "fps",
+           "type": "string"
+          },
+          "message": {
+           "example": "Значение должно быть от 1 до 120",
+           "type": "string"
+          },
+          "type": {
+           "example": "value_error",
+           "type": "string"
+          }
+         },
+         "required": [
+          "field",
+          "message",
+          "type"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       }
+      },
+      "required": [
+       "code",
+       "message",
+       "details"
+      ],
+      "type": "object"
+     },
+     "trace_id": {
+      "example": "req_1234567890abcdef",
+      "type": "string"
+     }
+    },
+    "required": [
+     "success",
+     "error",
+     "trace_id"
+    ],
+    "type": "object"
+   },
+   "StatusData": {
+    "description": "Состояние записи в конверте /status.",
+    "properties": {
+     "is_recording": {
+      "example": true,
+      "type": "boolean"
+     },
+     "is_paused": {
+      "example": false,
+      "type": "boolean"
+     },
+     "elapsed_time": {
+      "description": "Время записи в секундах",
+      "example": 120,
+      "type": "integer"
+     },
+     "current_file": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "example": "C:/Videos/recording_20260320.mp4"
+     },
+     "output_path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "example": "C:/Videos/recording_20260320.mp4"
+     }
+    },
+    "required": [
+     "is_recording",
+     "is_paused",
+     "elapsed_time",
+     "current_file",
+     "output_path"
+    ],
+    "type": "object"
+   },
+   "Status": {
+    "description": "Конверт ответа /status: success + data.",
+    "properties": {
+     "success": {
+      "example": true,
+      "type": "boolean"
+     },
+     "data": {
+      "$ref": "#/components/schemas/StatusData"
+     }
+    },
+    "required": [
+     "success",
+     "data"
+    ],
+    "type": "object"
+   },
+   "WebSocketStats": {
+    "description": "Статистика транспорта WebSocket (вложение в Health).",
+    "properties": {
+     "buffered_events": {
+      "anyOf": [
+       {
+        "minimum": 0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "example": 1
+     },
+     "events_published_total": {
+      "anyOf": [
+       {
+        "minimum": 0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "example": 1
+     },
+     "transport_ready": {
+      "example": true,
+      "type": "boolean"
+     },
+     "attached_to_event_bus": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "example": false
+     }
+    },
+    "required": [
+     "transport_ready"
+    ],
+    "type": "object"
+   },
+   "Health": {
+    "description": "Ответ /health: состояние сервера и WebSocket-транспорта.",
+    "properties": {
+     "status": {
+      "example": "ok",
+      "type": "string"
+     },
+     "timestamp": {
+      "example": "2026-03-23T12:00:00+00:00",
+      "type": "string"
+     },
+     "version": {
+      "example": "1.8.0",
+      "type": "string"
+     },
+     "uptime_seconds": {
+      "example": 12.345,
+      "type": "number"
+     },
+     "websocket": {
+      "$ref": "#/components/schemas/WebSocketStats"
+     }
+    },
+    "required": [
+     "status",
+     "timestamp",
+     "version",
+     "uptime_seconds",
+     "websocket"
+    ],
+    "type": "object"
+   },
+   "Event": {
+    "description": "Событие шины: тип, время и произвольные данные.",
+    "properties": {
+     "type": {
+      "example": "started",
+      "type": "string"
+     },
+     "timestamp": {
+      "example": "2026-03-23T12:00:00+00:00",
+      "type": "string"
+     },
+     "data": {
+      "additionalProperties": true,
+      "type": "object"
+     }
+    },
+    "required": [
+     "type",
+     "timestamp",
+     "data"
+    ],
+    "type": "object"
+   },
+   "ScheduleTask": {
+    "description": "Задача планировщика в ответах /schedule.",
+    "properties": {
+     "id": {
+      "example": "task_123",
+      "type": "string"
+     },
+     "name": {
+      "example": "Ежедневная запись",
+      "type": "string"
+     },
+     "trigger": {
+      "example": "daily",
+      "type": "string"
+     },
+     "enabled": {
+      "example": true,
+      "type": "boolean"
+     },
+     "next_run": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "example": "2026-03-21T10:00:00"
+     },
+     "params": {
+      "additionalProperties": true,
+      "description": "Параметры записи",
+      "type": "object"
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "trigger",
+     "enabled",
+     "params"
+    ],
+    "type": "object"
+   },
+   "Window": {
+    "description": "Информация об окне для захвата.",
+    "properties": {
+     "rect": {
+      "example": [
+       100,
+       100,
+       1920,
+       1080
+      ],
+      "items": {
+       "type": "integer"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "title",
+     "rect"
+    ],
+    "type": "object"
+   },
+   "AudioDevice": {
+    "description": "Информация об аудиоустройстве.",
+    "properties": {
+     "id": {
+      "example": 1,
+      "type": "integer"
+     },
+     "name": {
+      "example": "Микрофон (Realtek Audio)",
+      "type": "string"
+     },
+     "channels": {
+      "example": 2,
+      "type": "integer"
+     },
+     "sample_rate": {
+      "example": 44100,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "channels",
+     "sample_rate"
+    ],
+    "type": "object"
+   },
+   "ConfigAudio": {
+    "description": "Аудио-секция Config.",
+    "properties": {
+     "sample_rate": {
+      "example": 44100,
+      "type": "integer"
+     },
+     "channels": {
+      "example": 2,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "sample_rate",
+     "channels"
+    ],
+    "type": "object"
+   },
+   "ConfigOutput": {
+    "description": "Секция вывода Config.",
+    "properties": {
+     "directory": {
+      "example": "C:/Videos",
+      "type": "string"
+     },
+     "filename_pattern": {
+      "example": "recording_{date}_{time}",
+      "type": "string"
+     }
+    },
+    "required": [
+     "directory",
+     "filename_pattern"
+    ],
+    "type": "object"
+   },
+   "ConfigVideo": {
+    "description": "Видео-секция Config.",
+    "properties": {
+     "fps": {
+      "example": 30,
+      "type": "integer"
+     },
+     "codec": {
+      "example": "libx264",
+      "type": "string"
+     },
+     "bitrate": {
+      "example": "5M",
+      "type": "string"
+     }
+    },
+    "required": [
+     "fps",
+     "codec",
+     "bitrate"
+    ],
+    "type": "object"
+   },
+   "Config": {
+    "description": "Конфигурация записи в ответах /config.",
+    "properties": {
+     "video": {
+      "$ref": "#/components/schemas/ConfigVideo"
+     },
+     "audio": {
+      "$ref": "#/components/schemas/ConfigAudio"
+     },
+     "output": {
+      "$ref": "#/components/schemas/ConfigOutput"
+     }
+    },
+    "required": [
+     "video",
+     "audio",
+     "output"
+    ],
+    "type": "object"
+   },
+   "StartRecordingRequest": {
+    "description": "Схема запроса для начала записи.",
+    "properties": {
+     "area": {
+      "default": "full",
+      "description": "Тип области захвата: full, window или rect",
+      "enum": [
+       "full",
+       "window",
+       "rect"
+      ],
+      "type": "string"
+     },
+     "window_title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Заголовок окна для захвата (требуется если area='window')"
+     },
+     "rect": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "maxItems": 4,
+        "minItems": 4,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Координаты прямоугольника [x1, y1, x2, y2] (требуется если area='rect')"
+     },
+     "audio": {
+      "default": "none",
+      "description": "Источник аудио: mic, system, none или both",
+      "enum": [
+       "mic",
+       "system",
+       "none",
+       "both"
+      ],
+      "type": "string"
+     },
+     "output_path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Путь для сохранения файла записи"
+     },
+     "fps": {
+      "default": 30,
+      "description": "Кадров в секунду (1-120)",
+      "maximum": 120,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "codec": {
+      "default": "libx264",
+      "description": "Видеокодек",
+      "type": "string"
+     },
+     "bitrate": {
+      "default": "2M",
+      "description": "Битрейт видео (например: 2M, 5000K)",
+      "type": "string"
+     },
+     "duration": {
+      "anyOf": [
+       {
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Длительность записи в секундах"
+     },
+     "mic_device": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Индекс устройства микрофона"
+     },
+     "profile_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ID профиля для применения настроек"
+     },
+     "countdown": {
+      "default": 0,
+      "description": "Обратный отсчёт в секундах перед стартом записи (0-10); 0 — стартовать сразу",
+      "maximum": 10,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "noise_suppression": {
+      "anyOf": [
+       {
+        "enum": [
+         "off",
+         "light",
+         "strong"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Шумоподавление микрофона (#169); null — настройка из config.json. Системный звук не обрабатывается"
+     },
+     "pip_enabled": {
+      "default": false,
+      "description": "Наложить видео веб-камеры (PiP) поверх записи (#165)",
+      "type": "boolean"
+     },
+     "pip_device": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Имя устройства DirectShow; None — первая найденная камера"
+     },
+     "pip_position": {
+      "default": "bottom-right",
+      "description": "Угол PiP-оверлея",
+      "enum": [
+       "bottom-right",
+       "bottom-left",
+       "top-right",
+       "top-left"
+      ],
+      "type": "string"
+     },
+     "pip_size_percent": {
+      "default": 20,
+      "description": "Ширина окна камеры, % от ширины основного видео",
+      "maximum": 50,
+      "minimum": 10,
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "CreateScheduleRequest": {
+    "description": "Схема запроса для создания запланированной задачи.",
+    "properties": {
+     "name": {
+      "description": "Название задачи",
+      "maxLength": 100,
+      "minLength": 1,
+      "type": "string"
+     },
+     "trigger": {
+      "description": "Тип расписания: once, daily, weekly, interval или cron",
+      "enum": [
+       "once",
+       "daily",
+       "weekly",
+       "interval",
+       "cron"
+      ],
+      "type": "string"
+     },
+     "datetime": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Дата и время выполнения (ISO формат) для trigger='once'"
+     },
+     "time": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Время выполнения в формате HH:MM для daily/weekly"
+     },
+     "day_of_week": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Дни недели через запятую (0=Пн, 6=Вс) для weekly. Пример: '0,2,4'"
+     },
+     "hours": {
+      "anyOf": [
+       {
+        "maximum": 168,
+        "minimum": 0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Интервал в часах для interval (0-168)"
+     },
+     "minutes": {
+      "anyOf": [
+       {
+        "maximum": 59,
+        "minimum": 0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Интервал в минутах для interval (0-59)"
+     },
+     "cron_expression": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Cron-выражение для trigger='cron'. Пример: '0 9 * * 1-5' (каждый будний день в 9:00)"
+     },
+     "params": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/StartRecordingRequest"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Параметры записи"
+     }
+    },
+    "required": [
+     "name",
+     "trigger"
+    ],
+    "type": "object"
+   }
+  }
+ },
+ "paths": {
+  "/api/v1/profiles/{profile_id}": {
+   "delete": {
+    "summary": "Удалить профиль записи",
+    "description": "Удаляет пользовательский профиль (встроенные удалять нельзя)",
+    "operationId": "deleteProfile",
+    "responses": {
+     "200": {
+      "description": "Профиль удален"
+     },
+     "400": {
+      "description": "Нельзя удалить встроенный профиль"
+     },
+     "404": {
+      "description": "Профиль не найден"
+     }
+    }
+   },
+   "get": {
+    "summary": "Получить профиль записи",
+    "description": "Возвращает информацию о конкретном профиле",
+    "operationId": "getProfile",
+    "responses": {
+     "200": {
+      "description": "Данные профиля"
+     },
+     "404": {
+      "description": "Профиль не найден"
+     }
+    }
+   },
+   "put": {
+    "summary": "Обновить профиль записи",
+    "description": "Обновляет параметры профиля",
+    "operationId": "updateProfile",
+    "responses": {
+     "200": {
+      "description": "Профиль обновлен"
+     },
+     "400": {
+      "description": "Ошибка валидации"
+     },
+     "404": {
+      "description": "Профиль не найден"
+     }
+    }
+   }
+  },
+  "/api/v1/schedule/{task_id}": {
+   "delete": {
+    "summary": "Удалить задачу",
+    "description": "Удаляет запланированную задачу",
+    "operationId": "deleteSchedule",
+    "responses": {
+     "200": {
+      "description": "Задача удалена",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          }
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Задача не найдена",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "Обновить задачу",
+    "description": "Обновляет параметры запланированной задачи",
+    "operationId": "updateSchedule",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "enabled": {
+          "type": "boolean"
+         },
+         "time": {
+          "type": "string"
+         },
+         "day_of_week": {
+          "type": "string"
+         },
+         "params": {
+          "$ref": "#/components/schemas/StartRecordingRequest"
+         }
+        }
+       },
+       "examples": {
+        "rename": {
+         "summary": "Переименовать задачу",
+         "value": {
+          "name": "Новая задача"
+         }
+        },
+        "update_weekly_time": {
+         "summary": "Изменить время и дни",
+         "value": {
+          "time": "11:30",
+          "day_of_week": "0,1,2,3,4",
+          "enabled": true
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Задача обновлена",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/config": {
+   "get": {
+    "summary": "Получить конфигурацию",
+    "description": "Возвращает текущую конфигурацию приложения",
+    "operationId": "getConfig",
+    "responses": {
+     "200": {
+      "description": "Конфигурация",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "$ref": "#/components/schemas/Config"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "Обновить конфигурацию",
+    "description": "Обновляет параметры конфигурации",
+    "operationId": "updateConfig",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "fps": {
+          "type": "integer"
+         },
+         "codec": {
+          "type": "string"
+         },
+         "bitrate": {
+          "type": "string"
+         },
+         "default_path": {
+          "type": "string"
+         },
+         "record_mic": {
+          "type": "boolean"
+         },
+         "record_system": {
+          "type": "boolean"
+         }
+        }
+       },
+       "examples": {
+        "video_update": {
+         "summary": "Обновить видео-настройки",
+         "value": {
+          "fps": 60,
+          "codec": "libx264",
+          "bitrate": "6M"
+         }
+        },
+        "output_update": {
+         "summary": "Обновить путь вывода",
+         "value": {
+          "default_path": "C:/Videos/Recordings"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Конфигурация обновлена",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/devices": {
+   "get": {
+    "summary": "Получить аудиоустройства",
+    "description": "Возвращает список доступных аудиоустройств",
+    "operationId": "getDevices",
+    "responses": {
+     "200": {
+      "description": "Список устройств",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object",
+           "properties": {
+            "input": {
+             "type": "array",
+             "items": {
+              "$ref": "#/components/schemas/AudioDevice"
+             }
+            },
+            "output": {
+             "type": "array",
+             "items": {
+              "$ref": "#/components/schemas/AudioDevice"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/events/recent": {
+   "get": {
+    "summary": "Получить недавние события",
+    "description": "Возвращает последние real-time события записи",
+    "operationId": "getRecentEvents",
+    "responses": {
+     "200": {
+      "description": "Список событий",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/Event"
+           }
+          }
+         },
+         "required": [
+          "success",
+          "data"
+         ]
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Некорректный параметр limit",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Не авторизован",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/events/stats": {
+   "get": {
+    "summary": "Получить статистику событий",
+    "description": "Возвращает статистику real-time event-менеджера",
+    "operationId": "getEventsStats",
+    "responses": {
+     "200": {
+      "description": "Статистика событий",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "$ref": "#/components/schemas/WebSocketStats"
+          }
+         },
+         "required": [
+          "success",
+          "data"
+         ]
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Не авторизован",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/observability/baseline": {
+   "get": {
+    "summary": "Получить baseline SLO",
+    "description": "Возвращает baseline и текущие значения эксплуатационных SLO",
+    "operationId": "getObservabilityBaseline",
+    "responses": {
+     "200": {
+      "description": "Baseline SLO",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "success",
+          "data"
+         ]
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Не авторизован",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/observability/metrics": {
+   "get": {
+    "summary": "Получить эксплуатационные метрики API",
+    "description": "Возвращает runtime-метрики API сервера",
+    "operationId": "getObservabilityMetrics",
+    "responses": {
+     "200": {
+      "description": "Снапшот метрик",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "success",
+          "data"
+         ]
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Не авторизован",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/post-processing/config": {
+   "get": {
+    "summary": "Получить настройки постобработки",
+    "description": "Возвращает текущую конфигурацию конвейера постобработки",
+    "operationId": "getPostProcessingConfig",
+    "responses": {
+     "200": {
+      "description": "Конфигурация постобработки"
+     }
+    }
+   },
+   "put": {
+    "summary": "Обновить настройки постобработки",
+    "description": "Обновляет параметры конвейера постобработки",
+    "operationId": "updatePostProcessingConfig",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "enabled": {
+          "type": "boolean"
+         },
+         "transcode_enabled": {
+          "type": "boolean"
+         },
+         "transcode_format": {
+          "type": "string"
+         },
+         "compress_enabled": {
+          "type": "boolean"
+         },
+         "compress_crf": {
+          "type": "integer"
+         },
+         "generate_gif_enabled": {
+          "type": "boolean"
+         },
+         "copy_enabled": {
+          "type": "boolean"
+         },
+         "copy_target_folder": {
+          "type": "string"
+         },
+         "open_explorer_on_finish": {
+          "type": "boolean"
+         },
+         "webhook_enabled": {
+          "type": "boolean"
+         },
+         "webhook_url": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Настройки успешно обновлены"
+     },
+     "400": {
+      "description": "Невалидные параметры"
+     }
+    }
+   }
+  },
+  "/api/v1/post-processing/status": {
+   "get": {
+    "summary": "Статус постобработки",
+    "description": "Возвращает текущий статус активности или результат последнего конвейера",
+    "operationId": "getPostProcessingStatus",
+    "responses": {
+     "200": {
+      "description": "Текущий статус постобработки"
+     }
+    }
+   }
+  },
+  "/api/v1/profiles": {
+   "get": {
+    "summary": "Список профилей записи",
+    "description": "Возвращает список всех доступных профилей настроек записи",
+    "operationId": "getProfiles",
+    "responses": {
+     "200": {
+      "description": "Список профилей",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "array",
+           "items": {
+            "type": "object"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Создать профиль записи",
+    "description": "Создает новый профиль с заданными параметрами",
+    "operationId": "createProfile",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "name"
+        ],
+        "properties": {
+         "name": {
+          "type": "string",
+          "example": "Высокое качество"
+         },
+         "description": {
+          "type": "string",
+          "example": "60 FPS 1080p"
+         },
+         "icon": {
+          "type": "string",
+          "example": "🚀"
+         },
+         "video": {
+          "type": "object"
+         },
+         "audio": {
+          "type": "object"
+         },
+         "capture": {
+          "type": "object"
+         },
+         "is_default": {
+          "type": "boolean",
+          "example": false
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Профиль создан"
+     },
+     "400": {
+      "description": "Ошибка валидации"
+     }
+    }
+   }
+  },
+  "/api/v1/recording/finalization-status": {
+   "get": {
+    "summary": "Получить статус финализации записи",
+    "description": "Возвращает прогресс финализации последней записи (объединение видео/аудио, перенос файла): процент, этап, прошедшее время и оценку остатка (#151)",
+    "operationId": "getFinalizationStatus",
+    "responses": {
+     "200": {
+      "description": "Статус финализации записи",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object",
+           "properties": {
+            "active": {
+             "type": "boolean",
+             "example": true
+            },
+            "percent": {
+             "type": "number",
+             "example": 42.5
+            },
+            "stage": {
+             "type": "string",
+             "example": "Объединение видео"
+            },
+            "elapsed_s": {
+             "type": "number",
+             "nullable": true,
+             "example": 12.3
+            },
+            "eta_s": {
+             "type": "number",
+             "nullable": true,
+             "example": 16.7
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/recording/metrics": {
+   "get": {
+    "summary": "Получить метрики записи в реальном времени",
+    "description": "Возвращает текущий фактический FPS, jitter, количество пропущенных кадров и latency кодирования (#114)",
+    "operationId": "getRecordingMetrics",
+    "responses": {
+     "200": {
+      "description": "Метрики производительности видеозаписи",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object",
+           "properties": {
+            "actual_fps": {
+             "type": "number",
+             "example": 29.85
+            },
+            "target_fps": {
+             "type": "integer",
+             "example": 30
+            },
+            "jitter_ms": {
+             "type": "number",
+             "example": 2.34
+            },
+            "frames_dropped": {
+             "type": "integer",
+             "example": 0
+            },
+            "encode_latency_ms": {
+             "type": "number",
+             "example": 4.12
+            },
+            "buffer_fill_percent": {
+             "type": "number",
+             "example": 0.0
+            },
+            "total_frames": {
+             "type": "integer",
+             "example": 150
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/recording/{recording_id}/post-processing": {
+   "get": {
+    "summary": "Статус постобработки записи",
+    "description": "Возвращает статус постобработки для указанной записи",
+    "operationId": "getRecordingPostProcessingStatus",
+    "responses": {
+     "200": {
+      "description": "Статус постобработки записи"
+     }
+    }
+   }
+  },
+  "/api/v1/recordings": {
+   "get": {
+    "summary": "Получить список записей",
+    "description": "Возвращает список недавних записей",
+    "operationId": "getRecordings",
+    "responses": {
+     "200": {
+      "description": "Список записей",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "path": {
+              "type": "string"
+             },
+             "size": {
+              "type": "integer"
+             },
+             "created": {
+              "type": "string",
+              "format": "date-time"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/schedule": {
+   "get": {
+    "summary": "Получить расписание",
+    "description": "Возвращает список запланированных задач",
+    "operationId": "getSchedule",
+    "responses": {
+     "200": {
+      "description": "Список задач",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/ScheduleTask"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "Создать задачу",
+    "description": "Создаёт новую запланированную задачу",
+    "operationId": "createSchedule",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CreateScheduleRequest"
+       },
+       "examples": {
+        "once": {
+         "summary": "Разовый запуск",
+         "value": {
+          "name": "Разовая запись",
+          "trigger": "once",
+          "datetime": "2099-01-01T10:00:00+03:00",
+          "params": {}
+         }
+        },
+        "daily": {
+         "summary": "Ежедневно",
+         "value": {
+          "name": "Ежедневная запись",
+          "trigger": "daily",
+          "time": "10:00",
+          "params": {}
+         }
+        },
+        "weekly": {
+         "summary": "По будням",
+         "value": {
+          "name": "Запись по будням",
+          "trigger": "weekly",
+          "time": "10:00",
+          "day_of_week": "0,1,2,3,4",
+          "params": {}
+         }
+        },
+        "interval": {
+         "summary": "Интервал",
+         "value": {
+          "name": "Запись каждые 30 минут",
+          "trigger": "interval",
+          "hours": 0,
+          "minutes": 30,
+          "params": {}
+         }
+        },
+        "cron": {
+         "summary": "Cron",
+         "value": {
+          "name": "Cron запись",
+          "trigger": "cron",
+          "cron_expression": "0 10 * * 1-5",
+          "params": {}
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Задача создана",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object",
+           "properties": {
+            "id": {
+             "type": "string"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Ошибка валидации",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/status": {
+   "get": {
+    "summary": "Получить статус записи",
+    "description": "Возвращает текущий статус записи экрана",
+    "operationId": "getStatus",
+    "responses": {
+     "200": {
+      "description": "Успешный ответ",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Status"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Не авторизован",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/updates/check": {
+   "get": {
+    "summary": "Проверить наличие обновлений (GET)",
+    "tags": [
+     "Updates"
+    ],
+    "responses": {
+     "200": {
+      "description": "Результат проверки обновлений"
+     }
+    }
+   },
+   "post": {
+    "summary": "Проверить наличие обновлений (POST)",
+    "tags": [
+     "Updates"
+    ],
+    "responses": {
+     "200": {
+      "description": "Результат проверки обновлений"
+     }
+    }
+   }
+  },
+  "/api/v1/updates/config": {
+   "get": {
+    "summary": "Получить настройки авто-обновлений",
+    "tags": [
+     "Updates"
+    ],
+    "responses": {
+     "200": {
+      "description": "Текущие настройки авто-обновлений"
+     }
+    }
+   },
+   "put": {
+    "summary": "Обновить настройки авто-обновлений",
+    "tags": [
+     "Updates"
+    ],
+    "responses": {
+     "200": {
+      "description": "Настройки обновлений успешно сохранены"
+     },
+     "400": {
+      "description": "Ошибка валидации"
+     }
+    }
+   }
+  },
+  "/api/v1/updates/status": {
+   "get": {
+    "summary": "Получить статус подсистемы авто-обновления",
+    "tags": [
+     "Updates"
+    ],
+    "responses": {
+     "200": {
+      "description": "Текущий статус обновлений"
+     }
+    }
+   }
+  },
+  "/api/v1/windows": {
+   "get": {
+    "summary": "Получить список окон",
+    "description": "Возвращает список открытых окон для захвата",
+    "operationId": "getWindows",
+    "responses": {
+     "200": {
+      "description": "Список окон",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/Window"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/health": {
+   "get": {
+    "summary": "Проверить состояние сервиса",
+    "description": "Возвращает health payload с версией, uptime и состоянием real-time транспорта",
+    "operationId": "getHealth",
+    "responses": {
+     "200": {
+      "description": "Сервис работает",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Health"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/pause": {
+   "post": {
+    "summary": "Пауза/возобновление записи",
+    "description": "Приостанавливает или возобновляет текущую запись",
+    "operationId": "pauseRecording",
+    "responses": {
+     "200": {
+      "description": "Состояние паузы изменено",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object",
+           "properties": {
+            "is_paused": {
+             "type": "boolean"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/post-processing/run": {
+   "post": {
+    "summary": "Запустить постобработку",
+    "description": "Запускает конвейер постобработки для указанного файла",
+    "operationId": "runPostProcessing",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "file_path"
+        ],
+        "properties": {
+         "file_path": {
+          "type": "string"
+         },
+         "params": {
+          "type": "object"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Постобработка успешно запущена"
+     },
+     "400": {
+      "description": "Ошибка запуска или файл не найден"
+     }
+    }
+   }
+  },
+  "/api/v1/profiles/{profile_id}/apply": {
+   "post": {
+    "summary": "Применить профиль",
+    "description": "Применяет настройки профиля к текущей конфигурации приложения",
+    "operationId": "applyProfile",
+    "responses": {
+     "200": {
+      "description": "Профиль успешно применен"
+     },
+     "404": {
+      "description": "Профиль не найден"
+     }
+    }
+   }
+  },
+  "/api/v1/schedule/{task_id}/toggle": {
+   "post": {
+    "summary": "Включить/выключить задачу",
+    "description": "Переключает состояние активности задачи",
+    "operationId": "toggleSchedule",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "enabled"
+        ],
+        "properties": {
+         "enabled": {
+          "type": "boolean"
+         }
+        }
+       },
+       "examples": {
+        "enable": {
+         "summary": "Включить задачу",
+         "value": {
+          "enabled": true
+         }
+        },
+        "disable": {
+         "summary": "Выключить задачу",
+         "value": {
+          "enabled": false
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Состояние изменено",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object",
+           "properties": {
+            "enabled": {
+             "type": "boolean"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/start": {
+   "post": {
+    "summary": "Начать запись",
+    "description": "Запускает новую запись экрана с указанными параметрами",
+    "operationId": "startRecording",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StartRecordingRequest"
+       },
+       "examples": {
+        "full_screen": {
+         "summary": "Полный экран (валидный минимум)",
+         "value": {
+          "area": "full",
+          "audio": "mic",
+          "fps": 30,
+          "codec": "libx264",
+          "bitrate": "5M"
+         }
+        },
+        "window_capture": {
+         "summary": "Захват окна",
+         "value": {
+          "area": "window",
+          "window_title": "Visual Studio Code",
+          "audio": "none",
+          "fps": 30,
+          "codec": "libx264",
+          "bitrate": "3M",
+          "duration": 60
+         }
+        },
+        "rect_capture": {
+         "summary": "Захват области",
+         "value": {
+          "area": "rect",
+          "rect": [
+           100,
+           100,
+           1600,
+           900
+          ],
+          "audio": "system",
+          "fps": 60,
+          "codec": "libx264",
+          "bitrate": "8M"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Запись начата",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object",
+           "properties": {
+            "output_path": {
+             "type": "string"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Ошибка валидации",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ValidationError"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Не авторизован",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/stop": {
+   "post": {
+    "summary": "Остановить запись",
+    "description": "Останавливает текущую запись",
+    "operationId": "stopRecording",
+    "responses": {
+     "200": {
+      "description": "Запись остановлена",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "success": {
+           "type": "boolean",
+           "example": true
+          },
+          "data": {
+           "type": "object",
+           "properties": {
+            "output_path": {
+             "type": "string"
+            },
+            "duration": {
+             "type": "integer"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "Нет активной записи",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/updates/apply": {
+   "post": {
+    "summary": "Применить скачанное обновление",
+    "tags": [
+     "Updates"
+    ],
+    "responses": {
+     "200": {
+      "description": "Обновление запущено"
+     }
+    }
+   }
+  },
+  "/api/v1/updates/download": {
+   "post": {
+    "summary": "Запустить скачивание обновления",
+    "tags": [
+     "Updates"
+    ],
+    "responses": {
+     "200": {
+      "description": "Скачивание запущено"
+     }
+    }
+   }
+  }
+ }
+}

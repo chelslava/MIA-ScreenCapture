@@ -29,7 +29,10 @@ REST API слой на базе Flask для удалённого управле
 | `idempotency_store.py` | Хранилище ключей идемпотентности (`Idempotency-Key` header) |
 | `circuit_breaker.py` | `CircuitBreaker` — защита от каскадных сбоев внешних вызовов |
 | `observability.py` | Метрики сервера: счётчики запросов, latency, статус |
-| `swagger.py` | Swagger/OpenAPI 3.0 документация (`/api/docs`) |
+| `openapi.py` | Генератор OpenAPI 3.0.3 из Pydantic-схем, Swagger UI (`/api/docs`) |
+| `openapi_endpoints.py` | Метаданные операций спецификации (summary/примеры/ответы) |
+| `response_schemas.py` | Pydantic-модели компонентов ответов |
+| `swagger.py` | Shim обратной совместимости (реэкспорт из `openapi.py`) |
 
 ## Subdirectories
 
@@ -41,7 +44,11 @@ REST API слой на базе Flask для удалённого управле
 - Все публичные ответы формируй через `jsonify({"success": True, "data": ...})` (успех) или `_error_response(code, "type", "message")` (ошибка).
 - Новые маршруты добавляй в соответствующий `routes_*.py` файл и регистрируй blueprint в `routes.py`.
 - Валидацию входных данных делай через Pydantic-схемы из `schemas.py`.
-- При изменении маршрутов обновляй `swagger.py`.
+- При изменении маршрутов обновляй метаданные в `openapi_endpoints.py`
+  и Pydantic-схемы (`schemas.py`/`response_schemas.py`) — спецификация
+  генерируется из них; тесты `test_openapi_generation.py` поймают
+  расхождение. После изменения контракта обнови golden-файл
+  `tests/unit/api/data/openapi_spec.json`.
 - Не вызывай бизнес-логику напрямую — только через `ApplicationFacade` (передаётся при инициализации сервера).
 - Idempotency-Key обрабатывается в `request_lifecycle.py` — не дублируй в маршрутах.
 

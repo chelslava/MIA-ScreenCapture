@@ -268,7 +268,7 @@ class TestSwaggerPaths:
         """Проверка наличия пути /api/status."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/status" in paths
+        assert "/api/v1/status" in paths
 
     def test_health_path_exists(self) -> None:
         """Проверка наличия пути /health."""
@@ -280,62 +280,62 @@ class TestSwaggerPaths:
         """Проверка наличия пути /api/start."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/start" in paths
+        assert "/api/v1/start" in paths
 
     def test_stop_path_exists(self) -> None:
         """Проверка наличия пути /api/stop."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/stop" in paths
+        assert "/api/v1/stop" in paths
 
     def test_pause_path_exists(self) -> None:
         """Проверка наличия пути /api/pause."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/pause" in paths
+        assert "/api/v1/pause" in paths
 
     def test_schedule_path_exists(self) -> None:
         """Проверка наличия пути /api/schedule."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/schedule" in paths
+        assert "/api/v1/schedule" in paths
 
     def test_devices_path_exists(self) -> None:
         """Проверка наличия пути /api/devices."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/devices" in paths
+        assert "/api/v1/devices" in paths
 
     def test_windows_path_exists(self) -> None:
         """Проверка наличия пути /api/windows."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/windows" in paths
+        assert "/api/v1/windows" in paths
 
     def test_config_path_exists(self) -> None:
         """Проверка наличия пути /api/config."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/config" in paths
+        assert "/api/v1/config" in paths
 
     def test_recent_events_path_exists(self) -> None:
         """Проверка наличия пути /api/events/recent."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/events/recent" in paths
+        assert "/api/v1/events/recent" in paths
 
     def test_events_stats_path_exists(self) -> None:
         """Проверка наличия пути /api/events/stats."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/events/stats" in paths
+        assert "/api/v1/events/stats" in paths
 
     def test_observability_paths_exist(self) -> None:
         """Проверка наличия observability путей."""
         paths = SWAGGER_SPEC["paths"]
 
-        assert "/api/observability/metrics" in paths
-        assert "/api/observability/baseline" in paths
+        assert "/api/v1/observability/metrics" in paths
+        assert "/api/v1/observability/baseline" in paths
 
 
 class TestSwaggerPathMethods:
@@ -343,25 +343,25 @@ class TestSwaggerPathMethods:
 
     def test_status_has_get(self) -> None:
         """Проверка GET метода для /api/status."""
-        status_path = SWAGGER_SPEC["paths"]["/api/status"]
+        status_path = SWAGGER_SPEC["paths"]["/api/v1/status"]
 
         assert "get" in status_path
 
     def test_start_has_post(self) -> None:
         """Проверка POST метода для /api/start."""
-        start_path = SWAGGER_SPEC["paths"]["/api/start"]
+        start_path = SWAGGER_SPEC["paths"]["/api/v1/start"]
 
         assert "post" in start_path
 
     def test_stop_has_post(self) -> None:
         """Проверка POST метода для /api/stop."""
-        stop_path = SWAGGER_SPEC["paths"]["/api/stop"]
+        stop_path = SWAGGER_SPEC["paths"]["/api/v1/stop"]
 
         assert "post" in stop_path
 
     def test_config_has_get_and_put(self) -> None:
         """Проверка GET и PUT методов для /api/config."""
-        config_path = SWAGGER_SPEC["paths"]["/api/config"]
+        config_path = SWAGGER_SPEC["paths"]["/api/v1/config"]
 
         assert "get" in config_path
         assert "put" in config_path
@@ -374,20 +374,20 @@ class TestSwaggerPathMethods:
 
     def test_recent_events_has_get(self) -> None:
         """Проверка GET метода для /api/events/recent."""
-        recent_events_path = SWAGGER_SPEC["paths"]["/api/events/recent"]
+        recent_events_path = SWAGGER_SPEC["paths"]["/api/v1/events/recent"]
 
         assert "get" in recent_events_path
 
     def test_events_stats_has_get(self) -> None:
         """Проверка GET метода для /api/events/stats."""
-        events_stats_path = SWAGGER_SPEC["paths"]["/api/events/stats"]
+        events_stats_path = SWAGGER_SPEC["paths"]["/api/v1/events/stats"]
 
         assert "get" in events_stats_path
 
     def test_observability_paths_have_get(self) -> None:
         """Проверка GET метода для observability путей."""
-        metrics_path = SWAGGER_SPEC["paths"]["/api/observability/metrics"]
-        baseline_path = SWAGGER_SPEC["paths"]["/api/observability/baseline"]
+        metrics_path = SWAGGER_SPEC["paths"]["/api/v1/observability/metrics"]
+        baseline_path = SWAGGER_SPEC["paths"]["/api/v1/observability/baseline"]
 
         assert "get" in metrics_path
         assert "get" in baseline_path
@@ -398,21 +398,21 @@ class TestSwaggerPathResponses:
 
     def test_status_has_200_response(self) -> None:
         """Проверка ответа 200 для /api/status."""
-        status_path = SWAGGER_SPEC["paths"]["/api/status"]["get"]
+        status_path = SWAGGER_SPEC["paths"]["/api/v1/status"]["get"]
 
         assert "responses" in status_path
         assert "200" in status_path["responses"]
 
     def test_start_has_400_response(self) -> None:
         """Проверка ответа 400 для /api/start."""
-        start_path = SWAGGER_SPEC["paths"]["/api/start"]["post"]
+        start_path = SWAGGER_SPEC["paths"]["/api/v1/start"]["post"]
 
         assert "responses" in start_path
         assert "400" in start_path["responses"]
 
     def test_unauthorized_response(self) -> None:
         """Проверка ответа 401 для защищённых эндпоинтов."""
-        start_path = SWAGGER_SPEC["paths"]["/api/start"]["post"]
+        start_path = SWAGGER_SPEC["paths"]["/api/v1/start"]["post"]
 
         assert "401" in start_path["responses"]
 
@@ -422,14 +422,14 @@ class TestSwaggerDescriptions:
 
     def test_status_has_description(self) -> None:
         """Проверка описания для /api/status."""
-        status_path = SWAGGER_SPEC["paths"]["/api/status"]["get"]
+        status_path = SWAGGER_SPEC["paths"]["/api/v1/status"]["get"]
 
         assert "description" in status_path
         assert "summary" in status_path
 
     def test_start_has_description(self) -> None:
         """Проверка описания для /api/start."""
-        start_path = SWAGGER_SPEC["paths"]["/api/start"]["post"]
+        start_path = SWAGGER_SPEC["paths"]["/api/v1/start"]["post"]
 
         assert "description" in start_path
         assert "summary" in start_path
@@ -447,19 +447,19 @@ class TestSwaggerRequestBodies:
 
     def test_start_has_request_body(self) -> None:
         """Проверка тела запроса для /api/start."""
-        start_path = SWAGGER_SPEC["paths"]["/api/start"]["post"]
+        start_path = SWAGGER_SPEC["paths"]["/api/v1/start"]["post"]
 
         assert "requestBody" in start_path
 
     def test_schedule_post_has_request_body(self) -> None:
         """Проверка тела запроса для POST /api/schedule."""
-        schedule_path = SWAGGER_SPEC["paths"]["/api/schedule"]["post"]
+        schedule_path = SWAGGER_SPEC["paths"]["/api/v1/schedule"]["post"]
 
         assert "requestBody" in schedule_path
 
     def test_config_put_has_request_body(self) -> None:
         """Проверка тела запроса для PUT /api/config."""
-        config_path = SWAGGER_SPEC["paths"]["/api/config"]["put"]
+        config_path = SWAGGER_SPEC["paths"]["/api/v1/config"]["put"]
 
         assert "requestBody" in config_path
 
