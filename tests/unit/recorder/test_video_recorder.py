@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from core.geometry import MonitorDpiProfile
 from recorder.video_recorder import CaptureArea, RecordingState, VideoRecorder
 
 
@@ -193,6 +194,87 @@ class TestCaptureArea:
         assert capture_dict["top"] == 200
         assert capture_dict["width"] == 800
         assert capture_dict["height"] == 600
+
+
+class TestCaptureDpiContext:
+    """Диагностика DPI-контекста rect-захвата (#200)."""
+
+    @pytest.fixture
+    def recorder(self) -> VideoRecorder:
+        """Создаёт рекордер без FFmpeg."""
+        return VideoRecorder(use_ffmpeg=False)
+
+    _MONITOR = MonitorDpiProfile(
+        monitor_id=1,
+        left=0,
+        top=0,
+        width=1920,
+        height=1080,
+        dpi_scale=1.5,
+        is_primary=True,
+    )
+
+    def test_full_capture_skips_diagnostics(
+        self,
+        recorder: VideoRecorder,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Для full-захвата DPI-диагностика не выполняется."""
+        area = CaptureArea(type="full", width=1920, height=1080)
+        with patch("recorder.video_recorder.get_monitor_profiles") as gp:
+            with caplog.at_level("DEBUG"):
+                recorder._log_capture_dpi_context(area)
+        gp.assert_not_called()
+        assert "Rect-захват" not in caplog.text
+
+    def test_rect_inside_monitor_logs_info(
+        self,
+        recorder: VideoRecorder,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Rect внутри монитора логирует монитор и DPI-фактор."""
+        area = CaptureArea(type="rect", x=100, y=100, width=800, height=600)
+        with patch(
+            "recorder.video_recorder.get_monitor_profiles",
+            return_value=[self._MONITOR],
+        ):
+            with caplog.at_level("INFO"):
+                recorder._log_capture_dpi_context(area)
+        assert "Rect-захват" in caplog.text
+        assert "монитор #1" in caplog.text
+        assert "150%" in caplog.text
+
+    def test_rect_outside_desktop_logs_warning(
+        self,
+        recorder: VideoRecorder,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Rect вне виртуального рабочего стола — предупреждение."""
+        area = CaptureArea(
+            type="rect", x=10000, y=10000, width=800, height=600
+        )
+        with patch(
+            "recorder.video_recorder.get_monitor_profiles",
+            return_value=[self._MONITOR],
+        ):
+            with caplog.at_level("WARNING"):
+                recorder._log_capture_dpi_context(area)
+        assert "вне виртуального рабочего стола" in caplog.text
+
+    def test_provider_failure_does_not_raise(
+        self,
+        recorder: VideoRecorder,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Сбой провайдера профилей не мешает старту записи."""
+        area = CaptureArea(type="rect", x=0, y=0, width=800, height=600)
+        with patch(
+            "recorder.video_recorder.get_monitor_profiles",
+            side_effect=OSError("нет мониторов"),
+        ):
+            with caplog.at_level("DEBUG"):
+                recorder._log_capture_dpi_context(area)
+        assert "DPI-контекст не определён" in caplog.text
 
 
 class TestVideoRecorder:

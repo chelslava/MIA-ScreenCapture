@@ -725,9 +725,12 @@ class VideoRecorder:
         try:
             profiles = get_monitor_profiles()
             monitor = find_monitor_for_rect(
-                (capture_area.x, capture_area.y,
-                 capture_area.x + capture_area.width,
-                 capture_area.y + capture_area.height),
+                (
+                    capture_area.x,
+                    capture_area.y,
+                    capture_area.x + capture_area.width,
+                    capture_area.y + capture_area.height,
+                ),
                 profiles,
             )
         except Exception as e:  # noqa: BLE001 — диагностика не должна ронять старт
