@@ -11,6 +11,7 @@ from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QGuiApplication, QPainter, QPen
 from PyQt6.QtWidgets import QDialog, QWidget
 
+from core.geometry import scale_rect_for_dpi, unscale_rect_from_dpi
 from logger_config import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -26,6 +27,32 @@ MAGNIFIER_ZOOM = 4
 MAGNIFIER_MARGIN = 16
 NUDGE_STEP = 1
 NUDGE_STEP_FAST = 10
+# Верхняя санитарная граница для Qt devicePixelRatio: защита от
+# мусорных значений замоканных экранов в тестах
+_DPI_SCALE_SANITY_MAX = 8.0
+
+
+def _primary_dpi_scale() -> float:
+    """DPI-фактор primary-экрана Qt.
+
+    Координаты overlay логические (Qt DIP), кадр WGC физический;
+    фактор нужен для конверсии на границе диалога (#200).
+
+    Returns:
+        devicePixelRatio primary-экрана; 1.0, если фактор недоступен
+        (моки в тестах, отсутствие QScreen) — выбор области при этом
+        продолжает работать без масштабирования.
+    """
+    try:
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return 1.0
+        dpr = float(screen.devicePixelRatio())
+    except (AttributeError, TypeError, RuntimeError):
+        return 1.0
+    if 0 < dpr <= _DPI_SCALE_SANITY_MAX:
+        return dpr
+    return 1.0
 
 
 def normalize_rect_coords(start: PointCoords, end: PointCoords) -> RectCoords:
@@ -490,27 +517,48 @@ class AreaSelectorDialog(QDialog):
         cls,
         parent: QWidget | None = None,
         initial_rect: RectCoords | None = None,
+        dpi_scale: float | None = None,
     ) -> RectCoords | None:
         """
         Открыть overlay и вернуть выбранную область.
 
+        Внутри диалога координаты логические (Qt DIP), наружу отдаётся
+        физический прямоугольник (#200): downstream-компоненты
+        (настройки, API, кроп кадра WGC) работают в физических
+        пикселях виртуального рабочего стола.
+
         Args:
             parent: Родительский виджет.
-            initial_rect: Текущая область для повторного редактирования.
+            initial_rect: Текущая область для повторного редактирования
+                (в физических пикселях).
+            dpi_scale: Явный DPI-фактор для тестов; `None` — фактор
+                берётся с primary-экрана.
 
         Returns:
-            Выбранные координаты или `None`, если пользователь отменил выбор.
+            Выбранные координаты в физических пикселях или `None`,
+            если пользователь отменил выбор.
         """
-        selector = cls(initial_rect=initial_rect, parent=parent)
+        scale = dpi_scale if dpi_scale is not None else _primary_dpi_scale()
+        logical_initial = (
+            unscale_rect_from_dpi(initial_rect, scale)
+            if initial_rect is not None
+            else None
+        )
+        selector = cls(initial_rect=logical_initial, parent=parent)
         result = selector.exec()
         dialog_code = getattr(QDialog, "DialogCode", None)
         if dialog_code is not None:
-            return (
+            selected = (
                 selector.get_selected_rect()
                 if result == QDialog.DialogCode.Accepted
                 else None
             )
-        return selector.get_selected_rect() if result else None
+        else:
+            selected = selector.get_selected_rect() if result else None
+
+        if selected is None:
+            return None
+        return scale_rect_for_dpi(selected, scale)
 
     def _setup_window(self) -> None:
         """Настроить свойства overlay-окна."""

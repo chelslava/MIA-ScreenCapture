@@ -16,6 +16,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from core.geometry import find_monitor_for_rect, get_monitor_profiles
 from core.recording_state import RecordingStatus
 from core.recording_types import PiPSettings
 from exceptions import RecordingError, ScreenCaptureError
@@ -85,7 +86,11 @@ class CaptureArea:
 
     @classmethod
     def from_rect(cls, x1: int, y1: int, x2: int, y2: int) -> "CaptureArea":
-        """Создание прямоугольной области захвата из координат."""
+        """Создание прямоугольной области захвата из координат.
+
+        Координаты — физические пиксели виртуального рабочего стола
+        (пространство кадров WGC), а не логические координаты Qt (#200).
+        """
         left, top, right, bottom = validate_rect_coords(x1, y1, x2, y2)
         return cls(
             type="rect", x=left, y=top, width=right - left, height=bottom - top
@@ -703,6 +708,46 @@ class VideoRecorder:
         self._on_frame_captured = on_frame_captured
         self._on_error = on_error
 
+    def _log_capture_dpi_context(self, capture_area: CaptureArea) -> None:
+        """
+        Диагностика DPI-контекста области захвата (#200).
+
+        Для rect-захвата логирует монитор-владелец и его DPI-фактор —
+        упрощает диагностику «съехавшей» записи на scaled-мониторах.
+        Rect вне виртуального рабочего стола получает предупреждение:
+        кроп кадра WGC в этом случае даст не то, что ожидает пользователь.
+
+        Args:
+            capture_area: Область захвата.
+        """
+        if capture_area.type != "rect":
+            return
+        try:
+            profiles = get_monitor_profiles()
+            monitor = find_monitor_for_rect(
+                (capture_area.x, capture_area.y,
+                 capture_area.x + capture_area.width,
+                 capture_area.y + capture_area.height),
+                profiles,
+            )
+        except Exception as e:  # noqa: BLE001 — диагностика не должна ронять старт
+            logger.debug("DPI-контекст не определён: %s", e)
+            return
+
+        if monitor is None:
+            logger.warning(
+                f"Область захвата [{capture_area.x}, {capture_area.y}, "
+                f"{capture_area.width}x{capture_area.height}] вне "
+                "виртуального рабочего стола"
+            )
+            return
+
+        logger.info(
+            f"Rect-захват: монитор #{monitor.monitor_id} "
+            f"({monitor.width}x{monitor.height}), "
+            f"DPI {monitor.dpi_scale:.0%}"
+        )
+
     def start(
         self,
         output_path: Path,
@@ -744,6 +789,7 @@ class VideoRecorder:
                 self._output_path = Path(output_path)
                 self._capture_area = capture_area
                 self._duration = duration
+                self._log_capture_dpi_context(capture_area)
 
                 # Убедиться, что директория вывода существует
                 self._output_path.parent.mkdir(parents=True, exist_ok=True)

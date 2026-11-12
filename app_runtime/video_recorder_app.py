@@ -23,6 +23,7 @@ from app_runtime.app_platform_ops_mixin import PlatformOpsMixin
 from app_runtime.app_scheduler_mixin import SchedulerOpsMixin
 from app_runtime.app_settings_ops_mixin import SettingsOpsMixin
 from config import get_config
+from core.geometry import ensure_process_dpi_awareness
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
 from exceptions import (
     ConfigValidationError,
@@ -68,6 +69,12 @@ class VideoRecorderApp(
         Args:
             config: Разобранная конфигурация из CLI
         """
+        # Per-monitor DPI-awareness до любых Win32/Qt обращений к
+        # геометрии: иначе headless-режим (API/CLI/Service) получает
+        # виртуализованные координаты мониторов, не совпадающие с
+        # физическими кадрами WGC (#200).
+        ensure_process_dpi_awareness()
+
         self._config = config
         self._mode = config.get("mode", "gui")
 

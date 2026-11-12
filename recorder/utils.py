@@ -612,7 +612,11 @@ def get_audio_devices() -> dict[str, list[dict[str, Any]]]:
 
 def get_screen_size() -> tuple[int, int]:
     """
-    Return the primary screen size.
+    Return the primary screen size in physical pixels.
+
+    Координаты физические при активном per-monitor DPI-awareness
+    (обеспечивает `core.geometry.ensure_process_dpi_awareness`); для
+    DPI-unaware процесса система вернёт виртуализованный размер (#200).
 
     Returns:
         Tuple (width, height).
@@ -639,6 +643,9 @@ def get_screen_size() -> tuple[int, int]:
 def get_all_monitors() -> list[dict[str, int]]:
     """
     Return information about all connected monitors.
+
+    Координаты и размеры — физические пиксели виртуального рабочего
+    стола при активном per-monitor DPI-awareness (#200).
 
     Returns:
         List of dicts with monitor info.

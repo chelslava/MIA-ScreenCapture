@@ -91,7 +91,10 @@ class SwitchCaptureSourceRequest(BaseModel):
     )
     rect: list[int] | None = Field(
         default=None,
-        description="Координаты прямоугольника [x1, y1, x2, y2] (требуется если area='rect')",
+        description=(
+            "Координаты прямоугольника [x1, y1, x2, y2] в физических "
+            "пикселях виртуального рабочего стола (требуется если area='rect')"
+        ),
         min_length=4,
         max_length=4,
     )
@@ -132,7 +135,10 @@ class StartRecordingRequest(BaseModel):
     )
     rect: list[int] | None = Field(
         default=None,
-        description="Координаты прямоугольника [x1, y1, x2, y2] (требуется если area='rect')",
+        description=(
+            "Координаты прямоугольника [x1, y1, x2, y2] в физических "
+            "пикселях виртуального рабочего стола (требуется если area='rect')"
+        ),
         min_length=4,
         max_length=4,
     )
@@ -263,7 +269,10 @@ class MultiCaptureSourceRequest(BaseModel):
     )
     rect: list[int] | None = Field(
         default=None,
-        description="Координаты прямоугольника [x1, y1, x2, y2] (требуется если area='rect')",
+        description=(
+            "Координаты прямоугольника [x1, y1, x2, y2] в физических "
+            "пикселях виртуального рабочего стола (требуется если area='rect')"
+        ),
         min_length=4,
         max_length=4,
     )

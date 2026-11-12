@@ -11,6 +11,7 @@ from gui.controllers.settings_controller import SettingsController
 from gui.models.recording_state import CaptureType, RecordingState
 from gui.views.area_selector import (
     AreaSelectorDialog,
+    _primary_dpi_scale,
     describe_rect,
     format_rect_coords,
     is_valid_selection,
@@ -201,6 +202,85 @@ class TestAreaSelectorDialog:
             assert AreaSelectorDialog.select_area(
                 initial_rect=(1, 2, 3, 4)
             ) == (10, 20, 100, 200)
+
+    def test_select_area_scales_selection_to_physical_pixels(self) -> None:
+        """select_area конвертирует выбор в физические пиксели (#200).
+
+        Координаты диалога логические (Qt DIP); наружу передаётся
+        физический rect — контракт downstream-компонентов.
+        """
+
+        def fake_init(
+            self,
+            initial_rect=None,
+            parent=None,
+        ) -> None:
+            self._selection = initial_rect
+
+        with (
+            patch.object(AreaSelectorDialog, "__init__", fake_init),
+            patch.object(
+                AreaSelectorDialog, "exec", return_value=1, create=True
+            ),
+            patch.object(
+                AreaSelectorDialog,
+                "get_selected_rect",
+                return_value=(200, 150, 600, 450),
+            ),
+        ):
+            assert AreaSelectorDialog.select_area(dpi_scale=1.5) == (
+                300,
+                225,
+                900,
+                675,
+            )
+
+    def test_select_area_unscales_initial_rect_for_dialog(self) -> None:
+        """Сохранённый физический rect переводится в логику диалога (#200)."""
+        captured: dict[str, object] = {}
+
+        def fake_init(
+            self,
+            initial_rect=None,
+            parent=None,
+        ) -> None:
+            captured["initial_rect"] = initial_rect
+            self._selection = None
+
+        with (
+            patch.object(AreaSelectorDialog, "__init__", fake_init),
+            patch.object(
+                AreaSelectorDialog, "exec", return_value=0, create=True
+            ),
+        ):
+            result = AreaSelectorDialog.select_area(
+                initial_rect=(300, 225, 900, 675), dpi_scale=1.5
+            )
+
+        # Отмена выбора: наружу None, в диалог пришла логическая область
+        assert result is None
+        assert captured["initial_rect"] == (200, 150, 600, 450)
+
+    def test_primary_dpi_scale_reads_device_pixel_ratio(self) -> None:
+        """DPI-фактор берётся с primary-экрана Qt."""
+        screen = SimpleNamespace(devicePixelRatio=lambda: 1.5)
+        gui_app = SimpleNamespace(primaryScreen=lambda: screen)
+        with patch("gui.views.area_selector.QGuiApplication", gui_app):
+            assert _primary_dpi_scale() == 1.5
+
+    def test_primary_dpi_scale_falls_back_to_one(self) -> None:
+        """Недоступный DPR (моки Qt, нет QScreen) даёт масштаб 1.0."""
+        # Мок QGuiApplication возвращает MagicMock-экран: float()
+        # от devicePixelRatio() падает TypeError — fallback обязателен
+        fallback_app = MagicMock()
+        fallback_app.primaryScreen.return_value = None
+        with patch("gui.views.area_selector.QGuiApplication", fallback_app):
+            assert _primary_dpi_scale() == 1.0
+
+        garbage_app = MagicMock()
+        garbage_app.primaryScreen.return_value = MagicMock()
+        with patch("gui.views.area_selector.QGuiApplication", garbage_app):
+            assert _primary_dpi_scale() == 1.0
 
     def test_get_selected_rect_returns_none_for_too_small_rect(self) -> None:
         """Невалидная область не должна считаться выбранной."""
