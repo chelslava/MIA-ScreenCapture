@@ -8,6 +8,7 @@ gui/headless, API-обёртки, graceful shutdown. Группы операци
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -23,6 +24,10 @@ from app_runtime.app_platform_ops_mixin import PlatformOpsMixin
 from app_runtime.app_scheduler_mixin import SchedulerOpsMixin
 from app_runtime.app_settings_ops_mixin import SettingsOpsMixin
 from config import get_config
+from core.crash_reporting import (
+    consume_pending_crash_report,
+    install_crash_handlers,
+)
 from core.geometry import ensure_process_dpi_awareness
 from core.lifecycle import GracefulShutdown, get_shutdown_manager
 from exceptions import (
@@ -77,6 +82,21 @@ class VideoRecorderApp(
 
         self._config = config
         self._mode = config.get("mode", "gui")
+
+        # Хуки падений (#192): до создания окон и рабочих потоков.
+        # Сбой настройки репортинга не должен мешать старту приложения.
+        self._pending_crash_report: Path | None = None
+        try:
+            install_crash_handlers()
+            self._pending_crash_report = consume_pending_crash_report()
+        except OSError as e:
+            logger.warning("Отчёты о падениях недоступны: %s", e)
+        if self._mode != "gui" and self._pending_crash_report is not None:
+            logger.warning(
+                "Приложение восстановлено после падения прошлой "
+                "сессии, отчёт: %s",
+                self._pending_crash_report,
+            )
 
         # Компоненты
         self._app: Any | None = None  # QApplication

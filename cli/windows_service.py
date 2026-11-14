@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 import threading
 from typing import Any
@@ -20,6 +22,13 @@ SERVICE_NAME = "MIAScreenCapture"
 SERVICE_DISPLAY_NAME = "MIA Screen Capture Service"
 SERVICE_DESCRIPTION = "MIA Screen Capture REST API & Scheduler Service"
 
+# Watchdog службы (#192): интервал контроля живости рабочего потока
+WATCHDOG_POLL_SECONDS = 5
+# Recovery-действия SCM (#192): перезапуск через 1мин, 1мин, 5мин;
+# счётчик сбоев сбрасывается раз в сутки — попытки перезапуска ограничены
+RECOVERY_RESET_SECONDS = 86400
+RECOVERY_ACTIONS = "restart/60000/restart/60000/restart/300000"
+
 try:
     import servicemanager
     import win32event
@@ -30,6 +39,81 @@ try:
 except ImportError:
     HAS_PYWIN32 = False
     win32serviceutil = object
+
+
+def build_recovery_command(service_name: str) -> list[str]:
+    """Команда `sc.exe failure` для настройки авто-перезапуска службы.
+
+    Returns:
+        Аргументы для subprocess: перезапуск через 1мин/1мин/5мин,
+        счётчик сбоев сбрасывается раз в сутки (RECOVERY_*).
+    """
+    return [
+        "sc.exe",
+        "failure",
+        service_name,
+        "reset=",
+        str(RECOVERY_RESET_SECONDS),
+        "actions=",
+        RECOVERY_ACTIONS,
+    ]
+
+
+def configure_service_recovery(service_name: str) -> bool:
+    """Настроить автоматический перезапуск службы после сбоя (#192).
+
+    Watchdog-механика уровня SCM: при аварийном завершении процесса
+    службы Windows перезапускает её с лимитом попыток (два рестарта
+    через минуту, затем через пять, счётчик сбрасывается раз в сутки).
+
+    Args:
+        service_name: Имя установленной службы.
+
+    Returns:
+        True, если recovery-действия заданы.
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        result = subprocess.run(
+            build_recovery_command(service_name),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as e:
+        logger.error("Не удалось запустить sc.exe failure: %s", e)
+        return False
+    if result.returncode != 0:
+        logger.error(
+            "Recovery-действия не заданы: %s",
+            (result.stderr or result.stdout).strip(),
+        )
+        return False
+    logger.info("Recovery-действия службы заданы: %s", RECOVERY_ACTIONS)
+    return True
+
+
+def watchdog_should_fail(
+    app_thread_alive: bool,
+    app_exit_ok: bool,
+    is_running: bool,
+) -> bool:
+    """Решение watchdog: умер ли рабочий поток без штатной остановки.
+
+    Аварийное завершение рабочего потока при активной службе — это
+    сбой процесса: SCM выполнит recovery-действия и перезапустит
+    службу (см. `configure_service_recovery`).
+
+    Args:
+        app_thread_alive: Жив ли рабочий поток приложения.
+        app_exit_ok: Завершился ли поток штатно (`run()` вернулся).
+        is_running: Запрошена ли остановка службы.
+
+    Returns:
+        True — процесс службы должен завершиться аварийно (os._exit).
+    """
+    return not app_thread_alive and not app_exit_ok and is_running
 
 
 if HAS_PYWIN32:
@@ -47,6 +131,7 @@ if HAS_PYWIN32:
             self._is_running = True
             self._app_thread: threading.Thread | None = None
             self._app_instance: Any = None
+            self._app_exit_ok = False
 
         def SvcStop(self) -> None:
             """Остановка службы при запросе от Windows Service Control Manager."""
@@ -74,9 +159,31 @@ if HAS_PYWIN32:
                     "Служба %s запущена в headless-режиме", SERVICE_NAME
                 )
                 self._run_application()
-                win32event.WaitForSingleObject(
-                    self.hWaitStop, win32event.INFINITE
-                )
+                # Watchdog (#192): пока служба не остановлена, контролируем
+                # живость рабочего потока. Аварийная смерть потока — сбой
+                # процесса: SCM выполнит recovery-действия и перезапустит.
+                while self._is_running:
+                    signaled = win32event.WaitForSingleObject(
+                        self.hWaitStop, WATCHDOG_POLL_SECONDS * 1000
+                    )
+                    if signaled == win32event.WAIT_OBJECT_0:
+                        break
+                    if watchdog_should_fail(
+                        (
+                            self._app_thread is not None
+                            and self._app_thread.is_alive()
+                        ),
+                        self._app_exit_ok,
+                        self._is_running,
+                    ):
+                        logger.error(
+                            "Рабочий поток приложения завершился аварийно — "
+                            "служба падает для перезапуска через recovery"
+                        )
+                        # Осознанно без ReportServiceStatus(SERVICE_STOPPED):
+                        # только аварийное завершение процесса считает
+                        # сбоем и запускает recovery-действия SCM
+                        os._exit(1)
                 logger.info("Служба %s остановлена", SERVICE_NAME)
                 servicemanager.LogMsg(
                     servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -98,6 +205,8 @@ if HAS_PYWIN32:
 
                     self._app_instance = VideoRecorderApp({"mode": "headless"})
                     self._app_instance.run()
+                    # Штатный выход: watchdog не считает поток умершим
+                    self._app_exit_ok = True
                 except Exception as ex:
                     logger.exception(
                         "Ошибка в рабочем потоке приложения службы: %s", ex
@@ -139,6 +248,8 @@ def install_service(startup: str = "auto") -> bool:
         logger.info(
             "Служба %s успешно установлена (старт: %s)", SERVICE_NAME, startup
         )
+        # Watchdog-перезапуск (#192): неудача не отменяет установку
+        configure_service_recovery(SERVICE_NAME)
         return True
     except Exception as e:
         logger.error("Ошибка при установке службы: %s", e)

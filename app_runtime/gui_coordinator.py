@@ -7,10 +7,14 @@ import sys
 import threading
 from typing import TYPE_CHECKING
 
+from logger_config import get_module_logger
+
 from .thread_executor import MainThreadExecutor
 
 if TYPE_CHECKING:
     from app_runtime.video_recorder_app import VideoRecorderApp
+
+logger = get_module_logger(__name__)
 
 
 class GuiRuntimeCoordinator:
@@ -55,7 +59,32 @@ class GuiRuntimeCoordinator:
         # Мастер первого запуска (#172): однократно, после показа окна
         self._app._main_window._maybe_show_onboarding()
 
+        # Уведомление о восстановлении после падения (#192)
+        self._maybe_show_crash_recovery()
+
         return self._app._app.exec()
+
+    def _maybe_show_crash_recovery(self) -> None:
+        """Диалог «приложение восстановлено после падения» (#192).
+
+        Отчёт уже выбран в `VideoRecorderApp.__init__` (маркер
+        показанности обновлён) — здесь только пользовательский диалог.
+        Отказ Qt-диалога не критичен для запуска.
+        """
+        from PyQt6.QtWidgets import QMessageBox
+
+        report = self._app._pending_crash_report
+        if report is None:
+            return
+        try:
+            QMessageBox.information(
+                self._app._main_window,
+                "MIA-ScreenCapture",
+                "Приложение восстановлено после падения.\n"
+                f"Отчёт сохранён: {report}",
+            )
+        except RuntimeError as e:
+            logger.warning("Диалог восстановления не показан: %s", e)
 
     def _apply_theme_and_backdrop(self) -> None:
         """Применяет тему и материал Windows 11 до создания окна (#157).
