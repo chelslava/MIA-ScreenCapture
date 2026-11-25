@@ -147,6 +147,9 @@ secrets.*
 
 # Local runtime configuration (do not commit machine-specific state)
 config/*.json
+# Backup и копии повреждённого конфига (#190)
+config/*.json.bak
+config/*.json.corrupt-*
 !config/*.example.json
 
 # UV package manager

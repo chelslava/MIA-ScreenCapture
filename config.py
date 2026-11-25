@@ -6,21 +6,51 @@
 и сохранение конфигурации.
 """
 
-import json
+import shutil
 import threading
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from config_migrations import (
+    CURRENT_SCHEMA_VERSION,
+    MigrationResult,
+    migrate_config_data,
+    parse_config_file,
+)
 from logger_config import get_module_logger
 from utils import atomic_write_json
 
 logger = get_module_logger(__name__)
 _RECENT_RECORDINGS_SAVE_DEBOUNCE_SECONDS = 0.75
+
+#: Суффикс файла backup рядом с конфигом (#190)
+BACKUP_SUFFIX: Final[str] = ".bak"
+#: Префикс копий повреждённого конфига (с меткой времени, #190)
+CORRUPT_SUFFIX: Final[str] = ".corrupt"
+
+# Виды уведомлений о загрузке конфига (#190)
+KIND_MIGRATED: Final[str] = "migrated"
+KIND_RESTORED_FROM_BACKUP: Final[str] = "restored_from_backup"
+KIND_RESET_CORRUPTED: Final[str] = "reset_corrupted"
+
+
+@dataclass(frozen=True)
+class ConfigLoadNotice:
+    """Уведомление пользователя о событии загрузки конфига (#190).
+
+    Attributes:
+        kind: Тип события (``migrated`` / ``restored_from_backup`` /
+            ``reset_corrupted``).
+        message: Готовый текст для GUI/лога.
+    """
+
+    kind: str
+    message: str
 
 
 # ============================================================================
@@ -289,6 +319,11 @@ _VALID_THEME_MODES = ("system", "light", "blue", "dark", "dark_contrast")
 class AppSettingsSchema(BaseModel):
     """Схема валидации основных настроек приложения."""
 
+    # Версия схемы config.json (#190); повышается через миграции
+    # из config_migrations.CONFIG_MIGRATIONS
+    schema_version: int = Field(
+        default=CURRENT_SCHEMA_VERSION, ge=1, le=1_000_000
+    )
     video: VideoSettingsSchema = Field(default_factory=VideoSettingsSchema)
     audio: AudioSettingsSchema = Field(default_factory=AudioSettingsSchema)
     recording_tunables: RecordingTunablesSchema = Field(
@@ -520,6 +555,8 @@ class UpdateSettings:
 class AppSettings:
     """Основные настройки приложения."""
 
+    # Версия схемы config.json (#190)
+    schema_version: int = CURRENT_SCHEMA_VERSION
     video: VideoSettings = field(default_factory=VideoSettings)
     audio: AudioSettings = field(default_factory=AudioSettings)
     recording_tunables: RecordingTunables = field(
@@ -574,43 +611,208 @@ class ConfigManager:
         self._settings_lock = threading.RLock()
         self._save_lock = threading.Lock()
         self._recent_save_timer: threading.Timer | None = None
+        self._load_notice: ConfigLoadNotice | None = None
         self._load()
 
+    @property
+    def backup_path(self) -> Path:
+        """Путь к backup-файлу конфигурации (#190)."""
+        return self.config_path.with_name(
+            self.config_path.name + BACKUP_SUFFIX
+        )
+
     def _load(self) -> None:
-        """Загрузка конфигурации из файла или создание значений по умолчанию."""
-        if self.config_path.exists():
-            try:
-                with open(self.config_path, encoding="utf-8") as f:
-                    data = json.load(f)
-                # Валидация через Pydantic
-                validated = AppSettingsSchema.model_validate(data)
-                with self._settings_lock:
-                    self._settings = self._dict_to_settings(
-                        validated.model_dump()
-                    )
-                logger.info(f"Конфигурация загружена из {self.config_path}")
-            except Exception as e:
-                logger.error(f"Ошибка загрузки конфигурации: {e}")
-                if "data" in locals():
-                    logger.debug(
-                        "Проблемная структура конфигурации: %s",
-                        json.dumps(data, ensure_ascii=False, indent=2)[:2000],
-                    )
-                else:
-                    try:
-                        raw = self.config_path.read_text(encoding="utf-8")
-                        logger.debug(
-                            "Raw-содержимое конфигурационного файла: %s",
-                            raw[:2000],
-                        )
-                    except Exception:
-                        pass
-                with self._settings_lock:
-                    self._settings = AppSettings()
-        else:
+        """Загрузка конфигурации с миграцией схемы и восстановлением (#190).
+
+        Порядок: основной файл -> миграции -> Pydantic-валидация; при
+        повреждении основного файла — восстановление из ``.bak``, при
+        неудаче — сброс к дефолтам с сохранением битой копии. О любом
+        нештатном восстановлении пользователь уведомляется через
+        :meth:`pop_load_notice`.
+        """
+        if not self.config_path.exists():
             with self._settings_lock:
                 self._settings = AppSettings()
             logger.info("Создана конфигурация по умолчанию")
+            return
+
+        data: dict[str, Any] | None = None
+        parse_error = ""
+        try:
+            data = parse_config_file(self.config_path)
+        except Exception as e:
+            parse_error = str(e)
+            logger.warning("Основной конфигурационный файл повреждён: %s", e)
+
+        if data is not None and self._try_apply_loaded(data):
+            return
+
+        self._recover_or_reset(parse_error)
+
+    def _try_apply_loaded(self, data: dict[str, Any]) -> bool:
+        """Мигрирует и валидирует данные, применяет их к настройкам.
+
+        Args:
+            data: Словарь, разобранный из config.json.
+
+        Returns:
+            True если данные применены; False при ошибке миграции/
+            валидации (вызывающий код запускает восстановление).
+        """
+        migration: MigrationResult | None = None
+        try:
+            migration = migrate_config_data(data)
+            validated = AppSettingsSchema.model_validate(migration.data)
+        except Exception as e:
+            logger.warning("Конфигурация не прошла миграцию/валидацию: %s", e)
+            return False
+
+        with self._settings_lock:
+            self._settings = self._dict_to_settings(validated.model_dump())
+        logger.info(f"Конфигурация загружена из {self.config_path}")
+
+        if migration.notes:
+            self._load_notice = ConfigLoadNotice(
+                kind=KIND_MIGRATED,
+                message=(
+                    "Конфигурация обновлена до схемы v"
+                    f"{CURRENT_SCHEMA_VERSION}: {'; '.join(migration.notes)}"
+                ),
+            )
+            # Сразу фиксируем новую версию схемы на диске (save() заранее
+            # сделает backup ещё не мигрированного файла)
+            self.save()
+        return True
+
+    def _recover_or_reset(self, parse_error: str) -> None:
+        """Восстановление из backup или сброс к дефолтам (#190).
+
+        Args:
+            parse_error: Текст ошибки разбора основного файла (для
+                уведомления пользователю).
+        """
+        corrupt_copy = self._save_corrupt_copy()
+        backup_data = self._load_backup_data()
+
+        if backup_data is not None and self._try_apply_loaded(backup_data):
+            corrupt_name = corrupt_copy.name if corrupt_copy else "—"
+            self._load_notice = ConfigLoadNotice(
+                kind=KIND_RESTORED_FROM_BACKUP,
+                message=(
+                    f"Конфигурация восстановлена из backup "
+                    f"({self.backup_path.name}); повреждённая копия "
+                    f"сохранена: {corrupt_name}"
+                ),
+            )
+            logger.warning(
+                "Конфигурация восстановлена из %s (повреждённая копия: %s)",
+                self.backup_path,
+                corrupt_copy,
+            )
+            # Перезаписываем битый основной файл валидным содержимым;
+            # guard внутри _backup_before_write не даст затереть валидный
+            # .bak битым main
+            self.save()
+            return
+
+        with self._settings_lock:
+            self._settings = AppSettings()
+        copy_note = (
+            f", копия сохранена: {corrupt_copy.name}" if corrupt_copy else ""
+        )
+        self._load_notice = ConfigLoadNotice(
+            kind=KIND_RESET_CORRUPTED,
+            message=(
+                f"Конфигурация сброшена: файл повреждён ({parse_error})"
+                f"{copy_note}"
+            ),
+        )
+        logger.error(
+            "Конфигурация сброшена к значениям по умолчанию%s", copy_note
+        )
+
+    def _save_corrupt_copy(self) -> Path | None:
+        """Сохраняет копию повреждённого конфига с меткой времени.
+
+        Returns:
+            Путь к копии или None при ошибке (копия не создаётся).
+        """
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            corrupt_path = self.config_path.with_name(
+                f"{self.config_path.name}{CORRUPT_SUFFIX}-{timestamp}"
+            )
+            shutil.copy2(self.config_path, corrupt_path)
+            return corrupt_path
+        except Exception as e:
+            logger.error(
+                "Не удалось сохранить копию повреждённого конфига: %s", e
+            )
+            return None
+
+    def _load_backup_data(self) -> dict[str, Any] | None:
+        """Читает данные из backup-файла.
+
+        Returns:
+            Словарь данных или None, если backup отсутствует/повреждён.
+        """
+        if not self.backup_path.exists():
+            return None
+        try:
+            return parse_config_file(self.backup_path)
+        except Exception as e:
+            logger.warning("Backup %s повреждён: %s", self.backup_path, e)
+            return None
+
+    @staticmethod
+    def _is_loadable(data: dict[str, Any]) -> bool:
+        """Проверяет, что данные конфига загружаемы (миграция+валидация).
+
+        Args:
+            data: Словарь, разобранный из config.json.
+
+        Returns:
+            True если данные прошли миграцию схемы и Pydantic-валидацию.
+        """
+        try:
+            AppSettingsSchema.model_validate(migrate_config_data(data).data)
+            return True
+        except Exception:
+            return False
+
+    def _backup_before_write(self) -> None:
+        """Сохраняет backup текущего конфига перед перезаписью (#190).
+
+        Основной файл копируется в ``.bak`` только если он загружаем
+        (JSON и схема валидны) — битый файл не затирает последнюю
+        хорошую версию, доступную для восстановления.
+        """
+        if not self.config_path.exists():
+            return
+        try:
+            if not self._is_loadable(parse_config_file(self.config_path)):
+                logger.warning(
+                    "Backup конфигурации перед записью пропущен: "
+                    "текущий файл не валиден"
+                )
+                return
+            shutil.copy2(self.config_path, self.backup_path)
+        except Exception as e:
+            logger.warning(
+                "Backup конфигурации перед записью не создан: %s", e
+            )
+
+    def pop_load_notice(self) -> ConfigLoadNotice | None:
+        """Возвращает уведомление о загрузке конфига и сбрасывает его.
+
+        Returns:
+            :class:`ConfigLoadNotice` о миграции/восстановлении/сбросе
+            или None, если событий загрузки не было.
+        """
+        with self._settings_lock:
+            notice = self._load_notice
+            self._load_notice = None
+        return notice
 
     @staticmethod
     def _parse_floating_widget_pos(value: Any) -> list[int] | None:
@@ -688,6 +890,9 @@ class ConfigManager:
             return AppSettings(
                 video=video,
                 audio=audio,
+                schema_version=data.get(
+                    "schema_version", CURRENT_SCHEMA_VERSION
+                ),
                 recording_tunables=recording_tunables,
                 capture=capture,
                 output=output,
@@ -728,6 +933,9 @@ class ConfigManager:
         try:
             with self._settings_lock:
                 data = asdict(self._settings)
+            # Штампуем актуальную версию схемы при каждой записи (#190):
+            # снимок настроек мог быть прочитан из конфига старой версии
+            data["schema_version"] = CURRENT_SCHEMA_VERSION
             AppSettingsSchema.model_validate(data)
         except Exception as e:
             logger.error(
@@ -737,6 +945,7 @@ class ConfigManager:
 
         with self._save_lock:
             self._cancel_recent_save_timer_locked()
+            self._backup_before_write()
             try:
                 result = atomic_write_json(self.config_path, data, mode=0o600)
                 if result:
@@ -767,6 +976,7 @@ class ConfigManager:
         try:
             with self._settings_lock:
                 data = asdict(self._settings)
+            data["schema_version"] = CURRENT_SCHEMA_VERSION
             AppSettingsSchema.model_validate(data)
         except Exception as e:
             logger.error(f"Ошибка валидации debounce-конфигурации: {e}")
@@ -774,6 +984,7 @@ class ConfigManager:
 
         with self._save_lock:
             self._recent_save_timer = None
+            self._backup_before_write()
             try:
                 result = atomic_write_json(self.config_path, data, mode=0o600)
                 if result:
