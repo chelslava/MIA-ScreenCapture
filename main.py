@@ -58,7 +58,7 @@ def _load_environment() -> None:
         load_dotenv(env_path)
 
 
-def confirm_pending_update() -> None:
+def confirm_pending_update(app_root: Path | None = None) -> None:
     """
     Подтверждает успешный запуск после обновления и оповещает (#191).
 
@@ -67,6 +67,9 @@ def confirm_pending_update() -> None:
     предыдущей версии чистится. Отдельно всплывает маркер отката,
     если установщику пришлось восстановить предыдущую версию.
 
+    Args:
+        app_root: Корень установки (по умолчанию — директория main.py);
+            параметр для тестов.
     """
     from core.updater.rollback import (
         confirm_pending_update as _confirm,
@@ -75,8 +78,8 @@ def confirm_pending_update() -> None:
         pop_rollback_notice,
     )
 
-    app_root = Path(__file__).resolve().parent
-    confirmed = _confirm(app_root)
+    root = app_root or Path(__file__).resolve().parent
+    confirmed = _confirm(root)
     if confirmed is not None:
         message = (
             f"Приложение обновлено до версии {confirmed.version}; "
@@ -85,7 +88,7 @@ def confirm_pending_update() -> None:
         logger.warning("Событие обновления: %s", message)
         _send_system_notification(message)
 
-    rollback = pop_rollback_notice(app_root)
+    rollback = pop_rollback_notice(root)
     if rollback is not None:
         reason = rollback.get("reason", "неизвестно")
         version = rollback.get("version", "неизвестно")

@@ -491,3 +491,109 @@ class TestNotifyConfigLoadNotice:
 
         # Не должно выбрасывать исключений
         notify_config_load_notice(object())
+
+
+class TestConfirmPendingUpdateEntrypoint:
+    """Тесты health-check обновления на старте приложения (#191)."""
+
+    @staticmethod
+    def _capture_send(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> list[tuple[str, str]]:
+        """Ставит перехватчик системного уведомления."""
+        shown: list[tuple[str, str]] = []
+
+        def _fake_send(title: str, message: str) -> bool:
+            """Перехват системного уведомления."""
+            shown.append((title, message))
+            return True
+
+        monkeypatch.setattr("gui.notifications.send_notification", _fake_send)
+        return shown
+
+    def test_confirmed_update_notifies(
+        self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Маркер обновления подтверждается с toast и чисткой backup."""
+        from core.updater.rollback import (
+            UpdateState,
+            read_update_state,
+            write_update_state,
+        )
+        from main import confirm_pending_update
+
+        shown = self._capture_send(monkeypatch)
+        backup = temp_dir / "app.backup-1"
+        backup.mkdir()
+        write_update_state(
+            temp_dir, UpdateState(version="2.1.0", backup_dir=str(backup))
+        )
+
+        confirm_pending_update(temp_dir)
+
+        assert len(shown) == 1
+        assert "2.1.0" in shown[0][1]
+        assert read_update_state(temp_dir) is None
+        assert not backup.exists()
+
+    def test_rollback_notice_notifies(
+        self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Маркер отката от установщика доходит до пользователя."""
+        from core.updater.rollback import UPDATE_ROLLBACK_FILENAME
+        from main import confirm_pending_update
+
+        shown = self._capture_send(monkeypatch)
+        (temp_dir / UPDATE_ROLLBACK_FILENAME).write_text(
+            json.dumps(
+                {"reason": "распаковка: битый архив", "version": "2.1.0"},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        confirm_pending_update(temp_dir)
+
+        assert len(shown) == 1
+        assert "отменено" in shown[0][1]
+        assert "битый архив" in shown[0][1]
+        # Маркер одноразовый: повторный старт молчит
+        confirm_pending_update(temp_dir)
+        assert len(shown) == 1
+
+    def test_no_markers_is_silent(
+        self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Без маркеров обновления старт не уведомляет."""
+        from main import confirm_pending_update
+
+        shown = self._capture_send(monkeypatch)
+
+        confirm_pending_update(temp_dir)
+
+        assert shown == []
+
+    def test_notification_failure_is_tolerated(
+        self, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Отказ toast не роняет старт приложения."""
+        from core.updater.rollback import (
+            UpdateState,
+            write_update_state,
+        )
+        from main import confirm_pending_update
+
+        def _broken_send(title: str, message: str) -> bool:
+            """Имитация отказа системы уведомлений."""
+            raise RuntimeError("toast недоступен")
+
+        monkeypatch.setattr(
+            "gui.notifications.send_notification", _broken_send
+        )
+        write_update_state(
+            temp_dir,
+            UpdateState(version="2.1.0", backup_dir=str(temp_dir / "b")),
+        )
+
+        # Не должно выбрасывать исключений
+        confirm_pending_update(temp_dir)
