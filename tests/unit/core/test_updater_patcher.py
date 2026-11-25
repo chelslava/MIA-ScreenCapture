@@ -119,7 +119,11 @@ class TestUpdatePatcher:
         # utf-8-sig: PowerShell 5.1 требует BOM для кириллицы
         content = script.read_text(encoding="utf-8-sig")
         assert "Wait-Process -Id 1234" in content
-        assert "Expand-Archive" in content
+        # Статический ZipFile::ExtractToDirectory вместо Expand-Archive:
+        # баг 3-арговой перегрузки на старых runner'ах PS 5.1 (#191)
+        assert "ZipFile]::ExtractToDirectory($ArchivePath, $TargetDir)" in (
+            content
+        )
         assert "python.exe" in content
 
     def test_generate_updater_contains_rollback_flow(

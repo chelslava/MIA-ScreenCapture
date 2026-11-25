@@ -316,10 +316,15 @@ if (Test-Path -LiteralPath $TargetDir) {{
 }}
 
 # Шаг 2. Распаковка в чистую директорию
+# Статический ZipFile::ExtractToDirectory вместо Expand-Archive:
+# у Expand-Archive в PS 5.1 на старых runner'ах баг «Cannot find an
+# overload for ExtractToDirectory ... 3», а extension-метод ZipArchive
+# из PS не резолвится
 Write-Host "Применение обновления из $ArchivePath в $TargetDir..."
 try {{
     New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
-    Expand-Archive -LiteralPath $ArchivePath -DestinationPath $TargetDir -Force -ErrorAction Stop
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $TargetDir)
     Write-Host "Обновление успешно распаковано."
 }} catch {{
     Invoke-Rollback "распаковка: $_"
