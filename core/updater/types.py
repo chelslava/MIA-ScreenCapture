@@ -51,6 +51,7 @@ class ReleaseInfo:
     primary_download_url: str | None = None
     sha256_checksum: str | None = None
     size_bytes: int = 0
+    # Поле оставлено для совместимости; delta-механика убрана (#191)
     is_delta: bool = False
 
     def to_dict(self) -> dict[str, Any]:

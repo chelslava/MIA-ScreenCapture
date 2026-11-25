@@ -58,6 +58,60 @@ def _load_environment() -> None:
         load_dotenv(env_path)
 
 
+def confirm_pending_update(app_root: Path | None = None) -> None:
+    """
+    Подтверждает успешный запуск после обновления и оповещает (#191).
+
+    Успешное прохождение init (импорты, логирование, конфигурация) —
+    это health-check для установщика: маркер удаляется, backup
+    предыдущей версии чистится. Отдельно всплывает маркер отката,
+    если установщику пришлось восстановить предыдущую версию.
+
+    Args:
+        app_root: Корень установки (по умолчанию — директория main.py);
+            параметр для тестов.
+    """
+    from core.updater.rollback import (
+        confirm_pending_update as _confirm,
+    )
+    from core.updater.rollback import (
+        pop_rollback_notice,
+    )
+
+    root = app_root or Path(__file__).resolve().parent
+    confirmed = _confirm(root)
+    if confirmed is not None:
+        message = (
+            f"Приложение обновлено до версии {confirmed.version}; "
+            "запуск подтверждён"
+        )
+        logger.warning("Событие обновления: %s", message)
+        _send_system_notification(message)
+
+    rollback = pop_rollback_notice(root)
+    if rollback is not None:
+        reason = rollback.get("reason", "неизвестно")
+        version = rollback.get("version", "неизвестно")
+        message = (
+            f"Обновление до версии {version} отменено, восстановлена "
+            f"предыдущая версия. Причина: {reason}"
+        )
+        logger.warning("Событие отката обновления: %s", message)
+        _send_system_notification(message)
+
+
+def _send_system_notification(message: str) -> None:
+    """Показывает системный toast, скрывая ошибки уведомлений."""
+    try:
+        # Локальный импорт: модуль уведомлений не нужен при unit-тестах
+        # конфигурации без GUI-окружения
+        from gui.notifications import send_notification
+
+        send_notification("MIA-ScreenCapture", message)
+    except Exception as e:
+        logger.warning("Не удалось показать уведомление: %s", e)
+
+
 def notify_config_load_notice(cfg_manager: Any) -> None:
     """
     Доводит событие загрузки конфига до пользователя (#190).
@@ -76,14 +130,7 @@ def notify_config_load_notice(cfg_manager: Any) -> None:
         return
 
     logger.warning("Событие загрузки конфигурации: %s", notice.message)
-    try:
-        # Локальный импорт: модуль уведомлений не нужен при unit-тестах
-        # конфигурации без GUI-окружения
-        from gui.notifications import send_notification
-
-        send_notification("MIA-ScreenCapture", notice.message)
-    except Exception as e:
-        logger.warning("Не удалось показать уведомление о конфиге: %s", e)
+    _send_system_notification(notice.message)
 
 
 def _handle_already_running(mode: str) -> int:
@@ -138,6 +185,7 @@ def main() -> int:
     config_path = Path(config_path_arg) if config_path_arg else None
     cfg_manager = init_config(config_path)
     notify_config_load_notice(cfg_manager)
+    confirm_pending_update()
 
     # Инициализация языка интерфейса
     cfg_lang = None

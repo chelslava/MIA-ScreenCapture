@@ -335,7 +335,7 @@ class AppUpdater:
         restart_command: list[str] | None = None,
     ) -> bool:
         """
-        Формирует PowerShell-скрипт и запускает процесс обновления.
+        Формирует PowerShell-скрипт с backup/откатом и запускает его (#191).
 
         Args:
             target_dir: Целевая папка приложения (по умолчанию папка проекта).
@@ -350,16 +350,29 @@ class AppUpdater:
 
         app_root = target_dir or Path(__file__).resolve().parent.parent.parent
         cmd = restart_command or [sys.executable, str(app_root / "main.py")]
+        version = (
+            self._latest_release.version if self._latest_release else "unknown"
+        )
 
         with self._status_lock:
             self._status = UpdateStatus.INSTALLING
 
         try:
+            # Ротация backup перед новым обновлением (#191)
+            self._patcher.cleanup_old_backups(app_root)
+
+            backup_dir = self._patcher.backup_dir_for(app_root)
             script_path = self._patcher.generate_powershell_updater(
                 archive_path=self._downloaded_file,
                 target_dir=app_root,
                 current_pid=os.getpid(),
                 restart_command=cmd,
+                version=version,
+                verify_paths=self._resolve_verify_paths(app_root),
+                backup_dir=backup_dir,
+                restart_command_backup=self._patcher.make_backup_restart_command(
+                    cmd, app_root, backup_dir
+                ),
             )
             return self._patcher.launch_powershell_updater(script_path)
         except Exception as e:
@@ -368,6 +381,22 @@ class AppUpdater:
                 self._status = UpdateStatus.ERROR
                 self._error_message = str(e)
             return False
+
+    @staticmethod
+    def _resolve_verify_paths(app_root: Path) -> list[str]:
+        """Определяет обязательные файлы установки для проверки (#191).
+
+        Returns:
+            Относительные пути: main.py для source-установок и/или
+            первый найденный .exe верхнего уровня для упакованных.
+        """
+        verify: list[str] = []
+        if (app_root / "main.py").exists():
+            verify.append("main.py")
+        exe = next(iter(sorted(app_root.glob("*.exe"))), None)
+        if exe is not None:
+            verify.append(exe.name)
+        return verify or ["main.py"]
 
     def ignore_version(self, version: str) -> None:
         """Игнорирует указанную версию при последующих авто-проверках."""

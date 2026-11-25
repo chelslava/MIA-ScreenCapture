@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import threading
 import time
 import urllib.request
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 from core.updater.types import DownloadProgress
@@ -137,40 +139,161 @@ class UpdatePatcher:
                 temp_path.unlink(missing_ok=True)
             return False
 
+    @staticmethod
+    def backup_dir_for(target_dir: Path) -> Path:
+        """Вычисляет путь backup-директории для установки (#191).
+
+        Backup создаётся переименованием на том же томе — операция
+        мгновенная и не боится обрыва процесса.
+        """
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        return target_dir.parent / f"{target_dir.name}.backup-{stamp}"
+
+    @staticmethod
+    def make_backup_restart_command(
+        restart_command: list[str],
+        target_dir: Path,
+        backup_dir: Path,
+    ) -> list[str]:
+        """Строит команду перезапуска приложения из backup-директории.
+
+        Args:
+            restart_command: Обычная команда перезапуска (новая версия).
+            target_dir: Текущая директория установки.
+            backup_dir: Директория backup предыдущей версии.
+
+        Returns:
+            Команда с заменой префикса target_dir на backup_dir.
+        """
+        old_root = str(target_dir)
+        new_root = str(backup_dir)
+        return [
+            new_root + arg[len(old_root) :]
+            if arg.startswith(old_root)
+            else arg
+            for arg in restart_command
+        ]
+
+    def cleanup_old_backups(self, target_dir: Path, keep: int = 1) -> int:
+        """Удаляет старые backup-директории, оставляя последние (#191).
+
+        Args:
+            target_dir: Директория установки приложения.
+            keep: Сколько свежих backup сохранить.
+
+        Returns:
+            Количество удалённых backup-директорий.
+        """
+        pattern = f"{target_dir.name}.backup-*"
+        backups = sorted(
+            (p for p in target_dir.parent.glob(pattern) if p.is_dir()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        removed = 0
+        for stale in backups[keep:]:
+            try:
+                shutil.rmtree(stale)
+                removed += 1
+                logger.info("Удалён старый backup: %s", stale)
+            except Exception as e:
+                logger.warning("Не удалось удалить backup %s: %s", stale, e)
+        return removed
+
     def generate_powershell_updater(
         self,
         archive_path: Path,
         target_dir: Path,
         current_pid: int | None = None,
         restart_command: list[str] | None = None,
+        *,
+        version: str = "unknown",
+        verify_paths: list[str] | None = None,
+        health_timeout_s: int = 60,
+        backup_dir: Path | None = None,
+        restart_command_backup: list[str] | None = None,
     ) -> Path:
         """
-        Создает PowerShell-скрипт для безопасного применения обновления после выхода.
+        Создает PowerShell-скрипт обновления с backup и откатом (#191).
+
+        Сценарий: backup переименованием -> распаковка -> проверка
+        обязательных файлов -> маркер update_state.json -> запуск новой
+        версии -> health-check (приложение удаляет маркер после успешного
+        старта). Любой провал до подтверждения откатывает установку на
+        backup и запускает предыдущую версию.
 
         Args:
             archive_path: Путь к скачанному архиву обновления (.zip).
             target_dir: Директория приложения для обновления.
             current_pid: PID текущего процесса приложения для ожидания.
             restart_command: Команда для перезапуска приложения после обновления.
+            version: Версия устанавливаемого обновления (для маркера).
+            verify_paths: Относительные пути, обязательные после распаковки.
+            health_timeout_s: Сколько секунд ждать подтверждения запуска.
+            backup_dir: Путь backup (по умолчанию рядом с target_dir).
+            restart_command_backup: Команда перезапуска из backup при откате.
 
         Returns:
             Путь к созданному .ps1 скрипту.
         """
         script_path = self.download_dir / "apply_update.ps1"
         pid_to_wait = current_pid or os.getpid()
+        backup = backup_dir or self.backup_dir_for(target_dir)
+        checks = verify_paths or ["main.py"]
+        if restart_command is None:
+            restart_command = [sys.executable, str(target_dir / "main.py")]
+        rollback_command = restart_command_backup or (
+            self.make_backup_restart_command(
+                restart_command, target_dir, backup
+            )
+        )
 
-        restart_block = ""
-        if restart_command:
-            exe = restart_command[0]
-            args_str = " ".join(f'"{a}"' for a in restart_command[1:])
-            restart_block = f"""
-Write-Host "Запуск обновленного приложения..."
-Start-Process -FilePath "{exe}" -ArgumentList '{args_str}'
-"""
+        # PS-массив требует запятые-разделители, не пробелы
+        checks_literal = ", ".join(f'"{p}"' for p in checks)
+        new_args_str = " ".join(f'"{a}"' for a in restart_command[1:])
+        old_args_str = " ".join(f'"{a}"' for a in rollback_command[1:])
+        state_started_at = datetime.now(UTC).isoformat()
 
-        script_content = f"""# PowerShell Update Script for MIA-ScreenCapture
-param()
-$ErrorActionPreference = "Continue"
+        script_content = f"""# PowerShell Update Script for MIA-ScreenCapture (#191)
+# Backup -> Extract -> Verify -> Health-check -> Rollback on failure
+$ErrorActionPreference = "Stop"
+
+$ArchivePath   = "{archive_path}"
+$TargetDir     = "{target_dir}"
+$BackupDir     = "{backup}"
+$StatePath     = Join-Path $TargetDir "update_state.json"
+$RollbackPath  = Join-Path $TargetDir "update_rollback.json"
+$Version       = "{version}"
+$StartedAt     = "{state_started_at}"
+$HealthTimeout = {int(health_timeout_s)}
+$VerifyPaths   = @({checks_literal})
+$NewExe        = "{restart_command[0]}"
+$NewArgs       = '{new_args_str}'
+$OldExe        = "{rollback_command[0]}"
+$OldArgs       = '{old_args_str}'
+$script:AppProcess = $null
+
+function Invoke-Rollback {{
+    param([string]$Reason)
+    Write-Host "ОТКАТ обновления: $Reason"
+    if ($script:AppProcess -and -not $script:AppProcess.HasExited) {{
+        try {{ taskkill /PID $script:AppProcess.Id /T /F 2>$null }} catch {{}}
+    }}
+    Remove-Item -LiteralPath $TargetDir -Recurse -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $BackupDir -Destination $TargetDir -Force
+    @{{
+        reason = $Reason
+        version = $Version
+        rolled_back_at = (Get-Date).ToUniversalTime().ToString("o")
+    }} | ConvertTo-Json | ForEach-Object {{ [System.IO.File]::WriteAllText($RollbackPath, $_) }}
+    Write-Host "Запуск предыдущей версии из backup..."
+    try {{
+        Start-Process -FilePath $OldExe -ArgumentList $OldArgs | Out-Null
+    }} catch {{
+        Write-Error "Не удалось запустить предыдущую версию: $_"
+    }}
+    exit 2
+}}
 
 Write-Host "Ожидание завершения процесса PID {pid_to_wait}..."
 try {{
@@ -181,26 +304,81 @@ try {{
 
 Start-Sleep -Seconds 1
 
-Write-Host "Применение обновления из {archive_path} в {target_dir}..."
+# Шаг 1. Backup предыдущей установки переименованием на том же томе
+if (Test-Path -LiteralPath $TargetDir) {{
+    try {{
+        Move-Item -LiteralPath $TargetDir -Destination $BackupDir -ErrorAction Stop
+        Write-Host "Backup создан: $BackupDir"
+    }} catch {{
+        Write-Error "Нельзя создать backup (файлы заняты?): $_"
+        exit 1
+    }}
+}}
+
+# Шаг 2. Распаковка в чистую директорию
+# Статический ZipFile::ExtractToDirectory вместо Expand-Archive:
+# у Expand-Archive в PS 5.1 на старых runner'ах баг «Cannot find an
+# overload for ExtractToDirectory ... 3», а extension-метод ZipArchive
+# из PS не резолвится
+Write-Host "Применение обновления из $ArchivePath в $TargetDir..."
 try {{
-    Expand-Archive -Path "{archive_path}" -DestinationPath "{target_dir}" -Force
+    New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $TargetDir)
     Write-Host "Обновление успешно распаковано."
 }} catch {{
-    Write-Error "Ошибка при распаковке архива: $_"
+    Invoke-Rollback "распаковка: $_"
 }}
 
-{restart_block}
+# Шаг 3. Проверка обязательных файлов новой версии
+foreach ($p in $VerifyPaths) {{
+    if (-not (Test-Path -LiteralPath (Join-Path $TargetDir $p))) {{
+        Invoke-Rollback "после распаковки отсутствует $p"
+    }}
+}}
 
-# Очистка временных файлов
-Start-Sleep -Seconds 2
+# Шаг 4. Маркер «обновление применено, ожидается подтверждение»
+# WriteAllText вместо Set-Content: PS 5.1 пишет utf8 с BOM, а Python-сторона
+# читает маркер json-парсером
+@{{
+    version = $Version
+    backup_dir = $BackupDir
+    started_at = $StartedAt
+}} | ConvertTo-Json | ForEach-Object {{ [System.IO.File]::WriteAllText($StatePath, $_) }}
+
+# Шаг 5. Запуск новой версии
+Write-Host "Запуск обновленного приложения..."
 try {{
-    Remove-Item -Path "{archive_path}" -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path "$PSCommandPath" -Force -ErrorAction SilentlyContinue
+    $script:AppProcess = Start-Process -FilePath $NewExe -ArgumentList $NewArgs -PassThru -ErrorAction Stop
 }} catch {{
-    # Игнорировать ошибки удаления
+    Invoke-Rollback "не удалось запустить новую версию: $_"
 }}
+
+# Шаг 6. Health-check: приложение удаляет маркер после успешного старта
+$deadline = (Get-Date).AddSeconds($HealthTimeout)
+$confirmed = $false
+while ((Get-Date) -lt $deadline) {{
+    if (-not (Test-Path -LiteralPath $StatePath)) {{
+        $confirmed = $true
+        break
+    }}
+    if ($script:AppProcess.HasExited) {{
+        Invoke-Rollback "новая версия завершилась до подтверждения запуска"
+    }}
+    Start-Sleep -Milliseconds 500
+}}
+if (-not $confirmed) {{
+    Invoke-Rollback "health-check: приложение не подтвердило запуск за $HealthTimeout c"
+}}
+
+Write-Host "Обновление до версии $Version подтверждено."
+Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+exit 0
 """
-        script_path.write_text(script_content, encoding="utf-8")
+        # utf-8-sig: PowerShell 5.1 читает BOM-less файлы в ANSI и
+        # портит кириллицу в сообщениях
+        script_path.write_text(script_content, encoding="utf-8-sig")
         return script_path
 
     def launch_powershell_updater(self, script_path: Path) -> bool:
