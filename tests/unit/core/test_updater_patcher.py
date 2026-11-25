@@ -116,7 +116,98 @@ class TestUpdatePatcher:
         )
 
         assert script.exists()
-        content = script.read_text(encoding="utf-8")
+        # utf-8-sig: PowerShell 5.1 требует BOM для кириллицы
+        content = script.read_text(encoding="utf-8-sig")
         assert "Wait-Process -Id 1234" in content
         assert "Expand-Archive" in content
         assert "python.exe" in content
+
+    def test_generate_updater_contains_rollback_flow(
+        self, tmp_path: Path
+    ) -> None:
+        """Скрипт включает backup, откат и health-check (#191)."""
+        patcher = UpdatePatcher(download_dir=tmp_path)
+        archive = tmp_path / "update.zip"
+        archive.write_bytes(b"zip")
+        backup = tmp_path / "app.backup-1"
+
+        script = patcher.generate_powershell_updater(
+            archive_path=archive,
+            target_dir=tmp_path / "app",
+            current_pid=1234,
+            restart_command=["python.exe", str(tmp_path / "app" / "main.py")],
+            version="2.1.0",
+            verify_paths=["main.py", "app.exe"],
+            health_timeout_s=45,
+            backup_dir=backup,
+        )
+        content = script.read_text(encoding="utf-8-sig")
+
+        assert "Invoke-Rollback" in content
+        assert "Move-Item" in content
+        assert "taskkill" in content
+        assert "update_state.json" in content
+        assert "update_rollback.json" in content
+        assert str(backup) in content
+        assert "main.py" in content and "app.exe" in content
+        assert "-Milliseconds 500" in content
+
+    def test_backup_dir_for_is_deterministic_path(
+        self, tmp_path: Path
+    ) -> None:
+        """Backup-директория находится рядом с установкой."""
+        target = tmp_path / "MIA-ScreenCapture"
+
+        backup = UpdatePatcher.backup_dir_for(target)
+
+        assert backup.parent == target.parent
+        assert backup.name.startswith("MIA-ScreenCapture.backup-")
+
+    def test_make_backup_restart_command_swaps_root(self) -> None:
+        """Команда отката перенаправляет запуск в backup-директорию."""
+        target = Path("D:/Apps/MIA-ScreenCapture")
+        backup = Path("D:/Apps/MIA-ScreenCapture.backup-1")
+        cmd = ["py", str(target / "main.py"), "--headless"]
+
+        rollback_cmd = UpdatePatcher.make_backup_restart_command(
+            cmd, target, backup
+        )
+
+        assert rollback_cmd == [
+            "py",
+            str(backup / "main.py"),
+            "--headless",
+        ]
+
+    def test_cleanup_old_backups_keeps_recent(self, tmp_path: Path) -> None:
+        """Ротация backup оставляет последние, удаляет старые."""
+        patcher = UpdatePatcher(download_dir=tmp_path)
+        target = tmp_path / "app"
+        target.mkdir()
+        backups = []
+        for i in range(3):
+            b = tmp_path / f"app.backup-{i}"
+            b.mkdir()
+            (b / "f.txt").write_text("x", encoding="utf-8")
+            backups.append(b)
+            # Гарантируем разные mtime
+            import os
+            import time as time_mod
+
+            stamp = time_mod.time() + i
+            os.utime(b, (stamp, stamp))
+
+        removed = patcher.cleanup_old_backups(target, keep=1)
+
+        assert removed == 2
+        leftovers = list(tmp_path.glob("app.backup-*"))
+        assert len(leftovers) == 1
+        assert leftovers[0] == backups[-1]
+
+    def test_cleanup_old_backups_nothing_to_remove(
+        self, tmp_path: Path
+    ) -> None:
+        """Отсутствие backup — удалений нет."""
+        patcher = UpdatePatcher(download_dir=tmp_path)
+
+        assert patcher.cleanup_old_backups(tmp_path / "app") == 0

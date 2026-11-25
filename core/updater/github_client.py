@@ -113,12 +113,9 @@ class GitHubReleaseClient:
         primary_url: str | None = None
         primary_size: int = 0
         sha256_checksum: str | None = None
-        is_delta = False
-
-        # 1. Сначала ищем дельта-патчи (.patch, -delta.zip)
-        # 2. Затем полные пакеты (.zip, .exe)
-        # 3. Ищем чексуммы (.sha256, sha256sums.txt)
-        delta_asset: ReleaseAsset | None = None
+        # Delta-механика убрана (#191): CI не генерирует delta-ассеты,
+        # а «слияние патча» для EXE-инсталляторов нереализуемо —
+        # предпочитаем только полные пакеты (.zip, .exe)
         full_asset: ReleaseAsset | None = None
 
         for a in raw_assets:
@@ -136,27 +133,20 @@ class GitHubReleaseClient:
             assets.append(asset_obj)
 
             lower_name = a_name.lower()
-            if "delta" in lower_name and (
-                lower_name.endswith(".zip") or lower_name.endswith(".patch")
-            ):
-                delta_asset = asset_obj
-            elif lower_name.endswith(".zip") or lower_name.endswith(".exe"):
-                if not full_asset:
-                    full_asset = asset_obj
+            # Delta-ассеты игнорируются: скачанный delta-архив нечем
+            # применить к установленной базе
+            is_full_asset = "delta" not in lower_name and (
+                lower_name.endswith(".zip") or lower_name.endswith(".exe")
+            )
+            if is_full_asset and not full_asset:
+                full_asset = asset_obj
 
-        # Определяем основной ассет для скачивания (дельта предпочтительнее при наличии)
-        if delta_asset:
-            primary_url = delta_asset.download_url
-            primary_size = delta_asset.size_bytes
-            is_delta = True
-        elif full_asset:
+        if full_asset:
             primary_url = full_asset.download_url
             primary_size = full_asset.size_bytes
-            is_delta = False
         elif data.get("zipball_url"):
             primary_url = data.get("zipball_url")
             primary_size = 0
-            is_delta = False
 
         # Извлечение контрольной суммы SHA-256 из описания релиза (если указана в markdown)
         sha_match = re.search(
@@ -178,7 +168,9 @@ class GitHubReleaseClient:
             primary_download_url=primary_url,
             sha256_checksum=sha256_checksum,
             size_bytes=primary_size,
-            is_delta=is_delta,
+            # Поле сохранено для совместимости API/WebSocket-полезной
+            # нагрузки; после #191 delta не скачивается никогда
+            is_delta=False,
         )
 
     def get_latest_release(

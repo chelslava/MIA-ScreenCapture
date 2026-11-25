@@ -100,12 +100,36 @@ class TestGitHubReleaseClient:
         info = client.parse_release_payload(payload)
 
         assert info.version == "2.0.0"
-        assert info.is_delta is True
-        assert info.primary_download_url == "https://example.com/delta.zip"
+        # Delta-механика убрана (#191): delta-ассет не применяется,
+        # скачивается только полный пакет
+        assert info.is_delta is False
+        assert info.primary_download_url == "https://example.com/full.exe"
         assert (
             info.sha256_checksum
             == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         )
+
+    def test_parse_release_payload_delta_only_no_full(self) -> None:
+        """Релиз только с delta-ассетом не даёт URL для скачивания."""
+        client = GitHubReleaseClient()
+        payload = {
+            "tag_name": "v2.0.0",
+            "name": "Delta Only",
+            "body": "",
+            "prerelease": False,
+            "assets": [
+                {
+                    "name": "MIA-delta-2.0.0.zip",
+                    "browser_download_url": "https://example.com/delta.zip",
+                    "size": 524288,
+                },
+            ],
+        }
+
+        info = client.parse_release_payload(payload)
+
+        assert info.is_delta is False
+        assert info.primary_download_url is None
 
     @patch.object(GitHubReleaseClient, "fetch_releases")
     def test_check_for_updates_found(self, mock_fetch: MagicMock) -> None:
