@@ -17,6 +17,7 @@ MIA-ScreenCapture - Главная точка входа
 
 import sys
 from pathlib import Path
+from typing import Any
 
 # Добавление родительской директории в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent))
@@ -55,6 +56,34 @@ def _load_environment() -> None:
     env_path = Path(__file__).parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
+
+
+def notify_config_load_notice(cfg_manager: Any) -> None:
+    """
+    Доводит событие загрузки конфига до пользователя (#190).
+
+    Восстановление из backup, миграция схемы и сброс из-за повреждения
+    не должны проходить молча: лог + системный toast (GUI и headless).
+
+    Args:
+        cfg_manager: Экземпляр ConfigManager (или совместимый объект).
+    """
+    pop_notice = getattr(cfg_manager, "pop_load_notice", None)
+    if pop_notice is None:
+        return
+    notice = pop_notice()
+    if notice is None:
+        return
+
+    logger.warning("Событие загрузки конфигурации: %s", notice.message)
+    try:
+        # Локальный импорт: модуль уведомлений не нужен при unit-тестах
+        # конфигурации без GUI-окружения
+        from gui.notifications import send_notification
+
+        send_notification("MIA-ScreenCapture", notice.message)
+    except Exception as e:
+        logger.warning("Не удалось показать уведомление о конфиге: %s", e)
 
 
 def _handle_already_running(mode: str) -> int:
@@ -108,6 +137,7 @@ def main() -> int:
     config_path_arg = config.get("config_path")
     config_path = Path(config_path_arg) if config_path_arg else None
     cfg_manager = init_config(config_path)
+    notify_config_load_notice(cfg_manager)
 
     # Инициализация языка интерфейса
     cfg_lang = None
